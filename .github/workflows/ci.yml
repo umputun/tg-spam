@@ -1,0 +1,57 @@
+name: build
+on: [push, pull_request]
+jobs:
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: set up go 1.21
+      uses: actions/setup-go@v3
+      with:
+        go-version: "1.21"
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+
+    - name: build and test
+      run: |
+        go test -v -timeout=100s -covermode=count -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp ./...
+        cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "mocks" | grep -v "_mock" > $GITHUB_WORKSPACE/profile.cov
+      working-directory: app
+      env:
+        GO111MODULE: on
+        TZ: "America/Chicago"
+        GOFLAGS: "-mod=vendor"
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+
+    - name: install goveralls
+      run: go install github.com/mattn/goveralls@latest
+
+    - name: submit coverage
+      run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+      env:
+        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: build and push master image
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      run: |
+        docker build -t umputun/tg-spam:master .
+        docker login --username ${{ secrets.DOCKERHUB_USER }} --password ${{ secrets.DOCKERHUB_PASSWD }}
+        docker push umputun/tg-spam:master
+
+    - name: build and push tagged image
+      if: github.event_name == 'push' && github.event.ref_type == 'tag'
+      run: |
+        GIT_TAG="${GITHUB_REF#refs/tags/}"
+        docker build -t umputun/tg-spam:${GIT_TAG} .
+        docker login --username ${{ secrets.DOCKERHUB_USER }} --password ${{ secrets.DOCKERHUB_PASSWD }}
+        docker push umputun/tg-spam:${GIT_TAG}
+        docker tag umputun/tg-spam:${GIT_TAG} umputun/tg-spam:latest
+        docker push umputun/tg-spam:latest
