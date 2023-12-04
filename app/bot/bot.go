@@ -1,42 +1,19 @@
 package bot
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"net/http"
-	"sort"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
-
-	"github.com/go-pkgz/syncs"
 )
 
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient:HTTPClient
-//go:generate moq --out mocks/bot_interface.go --pkg mocks --skip-ensure . Interface:BotInterface
 //go:generate moq --out mocks/super_user.go --pkg mocks --skip-ensure . SuperUser:SuperUser
 
-// GenHelpMsg construct help message from bot's ReactOn
-func GenHelpMsg(com []string, msg string) string {
-	return EscapeMarkDownV1Text(strings.Join(com, ", ")) + " _– " + msg + "_\n"
-}
-
-// Interface is a bot reactive spec. response will be sent if "send" result is true
-type Interface interface {
-	OnMessage(msg Message) (response Response)
-	ReactOn() []string
-	Help() string
-}
-
-// Response describes bot's answer on particular message
+// Response describes bot's reaction on particular message
 type Response struct {
 	Text          string
 	Send          bool          // status
-	Pin           bool          // enable pin
-	Unpin         bool          // enable unpin
-	Preview       bool          // enable web preview
 	BanInterval   time.Duration // bots banning user set the interval
 	User          User          // user to ban
 	ChannelID     int64         // channel to ban, if set then User and BanInterval are ignored
@@ -111,112 +88,6 @@ type User struct {
 	ID          int64
 	Username    string
 	DisplayName string
-}
-
-// MultiBot combines many bots to one virtual
-type MultiBot []Interface
-
-// Help returns help message
-func (b MultiBot) Help() string {
-	sb := strings.Builder{}
-	for _, child := range b {
-		help := child.Help()
-		if help != "" {
-			// WriteString always returns nil err
-			if !strings.HasSuffix(help, "\n") {
-				help += "\n"
-			}
-			_, _ = sb.WriteString(help)
-		}
-	}
-	return sb.String()
-}
-
-// OnMessage pass msg to all bots and collects responses (combining all of them)
-// noinspection GoShadowedVar
-func (b MultiBot) OnMessage(msg Message) (response Response) {
-	if contains([]string{"help", "/help", "help!"}, msg.Text) {
-		return Response{
-			Text: b.Help(),
-			Send: true,
-		}
-	}
-
-	resps := make(chan string)
-	var pin, unpin int32
-	var channelID int64
-	var banInterval time.Duration
-	var user User
-	var mutex = &sync.Mutex{}
-	var replyTo int
-	var deleteReplyTo int32
-
-	wg := syncs.NewSizedGroup(4)
-	for _, bot := range b {
-		bot := bot
-		wg.Go(func(ctx context.Context) {
-			if resp := bot.OnMessage(msg); resp.Send {
-				resps <- resp.Text
-				if resp.Pin {
-					atomic.AddInt32(&pin, 1)
-				}
-				if resp.Unpin {
-					atomic.AddInt32(&unpin, 1)
-				}
-				if resp.ReplyTo > 0 {
-					replyTo = resp.ReplyTo
-				}
-				if resp.BanInterval > 0 {
-					mutex.Lock()
-					if resp.BanInterval > banInterval {
-						banInterval = resp.BanInterval
-					}
-					user = resp.User
-					channelID = resp.ChannelID
-					mutex.Unlock()
-				}
-				if resp.DeleteReplyTo {
-					atomic.AddInt32(&deleteReplyTo, 1)
-				}
-			}
-		})
-	}
-
-	go func() {
-		wg.Wait()
-		close(resps)
-	}()
-
-	lines := make([]string, 0, len(resps))
-	for r := range resps {
-		log.Printf("[DEBUG] collect %q", r)
-		lines = append(lines, r)
-	}
-
-	sort.Slice(lines, func(i, j int) bool {
-		return lines[i] < lines[j]
-	})
-
-	log.Printf("[DEBUG] answers %d, send %v", len(lines), len(lines) > 0)
-	return Response{
-		Text:          strings.Join(lines, "\n"),
-		Send:          len(lines) > 0,
-		Pin:           atomic.LoadInt32(&pin) > 0,
-		Unpin:         atomic.LoadInt32(&unpin) > 0,
-		BanInterval:   banInterval,
-		User:          user,
-		ChannelID:     channelID,
-		ReplyTo:       replyTo,
-		DeleteReplyTo: atomic.LoadInt32(&deleteReplyTo) > 0,
-	}
-}
-
-// ReactOn returns combined list of all keywords
-func (b MultiBot) ReactOn() (res []string) {
-	for _, bot := range b {
-		res = append(res, bot.ReactOn()...)
-	}
-	return res
 }
 
 func contains(s []string, e string) bool {
