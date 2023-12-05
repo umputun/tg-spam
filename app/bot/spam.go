@@ -27,7 +27,9 @@ type SpamFilter struct {
 	approvedUsers  map[int64]bool
 	stopWords      []string
 	excludedTokens []string
-	lock           sync.RWMutex
+	spamClassifier Classifier
+
+	lock sync.RWMutex
 }
 
 // If user is restricted for more than 366 days or less than 30 seconds from the current time,
@@ -45,6 +47,7 @@ type SpamParams struct {
 	SpamSamplesFile    string
 	StopWordsFile      string
 	ExcludedTokensFile string
+	HamSamplesFile     string
 
 	SpamMsg    string
 	SpamDryMsg string
@@ -85,8 +88,36 @@ func NewSpamFilter(ctx context.Context, p SpamParams) (*SpamFilter, error) {
 					log.Printf("[WARN] failed to watch %s file %s, error=%v", desc, fname, err)
 				}
 			}()
-
 		}
+
+		// load classifiers
+		fhSpam, err := os.Open(s.SpamSamplesFile)
+		if err != nil {
+			return fmt.Errorf("can't open spam samples %s: %w", s.SpamSamplesFile, err)
+		}
+		defer fhSpam.Close() //nolint gosec
+
+		fhHam, err := os.Open(s.HamSamplesFile)
+		if err != nil {
+			return fmt.Errorf("can't open ham samples %s: %w", s.HamSamplesFile, err)
+		}
+		defer fhHam.Close() //nolint gosec
+
+		loadClassifiers := func(fhSpam, fhHam io.Reader) error {
+			s.spamClassifier.Reset()
+			if err := s.loadSpamClassifier(fhSpam); err != nil {
+				return err
+			}
+			if err := s.loadHamClassifier(fhHam); err != nil {
+				return err
+			}
+			return nil
+		}
+		if err := loadClassifiers(fhSpam, fhHam); err != nil {
+			return fmt.Errorf("can't load classifiers: %w", err)
+		}
+
+		go watchPair(ctx, s.SpamSamplesFile, s.HamSamplesFile, loadClassifiers)
 		return nil
 	}
 
@@ -110,7 +141,9 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	isEmojiSpam, _ := s.tooManyEmojis(msg.Text, s.MaxAllowedEmoji)
 	stopWordsSpam := s.hasStopWords(msg.Text)
 	similaritySpam := s.isSpamSimilarityHigh(msg.Text)
-	if similaritySpam || isEmojiSpam || stopWordsSpam || s.isCasSpam(msg.From.ID) {
+	classifiedSpam := s.isSpamClassified(msg.Text)
+
+	if similaritySpam || isEmojiSpam || stopWordsSpam || s.isCasSpam(msg.From.ID) || classifiedSpam {
 		log.Printf("[INFO] user %s detected as spammer, msg: %q", displayUsername, msg.Text)
 		if s.Dry {
 			return Response{
@@ -168,6 +201,34 @@ func (s *SpamFilter) loadExcludedTokens(reader io.Reader) error {
 	return nil
 }
 
+func (s *SpamFilter) loadSpamClassifier(reader io.Reader) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.loadClassifier(reader, "spam")
+}
+
+func (s *SpamFilter) loadHamClassifier(reader io.Reader) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.loadClassifier(reader, "ham")
+}
+
+func (s *SpamFilter) loadClassifier(reader io.Reader, class Class) error {
+	log.Printf("[DEBUG] refreshing classifier %s", class)
+	docs := []Document{}
+	for t := range tokenChan(reader) { // each line is a string with space separated tokens
+		tokenizedSpam := s.tokenize(t)
+		tokens := make([]string, 0, len(tokenizedSpam))
+		for token := range tokenizedSpam {
+			tokens = append(tokens, token)
+		}
+		docs = append(docs, Document{Class: class, Tokens: tokens})
+	}
+	s.spamClassifier.Learn(docs...)
+	log.Printf("[INFO] loaded %d %s samples", len(s.tokenizedSpam), class)
+	return nil
+}
+
 // isSpam checks if a given message is similar to any of the known bad messages.
 func (s *SpamFilter) isSpamSimilarityHigh(message string) bool {
 	// check for spam similarity
@@ -218,6 +279,18 @@ func (s *SpamFilter) isCasSpam(msgID int64) bool {
 		log.Printf("[INFO] user %q detected as spammer: %s", msgID, respData.Description)
 	}
 	return respData.OK
+}
+
+func (s *SpamFilter) isSpamClassified(message string) bool {
+	// Classify tokens from a document
+	tm := s.tokenize(message)
+	tokens := make([]string, 0, len(tm))
+	for token := range tm {
+		tokens = append(tokens, token)
+	}
+	allScores, class, certain := s.spamClassifier.Classify(tokens...)
+	log.Printf("[DEBUG] spam classifier: %v, %s, %v", allScores, class, certain)
+	return class == "spam" && certain
 }
 
 // tokenize takes a string and returns a map where the keys are unique words (tokens)

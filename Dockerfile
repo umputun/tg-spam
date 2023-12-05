@@ -21,9 +21,7 @@ FROM umputun/baseimage:app-latest
 COPY --from=build /build/tg-spam /srv/tg-spam
 RUN chown -R app:app /srv
 
-COPY spam-exclude-token.txt /srv/data/spam-exclude-token.txt
-COPY spam-samples.txt /srv/data/spam-samples.txt
-COPY stop-words.txt /srv/data/sstop-words.txt
+COPY data/* /srv/data/
 
 VOLUME /srv/data
 WORKDIR /srv

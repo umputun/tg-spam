@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -19,19 +20,6 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 		return fmt.Errorf("failed to create watcher: %w", err)
 	}
 	defer watcher.Close()
-
-	readFile := func(path string) (io.Reader, error) {
-		file, err := os.Open(path) //nolint gosec // path is controlled by the app
-		if err != nil {
-			return nil, fmt.Errorf("failed to open file %s: %w", path, err)
-		}
-		defer file.Close()
-		data, err := io.ReadAll(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read file %s: %w", path, err)
-		}
-		return bytes.NewReader(data), nil
-	}
 
 	done := make(chan bool)
 	go func() {
@@ -71,4 +59,53 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 	}
 	<-done
 	return nil
+}
+
+// watchPair starts watching two files for changes and calls onDataChange callback
+func watchPair(ctx context.Context, path1, path2 string, onDataChange func(io.Reader, io.Reader) error) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		err := watch(ctx, path1, func(r io.Reader) error {
+			r2, err := readFile(path2)
+			if err != nil {
+				return err
+			}
+			return onDataChange(r, r2)
+		})
+		if err != nil {
+			log.Printf("[WARN] failed to watch file %s: %v", path1, err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		err := watch(ctx, path2, func(r io.Reader) error {
+			r1, err := readFile(path1)
+			if err != nil {
+				return err
+			}
+			return onDataChange(r1, r)
+		})
+		if err != nil {
+			log.Printf("[WARN] failed to watch file %s: %v", path2, err)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func readFile(path string) (io.Reader, error) {
+	file, err := os.Open(path) //nolint gosec // path is controlled by the app
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+	return bytes.NewReader(data), nil
 }

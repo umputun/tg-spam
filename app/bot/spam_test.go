@@ -33,6 +33,7 @@ func TestFilter_OnMessage(t *testing.T) {
 
 	filter, err := NewSpamFilter(context.Background(), SpamParams{
 		SpamSamplesFile:     "testdata/spam-samples.txt", // "win free iPhone\nlottery prize
+		HamSamplesFile:      "testdata/ham-samples.txt",
 		StopWordsFile:       "testdata/stop-words.txt",
 		ExcludedTokensFile:  "testdata/spam-exclude-token.txt",
 		SimilarityThreshold: 0.5,
@@ -44,20 +45,24 @@ func TestFilter_OnMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
+		name     string
 		msg      Message
 		expected Response
 	}{
 		{
+			"good message",
 			Message{From: User{ID: 1, Username: "john", DisplayName: "John"}, Text: "Hello, how are you?", ID: 1},
 			Response{},
 		},
 		{
+			"emoji spam",
 			Message{From: User{ID: 4, Username: "john", DisplayName: "John"}, Text: "Hello 😁🐶🍕 how are you? ", ID: 4},
 			Response{Text: "this is spam! go to ban: \"John\" (4)", Send: true,
 				BanInterval: permanentBanDuration, ReplyTo: 4, DeleteReplyTo: true,
 				User: User{ID: 4, Username: "john", DisplayName: "John"}},
 		},
 		{
+			"similarity spam",
 			Message{From: User{ID: 2, Username: "spammer", DisplayName: "Spammer"}, Text: "Win a free iPhone now!", ID: 2},
 			Response{Text: "this is spam! go to ban: \"Spammer\" (2)", Send: true,
 				ReplyTo: 2, BanInterval: permanentBanDuration, DeleteReplyTo: true,
@@ -65,6 +70,15 @@ func TestFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			"classifier spam",
+			Message{From: User{ID: 2, Username: "spammer", DisplayName: "Spammer"}, Text: "free gift for you", ID: 2},
+			Response{Text: "this is spam! go to ban: \"Spammer\" (2)", Send: true,
+				ReplyTo: 2, BanInterval: permanentBanDuration, DeleteReplyTo: true,
+				User: User{ID: 2, Username: "spammer", DisplayName: "Spammer"},
+			},
+		},
+		{
+			"CAS spam",
 			Message{From: User{ID: 101, Username: "spammer", DisplayName: "blah"}, Text: "something something", ID: 10},
 			Response{Text: "this is spam! go to ban: \"blah\" (101)", Send: true,
 				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
@@ -72,6 +86,7 @@ func TestFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			"stop words spam emoji",
 			Message{From: User{ID: 102, Username: "spammer", DisplayName: "blah"}, Text: "something пишите в лс something", ID: 10},
 			Response{Text: "this is spam! go to ban: \"blah\" (102)", Send: true,
 				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
@@ -81,7 +96,7 @@ func TestFilter_OnMessage(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.msg.From.Username, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			assert.Equal(t, test.expected, filter.OnMessage(test.msg))
 		})
 	}
@@ -257,6 +272,7 @@ func Test_tokenChan(t *testing.T) {
 	}{
 		{name: "empty", input: "", expected: []string{}},
 		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
+		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
 		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
 		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
 		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},

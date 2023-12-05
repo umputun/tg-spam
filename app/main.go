@@ -35,7 +35,8 @@ var opts struct {
 
 	Similarity struct {
 		Threshold        float64 `long:"threshold" env:"THRESHOLD" default:"0.5" description:"spam threshold"`
-		SamplesFile      string  `long:"samples" env:"SAMPLES" default:"" description:"path to spam samples"`
+		SamplesSpamFile  string  `long:"samples-spam" env:"SAMPLES_SPAM" default:"" description:"path to spam samples"`
+		SamplesHamFile   string  `long:"samples-ham" env:"SAMPLES_HAM" default:"" description:"path to ham samples"`
 		ExcludeTokenFile string  `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"" description:"path to exclude tokens file"`
 	} `group:"similarity" namespace:"similarity" env-namespace:"SIMILARITY"`
 
@@ -94,7 +95,8 @@ func execute(ctx context.Context) error {
 	tbAPI.Debug = opts.Dbg
 
 	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
-		SpamSamplesFile:     opts.Similarity.SamplesFile,
+		SpamSamplesFile:     opts.Similarity.SamplesSpamFile,
+		HamSamplesFile:      opts.Similarity.SamplesHamFile,
 		ExcludedTokensFile:  opts.Similarity.ExcludeTokenFile,
 		SimilarityThreshold: opts.Similarity.Threshold,
 		StopWordsFile:       opts.StopWordsFile,
