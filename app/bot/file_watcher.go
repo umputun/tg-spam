@@ -35,6 +35,7 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 
 	done := make(chan bool)
 	go func() {
+		defer close(done)
 		for {
 			select {
 			case <-ctx.Done():
