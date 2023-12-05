@@ -67,7 +67,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	setupLog(opts.Dbg)
+	setupLog(opts.Dbg, opts.Telegram.Token)
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -131,10 +131,10 @@ func execute(ctx context.Context) error {
 	return nil
 }
 
-func setupLog(dbg bool) {
+func setupLog(dbg bool, secrets ...string) {
 	if dbg {
-		log.Setup(log.Debug, log.CallerFile, log.CallerFunc, log.Msec, log.LevelBraces)
+		log.Setup(log.Debug, log.CallerFile, log.CallerFunc, log.Msec, log.LevelBraces, log.Secret(secrets...))
 		return
 	}
-	log.Setup(log.Msec, log.LevelBraces)
+	log.Setup(log.Msec, log.LevelBraces, log.Secret(secrets...))
 }

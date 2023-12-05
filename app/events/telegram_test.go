@@ -13,56 +13,7 @@ import (
 	"github.com/umputun/tg-spam/app/events/mocks"
 )
 
-func TestTelegramListener_DoNoBots(t *testing.T) {
-	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
-	mockAPI := &mocks.TbAPIMock{GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-		return tbapi.Chat{ID: 123}, nil
-	}}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
-		return bot.Response{Send: false}
-	}}
-
-	l := TelegramListener{
-		SpamLogger: mockLogger,
-		TbAPI:      mockAPI,
-		Bot:        b,
-		Group:      "gr",
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	updMsg := tbapi.Update{
-		Message: &tbapi.Message{
-			ReplyToMessage: &tbapi.Message{
-				SenderChat: &tbapi.Chat{
-					ID:        4321,
-					UserName:  "another_user",
-					FirstName: "first",
-					LastName:  "last",
-				},
-				Chat: &tbapi.Chat{ID: 123},
-				Text: "text 123",
-				From: &tbapi.User{UserName: "user"},
-			},
-			Chat: &tbapi.Chat{ID: 123},
-			Text: "text 123",
-			From: &tbapi.User{UserName: "user"},
-		},
-	}
-
-	updChan := make(chan tbapi.Update, 1)
-	updChan <- updMsg
-	close(updChan)
-	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
-
-	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-
-	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
-}
-
-func TestTelegramListener_DoWithBots(t *testing.T) {
+func TestTelegramListener_Do(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {

@@ -23,7 +23,7 @@ func NewDocument(class Class, tokens ...string) Document {
 	}
 }
 
-// Classifier is object for classifying document
+// Classifier is object for a classifying document
 type Classifier struct {
 	LearningResults    map[string]map[Class]int
 	PriorProbabilities map[Class]float64
@@ -42,7 +42,7 @@ func NewClassifier() Classifier {
 	}
 }
 
-// Learn executes learning process for this classifier
+// Learn executes the learning process for this classifier
 func (c *Classifier) Learn(docs ...Document) {
 	c.NAllDocument += len(docs)
 
@@ -75,7 +75,7 @@ func (c *Classifier) Reset() {
 	c.NAllDocument = 0
 }
 
-// Classify executes classifying process for tokens
+// Classify executes the classifying process for tokens
 func (c *Classifier) Classify(tokens ...string) (map[Class]float64, Class, bool) {
 	nVocabulary := len(c.LearningResults)
 	posteriorProbabilities := make(map[Class]float64)
