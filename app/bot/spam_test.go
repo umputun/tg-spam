@@ -248,3 +248,28 @@ func TestSpam_isCasSpam(t *testing.T) {
 		})
 	}
 }
+
+func Test_tokenChan(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{name: "empty", input: "", expected: []string{}},
+		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
+		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
+		{name: "tokens comma separated", input: "hello,\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
+		{name: "tokens comma separated, extra EOL", input: "hello,world\nsomething\n", expected: []string{"hello", "world", "something"}},
+		{name: "tokens comma separated, empty tokens", input: "hello,world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := tokenChan(bytes.NewBufferString(tt.input))
+			res := []string{}
+			for token := range ch {
+				res = append(res, token)
+			}
+			assert.Equal(t, tt.expected, res)
+		})
+	}
+}
