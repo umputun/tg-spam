@@ -18,14 +18,14 @@ func TestTelegramListener_DoNoBots(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
 		return tbapi.Chat{ID: 123}, nil
 	}}
-	bot := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		return bot.Response{Send: false}
 	}}
 
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        bot,
+		Bot:        b,
 		Group:      "gr",
 	}
 
@@ -72,7 +72,7 @@ func TestTelegramListener_DoWithBots(t *testing.T) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
 		},
 	}
-	bot := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{Send: true, Text: "bot's answer"}
@@ -83,7 +83,7 @@ func TestTelegramListener_DoWithBots(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        bot,
+		Bot:        b,
 		Group:      "gr",
 	}
 
@@ -124,7 +124,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 			return &tbapi.APIResponse{}, nil
 		},
 	}
-	bot := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{Send: true, Text: "bot's answer", BanInterval: 2 * time.Minute, User: bot.User{Username: "user", ID: 1}}
@@ -141,7 +141,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        bot,
+		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
 	}
@@ -256,7 +256,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
 	}
-	bot := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{DeleteReplyTo: true, ReplyTo: msg.ID, ChannelID: msg.ChatID, BanInterval: time.Hour,
@@ -268,7 +268,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        bot,
+		Bot:        b,
 		Group:      "gr",
 	}
 

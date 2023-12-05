@@ -21,7 +21,7 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 	defer watcher.Close()
 
 	readFile := func(path string) (io.Reader, error) {
-		file, err := os.Open(path)
+		file, err := os.Open(path) //nolint gosec // path is controlled by the app
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s: %w", path, err)
 		}
@@ -46,21 +46,21 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 					return
 				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					data, err := readFile(path)
-					if err != nil {
-						log.Printf("[WARN] failed to read updated file %s: %v", path, err)
+					data, e := readFile(path)
+					if e != nil {
+						log.Printf("[WARN] failed to read updated file %s: %v", path, e)
 						continue
 					}
-					if err := onDataChange(data); err != nil {
-						log.Printf("[WARN] failed to load updated file %s: %v", path, err)
+					if e = onDataChange(data); e != nil {
+						log.Printf("[WARN] failed to load updated file %s: %v", path, e)
 						continue
 					}
 				}
-			case err, ok := <-watcher.Errors:
+			case e, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
-				log.Printf("[WARN] watcher error: %v", err)
+				log.Printf("[WARN] watcher error: %v", e)
 			}
 		}
 	}()

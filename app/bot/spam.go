@@ -34,14 +34,8 @@ type SpamFilter struct {
 // they are considered to be restricted forever.
 var permanentBanDuration = time.Hour * 24 * 400
 
-var stopWords = []string{
-	"в личку", "писать в лс", "пишите в лс", "в лuчные сообщенuя", "личных сообщениях", "заработок удалённо",
-	"заработок в интернете", "заработок в сети", "заработок в сети интернет", "для yдaлённoгo зaрaбoткa",
-}
-
 // SpamParams is a full set of parameters for spam bot
 type SpamParams struct {
-	SuperUser           SuperUser
 	SimilarityThreshold float64
 	MinMsgLen           int
 	MaxAllowedEmoji     int
@@ -51,6 +45,9 @@ type SpamParams struct {
 	SpamSamplesFile    string
 	StopWordsFile      string
 	ExcludedTokensFile string
+
+	SpamMsg    string
+	SpamDryMsg string
 
 	Dry bool
 }
@@ -82,10 +79,10 @@ func NewSpamFilter(ctx context.Context, p SpamParams) (*SpamFilter, error) {
 				return fmt.Errorf("can't load %s %s: %w", t.desc, t.fileName, err)
 			}
 
-			fname, loadFunc := t.fileName, t.loadFunc
+			fname, loadFunc, desc := t.fileName, t.loadFunc, t.desc
 			go func() {
 				if err := watch(ctx, fname, loadFunc); err != nil {
-					log.Printf("[WARN] failed to watch %s file %s, error=%v", t.desc, t.fileName, err)
+					log.Printf("[WARN] failed to watch %s file %s, error=%v", desc, fname, err)
 				}
 			}()
 
@@ -109,10 +106,6 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 
-	if s.SuperUser.IsSuper(msg.From.Username) {
-		return Response{} // don't check super users for spam
-	}
-
 	displayUsername := strings.TrimSpace(DisplayName(msg))
 	isEmojiSpam, _ := s.tooManyEmojis(msg.Text, s.MaxAllowedEmoji)
 	stopWordsSpam := s.hasStopWords(msg.Text)
@@ -121,11 +114,11 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		log.Printf("[INFO] user %s detected as spammer, msg: %q", displayUsername, msg.Text)
 		if s.Dry {
 			return Response{
-				Text: fmt.Sprintf("this is spam from %q, but I'm in dry mode, so I'll do nothing yet", displayUsername),
+				Text: s.SpamDryMsg + fmt.Sprintf(": %q (%d)", displayUsername, msg.From.ID),
 				Send: true, ReplyTo: msg.ID,
 			}
 		}
-		return Response{Text: fmt.Sprintf("this is spam! go to ban, %q (id:%d)", displayUsername, msg.From.ID),
+		return Response{Text: s.SpamMsg + fmt.Sprintf(": %q (%d)", displayUsername, msg.From.ID),
 			Send: true, ReplyTo: msg.ID, BanInterval: permanentBanDuration, DeleteReplyTo: true,
 			User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
@@ -157,9 +150,9 @@ func (s *SpamFilter) loadStopWords(reader io.Reader) error {
 	log.Printf("[DEBUG] refreshing stop words")
 	s.stopWords = []string{}
 	for t := range tokenChan(reader) {
-		s.stopWords = append(stopWords, strings.ToLower(t))
+		s.stopWords = append(s.stopWords, strings.ToLower(t))
 	}
-	log.Printf("[INFO] loaded %d stop words", len(stopWords))
+	log.Printf("[INFO] loaded %d stop words", len(s.stopWords))
 	return nil
 }
 
@@ -284,7 +277,7 @@ func (s *SpamFilter) hasStopWords(message string) bool {
 	defer s.lock.RUnlock()
 	lowerCaseMessage := strings.ToLower(message)
 	lowerCaseMessage = emojiPattern.ReplaceAllString(lowerCaseMessage, "")
-	for _, word := range stopWords {
+	for _, word := range s.stopWords {
 		if strings.Contains(lowerCaseMessage, strings.ToLower(word)) {
 			log.Printf("[DEBUG] spam stop word %q", word)
 			return true

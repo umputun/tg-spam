@@ -26,9 +26,9 @@ func TestWatch(t *testing.T) {
 	var dataChangeContent string
 	onDataChange := func(r io.Reader) error {
 		dataChangeCalled = true
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return err
+		data, e := io.ReadAll(r)
+		if e != nil {
+			return e
 		}
 		dataChangeContent = string(data)
 		return nil
@@ -36,7 +36,7 @@ func TestWatch(t *testing.T) {
 
 	time.AfterFunc(time.Millisecond*100, func() {
 		time.Sleep(time.Millisecond * 100)
-		_, err := tmpfile.Write([]byte("hello world"))
+		_, err = tmpfile.WriteString("hello world")
 		require.NoError(t, err)
 		tmpfile.Close()
 		cancel()

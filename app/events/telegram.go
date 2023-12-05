@@ -52,6 +52,14 @@ type SpamLogger interface {
 	Save(msg *bot.Message, response *bot.Response)
 }
 
+// SpamLoggerFunc is a function that implements SpamLogger interface
+type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
+
+// Save is a function that implements SpamLogger interface
+func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
+	f(msg, response)
+}
+
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)

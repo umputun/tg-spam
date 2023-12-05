@@ -16,12 +16,6 @@ import (
 )
 
 func TestFilter_OnMessage(t *testing.T) {
-	superUser := &mocks.SuperUser{IsSuperFunc: func(userName string) bool {
-		if userName == "super" || userName == "admin" {
-			return true
-		}
-		return false
-	}}
 	mockedHTTPClient := &mocks.HTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
 			if strings.Contains(req.URL.String(), "101") {
@@ -42,10 +36,10 @@ func TestFilter_OnMessage(t *testing.T) {
 		StopWordsFile:       "testdata/stop-words.txt",
 		ExcludedTokensFile:  "testdata/spam-exclude-token.txt",
 		SimilarityThreshold: 0.5,
-		SuperUser:           superUser,
 		MinMsgLen:           5,
 		Dry:                 false,
 		HTTPClient:          mockedHTTPClient,
+		SpamMsg:             "this is spam! go to ban",
 	})
 	require.NoError(t, err)
 
@@ -59,31 +53,27 @@ func TestFilter_OnMessage(t *testing.T) {
 		},
 		{
 			Message{From: User{ID: 4, Username: "john", DisplayName: "John"}, Text: "Hello 😁🐶🍕 how are you? ", ID: 4},
-			Response{Text: "this is spam! go to ban, \"John\" (id:4)", Send: true,
+			Response{Text: "this is spam! go to ban: \"John\" (4)", Send: true,
 				BanInterval: permanentBanDuration, ReplyTo: 4, DeleteReplyTo: true,
 				User: User{ID: 4, Username: "john", DisplayName: "John"}},
 		},
 		{
 			Message{From: User{ID: 2, Username: "spammer", DisplayName: "Spammer"}, Text: "Win a free iPhone now!", ID: 2},
-			Response{Text: "this is spam! go to ban, \"Spammer\" (id:2)", Send: true,
+			Response{Text: "this is spam! go to ban: \"Spammer\" (2)", Send: true,
 				ReplyTo: 2, BanInterval: permanentBanDuration, DeleteReplyTo: true,
 				User: User{ID: 2, Username: "spammer", DisplayName: "Spammer"},
 			},
 		},
 		{
-			Message{From: User{ID: 3, Username: "super", DisplayName: "SuperUser"}, Text: "Win a free iPhone now!", ID: 3},
-			Response{},
-		},
-		{
 			Message{From: User{ID: 101, Username: "spammer", DisplayName: "blah"}, Text: "something something", ID: 10},
-			Response{Text: "this is spam! go to ban, \"blah\" (id:101)", Send: true,
+			Response{Text: "this is spam! go to ban: \"blah\" (101)", Send: true,
 				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
 				User: User{ID: 101, Username: "spammer", DisplayName: "blah"},
 			},
 		},
 		{
 			Message{From: User{ID: 102, Username: "spammer", DisplayName: "blah"}, Text: "something пишите в лс something", ID: 10},
-			Response{Text: "this is spam! go to ban, \"blah\" (id:102)", Send: true,
+			Response{Text: "this is spam! go to ban: \"blah\" (102)", Send: true,
 				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
 				User: User{ID: 102, Username: "spammer", DisplayName: "blah"},
 			},
@@ -161,7 +151,9 @@ func TestTooManyEmojis(t *testing.T) {
 }
 
 func TestStopWords(t *testing.T) {
-	filter := &SpamFilter{}
+	filter := &SpamFilter{
+		stopWords: []string{"в личку", "всем привет"},
+	}
 
 	tests := []struct {
 		name     string

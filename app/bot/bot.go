@@ -3,12 +3,10 @@ package bot
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
 
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient:HTTPClient
-//go:generate moq --out mocks/super_user.go --pkg mocks --skip-ensure . SuperUser:SuperUser
 
 // Response describes bot's reaction on particular message
 type Response struct {
@@ -25,11 +23,6 @@ type Response struct {
 // HTTPClient wrap http.Client to allow mocking
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
-}
-
-// SuperUser defines interface checking ig user name in su list
-type SuperUser interface {
-	IsSuper(userName string) bool
 }
 
 // SenderChat is the sender of the message, sent on behalf of a chat. The
@@ -88,37 +81,6 @@ type User struct {
 	ID          int64
 	Username    string
 	DisplayName string
-}
-
-func contains(s []string, e string) bool {
-	e = strings.TrimSpace(e)
-	for _, a := range s {
-		if strings.EqualFold(a, e) {
-			return true
-		}
-	}
-	return false
-}
-
-func makeHTTPRequest(url string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request %s: %w", url, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	return req, nil
-}
-
-// EscapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
-// For example, telegram username with underscores would be italicized if we don't escape it.
-// https://core.telegram.org/bots/api#markdown-style
-func EscapeMarkDownV1Text(text string) string {
-	escSymbols := []string{"_", "*", "`", "["}
-	for _, esc := range escSymbols {
-		text = strings.Replace(text, esc, "\\"+esc, -1)
-	}
-	return text
 }
 
 // DisplayName returns user's display name or username or id
