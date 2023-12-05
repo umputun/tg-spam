@@ -37,27 +37,34 @@ Use this token to access the HTTP API:
 ## Application Options
 
 ```
--l, --logs=             path to logs (default: logs) [$TELEGRAM_LOGS]
---super=            super-users
---idle=             idle duration (default: 30s) [$IDLE]
---api=              CAS API (default: https://api.cas.chat) [$CAS_API]
---timeout=          CAS timeout (default: 5s) [$TIMEOUT]
---threshold=        spam threshold (default: 0.5) [$THRESHOLD]
---min-msg-len=      min message length to check (default: 100) [$MIN_MSG_LEN]
---max-emoji=        max emoji count in message (default: 5) [$MAX_EMOJI]
---samples=          path to spam samples [$SAMPLES]
---exclude-tokens=   path to exclude tokens file [$EXCLUDE_TOKENS]
---stop-words=       path to stop words file [$STOP_WORDS]
---spam-msg=         spam message (default: this is spam: ) [$SPAM_MSG]
---spam-dry-msg=     spam dry message (default: this is spam (dry mode): ) [$SPAM_DRY_MSG]
---dry               dry mode, no bans [$DRY]
---dbg               debug mode [$DEBUG]
+  -l, --logs=                      path to logs (default: logs) [$TELEGRAM_LOGS]
+      --super=                     super-users
+      --min-msg-len=               min message length to check (default: 100) [$MIN_MSG_LEN]
+      --max-emoji=                 max emoji count in message (default: 5) [$MAX_EMOJI]
+      --stop-words=                path to stop words file [$STOP_WORDS]
+      --dry                        dry mode, no bans [$DRY]
+      --dbg                        debug mode [$DEBUG]
 
 telegram:
---telegram.token=   telegram bot token (default: test) [$TELEGRAM_TOKEN]
---telegram.group=   group name/id (default: test) [$TELEGRAM_GROUP]
---telegram.timeout= http client timeout for getting files from Telegram (default: 30s) [$TELEGRAM_TIMEOUT]
+      --telegram.token=            telegram bot token (default: test) [$TELEGRAM_TOKEN]
+      --telegram.group=            group name/id (default: test) [$TELEGRAM_GROUP]
+      --telegram.timeout=          http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
+      --telegram.idle=             idle duration (default: 30s) [$TELEGRAM_IDLE]
+
+cas:
+      --cas.api=                   CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.timeout=               CAS timeout (default: 5s) [$CAS_TIMEOUT]
+
+similarity:
+      --similarity.threshold=      spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
+      --similarity.samples=        path to spam samples [$SIMILARITY_SAMPLES]
+      --similarity.exclude-tokens= path to exclude tokens file [$SIMILARITY_EXCLUDE_TOKENS]
+
+message:
+      --message.spam=              spam message (default: this is spam) [$MESSAGE_SPAM]
+      --message.dry=               spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
 
 Help Options:
--h, --help              Show this help message
+  -h, --help                       Show this help message
+
 ```
