@@ -300,7 +300,7 @@ func (s *SpamFilter) cleanEmoji(message string) string {
 }
 
 // tokenChan parses a file and returns a channel of tokens.
-// A line per-token or comma-separated tokens supported
+// A line per-token or comma-separated "tokens" supported
 func tokenChan(reader io.Reader) <-chan string {
 	resCh := make(chan string)
 
@@ -310,7 +310,7 @@ func tokenChan(reader io.Reader) <-chan string {
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.Contains(line, ",") {
+			if strings.Contains(line, ",") && strings.HasPrefix(line, "\"") {
 				// line with comma-separated tokens
 				lineTokens := strings.Split(line, ",")
 				for _, token := range lineTokens {
@@ -319,12 +319,12 @@ func tokenChan(reader io.Reader) <-chan string {
 						resCh <- cleanToken
 					}
 				}
-			} else {
-				// Line with a single token
-				cleanToken := strings.Trim(line, " \n\r\t")
-				if cleanToken != "" {
-					resCh <- cleanToken
-				}
+				continue
+			}
+			// each line with a single token
+			cleanToken := strings.Trim(line, " \n\r\t")
+			if cleanToken != "" {
+				resCh <- cleanToken
 			}
 		}
 
