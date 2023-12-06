@@ -34,8 +34,7 @@ func TestWatch(t *testing.T) {
 		return nil
 	}
 
-	time.AfterFunc(time.Millisecond*100, func() {
-		time.Sleep(time.Millisecond * 100)
+	time.AfterFunc(time.Millisecond*200, func() {
 		_, err = tmpfile.WriteString("hello world")
 		require.NoError(t, err)
 		tmpfile.Close()
@@ -79,7 +78,7 @@ func TestWatchPair_bothFilesChanged(t *testing.T) {
 		return nil
 	}
 
-	time.AfterFunc(time.Millisecond*100, func() {
+	time.AfterFunc(time.Millisecond*200, func() {
 		_, err = tmpfile1.WriteString("hello world 1")
 		require.NoError(t, err)
 		tmpfile1.Close()
@@ -128,7 +127,7 @@ func TestWatchPair_oneFileChanged(t *testing.T) {
 		return nil
 	}
 
-	time.AfterFunc(time.Millisecond*100, func() {
+	time.AfterFunc(time.Millisecond*200, func() {
 		_, err = tmpfile1.WriteString("hello world 1")
 		require.NoError(t, err)
 		tmpfile1.Close()
