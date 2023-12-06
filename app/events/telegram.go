@@ -179,6 +179,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		banUserStr := l.getBanUsername(resp, update)
 		if l.SuperUsers.IsSuper(msg.From.Username) {
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
+			l.forwardToAdmin(banUserStr, msg) // forward to admin here is for testing only
 			return nil
 		}
 		banSuccessMessage := fmt.Sprintf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
@@ -187,12 +188,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		} else {
 			log.Print(banSuccessMessage)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
-				forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
-					banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
-				e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
-				if e != nil {
-					log.Printf("[WARN] failed to send admin message, %v", e)
-				}
+				l.forwardToAdmin(banUserStr, msg)
 			}
 		}
 	}
@@ -205,6 +201,15 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 	return errs.ErrorOrNil()
+}
+
+func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
+	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
+		banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
+	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
+	if e != nil {
+		log.Printf("[WARN] failed to send admin message, %v", e)
+	}
 }
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
