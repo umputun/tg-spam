@@ -315,7 +315,7 @@ func (s *SpamFilter) tokenize(inp string) map[string]int {
 			continue
 		}
 		token = s.cleanEmoji(token)
-		token = strings.Trim(token, ".,!?-:;()")
+		token = strings.Trim(token, ".,!?-:;()#")
 		token = strings.ToLower(token)
 		tokenFrequency[strings.ToLower(token)]++
 	}
