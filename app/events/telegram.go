@@ -450,15 +450,19 @@ func (l *TelegramListener) runUnbanServer(ctx context.Context) {
 			return
 		}
 		log.Printf("[INFO] unban user %s (%d)", id, userID)
+		_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
+		if err != nil {
+			log.Printf("[WARN] failed to unban %s, %v", id, err)
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "failed to unban %s: %v", id, err)
+			return
+		}
+		if _, err := w.Write([]byte("ok")); err != nil {
+			log.Printf("[WARN] failed to write response, %v", err)
+		}
 	})
 
-	// run server cancelable with context
-	srv := &http.Server{
-		Addr:         l.AdminListenAddr,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	}
+	srv := &http.Server{Addr: l.AdminListenAddr, Handler: mux, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 
 	go func() {
 		<-ctx.Done()
