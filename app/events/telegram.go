@@ -204,6 +204,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 }
 
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
+	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
 		banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
 	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
