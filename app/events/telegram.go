@@ -151,7 +151,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
 		banUserStr := l.getBanUsername(resp, update)
-		if l.SuperUsers.IsSuper(resp.User.Username) {
+		if l.SuperUsers.IsSuper(msg.From.Username) {
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
 		}
