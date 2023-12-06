@@ -12,11 +12,8 @@ import (
 )
 
 func TestWatch(t *testing.T) {
-	// Create a temporary file
 	tmpfile, err := os.CreateTemp("", "watcher")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(tmpfile.Name()) // clean up
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -27,9 +24,7 @@ func TestWatch(t *testing.T) {
 	onDataChange := func(r io.Reader) error {
 		dataChangeCalled = true
 		data, e := io.ReadAll(r)
-		if e != nil {
-			return e
-		}
+		require.NoError(t, e)
 		dataChangeContent = string(data)
 		return nil
 	}
@@ -48,14 +43,13 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchPair_bothFilesChanged(t *testing.T) {
-	// Create two temporary files
 	tmpfile1, err := os.CreateTemp("", "watcher1")
 	require.NoError(t, err)
-	defer os.Remove(tmpfile1.Name()) // clean up
+	defer os.Remove(tmpfile1.Name())
 
 	tmpfile2, err := os.CreateTemp("", "watcher2")
 	require.NoError(t, err)
-	defer os.Remove(tmpfile2.Name()) // clean up
+	defer os.Remove(tmpfile2.Name())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -63,17 +57,14 @@ func TestWatchPair_bothFilesChanged(t *testing.T) {
 	dataChangeCalled := false
 	var dataChangeContent1, dataChangeContent2 string
 	onDataChange := func(r1, r2 io.Reader) error {
+		t.Log("onDataChange called")
 		dataChangeCalled = true
 		data1, e := io.ReadAll(r1)
-		if e != nil {
-			return e
-		}
+		require.NoError(t, e)
 		dataChangeContent1 = string(data1)
 
 		data2, e := io.ReadAll(r2)
-		if e != nil {
-			return e
-		}
+		require.NoError(t, e)
 		dataChangeContent2 = string(data2)
 		return nil
 	}
@@ -91,13 +82,12 @@ func TestWatchPair_bothFilesChanged(t *testing.T) {
 	})
 
 	watchPair(ctx, tmpfile1.Name(), tmpfile2.Name(), onDataChange)
-	assert.True(t, dataChangeCalled, "onDataChange should have been called")
+	require.True(t, dataChangeCalled, "onDataChange should have been called")
 	assert.Equal(t, "hello world 1", dataChangeContent1, "onDataChange should have received the correct data from file 1")
 	assert.Equal(t, "hello world 2", dataChangeContent2, "onDataChange should have received the correct data from file 2")
 }
 
 func TestWatchPair_oneFileChanged(t *testing.T) {
-	// Create two temporary files
 	tmpfile1, err := os.CreateTemp("", "watcher1")
 	require.NoError(t, err)
 	defer os.Remove(tmpfile1.Name()) // clean up
@@ -112,17 +102,15 @@ func TestWatchPair_oneFileChanged(t *testing.T) {
 	dataChangeCalled := false
 	var dataChangeContent1, dataChangeContent2 string
 	onDataChange := func(r1, r2 io.Reader) error {
+		t.Log("onDataChange called")
 		dataChangeCalled = true
 		data1, e := io.ReadAll(r1)
-		if e != nil {
-			return e
-		}
-		dataChangeContent1 = string(data1)
+		require.NoError(t, e)
 
+		dataChangeContent1 = string(data1)
 		data2, e := io.ReadAll(r2)
-		if e != nil {
-			return e
-		}
+		require.NoError(t, e)
+
 		dataChangeContent2 = string(data2)
 		return nil
 	}
@@ -136,7 +124,7 @@ func TestWatchPair_oneFileChanged(t *testing.T) {
 	})
 
 	watchPair(ctx, tmpfile1.Name(), tmpfile2.Name(), onDataChange)
-	assert.True(t, dataChangeCalled, "onDataChange should have been called")
+	require.True(t, dataChangeCalled, "onDataChange should have been called")
 	assert.Equal(t, "hello world 1", dataChangeContent1, "onDataChange should have received the correct data from file 1")
 	assert.Equal(t, "", dataChangeContent2, "onDataChange should have received no data from file 2 because it was not changed")
 }
