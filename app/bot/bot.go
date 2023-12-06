@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -92,5 +93,5 @@ func DisplayName(msg Message) string {
 	if displayUsername == "" {
 		displayUsername = fmt.Sprintf("%d", msg.From.ID)
 	}
-	return displayUsername
+	return strings.TrimSpace(displayUsername)
 }

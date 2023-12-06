@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -28,10 +29,16 @@ type TelegramListener struct {
 	SpamLogger   SpamLogger
 	Bot          Bot
 	Group        string // can be int64 or public group username (without "@" prefix)
+	AdminGroup   string // can be int64 or public group username (without "@" prefix)
 	IdleDuration time.Duration
 	SuperUsers   SuperUser
 	StartupMsg   string
-	chatID       int64
+
+	AdminURL    string
+	AdminSecret string
+
+	chatID      int64
+	adminChatID int64
 
 	msgs struct {
 		once sync.Once
@@ -72,6 +79,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	var getChatErr error
 	if l.chatID, getChatErr = l.getChatID(l.Group); getChatErr != nil {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
+	}
+
+	if l.AdminGroup != "" {
+		if l.adminChatID, getChatErr = l.getChatID(l.AdminGroup); getChatErr != nil {
+			return fmt.Errorf("failed to get chat ID for admin group %q: %w", l.AdminGroup, getChatErr)
+		}
+		log.Printf("[INFO] admin chat ID: %d", l.adminChatID)
 	}
 
 	l.msgs.once.Do(func() {
@@ -159,6 +173,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			errors = multierror.Append(errors, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
 		} else {
 			log.Print(banSuccessMessage)
+			if l.adminChatID != 0 && msg.From.ID != 0 {
+				forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
+					banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
+				l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
+			}
 		}
 	}
 
@@ -237,7 +256,7 @@ func (l *TelegramListener) SubmitHTML(ctx context.Context, text string) error {
 }
 
 func (l *TelegramListener) getChatID(group string) (int64, error) {
-	chatID, err := strconv.ParseInt(l.Group, 10, 64)
+	chatID, err := strconv.ParseInt(group, 10, 64)
 	if err == nil {
 		return chatID, nil
 	}
@@ -397,4 +416,10 @@ func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]
 	}
 
 	return &result
+}
+
+func (l *TelegramListener) unbanURL(userID int64) string {
+	// key is SHA1 of user ID + secret
+	key := fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("%d%s", userID, l.AdminSecret))))
+	return fmt.Sprintf("%s/%d?key=%s", l.AdminURL, userID, key)
 }

@@ -138,7 +138,8 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 
-	displayUsername := strings.TrimSpace(DisplayName(msg))
+	displayUsername := DisplayName(msg)
+
 	isEmojiSpam, _ := s.tooManyEmojis(msg.Text, s.MaxAllowedEmoji)
 	stopWordsSpam := s.hasStopWords(msg.Text)
 	similaritySpam := s.isSpamSimilarityHigh(msg.Text)
