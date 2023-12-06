@@ -28,7 +28,6 @@ type TelegramListener struct {
 	SpamLogger   SpamLogger
 	Bot          Bot
 	Group        string // can be int64 or public group username (without "@" prefix)
-	Debug        bool
 	IdleDuration time.Duration
 	SuperUsers   SuperUser
 	StartupMsg   string

@@ -96,7 +96,7 @@ func execute(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
-	tbAPI.Debug = opts.Dbg
+	tbAPI.Debug = opts.TGDbg
 
 	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
 		SpamSamplesFile:     opts.Files.SamplesSpamFile,
@@ -120,7 +120,6 @@ func execute(ctx context.Context) error {
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
 		Group:        opts.Telegram.Group,
-		Debug:        opts.TGDbg,
 		IdleDuration: opts.Telegram.IdleDuration,
 		SuperUsers:   opts.SuperUsers,
 		Bot:          spamBot,
