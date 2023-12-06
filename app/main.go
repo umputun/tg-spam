@@ -34,8 +34,9 @@ var opts struct {
 		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
 	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
-	LogsPath   string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
-	SuperUsers events.SuperUser `long:"super" description:"super-users"`
+	LogsPath    string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
+	SuperUsers  events.SuperUser `long:"super" description:"super-users"`
+	NoSpamReply bool             `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 
 	CAS struct {
 		API     string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
@@ -133,6 +134,7 @@ func execute(ctx context.Context) error {
 		SuperUsers:   opts.SuperUsers,
 		Bot:          spamBot,
 		StartupMsg:   opts.Message.Startup,
+		NoSpamReply:  opts.NoSpamReply,
 		SpamLogger: events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
 			log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
 			log.Printf("[DEBUG] spam message:  %q", msg.Text)

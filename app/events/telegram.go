@@ -36,6 +36,7 @@ type TelegramListener struct {
 	IdleDuration time.Duration
 	SuperUsers   SuperUser
 	StartupMsg   string
+	NoSpamReply  bool
 
 	AdminURL        string
 	AdminSecret     string
@@ -162,8 +163,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	resp := l.Bot.OnMessage(*msg)
 
-	if err := l.sendBotResponse(resp, fromChat); err != nil {
-		log.Printf("[WARN] failed to respond on update, %v", err)
+	if resp.Send && !l.NoSpamReply {
+		if err := l.sendBotResponse(resp, fromChat); err != nil {
+			log.Printf("[WARN] failed to respond on update, %v", err)
+		}
 	}
 
 	errs := new(multierror.Error)
