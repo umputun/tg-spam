@@ -33,7 +33,7 @@ func watch(ctx context.Context, path string, onDataChange func(io.Reader) error)
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) {
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
 					data, e := readFile(path)
 					if e != nil {
 						log.Printf("[WARN] failed to read updated file %s: %v", path, e)
