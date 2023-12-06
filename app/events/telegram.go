@@ -37,6 +37,7 @@ type TelegramListener struct {
 	SuperUsers   SuperUser
 	StartupMsg   string
 	NoSpamReply  bool
+	Dry          bool
 
 	AdminURL        string
 	AdminSecret     string
@@ -171,7 +172,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	errs := new(multierror.Error)
 	isBanInvoked := resp.Send && resp.BanInterval > 0
-	// some bots may request direct ban for given duration
+	// some bots may request a direct ban for given duration
 	if isBanInvoked {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
@@ -292,6 +293,12 @@ func (l *TelegramListener) banUserOrChannel(duration time.Duration, chatID, user
 	// you do not want to accidentally get into this 30-second window of a lifetime ban.
 	// In practice BanDuration is equal to ten minutes,
 	// so this `if` statement is unlikely to be evaluated to true.
+
+	if l.Dry {
+		log.Printf("[INFO] dry run: ban %d for %v", userID, duration)
+		return nil
+	}
+
 	if duration < 30*time.Second {
 		duration = 1 * time.Minute
 	}

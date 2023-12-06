@@ -147,15 +147,13 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 
 	if similaritySpam || isEmojiSpam || stopWordsSpam || s.isCasSpam(msg.From.ID) || classifiedSpam {
 		log.Printf("[INFO] user %s detected as spammer, msg: %q", displayUsername, msg.Text)
+		msgPrefix := s.SpamMsg
 		if s.Dry {
-			return Response{
-				Text: s.SpamDryMsg + fmt.Sprintf(": %q (%d)", displayUsername, msg.From.ID),
-				Send: true, ReplyTo: msg.ID,
-			}
+			msgPrefix = s.SpamDryMsg
 		}
-		return Response{Text: s.SpamMsg + fmt.Sprintf(": %q (%d)", displayUsername, msg.From.ID),
-			Send: true, ReplyTo: msg.ID, BanInterval: permanentBanDuration, DeleteReplyTo: true,
-			User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
+		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
+		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: permanentBanDuration,
+			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
 	}
 

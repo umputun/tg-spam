@@ -102,6 +102,10 @@ func main() {
 }
 
 func execute(ctx context.Context) error {
+	if opts.Dry {
+		log.Print("[WARN] dry mode, no actual bans")
+	}
+
 	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
@@ -142,6 +146,7 @@ func execute(ctx context.Context) error {
 		AdminGroup:      opts.Admin.Group,
 		AdminURL:        opts.Admin.URL,
 		AdminListenAddr: opts.Admin.Address,
+		Dry:             opts.Dry,
 	}
 
 	if err := tgListener.Do(ctx); err != nil {
