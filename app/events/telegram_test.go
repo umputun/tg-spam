@@ -401,12 +401,12 @@ func TestTelegramListener_unbanURL(t *testing.T) {
 		secret string
 		want   string
 	}{
-		{"empty", "", "", "?user=123&token=d68b50c4f0747630c33bc736bb3087b4c22f19dc645ec63b3bf90760c553e1ae"},
-		{"test1", "http://localhost/unban", "secret",
+		{"empty", "", "", "/unban?user=123&token=d68b50c4f0747630c33bc736bb3087b4c22f19dc645ec63b3bf90760c553e1ae"},
+		{"test1", "http://localhost", "secret",
 			"http://localhost/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7"},
-		{"test2", "http://127.0.0.1:8080/unban", "secret",
+		{"test2", "http://127.0.0.1:8080", "secret",
 			"http://127.0.0.1:8080/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7"},
-		{"test3", "http://127.0.0.1:8080/unban", "secret2",
+		{"test3", "http://127.0.0.1:8080", "secret2",
 			"http://127.0.0.1:8080/unban?user=123&token=5385a71e8d5b65ea03e3da10175d78028ae59efd58811004e907baf422019b2e"},
 	}
 
@@ -418,7 +418,7 @@ func TestTelegramListener_unbanURL(t *testing.T) {
 		})
 	}
 
-	listener := TelegramListener{AdminURL: "http://localhost/unban", AdminSecret: "secret"}
+	listener := TelegramListener{AdminURL: "http://localhost", AdminSecret: "secret"}
 	res := listener.unbanURL(123)
 	assert.Equal(t, "http://localhost/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7", res)
 }

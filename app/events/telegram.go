@@ -448,7 +448,7 @@ func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]
 func (l *TelegramListener) unbanURL(userID int64) string {
 	// key is SHA1 of user ID + secret
 	key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, l.AdminSecret))))
-	return fmt.Sprintf("%s?user=%d&token=%s", l.AdminURL, userID, key)
+	return fmt.Sprintf("%s/unban?user=%d&token=%s", l.AdminURL, userID, key)
 }
 
 func (l *TelegramListener) runUnbanServer(ctx context.Context) {
