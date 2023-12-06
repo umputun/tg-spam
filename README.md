@@ -8,6 +8,20 @@ Anti-Spam bot for Telegram.
 
 </div>
 
+## What is it and how it works?
+
+The bot is designed to run as a docker container. It requires a token and a group name/id to work. The bot will listen to all messages in the group and ban users who post spam.
+
+Spam detection based on several factors:
+- similarity to known spam messages
+- number of emojis in the message
+- check user against [Combot Anti-Spam System](https://cas.chat) (CAS)
+- check the overall similarity of the message to the known spam messages
+- compare with the list of stop words
+
+If the message is considered spam, the bot will delete it and ban the user.
+
+
 ## Getting bot token for Telegram
 
 To get a token, talk to [BotFather](https://core.telegram.org/bots#6-botfather). All you need is to send `/newbot` command and choose the name for your bot (it must end in `bot`). That is it, and you got a token which you'll need to write down into remark42 configuration as `TELEGRAM_TOKEN`.
@@ -41,34 +55,37 @@ Use this token to access the HTTP API:
 ## Application Options
 
 ```
-  -l, --logs=                      path to logs (default: logs) [$TELEGRAM_LOGS]
-      --super=                     super-users
-      --min-msg-len=               min message length to check (default: 100) [$MIN_MSG_LEN]
-      --max-emoji=                 max emoji count in message (default: 5) [$MAX_EMOJI]
-      --stop-words=                path to stop words file [$STOP_WORDS]
-      --dry                        dry mode, no bans [$DRY]
-      --dbg                        debug mode [$DEBUG]
+  -l, --logs=                 path to logs (default: logs) [$TELEGRAM_LOGS]
+      --super=                super-users
+      --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
+      --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
+      --max-emoji=            max emoji count in message (default: 5) [$MAX_EMOJI]
+      --paranoid              paranoid mode, check all messages [$PARANOID]
+      --dry                   dry mode, no bans [$DRY]
+      --dbg                   debug mode [$DEBUG]
 
 telegram:
-      --telegram.token=            telegram bot token (default: test) [$TELEGRAM_TOKEN]
-      --telegram.group=            group name/id (default: test) [$TELEGRAM_GROUP]
-      --telegram.timeout=          http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
-      --telegram.idle=             idle duration (default: 30s) [$TELEGRAM_IDLE]
+      --telegram.token=       telegram bot token (default: test) [$TELEGRAM_TOKEN]
+      --telegram.group=       group name/id (default: test) [$TELEGRAM_GROUP]
+      --telegram.timeout=     http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
+      --telegram.idle=        idle duration (default: 30s) [$TELEGRAM_IDLE]
 
 cas:
-      --cas.api=                   CAS API (default: https://api.cas.chat) [$CAS_API]
-      --cas.timeout=               CAS timeout (default: 5s) [$CAS_TIMEOUT]
+      --cas.api=              CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
-similarity:
-      --similarity.threshold=      spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
-      --similarity.samples=        path to spam samples [$SIMILARITY_SAMPLES]
-      --similarity.exclude-tokens= path to exclude tokens file [$SIMILARITY_EXCLUDE_TOKENS]
+files:
+      --files.samples-spam=   path to spam samples (default: spam-samples.txt) [$FILES_SAMPLES_SPAM]
+      --files.samples-ham=    path to ham samples (default: ham-samples.txt) [$FILES_SAMPLES_HAM]
+      --files.exclude-tokens= path to exclude tokens file (default: exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
+      --files.stop-words=     path to stop words file (default: stop-words.txt) [$FILES_STOP_WORDS]
 
 message:
-      --message.spam=              spam message (default: this is spam) [$MESSAGE_SPAM]
-      --message.dry=               spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
+      --message.startup=      startup message [$MESSAGE_STARTUP]
+      --message.spam=         spam message (default: this is spam) [$MESSAGE_SPAM]
+      --message.dry=          spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
 
 Help Options:
-  -h, --help                       Show this help message
+  -h, --help                  Show this help message
 
 ```
