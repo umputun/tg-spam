@@ -3,13 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	log "github.com/go-pkgz/lgr"
+	"github.com/fatih/color"
+	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/umputun/go-flags"
 
@@ -137,9 +139,24 @@ func execute(ctx context.Context) error {
 }
 
 func setupLog(dbg bool, secrets ...string) {
+	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	if dbg {
-		log.Setup(log.Debug, log.CallerFile, log.CallerFunc, log.Msec, log.LevelBraces, log.Secret(secrets...))
-		return
+		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	}
-	log.Setup(log.Msec, log.LevelBraces, log.Secret(secrets...))
+
+	colorizer := lgr.Mapper{
+		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
+		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
+		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
+		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
+		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
+		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
+	}
+	logOpts = append(logOpts, lgr.Map(colorizer))
+
+	if len(secrets) > 0 {
+		logOpts = append(logOpts, lgr.Secret(secrets...))
+	}
+	lgr.SetupStdLogger(logOpts...)
+	lgr.Setup(logOpts...)
 }
