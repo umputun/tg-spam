@@ -66,9 +66,9 @@ func NewSpamFilter(ctx context.Context, p SpamParams) (*SpamFilter, error) {
 			fileName string
 			loadFunc func(io.Reader) error
 		}{
+			{desc: "excluded tokens", fileName: s.ExcludedTokensFile, loadFunc: s.loadExcludedTokens},
 			{desc: "spam samples", fileName: s.SpamSamplesFile, loadFunc: s.loadSpamSamples},
 			{desc: "stop words", fileName: s.StopWordsFile, loadFunc: s.loadStopWords},
-			{desc: "excluded tokens", fileName: s.ExcludedTokensFile, loadFunc: s.loadExcludedTokens},
 		}
 
 		for _, t := range tbl {
@@ -301,7 +301,7 @@ func (s *SpamFilter) isSpamClassified(message string) bool {
 func (s *SpamFilter) tokenize(inp string) map[string]int {
 	isExcludedToken := func(token string) bool {
 		for _, w := range s.excludedTokens {
-			if strings.EqualFold(token, w) || len([]rune(token)) < 3 {
+			if strings.EqualFold(token, w) {
 				return true
 			}
 		}
@@ -317,6 +317,9 @@ func (s *SpamFilter) tokenize(inp string) map[string]int {
 		token = s.cleanEmoji(token)
 		token = strings.Trim(token, ".,!?-:;()#")
 		token = strings.ToLower(token)
+		if len([]rune(token)) < 3 {
+			continue
+		}
 		tokenFrequency[strings.ToLower(token)]++
 	}
 	return tokenFrequency
