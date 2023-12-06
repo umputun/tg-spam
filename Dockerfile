@@ -21,9 +21,9 @@ FROM umputun/baseimage:app-latest
 COPY --from=build /build/tg-spam /srv/tg-spam
 RUN chown -R app:app /srv
 
-COPY data/* /srv/data/
+COPY data/* /data/
 
-VOLUME /srv/data
+VOLUME /data
 WORKDIR /srv
 
 CMD ["/srv/tg-spam"]
