@@ -189,13 +189,16 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			if l.adminChatID != 0 && msg.From.ID != 0 {
 				forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
 					banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
-				_ = l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
+				e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
+				if e != nil {
+					log.Printf("[WARN] failed to send admin message, %v", e)
+				}
 			}
 		}
 	}
 
 	// delete message if requested by bot
-	if resp.DeleteReplyTo && resp.ReplyTo != 0 {
+	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry {
 		_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo})
 		if err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
