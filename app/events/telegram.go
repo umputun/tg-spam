@@ -17,9 +17,9 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 )
 
-//go:generate moq --out mocks/tb_api.go --pkg mocks --skip-ensure . TbAPI
-//go:generate moq --out mocks/spam_logger.go --pkg mocks --skip-ensure . SpamLogger
-//go:generate moq --out mocks/bot.go --pkg mocks --skip-ensure . Bot
+//go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
+//go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
+//go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe

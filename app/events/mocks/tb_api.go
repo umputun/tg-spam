@@ -106,6 +106,13 @@ func (mock *TbAPIMock) GetChatCalls() []struct {
 	return calls
 }
 
+// ResetGetChatCalls reset all the calls that were made to GetChat.
+func (mock *TbAPIMock) ResetGetChatCalls() {
+	mock.lockGetChat.Lock()
+	mock.calls.GetChat = nil
+	mock.lockGetChat.Unlock()
+}
+
 // GetUpdatesChan calls GetUpdatesChanFunc.
 func (mock *TbAPIMock) GetUpdatesChan(config tbapi.UpdateConfig) tbapi.UpdatesChannel {
 	if mock.GetUpdatesChanFunc == nil {
@@ -136,6 +143,13 @@ func (mock *TbAPIMock) GetUpdatesChanCalls() []struct {
 	calls = mock.calls.GetUpdatesChan
 	mock.lockGetUpdatesChan.RUnlock()
 	return calls
+}
+
+// ResetGetUpdatesChanCalls reset all the calls that were made to GetUpdatesChan.
+func (mock *TbAPIMock) ResetGetUpdatesChanCalls() {
+	mock.lockGetUpdatesChan.Lock()
+	mock.calls.GetUpdatesChan = nil
+	mock.lockGetUpdatesChan.Unlock()
 }
 
 // Request calls RequestFunc.
@@ -170,6 +184,13 @@ func (mock *TbAPIMock) RequestCalls() []struct {
 	return calls
 }
 
+// ResetRequestCalls reset all the calls that were made to Request.
+func (mock *TbAPIMock) ResetRequestCalls() {
+	mock.lockRequest.Lock()
+	mock.calls.Request = nil
+	mock.lockRequest.Unlock()
+}
+
 // Send calls SendFunc.
 func (mock *TbAPIMock) Send(c tbapi.Chattable) (tbapi.Message, error) {
 	if mock.SendFunc == nil {
@@ -200,4 +221,30 @@ func (mock *TbAPIMock) SendCalls() []struct {
 	calls = mock.calls.Send
 	mock.lockSend.RUnlock()
 	return calls
+}
+
+// ResetSendCalls reset all the calls that were made to Send.
+func (mock *TbAPIMock) ResetSendCalls() {
+	mock.lockSend.Lock()
+	mock.calls.Send = nil
+	mock.lockSend.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *TbAPIMock) ResetCalls() {
+	mock.lockGetChat.Lock()
+	mock.calls.GetChat = nil
+	mock.lockGetChat.Unlock()
+
+	mock.lockGetUpdatesChan.Lock()
+	mock.calls.GetUpdatesChan = nil
+	mock.lockGetUpdatesChan.Unlock()
+
+	mock.lockRequest.Lock()
+	mock.calls.Request = nil
+	mock.lockRequest.Unlock()
+
+	mock.lockSend.Lock()
+	mock.calls.Send = nil
+	mock.lockSend.Unlock()
 }

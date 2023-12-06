@@ -75,3 +75,17 @@ func (mock *SpamLoggerMock) SaveCalls() []struct {
 	mock.lockSave.RUnlock()
 	return calls
 }
+
+// ResetSaveCalls reset all the calls that were made to Save.
+func (mock *SpamLoggerMock) ResetSaveCalls() {
+	mock.lockSave.Lock()
+	mock.calls.Save = nil
+	mock.lockSave.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *SpamLoggerMock) ResetCalls() {
+	mock.lockSave.Lock()
+	mock.calls.Save = nil
+	mock.lockSave.Unlock()
+}

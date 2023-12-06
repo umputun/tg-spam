@@ -69,3 +69,17 @@ func (mock *BotMock) OnMessageCalls() []struct {
 	mock.lockOnMessage.RUnlock()
 	return calls
 }
+
+// ResetOnMessageCalls reset all the calls that were made to OnMessage.
+func (mock *BotMock) ResetOnMessageCalls() {
+	mock.lockOnMessage.Lock()
+	mock.calls.OnMessage = nil
+	mock.lockOnMessage.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *BotMock) ResetCalls() {
+	mock.lockOnMessage.Lock()
+	mock.calls.OnMessage = nil
+	mock.lockOnMessage.Unlock()
+}
