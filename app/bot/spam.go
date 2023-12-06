@@ -48,6 +48,7 @@ type SpamParams struct {
 	StopWordsFile      string
 	ExcludedTokensFile string
 	HamSamplesFile     string
+	ParanoidMode       bool
 
 	SpamMsg    string
 	SpamDryMsg string
@@ -133,7 +134,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	if s.approvedUsers[msg.From.ID] || msg.From.ID == 0 || len(msg.Text) < s.MinMsgLen {
+	if (s.approvedUsers[msg.From.ID] && !s.ParanoidMode) || msg.From.ID == 0 || len(msg.Text) < s.MinMsgLen {
 		return Response{}
 	}
 
@@ -225,7 +226,7 @@ func (s *SpamFilter) loadClassifier(reader io.Reader, class Class) error {
 		docs = append(docs, Document{Class: class, Tokens: tokens})
 	}
 	s.spamClassifier.Learn(docs...)
-	log.Printf("[INFO] loaded %d %s samples", len(s.tokenizedSpam), class)
+	log.Printf("[INFO] loaded %d %s samples", len(docs), class)
 	return nil
 }
 

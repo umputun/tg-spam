@@ -31,6 +31,7 @@ type TelegramListener struct {
 	Debug        bool
 	IdleDuration time.Duration
 	SuperUsers   SuperUser
+	StartupMsg   string
 	chatID       int64
 
 	msgs struct {
@@ -80,6 +81,12 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			l.IdleDuration = 30 * time.Second
 		}
 	})
+
+	if l.StartupMsg != "" {
+		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
+			log.Printf("[WARN] failed to send startup message, %v", err)
+		}
+	}
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60

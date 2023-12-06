@@ -21,7 +21,7 @@ var opts struct {
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token" default:"test"`
 		Group        string        `long:"group" env:"GROUP" description:"group name/id" default:"test"`
-		Timeout      time.Duration `long:"timeout" env:"TIMEOUT" description:"http client timeout for telegram" default:"30s"`
+		Timeout      time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
 		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
@@ -33,20 +33,23 @@ var opts struct {
 		Timeout time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
-	Similarity struct {
-		Threshold        float64 `long:"threshold" env:"THRESHOLD" default:"0.5" description:"spam threshold"`
-		SamplesSpamFile  string  `long:"samples-spam" env:"SAMPLES_SPAM" default:"" description:"path to spam samples"`
-		SamplesHamFile   string  `long:"samples-ham" env:"SAMPLES_HAM" default:"" description:"path to ham samples"`
-		ExcludeTokenFile string  `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"" description:"path to exclude tokens file"`
-	} `group:"similarity" namespace:"similarity" env-namespace:"SIMILARITY"`
+	Files struct {
+		SamplesSpamFile  string `long:"samples-spam" env:"SAMPLES_SPAM" default:"spam-samples.txt" description:"path to spam samples"`
+		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"ham-samples.txt" description:"path to ham samples"`
+		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"exclude-tokens.txt" description:"path to exclude tokens file"`
+		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"stop-words.txt" description:"path to stop words file"`
+	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
-	MinMsgLen     int    `long:"min-msg-len" env:"MIN_MSG_LEN" default:"100" description:"min message length to check"`
-	MaxEmoji      int    `long:"max-emoji" env:"MAX_EMOJI" default:"5" description:"max emoji count in message"`
-	StopWordsFile string `long:"stop-words" env:"STOP_WORDS" default:"" description:"path to stop words file"`
+	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
+
+	MinMsgLen    int  `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
+	MaxEmoji     int  `long:"max-emoji" env:"MAX_EMOJI" default:"5" description:"max emoji count in message"`
+	ParanoidMode bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 
 	Message struct {
-		Spam string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
-		Dry  string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
+		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
+		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
+		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
 
 	Dry bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
@@ -95,17 +98,18 @@ func execute(ctx context.Context) error {
 	tbAPI.Debug = opts.Dbg
 
 	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
-		SpamSamplesFile:     opts.Similarity.SamplesSpamFile,
-		HamSamplesFile:      opts.Similarity.SamplesHamFile,
-		ExcludedTokensFile:  opts.Similarity.ExcludeTokenFile,
-		SimilarityThreshold: opts.Similarity.Threshold,
-		StopWordsFile:       opts.StopWordsFile,
+		SpamSamplesFile:     opts.Files.SamplesSpamFile,
+		HamSamplesFile:      opts.Files.SamplesHamFile,
+		ExcludedTokensFile:  opts.Files.ExcludeTokenFile,
+		StopWordsFile:       opts.Files.StopWordsFile,
+		SimilarityThreshold: opts.SimilarityThreshold,
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
 		HTTPClient:          &http.Client{Timeout: 5 * time.Second},
 		CasAPI:              opts.CAS.API,
 		SpamMsg:             opts.Message.Spam,
 		SpamDryMsg:          opts.Message.Dry,
+		ParanoidMode:        opts.ParanoidMode,
 		Dry:                 opts.Dry,
 	})
 	if err != nil {
@@ -119,6 +123,7 @@ func execute(ctx context.Context) error {
 		IdleDuration: opts.Telegram.IdleDuration,
 		SuperUsers:   opts.SuperUsers,
 		Bot:          spamBot,
+		StartupMsg:   opts.Message.Startup,
 		SpamLogger: events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
 			log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
 			log.Printf("[DEBUG] spam message:  %q", msg.Text)
