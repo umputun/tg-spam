@@ -38,7 +38,7 @@ func TestClassifier_Classify(t *testing.T) {
 		},
 		{
 			name:     "Tokens match multiple classes",
-			tokens:   []string{"tall", "poor", "healthy", "wealthy", "happy"},
+			tokens:   []string{"tall", "poor", "healthy", "wealthy", "happy", "handsome"},
 			expected: good,
 			certain:  true,
 		},
