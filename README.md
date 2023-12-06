@@ -21,6 +21,11 @@ Spam detection based on several factors:
 
 If the message is considered spam, the bot will delete it and ban the user.
 
+## Admin chat/group
+
+Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer detected. Admin can unban the user by clicking the "unban" link in the message.
+
+In order to allow such a feature, all the params in `admin` section must be specified.
 
 ## Getting bot token for Telegram
 
@@ -55,20 +60,28 @@ Use this token to access the HTTP API:
 ## Application Options
 
 ```
-  -l, --logs=                 path to logs (default: logs) [$TELEGRAM_LOGS]
+Application Options:
+  -l, --logs=                 path to spam logs (default: logs) [$SPAM_LOGS]
       --super=                super-users
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
-      --max-emoji=            max emoji count in message (default: 5) [$MAX_EMOJI]
+      --max-emoji=            max emoji count in message (default: 2) [$MAX_EMOJI]
       --paranoid              paranoid mode, check all messages [$PARANOID]
       --dry                   dry mode, no bans [$DRY]
       --dbg                   debug mode [$DEBUG]
+      --tg-dbg                telegram debug mode [$TG_DEBUG]
 
 telegram:
-      --telegram.token=       telegram bot token (default: test) [$TELEGRAM_TOKEN]
-      --telegram.group=       group name/id (default: test) [$TELEGRAM_GROUP]
+      --telegram.token=       telegram bot token [$TELEGRAM_TOKEN]
+      --telegram.group=       group name/id [$TELEGRAM_GROUP]
       --telegram.timeout=     http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
       --telegram.idle=        idle duration (default: 30s) [$TELEGRAM_IDLE]
+
+admin:
+      --admin.url=            admin root url [$ADMIN_URL]
+      --admin.address=        admin listen address (default: :8080) [$ADMIN_ADDRESS]
+      --admin.secret=         admin secret [$ADMIN_SECRET]
+      --admin.group=          admin group name/id [$ADMIN_GROUP]
 
 cas:
       --cas.api=              CAS API (default: https://api.cas.chat) [$CAS_API]

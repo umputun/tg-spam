@@ -34,7 +34,7 @@ var opts struct {
 		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
 	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
-	LogsPath   string           `short:"l" long:"logs" env:"TELEGRAM_LOGS" default:"logs" description:"path to logs"`
+	LogsPath   string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
 	SuperUsers events.SuperUser `long:"super" description:"super-users"`
 
 	CAS struct {
