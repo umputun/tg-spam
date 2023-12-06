@@ -52,7 +52,7 @@ var opts struct {
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
 
 	MinMsgLen    int  `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
-	MaxEmoji     int  `long:"max-emoji" env:"MAX_EMOJI" default:"5" description:"max emoji count in message"`
+	MaxEmoji     int  `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message"`
 	ParanoidMode bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 
 	Message struct {

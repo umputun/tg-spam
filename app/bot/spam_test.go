@@ -41,6 +41,7 @@ func TestFilter_OnMessage(t *testing.T) {
 		Dry:                 false,
 		HTTPClient:          mockedHTTPClient,
 		SpamMsg:             "this is spam! go to ban",
+		MaxAllowedEmoji:     2,
 	})
 	require.NoError(t, err)
 
