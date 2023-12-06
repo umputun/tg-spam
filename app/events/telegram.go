@@ -445,6 +445,12 @@ func (l *TelegramListener) unbanURL(userID int64) string {
 
 func (l *TelegramListener) runUnbanServer(ctx context.Context) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Application", "tg-spam")
+		if _, err := w.Write([]byte("pong")); err != nil {
+			log.Printf("[WARN] failed to write response, %v", err)
+		}
+	})
 	mux.HandleFunc("/unban", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("user")
 		token := r.URL.Query().Get("token")
