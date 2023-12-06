@@ -23,12 +23,16 @@ var opts struct {
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token" required:"true"`
 		Group        string        `long:"group" env:"GROUP" description:"group name/id" required:"true"`
-		AdminGroup   string        `long:"admin-group" env:"ADMIN_GROUP" description:"admin group name/id"`
 		Timeout      time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
 		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
-	AdminURL string `long:"admin-url" env:"ADMIN_URL" description:"admin root url"`
+	Admin struct {
+		URL     string `long:"url" env:"URL" description:"admin root url"`
+		Address string `long:"address" env:"ADDRESS" default:":8080" description:"admin listen address"`
+		Secret  string `long:"secret" env:"SECRET" description:"admin secret"`
+		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
+	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
 	LogsPath   string           `short:"l" long:"logs" env:"TELEGRAM_LOGS" default:"logs" description:"path to logs"`
 	SuperUsers events.SuperUser `long:"super" description:"super-users"`
@@ -125,7 +129,6 @@ func execute(ctx context.Context) error {
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
 		Group:        opts.Telegram.Group,
-		AdminGroup:   opts.Telegram.AdminGroup,
 		IdleDuration: opts.Telegram.IdleDuration,
 		SuperUsers:   opts.SuperUsers,
 		Bot:          spamBot,
@@ -134,6 +137,9 @@ func execute(ctx context.Context) error {
 			log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
 			log.Printf("[DEBUG] spam message:  %q", msg.Text)
 		}),
+		AdminGroup:      opts.Admin.Group,
+		AdminURL:        opts.Admin.URL,
+		AdminListenAddr: opts.Admin.Address,
 	}
 
 	if err := tgListener.Do(ctx); err != nil {
