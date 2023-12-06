@@ -81,7 +81,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	setupLog(opts.Dbg, opts.Telegram.Token)
+	setupLog(opts.Dbg, opts.Telegram.Token, opts.Admin.Secret)
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -146,6 +146,7 @@ func execute(ctx context.Context) error {
 		AdminGroup:      opts.Admin.Group,
 		AdminURL:        opts.Admin.URL,
 		AdminListenAddr: opts.Admin.Address,
+		AdminSecret:     opts.Admin.Secret,
 		Dry:             opts.Dry,
 	}
 
