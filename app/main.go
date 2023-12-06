@@ -85,7 +85,6 @@ func main() {
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	go func() {
 		// catch signal and invoke graceful termination
