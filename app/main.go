@@ -52,8 +52,9 @@ var opts struct {
 		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
 
-	Dry bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
+	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
 var revision = "local"
@@ -119,7 +120,7 @@ func execute(ctx context.Context) error {
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
 		Group:        opts.Telegram.Group,
-		Debug:        opts.Dbg,
+		Debug:        opts.TGDbg,
 		IdleDuration: opts.Telegram.IdleDuration,
 		SuperUsers:   opts.SuperUsers,
 		Bot:          spamBot,

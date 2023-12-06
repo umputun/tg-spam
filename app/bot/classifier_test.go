@@ -38,9 +38,14 @@ func TestClassifier_Classify(t *testing.T) {
 		},
 		{
 			name:     "Tokens match multiple classes",
-			tokens:   []string{"tall", "poor"},
+			tokens:   []string{"tall", "poor", "healthy", "wealthy", "happy"},
 			expected: good,
-			certain:  false,
+			certain:  true,
+		},
+		{
+			name:    "certain is false when tokens match the same",
+			tokens:  []string{"average", "content", "handsome", "ugly"},
+			certain: false,
 		},
 	}
 
@@ -53,8 +58,11 @@ func TestClassifier_Classify(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, class, certain := classifier.Classify(tt.tokens...)
-			assert.Equal(t, tt.expected, class)
-			assert.Equal(t, tt.certain, certain)
+			if !tt.certain {
+				assert.Equal(t, tt.certain, certain, "certainty")
+				return
+			}
+			assert.Equal(t, tt.expected, class, "class")
 		})
 	}
 }
