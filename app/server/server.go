@@ -32,7 +32,7 @@ type Params struct {
 	TgGroup    string // telegram group name/id
 }
 
-// TbAPI is an interface for telegram bot API, only subset of methods used
+// TbAPI is an interface for telegram bot API, only a subset of methods used
 type TbAPI interface {
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
