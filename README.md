@@ -20,12 +20,12 @@ TG-Spam is a sophisticated anti-spam bot tailored for Telegram groups, designed 
 
 TG-Spam's spam detection algorithm is multifaceted, incorporating several criteria to ensure high accuracy and efficiency:
 
-- Message Analysis: It evaluates messages for similarities to known spam, flagging those that match typical spam characteristics.
-- Integration with Combot Anti-Spam System (CAS): It cross-references users with the Combot Anti-Spam System, a reputable external anti-spam database.
-- Spam Message Similarity Check: TG-Spam assesses the overall resemblance of each message to known spam patterns.
-- Stop Words Comparison: Messages are compared against a curated list of stop words commonly found in spam.
-- Emoji Count: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
-- Automated Action: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
+- **Message Analysis**: It evaluates messages for similarities to known spam, flagging those that match typical spam characteristics.
+- **Integration with Combot Anti-Spam System (CAS)**: It cross-references users with the Combot Anti-Spam System, a reputable external anti-spam database.
+- **Spam Message Similarity Check**: TG-Spam assesses the overall resemblance of each message to known spam patterns.
+- **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
+- **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
+- **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
 
 ## Configuration
