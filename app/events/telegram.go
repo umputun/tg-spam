@@ -35,6 +35,7 @@ type TelegramListener struct {
 	AdminGroup   string // can be int64 or public group username (without "@" prefix)
 	IdleDuration time.Duration
 	SuperUsers   SuperUser
+	TestingIDs   []int64
 	StartupMsg   string
 	NoSpamReply  bool
 	Dry          bool
@@ -159,7 +160,8 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 
 	fromChat := update.Message.Chat.ID
-	if fromChat != l.chatID { // ignore messages from other chats
+	if !l.isChatAllowed(fromChat) {
+		// ignore messages from other chats
 		return nil
 	}
 
@@ -205,6 +207,18 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 	return errs.ErrorOrNil()
+}
+
+func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
+	if fromChat == l.chatID {
+		return true
+	}
+	for _, id := range l.TestingIDs {
+		if id == fromChat {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {

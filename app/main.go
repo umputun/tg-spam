@@ -34,6 +34,8 @@ var opts struct {
 		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
 	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
+	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+
 	LogsPath    string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
 	SuperUsers  events.SuperUser `long:"super" description:"super-users"`
 	NoSpamReply bool             `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
@@ -147,6 +149,7 @@ func execute(ctx context.Context) error {
 		AdminURL:        opts.Admin.URL,
 		AdminListenAddr: opts.Admin.Address,
 		AdminSecret:     opts.Admin.Secret,
+		TestingIDs:      opts.TestingIDs,
 		Dry:             opts.Dry,
 	}
 
