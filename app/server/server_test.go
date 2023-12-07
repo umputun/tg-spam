@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -83,6 +84,11 @@ func TestSpamRest_Run(t *testing.T) {
 		defer resp.Body.Close()
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "Error")
+		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
 	})
 
 	t.Run("unban allowed, matched token", func(t *testing.T) {
@@ -98,6 +104,11 @@ func TestSpamRest_Run(t *testing.T) {
 		require.Equal(t, 1, len(mockAPI.RequestCalls()))
 		assert.Equal(t, int64(10), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).ChatID)
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).UserID)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "Success")
+		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
 	})
 
 	<-done

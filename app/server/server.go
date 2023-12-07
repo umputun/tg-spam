@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -83,23 +84,23 @@ func (s *SpamRest) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	userID, err := s.getChatID(id)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed to get user ID for %q: %v", id, err)
+		s.sendHTML(w, fmt.Sprintf("failed to get user ID for %q: %v", id, err), "Error", "#ff6347", "#ffffff", http.StatusBadRequest)
 		return
 	}
 	expToken := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, s.Secret))))
 	if len(token) != len(expToken) || subtle.ConstantTimeCompare([]byte(token), []byte(expToken)) != 1 {
-		w.WriteHeader(http.StatusForbidden)
+		s.sendHTML(w, fmt.Sprintf("invalid token for %q", id), "Error", "#ff6347", "#ffffff", http.StatusForbidden)
 		return
 	}
 	log.Printf("[INFO] unban user %s (%d)", id, userID)
 	_, err = s.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: s.chatID}})
 	if err != nil {
 		log.Printf("[WARN] failed to unban %s, %v", id, err)
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "failed to unban %s: %v", id, err)
+		s.sendHTML(w, fmt.Sprintf("failed to unban %s: %v", id, err), "Error", "#ff6347", "#ffffff", http.StatusInternalServerError)
 		return
 	}
+
+	s.sendHTML(w, fmt.Sprintf("user %s (%d) unbanned", id, userID), "Success", "#90ee90", "#000000", http.StatusOK)
 	if _, err := w.Write([]byte("ok")); err != nil {
 		log.Printf("[WARN] failed to write response, %v", err)
 	}
@@ -125,3 +126,56 @@ func (s *SpamRest) UnbanURL(userID int64) string {
 	key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, s.Secret))))
 	return fmt.Sprintf("%s/unban?user=%d&token=%s", s.URL, userID, key)
 }
+
+func (s *SpamRest) sendHTML(w http.ResponseWriter, msg, title, background, foreground string, statusCode int) {
+	tmplParams := struct {
+		Title      string
+		Message    string
+		Background string
+		Foreground string
+	}{
+		Title:      title,
+		Message:    msg,
+		Background: background,
+		Foreground: foreground,
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(statusCode)
+
+	htmlTmpl := template.Must(template.New("msg").Parse(msgTemplate))
+	if err := htmlTmpl.Execute(w, tmplParams); err != nil {
+		log.Printf("[WARN] failed to execute template, %v", err)
+		return
+	}
+}
+
+var msgTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.Title}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .center-block {
+            width: 60%;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px;
+            background-color: {{.Background}};
+            color: {{.Foreground}};
+        }
+    </style>
+</head>
+<body>
+    <div class="center-block">
+        {{.Message}}
+    </div>
+</body>
+</html>`
