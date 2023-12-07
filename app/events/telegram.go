@@ -215,9 +215,21 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 }
 
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
+	// escapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
+	// For example, telegram username with underscores would be italicized if we don't escape it.
+	// https://core.telegram.org/bots/api#markdown-style
+	escapeMarkDownV1Text := func(text string) string {
+		escSymbols := []string{"_", "*", "`", "["}
+		for _, esc := range escSymbols {
+			text = strings.Replace(text, esc, "\\"+esc, -1)
+		}
+		return text
+	}
+
 	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
+	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
-		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
+		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), text)
 	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
 	if e != nil {
 		log.Printf("[WARN] failed to send admin message, %v", e)

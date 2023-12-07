@@ -460,7 +460,7 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 		From: bot.User{
 			ID: 456,
 		},
-		Text: "Test message",
+		Text: "Test\n\n_message_",
 	}
 
 	listener.forwardToAdmin("testUser", msg)
@@ -468,6 +468,6 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
 	assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
-	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test message")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test  \\_message\\_")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "[unban](url) if it was a mistake")
 }
