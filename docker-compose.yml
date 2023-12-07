@@ -16,6 +16,5 @@ services:
       - DRY=true
       - DEBUG=true
     volumes:
-      - ./var:/data # map user-provided samples to /data
-
+      - ./var:/srv/data # map user-provided samples to /srv/data
     command: --super=name1 --super=name2

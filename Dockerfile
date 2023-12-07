@@ -28,8 +28,8 @@ COPY --from=base /etc/passwd /etc/passwd
 COPY --from=base /etc/group /etc/group
 
 USER app
-COPY data/* /data/
-VOLUME /data
+COPY data/* /srv/data/
+VOLUME /srv/data
 WORKDIR /srv
 EXPOSE 8080
 ENTRYPOINT ["/srv/tg-spam"]

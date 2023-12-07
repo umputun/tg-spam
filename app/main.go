@@ -46,10 +46,10 @@ var opts struct {
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
 	Files struct {
-		SamplesSpamFile  string `long:"samples-spam" env:"SAMPLES_SPAM" default:"spam-samples.txt" description:"path to spam samples"`
-		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"ham-samples.txt" description:"path to ham samples"`
-		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"exclude-tokens.txt" description:"path to exclude tokens file"`
-		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"stop-words.txt" description:"path to stop words file"`
+		SamplesSpamFile  string `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"path to spam samples"`
+		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"path to ham samples"`
+		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"path to exclude tokens file"`
+		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"path to stop words file"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
