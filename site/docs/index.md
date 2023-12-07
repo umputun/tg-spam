@@ -63,12 +63,13 @@ Use this token to access the HTTP API:
 ```
 
 
-## Application Options
+## All Application Options
 
 ```
-Application Options:
+      --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
   -l, --logs=                 path to spam logs (default: logs) [$SPAM_LOGS]
       --super=                super-users
+      --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=            max emoji count in message (default: 2) [$MAX_EMOJI]
