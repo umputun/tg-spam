@@ -84,11 +84,13 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	userID, err := s.getChatID(id)
 	if err != nil {
+		log.Printf("[WARN] failed to get user ID for %q, %v", id, err)
 		s.sendHTML(w, fmt.Sprintf("failed to get user ID for %q: %v", id, err), "Error", "#ff6347", "#ffffff", http.StatusBadRequest)
 		return
 	}
 	expToken := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, s.Secret))))
 	if len(token) != len(expToken) || subtle.ConstantTimeCompare([]byte(token), []byte(expToken)) != 1 {
+		log.Printf("[WARN] invalid token for %q", id)
 		s.sendHTML(w, fmt.Sprintf("invalid token for %q", id), "Error", "#ff6347", "#ffffff", http.StatusForbidden)
 		return
 	}
