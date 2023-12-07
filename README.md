@@ -112,7 +112,6 @@ Use this token to access the HTTP API:
 
 ```
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
-  -l, --logs=                 path to spam logs (default: logs) [$SPAM_LOGS]
       --super=                super-users [$SUPER_USER]
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
@@ -135,6 +134,12 @@ admin:
       --admin.secret=         admin secret [$ADMIN_SECRET]
       --admin.group=          admin group name/id [$ADMIN_GROUP]
 
+logger:
+      --logger.enabled        enable spam rotated logs [$LOGGER_ENABLED]
+      --logger.file=          location of spam log (default: tg-spam.log) [$LOGGER_FILE]
+      --logger.max-size=      maximum size before it gets rotated (default: 100M) [$LOGGER_MAX_SIZE]
+      --logger.max-backups=   maximum number of old log files to retain (default: 10) [$LOGGER_MAX_BACKUPS]
+
 cas:
       --cas.api=              CAS API (default: https://api.cas.chat) [$CAS_API]
       --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
@@ -152,6 +157,5 @@ message:
 
 Help Options:
   -h, --help                  Show this help message
-
 
 ```

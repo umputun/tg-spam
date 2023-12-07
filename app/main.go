@@ -45,8 +45,8 @@ var opts struct {
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 
 	Logger struct {
-		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable access and error rotated logs"`
-		FileName   string `long:"file" env:"FILE"  default:"access.log" description:"location of access log"`
+		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
+		FileName   string `long:"file" env:"FILE"  default:"tg-spam.log" description:"location of spam log"`
 		MaxSize    string `long:"max-size" env:"MAX_SIZE" default:"100M" description:"maximum size before it gets rotated"`
 		MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
 	} `group:"logger" namespace:"logger" env-namespace:"LOGGER"`
