@@ -159,6 +159,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 
 	fromChat := update.Message.Chat.ID
+	if fromChat != l.chatID { // ignore messages from other chats
+		return nil
+	}
+
 	msg := l.transform(update.Message)
 	log.Printf("[DEBUG] incoming msg: %+v", msg)
 
