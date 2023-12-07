@@ -92,7 +92,7 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 		s.sendHTML(w, fmt.Sprintf("invalid token for %q", id), "Error", "#ff6347", "#ffffff", http.StatusForbidden)
 		return
 	}
-	log.Printf("[INFO] unban user %s (%d)", id, userID)
+	log.Printf("[INFO] unban user %d", userID)
 	_, err = s.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: s.chatID}})
 	if err != nil {
 		log.Printf("[WARN] failed to unban %s, %v", id, err)
@@ -100,7 +100,7 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.sendHTML(w, fmt.Sprintf("user %s (%d) unbanned", id, userID), "Success", "#90ee90", "#000000", http.StatusOK)
+	s.sendHTML(w, fmt.Sprintf("user %d unbanned", userID), "Success", "#90ee90", "#000000", http.StatusOK)
 	if _, err := w.Write([]byte("ok")); err != nil {
 		log.Printf("[WARN] failed to write response, %v", err)
 	}
