@@ -16,8 +16,7 @@ Spam detection based on several factors:
 - check user against [Combot Anti-Spam System](https://cas.chat) (CAS)
 - check the overall similarity of the message to the known spam messages
 - compare with the list of stop words
-
-If the message is considered spam, the bot will delete it and ban the user.
+- if the message is considered spam, the bot will delete it and ban the user.
 
 ----
 <div align="center">
