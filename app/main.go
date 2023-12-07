@@ -37,7 +37,7 @@ var opts struct {
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 
 	LogsPath    string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
-	SuperUsers  events.SuperUser `long:"super" description:"super-users"`
+	SuperUsers  events.SuperUser `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
 	NoSpamReply bool             `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 
 	CAS struct {

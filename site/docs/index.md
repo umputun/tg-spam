@@ -100,7 +100,7 @@ Use this token to access the HTTP API:
 ```
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
   -l, --logs=                 path to spam logs (default: logs) [$SPAM_LOGS]
-      --super=                super-users
+      --super=                super-users [$SUPER_USER]
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
@@ -127,10 +127,10 @@ cas:
       --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
 files:
-      --files.samples-spam=   path to spam samples (default: spam-samples.txt) [$FILES_SAMPLES_SPAM]
-      --files.samples-ham=    path to ham samples (default: ham-samples.txt) [$FILES_SAMPLES_HAM]
-      --files.exclude-tokens= path to exclude tokens file (default: exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
-      --files.stop-words=     path to stop words file (default: stop-words.txt) [$FILES_STOP_WORDS]
+      --files.samples-spam=   path to spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
+      --files.samples-ham=    path to ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
+      --files.exclude-tokens= path to exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
+      --files.stop-words=     path to stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
 
 message:
       --message.startup=      startup message [$MESSAGE_STARTUP]
@@ -139,5 +139,6 @@ message:
 
 Help Options:
   -h, --help                  Show this help message
+
 
 ```
