@@ -17,6 +17,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
+	"github.com/umputun/tg-spam/app/server"
 )
 
 var opts struct {
@@ -133,6 +134,13 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
+	rest, err := server.NewSpamRest(tbAPI, server.Params{
+		TgGroup:    opts.Telegram.Group,
+		URL:        opts.Admin.URL,
+		Secret:     opts.Admin.Secret,
+		ListenAddr: opts.Admin.Address,
+	})
+
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
 		Group:        opts.Telegram.Group,
@@ -145,12 +153,20 @@ func execute(ctx context.Context) error {
 			log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
 			log.Printf("[DEBUG] spam message:  %q", msg.Text)
 		}),
-		AdminGroup:      opts.Admin.Group,
-		AdminURL:        opts.Admin.URL,
-		AdminListenAddr: opts.Admin.Address,
-		AdminSecret:     opts.Admin.Secret,
-		TestingIDs:      opts.TestingIDs,
-		Dry:             opts.Dry,
+		AdminGroup: opts.Admin.Group,
+		TestingIDs: opts.TestingIDs,
+		SpamRest:   rest,
+		Dry:        opts.Dry,
+	}
+
+	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
+		go func() {
+			if err := rest.Run(ctx); err != nil {
+				log.Printf("[ERROR] admin server failed, %v", err)
+			}
+		}()
+	} else {
+		log.Print("[WARN] admin server is disabled")
 	}
 
 	if err := tgListener.Do(ctx); err != nil {

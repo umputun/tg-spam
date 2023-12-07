@@ -2,13 +2,9 @@ package events
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +20,7 @@ import (
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
+//go:generate moq --out mocks/spam_rest.go --pkg mocks --with-resets --skip-ensure . SpamRest
 
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
@@ -39,10 +36,7 @@ type TelegramListener struct {
 	StartupMsg   string
 	NoSpamReply  bool
 	Dry          bool
-
-	AdminURL        string
-	AdminSecret     string
-	AdminListenAddr string
+	SpamRest     SpamRest
 
 	chatID      int64
 	adminChatID int64
@@ -79,6 +73,11 @@ type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
 }
 
+// SpamRest is an interface for the rest api
+type SpamRest interface {
+	UnbanURL(userID int64) string
+}
+
 // Do process all events, blocked call
 func (l *TelegramListener) Do(ctx context.Context) error {
 	log.Printf("[INFO] start telegram listener for %q", l.Group)
@@ -106,11 +105,6 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
 			log.Printf("[WARN] failed to send startup message, %v", err)
 		}
-	}
-
-	// run unban server if all required params are set
-	if l.AdminURL != "" && l.AdminSecret != "" && l.AdminListenAddr != "" {
-		go l.runUnbanServer(ctx)
 	}
 
 	u := tbapi.NewUpdate(0)
@@ -223,7 +217,7 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
-		banUserStr, msg.From.ID, l.unbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
+		banUserStr, msg.From.ID, l.SpamRest.UnbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
 	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
 	if e != nil {
 		log.Printf("[WARN] failed to send admin message, %v", e)
@@ -461,60 +455,4 @@ func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]
 	}
 
 	return &result
-}
-
-func (l *TelegramListener) unbanURL(userID int64) string {
-	// key is SHA1 of user ID + secret
-	key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, l.AdminSecret))))
-	return fmt.Sprintf("%s/unban?user=%d&token=%s", l.AdminURL, userID, key)
-}
-
-func (l *TelegramListener) runUnbanServer(ctx context.Context) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Application", "tg-spam")
-		if _, err := w.Write([]byte("pong")); err != nil {
-			log.Printf("[WARN] failed to write response, %v", err)
-		}
-	})
-	mux.HandleFunc("/unban", func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("user")
-		token := r.URL.Query().Get("token")
-		userID, err := l.getChatID(id)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "failed to get user ID for %q: %v", id, err)
-			return
-		}
-		expToken := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, l.AdminSecret))))
-		if len(token) != len(expToken) || subtle.ConstantTimeCompare([]byte(token), []byte(expToken)) != 1 {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		log.Printf("[INFO] unban user %s (%d)", id, userID)
-		_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
-		if err != nil {
-			log.Printf("[WARN] failed to unban %s, %v", id, err)
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "failed to unban %s: %v", id, err)
-			return
-		}
-		if _, err := w.Write([]byte("ok")); err != nil {
-			log.Printf("[WARN] failed to write response, %v", err)
-		}
-	})
-
-	srv := &http.Server{Addr: l.AdminListenAddr, Handler: mux, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
-
-	go func() {
-		<-ctx.Done()
-		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("[WARN] failed to shutdown unban server: %v", err)
-		}
-	}()
-
-	log.Printf("[INFO] start unban server on %s", l.AdminListenAddr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Printf("[WARN] failed to run unban server: %v", err)
-	}
 }

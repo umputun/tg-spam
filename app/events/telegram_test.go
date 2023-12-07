@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
@@ -33,15 +32,12 @@ func TestTelegramListener_Do(t *testing.T) {
 	}}
 
 	l := TelegramListener{
-		SpamLogger:      mockLogger,
-		TbAPI:           mockAPI,
-		Bot:             b,
-		Group:           "gr",
-		AdminListenAddr: ":9901",
-		AdminURL:        "http://localhost:9901",
-		AdminSecret:     "secret",
-		AdminGroup:      "987654321",
-		StartupMsg:      "startup",
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        b,
+		Group:      "gr",
+		AdminGroup: "987654321",
+		StartupMsg: "startup",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -400,97 +396,6 @@ func TestTelegram_transformEntities(t *testing.T) {
 	)
 }
 
-func TestTelegramListener_unbanURL(t *testing.T) {
-	tests := []struct {
-		name   string
-		url    string
-		secret string
-		want   string
-	}{
-		{"empty", "", "", "/unban?user=123&token=d68b50c4f0747630c33bc736bb3087b4c22f19dc645ec63b3bf90760c553e1ae"},
-		{"test1", "http://localhost", "secret",
-			"http://localhost/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7"},
-		{"test2", "http://127.0.0.1:8080", "secret",
-			"http://127.0.0.1:8080/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7"},
-		{"test3", "http://127.0.0.1:8080", "secret2",
-			"http://127.0.0.1:8080/unban?user=123&token=5385a71e8d5b65ea03e3da10175d78028ae59efd58811004e907baf422019b2e"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			listener := TelegramListener{AdminURL: tt.url, AdminSecret: tt.secret}
-			res := listener.unbanURL(123)
-			assert.Equal(t, tt.want, res)
-		})
-	}
-
-	listener := TelegramListener{AdminURL: "http://localhost", AdminSecret: "secret"}
-	res := listener.unbanURL(123)
-	assert.Equal(t, "http://localhost/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7", res)
-}
-
-func TestTelegramListener_runUnbanServer(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
-		},
-		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
-			return &tbapi.APIResponse{}, nil
-		},
-	}
-
-	mockBot := &mocks.BotMock{}
-
-	listener := TelegramListener{
-		TbAPI:           mockAPI,
-		Bot:             mockBot,
-		AdminListenAddr: ":9900",
-		AdminURL:        "http://localhost:9090",
-		AdminSecret:     "secret",
-		chatID:          10,
-	}
-
-	done := make(chan struct{})
-	go func() {
-		listener.runUnbanServer(ctx)
-		close(done)
-	}()
-
-	time.Sleep(100 * time.Millisecond) // wait for server to start
-
-	t.Run("unban forbidden, wrong token", func(t *testing.T) {
-		mockAPI.ResetCalls()
-		req, err := http.NewRequest("GET", "http://localhost:9900/unban?user=123&token=ssss", http.NoBody)
-		require.NoError(t, err)
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-	})
-
-	t.Run("unban allowed, matched token", func(t *testing.T) {
-		mockAPI.ResetCalls()
-		req, err := http.NewRequest("GET",
-			"http://localhost:9900/unban?user=123&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7", http.NoBody)
-		require.NoError(t, err)
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		require.Equal(t, 1, len(mockAPI.RequestCalls()))
-		assert.Equal(t, int64(10), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).ChatID)
-		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).UserID)
-	})
-
-	<-done
-}
-
 func TestTelegramListener_isChatAllowed(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -541,8 +446,13 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 		},
 	}
 
+	sr := &mocks.SpamRestMock{
+		UnbanURLFunc: func(userID int64) string { return "url" },
+	}
+
 	listener := TelegramListener{
 		TbAPI:       mockAPI,
+		SpamRest:    sr,
 		adminChatID: 123,
 	}
 
@@ -559,4 +469,5 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 	assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test message")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "[unban](url) if it was a mistake")
 }
