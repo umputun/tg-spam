@@ -1,6 +1,6 @@
 # tg-spam
 
-Anti-Spam bot for Telegram.
+TG-Spam is a self-hosted anti-spam bot designed for Telegram, offering a seamless and effective solution to keep unwanted spam at bay. Carefully engineered to minimize disruptions for legitimate users while being a formidable barrier against spam bots. TG-Spam utilizes advanced detection techniques to maintain a spam-free environment.
 
 <div align="center">
   <img class="logo" src="https://github.com/umputun/tg-spam/raw/master/site/tg-spam-bg.png" width="400px" alt="TG-Spam | Spam Hunter"/>
@@ -14,17 +14,18 @@ Anti-Spam bot for Telegram.
 
 ## What is it and how it works?
 
-The bot is designed to run as a docker container. It requires a token and a group name/id to work. The bot will listen to all messages in the group and ban users who post spam.
+TG-Spam is a sophisticated anti-spam bot tailored for Telegram groups, designed to run seamlessly as a Docker container. It is simple to set up, requiring only a telegram token and a group name or ID to begin its operation. Once deployed, TG-Spam diligently monitors all messages, employing a robust spam detection system to identify and eliminate spam content.
 
-Spam detection based on several factors:
-- similarity to known spam messages
-- number of emojis in the message
-- check user against [Combot Anti-Spam System](https://cas.chat) (CAS)
-- check the overall similarity of the message to the known spam messages
-- compare with the list of stop words
-- if the message is considered spam, the bot will delete it and ban the user.
+### Key Features of Spam Detection
 
+TG-Spam's spam detection algorithm is multifaceted, incorporating several criteria to ensure high accuracy and efficiency:
 
+- Message Analysis: It evaluates messages for similarities to known spam, flagging those that match typical spam characteristics.
+- Integration with Combot Anti-Spam System (CAS): It cross-references users with the Combot Anti-Spam System, a reputable external anti-spam database.
+- Spam Message Similarity Check: TG-Spam assesses the overall resemblance of each message to known spam patterns.
+- Stop Words Comparison: Messages are compared against a curated list of stop words commonly found in spam.
+- Emoji Count: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
+- Automated Action: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
 ## Admin chat/group
 
