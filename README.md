@@ -33,6 +33,7 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 All the configuration is done via environment variables or command line arguments. Out of the box the bot has reasonable defaults, so user can run it without much hassle.
 
 There are some mandatory parameters what has to be set:
+
 - `--telegram.token=, [$TELEGRAM_TOKEN]` - telegram bot token. See below how to get it.
 - `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will lookg like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it.
 
@@ -41,17 +42,19 @@ As long as theses two parameters are set, the bot will work. Don't forget to add
 There are some customizations available.
 
 First of all - data files, the bot is using some data files to detect spam. They are located in the `/data` directory of the container and can be mounted from the host. The default files are:
-  - `spam-samples.txt` - list of spam samples
-  - `ham-samples.txt` - list of ham (non-spam) samples
-  - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words
-  - `stop-words.txt` - list of stop words to detect spam right away
+
+- `spam-samples.txt` - list of spam samples
+- `ham-samples.txt` - list of ham (non-spam) samples
+- `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words
+- `stop-words.txt` - list of stop words to detect spam right away
 
 User can specify custom location for them with `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]`, `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]`, `--files.stop-words=, [$FILES_STOP_WORDS]` parameters.
 
 Second, are messages the bot is sending. There are three messages user may want to customize:
-  - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
-  - `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
-  - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
+
+- `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
+- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
+- `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter. 
 
@@ -60,6 +63,7 @@ By default, the bot reports back to the group with the message `this is spam` an
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" link in the message.
 
 To allow such a feature, some parameters in `admin` section must be specified:
+
 - `--admin.url=, [$ADMIN_URL]` - root url, like `https://example.com`. This should point to the server where the bot is running. This is used to generate links to the admin page.
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
