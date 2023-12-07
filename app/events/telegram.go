@@ -185,7 +185,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		banUserStr := l.getBanUsername(resp, update)
 		if l.SuperUsers.IsSuper(msg.From.Username) {
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
-			l.forwardToAdmin(banUserStr, msg) // forward to admin here is for testing only
+			// l.forwardToAdmin(banUserStr, msg) //nolint forward to admin here is for testing only
 			return nil
 		}
 		banSuccessMessage := fmt.Sprintf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
