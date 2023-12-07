@@ -40,13 +40,15 @@ As long as theses two parameters are set, the bot will work. Don't forget to add
 
 There are some customizations available.
 
-First of all - data files, the bot is using some data files to detect spam. They are located in the `/data` directory of the container and can be mounted from the host. The default files are:
+First of all - data files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The default files are:
   - `spam-samples.txt` - list of spam samples
   - `ham-samples.txt` - list of ham (non-spam) samples
   - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words
   - `stop-words.txt` - list of stop words to detect spam right away
 
-User can specify custom location for them with `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]`, `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]`, `--files.stop-words=, [$FILES_STOP_WORDS]` parameters.
+User can specify alternative location for them with `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]`, `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]`, `--files.stop-words=, [$FILES_STOP_WORDS]` parameters.
+
+Pls, note: if `/srv/data` is mounted, user should make sure that all the files are present on the host, otherwise the bot will fail to start. By default, the bot has some reasonable set of files with spam and ham samples collected from the real group, so user can start it without mounting `/srv/data` at all. But to tailor the bot to the specific content, it is recommended to mount `/srv/data` and provide custom files. 
 
 Second, are messages the bot is sending. There are three messages user may want to customize:
   - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
