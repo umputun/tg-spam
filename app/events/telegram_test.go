@@ -33,10 +33,15 @@ func TestTelegramListener_Do(t *testing.T) {
 	}}
 
 	l := TelegramListener{
-		SpamLogger: mockLogger,
-		TbAPI:      mockAPI,
-		Bot:        b,
-		Group:      "gr",
+		SpamLogger:      mockLogger,
+		TbAPI:           mockAPI,
+		Bot:             b,
+		Group:           "gr",
+		AdminListenAddr: ":9901",
+		AdminURL:        "http://localhost:9901",
+		AdminSecret:     "secret",
+		AdminGroup:      "987654321",
+		StartupMsg:      "startup",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -59,8 +64,9 @@ func TestTelegramListener_Do(t *testing.T) {
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
-	assert.Equal(t, 1, len(mockAPI.SendCalls()))
-	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
+	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
 }
 
 func TestTelegramListener_DoWithBotBan(t *testing.T) {
