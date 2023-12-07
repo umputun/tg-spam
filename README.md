@@ -102,7 +102,9 @@ The bot can be configured to update ham samples dynamically. To enable this feat
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
 
-## Getting bot token for Telegram
+## Setting up the telegram bot
+
+#### Getting the token
 
 To get a token, talk to [BotFather](https://core.telegram.org/bots#6-botfather). All you need is to send `/newbot` command and choose the name for your bot (it must end in `bot`). That is it, and you got a token which you'll need to write down into remark42 configuration as `TELEGRAM_TOKEN`.
 
@@ -131,6 +133,33 @@ Use this token to access the HTTP API:
 12345678:xy778Iltzsdr45tg
 ```
 
+#### Disabling privacy mode
+
+In order to allow bot to listen for messages in group, you need to disable privacy mode. Send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
+
+```
+Umputun:
+/setprivacy
+
+BotFather:
+Choose a bot to change group messages settings.
+
+Umputun:
+example_comments_bot
+
+BotFather:
+'Enable' - your bot will only receive messages that either start with the '/' symbol or mention the bot by username.
+'Disable' - your bot will receive all messages that people send to groups.
+Current status is: DISABLED
+
+Umputun:
+Disable
+
+BotFather:
+Success! The new status is: DISABLED. /help
+```
+
+**Important:** the privacy has to be disabled _before_ bot is added in the group. If you did it after, just add remove bot from the group and add again.
 
 ## All Application Options
 
