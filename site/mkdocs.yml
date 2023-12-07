@@ -11,12 +11,12 @@ copyright: Some rights reserved &copy; 2023 Umputun
 theme:
   name: material
   custom_dir: overrides
-  favicon: favicon.svg
+  favicon: favicon.png
   language: en
   palette:
     - scheme: slate
       media: "(prefers-color-scheme: dark)"
-      primary: orange
+      primary: blue grey
   features:
     - navigation.instant
     - toc.follow
@@ -39,12 +39,12 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/umputun
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/umputun/tg-spam/
+      link: https://hub.docker.com/r/umputun/spot/
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/umputun
   analytics:
     provider: custom
-    analytic_id: 9db03a56-ef6f-4c36-b73e-c058b8a29c11
+    analytic_id: 04942b40-0a7a-47a1-9dbc-76eb9a9e7999
 
 markdown_extensions:
   - smarty
@@ -69,6 +69,7 @@ markdown_extensions:
       emoji_index: !!python/name:materialx.emoji.twemoji
   - pymdownx.highlight:
       anchor_linenums: true
+      use_pygments: true
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.mark
@@ -85,4 +86,4 @@ markdown_extensions:
   - pymdownx.tilde
 
 nav:
-  - Reproxy: index.md
+  - TG-SPAM: index.md

@@ -6,9 +6,7 @@ race_test:
 
 prep_site:
 	cp -fv README.md site/docs/index.md
-	sed -i 's|https://raw.githubusercontent.com/umputun/tg-spam/master/site/docs/logo.png|logo.png|' site/docs/index.md
-	sed -i 's|^.*https://github.com/umputun/tg-spam/workflows/build/badge.svg.*$$||' site/docs/index.md
-	cd site && mkdocs build
-
+	sed -i '' 's|https:\/\/github.com\/umputun\/tg-spam\/raw\/master\/site\/tg-spam-bg.png|logo.png|' site/docs/index.md
+	sed -i '' 's|^.*/workflows/ci.yml.*$$||' site/docs/index.md
 
 .PHONY: docker race_test prep_site
