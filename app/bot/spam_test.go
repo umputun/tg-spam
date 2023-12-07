@@ -290,3 +290,26 @@ func Test_tokenChan(t *testing.T) {
 		})
 	}
 }
+
+func TestSpamFilter_tokenize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]int
+	}{
+		{name: "empty", input: "", expected: map[string]int{}},
+		{name: "no filters or cleanups", input: "hello world", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with excluded tokens", input: "hello world the she", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with short tokens", input: "hello world the she a or", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with repeated tokens", input: "hello world hello world", expected: map[string]int{"hello": 2, "world": 2}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := SpamFilter{
+				excludedTokens: []string{"the", "she"},
+			}
+			assert.Equal(t, tt.expected, s.tokenize(tt.input))
+		})
+	}
+}

@@ -484,3 +484,73 @@ func TestTelegramListener_runUnbanServer(t *testing.T) {
 
 	<-done
 }
+
+func TestTelegramListener_isChatAllowed(t *testing.T) {
+	testCases := []struct {
+		name       string
+		fromChat   int64
+		chatID     int64
+		testingIDs []int64
+		expect     bool
+	}{
+		{
+			name:       "Chat is allowed - fromChat equals chatID",
+			fromChat:   123,
+			chatID:     123,
+			testingIDs: []int64{},
+			expect:     true,
+		},
+		{
+			name:       "Chat is allowed - fromChat in testingIDs",
+			fromChat:   456,
+			chatID:     123,
+			testingIDs: []int64{456},
+			expect:     true,
+		},
+		{
+			name:       "Chat is not allowed",
+			fromChat:   789,
+			chatID:     123,
+			testingIDs: []int64{456},
+			expect:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			listener := TelegramListener{
+				chatID:     tc.chatID,
+				TestingIDs: tc.testingIDs,
+			}
+			result := listener.isChatAllowed(tc.fromChat)
+			assert.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestTelegramListener_forwardToAdmin(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+	}
+
+	listener := TelegramListener{
+		TbAPI:       mockAPI,
+		adminChatID: 123,
+	}
+
+	msg := &bot.Message{
+		From: bot.User{
+			ID: 456,
+		},
+		Text: "Test message",
+	}
+
+	listener.forwardToAdmin("testUser", msg)
+
+	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test message")
+}
