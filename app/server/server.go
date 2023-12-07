@@ -23,6 +23,7 @@ type SpamRest struct {
 	chatID int64
 }
 
+// Params defines REST API parameters
 type Params struct {
 	Secret     string // secret key to sign url tokens
 	URL        string // root url
