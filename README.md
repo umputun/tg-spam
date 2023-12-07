@@ -18,6 +18,7 @@ Spam detection based on several factors:
 - compare with the list of stop words
 
 If the message is considered spam, the bot will delete it and ban the user.
+
 ----
 <div align="center">
 
