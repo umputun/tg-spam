@@ -11,6 +11,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/stretchr/testify v1.8.4
 	github.com/umputun/go-flags v1.5.1
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

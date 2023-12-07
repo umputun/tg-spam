@@ -2,11 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +20,7 @@ import (
 	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/umputun/go-flags"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
@@ -37,7 +44,13 @@ var opts struct {
 
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 
-	LogsPath    string           `short:"l" long:"logs" env:"SPAM_LOGS" default:"logs" description:"path to spam logs"`
+	Logger struct {
+		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable access and error rotated logs"`
+		FileName   string `long:"file" env:"FILE"  default:"access.log" description:"location of access log"`
+		MaxSize    string `long:"max-size" env:"MAX_SIZE" default:"100M" description:"maximum size before it gets rotated"`
+		MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
+	} `group:"logger" namespace:"logger" env-namespace:"LOGGER"`
+
 	SuperUsers  events.SuperUser `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
 	NoSpamReply bool             `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 
@@ -144,6 +157,12 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make spam rest, %w", err)
 	}
 
+	loggerWr, err := makeSpamLogWriter()
+	if err != nil {
+		return fmt.Errorf("can't make spam log writer, %w", err)
+	}
+	defer loggerWr.Close()
+
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
 		Group:        opts.Telegram.Group,
@@ -152,14 +171,11 @@ func execute(ctx context.Context) error {
 		Bot:          spamBot,
 		StartupMsg:   opts.Message.Startup,
 		NoSpamReply:  opts.NoSpamReply,
-		SpamLogger: events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
-			log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
-			log.Printf("[DEBUG] spam message:  %q", msg.Text)
-		}),
-		AdminGroup: opts.Admin.Group,
-		TestingIDs: opts.TestingIDs,
-		SpamWeb:    rest,
-		Dry:        opts.Dry,
+		SpamLogger:   makeSpamLogger(loggerWr),
+		AdminGroup:   opts.Admin.Group,
+		TestingIDs:   opts.TestingIDs,
+		SpamWeb:      rest,
+		Dry:          opts.Dry,
 	}
 
 	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
@@ -177,6 +193,76 @@ func execute(ctx context.Context) error {
 	}
 	return nil
 }
+
+func makeSpamLogger(wr io.Writer) events.SpamLogger {
+	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
+		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
+		log.Printf("[DEBUG] spam message:  %q", msg.Text)
+		m := struct {
+			TimeStamp   string `json:"ts"`
+			DisplayName string `json:"display_name"`
+			UserName    string `json:"user_name"`
+			UserID      int64  `json:"user_id"`
+			Text        string `json:"text"`
+		}{
+			TimeStamp:   time.Now().In(time.Local).Format(time.RFC3339),
+			DisplayName: msg.From.DisplayName,
+			UserName:    msg.From.Username,
+			UserID:      msg.From.ID,
+			Text:        strings.ReplaceAll(msg.Text, "\n", " "),
+		}
+		line, err := json.Marshal(&m)
+		if err != nil {
+			log.Printf("[WARN] can't marshal json, %v", err)
+			return
+		}
+		if _, err := wr.Write(append(line, '\n')); err != nil {
+			log.Printf("[WARN] can't write to log, %v", err)
+		}
+	})
+}
+
+func makeSpamLogWriter() (accessLog io.WriteCloser, err error) {
+	if !opts.Logger.Enabled {
+		return nopWriteCloser{io.Discard}, nil
+	}
+
+	sizeParse := func(inp string) (uint64, error) {
+		if inp == "" {
+			return 0, errors.New("empty value")
+		}
+		for i, sfx := range []string{"k", "m", "g", "t"} {
+			if strings.HasSuffix(inp, strings.ToUpper(sfx)) || strings.HasSuffix(inp, strings.ToLower(sfx)) {
+				val, err := strconv.Atoi(inp[:len(inp)-1])
+				if err != nil {
+					return 0, fmt.Errorf("can't parse %s: %w", inp, err)
+				}
+				return uint64(float64(val) * math.Pow(float64(1024), float64(i+1))), nil
+			}
+		}
+		return strconv.ParseUint(inp, 10, 64)
+	}
+
+	maxSize, perr := sizeParse(opts.Logger.MaxSize)
+	if perr != nil {
+		return nil, fmt.Errorf("can't parse logger MaxSize: %w", perr)
+	}
+
+	maxSize /= 1048576
+
+	log.Printf("[INFO] logger enabled for %s, max size %dM", opts.Logger.FileName, maxSize)
+	return &lumberjack.Logger{
+		Filename:   opts.Logger.FileName,
+		MaxSize:    int(maxSize), // in MB
+		MaxBackups: opts.Logger.MaxBackups,
+		Compress:   true,
+		LocalTime:  true,
+	}, nil
+}
+
+type nopWriteCloser struct{ io.Writer }
+
+func (n nopWriteCloser) Close() error { return nil }
 
 func setupLog(dbg bool, secrets ...string) {
 	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
