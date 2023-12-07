@@ -10,6 +10,7 @@ services:
         max-size: "10m"
         max-file: "5"
     environment:
+      - TZ=America/Chicago
       - TELEGRAM_TOKEN
       - TELEGRAM_GROUP
       - DRY=true
