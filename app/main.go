@@ -140,6 +140,9 @@ func execute(ctx context.Context) error {
 		Secret:     opts.Admin.Secret,
 		ListenAddr: opts.Admin.Address,
 	})
+	if err != nil {
+		return fmt.Errorf("can't make spam rest, %w", err)
+	}
 
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
