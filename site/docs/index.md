@@ -3,9 +3,7 @@
 Anti-Spam bot for Telegram.
 
 <div align="center">
-
-
-
+  <img class="logo" src="logo.png" width="400px" alt="TG-Spam | Spam Hunter"/>
 </div>
 
 ## What is it and how it works?
@@ -20,6 +18,12 @@ Spam detection based on several factors:
 - compare with the list of stop words
 
 If the message is considered spam, the bot will delete it and ban the user.
+----
+<div align="center">
+
+
+
+</div>
 
 ## Admin chat/group
 
