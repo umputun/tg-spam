@@ -17,13 +17,18 @@ RUN \
     cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
 
 
-FROM umputun/baseimage:app-latest
+FROM ghcr.io/umputun/baseimage/app:v1.11.0 as base
+
+FROM scratch
+
 COPY --from=build /build/tg-spam /srv/tg-spam
-RUN chown -R app:app /srv
+COPY --from=base /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
 
+USER app
 COPY data/* /data/
-
 VOLUME /data
 WORKDIR /srv
-
-CMD ["/srv/tg-spam"]
+ENTRYPOINT ["/srv/tg-spam"]

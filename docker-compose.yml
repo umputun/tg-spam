@@ -1,24 +1,20 @@
-version: '2'
 services:
-  telegram-bot:
-    build: .
+  tg-spam:
+    image: umputun/tg-spam:master # use :latest tag for production
     hostname: tg-spam
     restart: always
     container_name: tg-spam
-
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
-
     environment:
       - TELEGRAM_TOKEN
       - TELEGRAM_GROUP
       - DRY=true
       - DEBUG=true
     volumes:
-      - ./logs:/srv/logs
-      - ./html:/srv/html
+      - ./var:/data # map user-provided samples to /data
 
-    command: /srv/tg-spam --super=umputun --super=bobuk --super=grayru --super=ksenks
+    command: /srv/tg-spam --super=name1 --super=name2
