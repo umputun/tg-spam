@@ -7,18 +7,18 @@ import (
 	"sync"
 )
 
-// SpamRestMock is a mock implementation of events.SpamRest.
+// SpamRestMock is a mock implementation of events.SpamWeb.
 //
 //	func TestSomethingThatUsesSpamRest(t *testing.T) {
 //
-//		// make and configure a mocked events.SpamRest
+//		// make and configure a mocked events.SpamWeb
 //		mockedSpamRest := &SpamRestMock{
 //			UnbanURLFunc: func(userID int64) string {
 //				panic("mock out the UnbanURL method")
 //			},
 //		}
 //
-//		// use mockedSpamRest in code that requires events.SpamRest
+//		// use mockedSpamRest in code that requires events.SpamWeb
 //		// and then make assertions.
 //
 //	}
@@ -40,7 +40,7 @@ type SpamRestMock struct {
 // UnbanURL calls UnbanURLFunc.
 func (mock *SpamRestMock) UnbanURL(userID int64) string {
 	if mock.UnbanURLFunc == nil {
-		panic("SpamRestMock.UnbanURLFunc: method is nil but SpamRest.UnbanURL was just called")
+		panic("SpamRestMock.UnbanURLFunc: method is nil but SpamWeb.UnbanURL was just called")
 	}
 	callInfo := struct {
 		UserID int64

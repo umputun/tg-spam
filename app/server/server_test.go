@@ -32,7 +32,7 @@ func TestSpamRest_UnbanURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := SpamRest{Params: Params{URL: tt.url, Secret: tt.secret}}
+			srv := SpamWeb{Params: Params{URL: tt.url, Secret: tt.secret}}
 			res := srv.UnbanURL(123)
 			assert.Equal(t, tt.want, res)
 		})

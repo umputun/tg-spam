@@ -36,7 +36,7 @@ type TelegramListener struct {
 	StartupMsg   string
 	NoSpamReply  bool
 	Dry          bool
-	SpamRest     SpamRest
+	SpamWeb      SpamWeb
 
 	chatID      int64
 	adminChatID int64
@@ -73,8 +73,8 @@ type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
 }
 
-// SpamRest is an interface for the rest api
-type SpamRest interface {
+// SpamWeb is an interface for the web component
+type SpamWeb interface {
 	UnbanURL(userID int64) string
 }
 
@@ -217,7 +217,7 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
-		banUserStr, msg.From.ID, l.SpamRest.UnbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
+		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), strings.ReplaceAll(msg.Text, "\n", " "))
 	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
 	if e != nil {
 		log.Printf("[WARN] failed to send admin message, %v", e)

@@ -452,7 +452,7 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 
 	listener := TelegramListener{
 		TbAPI:       mockAPI,
-		SpamRest:    sr,
+		SpamWeb:     sr,
 		adminChatID: 123,
 	}
 

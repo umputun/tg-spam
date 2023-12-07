@@ -158,7 +158,7 @@ func execute(ctx context.Context) error {
 		}),
 		AdminGroup: opts.Admin.Group,
 		TestingIDs: opts.TestingIDs,
-		SpamRest:   rest,
+		SpamWeb:    rest,
 		Dry:        opts.Dry,
 	}
 

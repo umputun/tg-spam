@@ -17,8 +17,8 @@ import (
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 
-// SpamRest is a REST API for ban/unban actions
-type SpamRest struct {
+// SpamWeb is a REST API for ban/unban actions
+type SpamWeb struct {
 	Params
 	TbAPI  TbAPI
 	chatID int64
@@ -40,8 +40,8 @@ type TbAPI interface {
 }
 
 // NewSpamRest creates new REST API server
-func NewSpamRest(tbAPI TbAPI, params Params) (*SpamRest, error) {
-	res := SpamRest{Params: params, TbAPI: tbAPI}
+func NewSpamRest(tbAPI TbAPI, params Params) (*SpamWeb, error) {
+	res := SpamWeb{Params: params, TbAPI: tbAPI}
 	chatID, err := res.getChatID(params.TgGroup)
 	if err != nil {
 		return nil, fmt.Errorf("can't get chat ID for %s: %w", params.TgGroup, err)
@@ -51,7 +51,7 @@ func NewSpamRest(tbAPI TbAPI, params Params) (*SpamRest, error) {
 }
 
 // Run starts REST API server
-func (s *SpamRest) Run(ctx context.Context) error {
+func (s *SpamWeb) Run(ctx context.Context) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (s *SpamRest) Run(ctx context.Context) error {
 }
 
 // UnbanHandler handles unban requests, GET /unban?user=<user_id>&token=<token>
-func (s *SpamRest) unbanHandler(w http.ResponseWriter, r *http.Request) {
+func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("user")
 	token := r.URL.Query().Get("token")
 	userID, err := s.getChatID(id)
@@ -106,7 +106,7 @@ func (s *SpamRest) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *SpamRest) getChatID(group string) (int64, error) {
+func (s *SpamWeb) getChatID(group string) (int64, error) {
 	chatID, err := strconv.ParseInt(group, 10, 64)
 	if err == nil {
 		return chatID, nil
@@ -121,13 +121,13 @@ func (s *SpamRest) getChatID(group string) (int64, error) {
 }
 
 // UnbanURL returns URL to unban user
-func (s *SpamRest) UnbanURL(userID int64) string {
+func (s *SpamWeb) UnbanURL(userID int64) string {
 	// key is SHA1 of user ID + secret
 	key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, s.Secret))))
 	return fmt.Sprintf("%s/unban?user=%d&token=%s", s.URL, userID, key)
 }
 
-func (s *SpamRest) sendHTML(w http.ResponseWriter, msg, title, background, foreground string, statusCode int) {
+func (s *SpamWeb) sendHTML(w http.ResponseWriter, msg, title, background, foreground string, statusCode int) {
 	tmplParams := struct {
 		Title      string
 		Message    string
