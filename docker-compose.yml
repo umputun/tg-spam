@@ -17,4 +17,4 @@ services:
     volumes:
       - ./var:/data # map user-provided samples to /data
 
-    command: /srv/tg-spam --super=name1 --super=name2
+    command: --super=name1 --super=name2

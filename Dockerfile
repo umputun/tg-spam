@@ -31,4 +31,5 @@ USER app
 COPY data/* /data/
 VOLUME /data
 WORKDIR /srv
+EXPOSE 8080
 ENTRYPOINT ["/srv/tg-spam"]
