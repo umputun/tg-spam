@@ -39,8 +39,8 @@ type TbAPI interface {
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
 }
 
-// NewSpamRest creates new REST API server
-func NewSpamRest(tbAPI TbAPI, params Params) (*SpamWeb, error) {
+// NewSpamWeb creates new REST API server
+func NewSpamWeb(tbAPI TbAPI, params Params) (*SpamWeb, error) {
 	res := SpamWeb{Params: params, TbAPI: tbAPI}
 	chatID, err := res.getChatID(params.TgGroup)
 	if err != nil {

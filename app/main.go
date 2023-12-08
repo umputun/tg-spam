@@ -147,7 +147,7 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
-	rest, err := server.NewSpamRest(tbAPI, server.Params{
+	web, err := server.NewSpamWeb(tbAPI, server.Params{
 		TgGroup:    opts.Telegram.Group,
 		URL:        opts.Admin.URL,
 		Secret:     opts.Admin.Secret,
@@ -174,18 +174,18 @@ func execute(ctx context.Context) error {
 		SpamLogger:   makeSpamLogger(loggerWr),
 		AdminGroup:   opts.Admin.Group,
 		TestingIDs:   opts.TestingIDs,
-		SpamWeb:      rest,
+		SpamWeb:      web,
 		Dry:          opts.Dry,
 	}
 
 	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
 		go func() {
-			if err := rest.Run(ctx); err != nil {
-				log.Printf("[ERROR] admin server failed, %v", err)
+			if err := web.Run(ctx); err != nil {
+				log.Printf("[ERROR] admin web server failed, %v", err)
 			}
 		}()
 	} else {
-		log.Print("[WARN] admin server is disabled")
+		log.Print("[WARN] admin web server is disabled")
 	}
 
 	if err := tgListener.Do(ctx); err != nil {

@@ -55,7 +55,7 @@ func TestSpamRest_Run(t *testing.T) {
 		},
 	}
 
-	srv, err := NewSpamRest(mockAPI, Params{
+	srv, err := NewSpamWeb(mockAPI, Params{
 		ListenAddr: ":9900",
 		URL:        "http://localhost:9090",
 		Secret:     "secret",
