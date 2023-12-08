@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // sampleUpdater represents a file that can be read and appended to
@@ -28,13 +29,13 @@ func (s *sampleUpdater) reader() (io.ReadCloser, error) {
 
 // append a message to the file
 func (s *sampleUpdater) append(msg string) error {
-	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY, 0644)
+	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
 	}
 	defer fh.Close()
 
-	if _, err = fh.WriteString(msg + "\n"); err != nil {
+	if _, err = fh.WriteString(strings.ReplaceAll(msg, "\n", " ") + "\n"); err != nil {
 		return fmt.Errorf("failed to write to %s: %w", s.fileName, err)
 	}
 	return nil
