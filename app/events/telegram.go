@@ -160,7 +160,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	msg := l.transform(update.Message)
-	log.Printf("[DEBUG] incoming msg: %+v", msg)
+	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
 
 	resp := l.Bot.OnMessage(*msg)
 
@@ -228,7 +228,7 @@ func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
 
 	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
-	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n----",
+	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[unban](%s) if it was a mistake\n\n%s\n\n",
 		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), text)
 	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
 	if e != nil {
