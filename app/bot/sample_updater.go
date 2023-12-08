@@ -18,8 +18,8 @@ func newSampleUpdater(fileName string) *sampleUpdater {
 	return &sampleUpdater{fileName: fileName}
 }
 
-// reader returns a reader for the file, caller must close it
-func (s *sampleUpdater) reader() (io.ReadCloser, error) {
+// Reader returns a reader for the file, caller must close it
+func (s *sampleUpdater) Reader() (io.ReadCloser, error) {
 	fh, err := os.Open(s.fileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s: %w", s.fileName, err)
@@ -27,8 +27,8 @@ func (s *sampleUpdater) reader() (io.ReadCloser, error) {
 	return fh, nil
 }
 
-// append a message to the file
-func (s *sampleUpdater) append(msg string) error {
+// Append a message to the file
+func (s *sampleUpdater) Append(msg string) error {
 	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644) //nolint:gosec // keep it readable by all
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)

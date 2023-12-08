@@ -313,3 +313,55 @@ func TestSpamFilter_tokenize(t *testing.T) {
 		})
 	}
 }
+
+func TestSpamFilter_UpdateSpam(t *testing.T) {
+
+	upd := &mocks.SampleUpdater{
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	s := SpamFilter{
+		spamSamplesUpd: upd,
+		tokenizedSpam:  []map[string]int{},
+		spamClassifier: Classifier{},
+	}
+	s.spamClassifier.Reset()
+
+	err := s.UpdateSpam("some spam message")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}}, s.tokenizedSpam)
+	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
+
+	err = s.UpdateSpam("more things")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}, {"more": 1, "things": 1}}, s.tokenizedSpam)
+	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
+}
+
+func TestSpamFilter_UpdateHam(t *testing.T) {
+
+	upd := &mocks.SampleUpdater{
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	s := SpamFilter{
+		hamSamplesUpd:  upd,
+		tokenizedSpam:  []map[string]int{},
+		spamClassifier: Classifier{},
+	}
+	s.spamClassifier.Reset()
+
+	err := s.UpdateHam("some spam message")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
+	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
+
+	err = s.UpdateHam("more things")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
+	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
+}
