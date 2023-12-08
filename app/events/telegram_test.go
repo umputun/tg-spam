@@ -446,7 +446,7 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 		},
 	}
 
-	sr := &mocks.SpamRestMock{
+	sr := &mocks.SpamWebMock{
 		UnbanURLFunc: func(userID int64) string { return "url" },
 	}
 

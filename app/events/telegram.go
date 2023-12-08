@@ -20,7 +20,7 @@ import (
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
-//go:generate moq --out mocks/spam_rest.go --pkg mocks --with-resets --skip-ensure . SpamRest
+//go:generate moq --out mocks/spam_web.go --pkg mocks --with-resets --skip-ensure . SpamWeb
 
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
@@ -71,6 +71,8 @@ func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
+	UpdateSpam(msg string) error
+	UpdateHam(msg string) error
 }
 
 // SpamWeb is an interface for the web component
