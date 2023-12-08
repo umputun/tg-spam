@@ -27,6 +27,13 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
+## Installation
+
+- The primary method of installation is via Docker. TG-Spam is available as a Docker image, making it easy to deploy and run as a container. The image is available on Docker Hub at [umputun/tg-spam](https://hub.docker.com/r/umputun/tg-spam) as well as on GitHub Packages at [ghcr.io/umputun/tg-spam](https://ghcr.io/umputun/tg-spam).
+- Binary releases are also available on the [releases page](https://github.com/umputun/tg-spam/releases/latest). 
+- TG-Spam can be installed by cloning the repository and building the binary from source by running `make build`.
+- It can also be installed using `brew install umputun/tap/tg-spam` on macOS.
+
 
 ## Configuration
 

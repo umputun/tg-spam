@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,7 +59,10 @@ func TestWatchPair_bothFilesChanged(t *testing.T) {
 
 	dataChangeCalled := false
 	var dataChangeContent1, dataChangeContent2 string
+	var lock sync.Mutex
 	onDataChange := func(r1, r2 io.Reader) error {
+		lock.Lock()
+		defer lock.Unlock()
 		t.Log("onDataChange called")
 		dataChangeCalled = true
 		data1, e := io.ReadAll(r1)

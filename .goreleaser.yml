@@ -1,0 +1,81 @@
+signs:
+  - artifacts: checksum
+
+project_name: tg-spam
+dist: .bin
+builds:
+  - id: tg-spam
+    binary: "tg-spam"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    dir: app
+    ldflags: "-s -w -X main.revision={{.Tag}}-{{.ShortCommit}}-{{.CommitDate}}"
+
+archives:
+  - id: tg-spam
+    name_template: >-
+     {{.ProjectName}}_
+     {{- .Tag}}_
+     {{- if eq .Os "darwin"}}macos
+     {{- else if eq .Os "windows"}}win
+     {{- else}}{{.Os}}{{end}}_
+     {{- if eq .Arch "amd64"}}x86_64
+     {{- else if eq .Arch "386"}}i386
+     {{- else}}{{.Arch}}{{end}}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+    rlcp: true
+
+
+brews:
+  -
+    name: tg-spam
+    tap:
+      owner: umputun
+      name: homebrew-apps
+      branch: master
+    commit_author:
+      name: umputun
+      email: umputun@gmail.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: "https://tg-spam.umputun.dev"
+    description: "tg-spam is a self-hosted Telegram bot fighting spam like no tomorrow."
+    license: "MIT"
+
+nfpms:
+  - id: tg-spam
+    package_name: tg-spam
+    file_name_template: "{{.ProjectName}}_{{.Tag}}_{{.Os}}_{{.Arch}}"
+    vendor: Umputun
+    homepage: https://tg-spam.umputun.dev
+    maintainer: Umputun <umputun@gmail.com>
+    description: tg-spam is a self-hosted Telegram bot fighting spam like no tomorrow
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    epoch: 1
+    release: 1
