@@ -1,6 +1,3 @@
-signs:
-  - artifacts: checksum
-
 project_name: tg-spam
 dist: .bin
 builds:
