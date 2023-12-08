@@ -313,3 +313,88 @@ func TestSpamFilter_tokenize(t *testing.T) {
 		})
 	}
 }
+
+func TestSpamFilter_UpdateSpam(t *testing.T) {
+
+	upd := &mocks.SampleUpdater{
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	s := SpamFilter{
+		spamSamplesUpd: upd,
+		tokenizedSpam:  []map[string]int{},
+		spamClassifier: Classifier{},
+	}
+	s.spamClassifier.Reset()
+
+	err := s.UpdateSpam("some spam message")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}}, s.tokenizedSpam)
+	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
+
+	err = s.UpdateSpam("more things")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}, {"more": 1, "things": 1}}, s.tokenizedSpam)
+	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
+}
+
+func TestSpamFilter_UpdateHam(t *testing.T) {
+
+	upd := &mocks.SampleUpdater{
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	s := SpamFilter{
+		hamSamplesUpd:  upd,
+		tokenizedSpam:  []map[string]int{},
+		spamClassifier: Classifier{},
+	}
+	s.spamClassifier.Reset()
+
+	err := s.UpdateHam("some spam message")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
+	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
+	assert.Equal(t, 1, len(upd.AppendCalls()))
+
+	err = s.UpdateHam("more things")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
+	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
+	assert.Equal(t, 2, len(upd.AppendCalls()))
+}
+
+func TestSpamFilter_loadDynFiles(t *testing.T) {
+	count := 0
+	upd := &mocks.SampleUpdater{
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+		ReaderFunc: func() (io.ReadCloser, error) {
+			count++
+			if count <= 2 { // two calls, for spam, one for ham
+				return io.NopCloser(bytes.NewBufferString("spam1 spam2 spam3\nspam4")), nil
+			}
+			return io.NopCloser(bytes.NewBufferString("ham1\nham2\nham3")), nil
+		},
+	}
+
+	s := SpamFilter{
+		spamSamplesUpd: upd,
+		hamSamplesUpd:  upd,
+		tokenizedSpam:  []map[string]int{},
+		spamClassifier: Classifier{},
+	}
+	s.spamClassifier.Reset()
+
+	err := s.loadDynFiles()
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]int{{"spam1": 1, "spam2": 1, "spam3": 1}, {"spam4": 1}}, s.tokenizedSpam)
+	assert.Equal(t, 2+3, s.spamClassifier.NAllDocument)
+	assert.Equal(t, 0, len(upd.AppendCalls()))
+	assert.Equal(t, 2+1, len(upd.ReaderCalls()))
+}

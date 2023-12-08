@@ -2,6 +2,7 @@ package bot
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"time"
 )
 
+//go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure . sampleUpdaterInterface:SampleUpdater
+
 // SpamFilter bot checks if a user is a spammer using internal matching as well as CAS API.
 // Reloads spam samples, stop words and excluded tokens on file change.
 // Synchronized on mutex, only on public OnMessage method and load methods.
@@ -28,6 +31,9 @@ type SpamFilter struct {
 	stopWords      []string
 	excludedTokens []string
 	spamClassifier Classifier
+
+	spamSamplesUpd sampleUpdaterInterface
+	hamSamplesUpd  sampleUpdaterInterface
 
 	lock sync.RWMutex
 }
@@ -47,6 +53,8 @@ type SpamParams struct {
 	SpamSamplesFile    string
 	StopWordsFile      string
 	ExcludedTokensFile string
+	SpamDynamicFile    string
+	HamDynamicFile     string
 	HamSamplesFile     string
 	ParanoidMode       bool
 
@@ -54,6 +62,11 @@ type SpamParams struct {
 	SpamDryMsg string
 
 	Dry bool
+}
+
+type sampleUpdaterInterface interface {
+	Append(msg string) error
+	Reader() (io.ReadCloser, error)
 }
 
 // NewSpamFilter makes a spam detecting bot
@@ -122,10 +135,20 @@ func NewSpamFilter(ctx context.Context, p SpamParams) (*SpamFilter, error) {
 		return nil
 	}
 
-	res := &SpamFilter{SpamParams: p, approvedUsers: map[int64]bool{}}
+	res := &SpamFilter{
+		SpamParams:     p,
+		approvedUsers:  map[int64]bool{},
+		spamSamplesUpd: newSampleUpdater(p.SpamDynamicFile),
+		hamSamplesUpd:  newSampleUpdater(p.HamDynamicFile),
+	}
 	if err := init(res); err != nil {
 		return nil, fmt.Errorf("failed to init spam filter: %w", err)
 	}
+
+	if err := res.loadDynFiles(); err != nil {
+		return nil, fmt.Errorf("can't load dynamic data: %w", err)
+	}
+
 	return res, nil
 }
 
@@ -162,6 +185,38 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		log.Printf("[INFO] user %s is not a spammer id %d, added to aproved", displayUsername, msg.From.ID)
 	}
 	return Response{} // not a spam
+}
+
+// UpdateSpam appends a message to the spam samples file and updates the classifier
+func (s *SpamFilter) UpdateSpam(msg string) error {
+	log.Printf("[DEBUG] update spam samples with %q", msg)
+	if err := s.spamSamplesUpd.Append(msg); err != nil {
+		return fmt.Errorf("can't update spam samples: %w", err)
+	}
+
+	// add to samples
+	tokenizedSpam := s.tokenize(msg)
+	s.tokenizedSpam = append(s.tokenizedSpam, tokenizedSpam)
+
+	// add to classifier
+	msgRdr := bytes.NewBufferString(msg)
+	if err := s.loadSpamClassifier(msgRdr); err != nil {
+		log.Printf("[WARN] failed to add spam to classifier %q: %v", msg, err)
+	}
+	return nil
+}
+
+// UpdateHam appends a message to the ham samples file and updates the classifier
+func (s *SpamFilter) UpdateHam(msg string) error {
+	log.Printf("[DEBUG] update ham samples with %q", msg)
+	if err := s.hamSamplesUpd.Append(msg); err != nil {
+		return fmt.Errorf("can't update ham samples: %w", err)
+	}
+	msgRdr := bytes.NewBufferString(msg)
+	if err := s.loadHamClassifier(msgRdr); err != nil {
+		log.Printf("[WARN] failed to add ham sample %q: %v", msg, err)
+	}
+	return nil
 }
 
 func (s *SpamFilter) loadSpamSamples(reader io.Reader) error {
@@ -226,6 +281,37 @@ func (s *SpamFilter) loadClassifier(reader io.Reader, class Class) error {
 	}
 	s.spamClassifier.Learn(docs...)
 	log.Printf("[INFO] loaded %d %s samples", len(docs), class)
+	return nil
+}
+
+func (s *SpamFilter) loadDynFiles() error {
+	log.Printf("[DEBUG] load dynamic data, spam: %s, ham: %s", s.SpamDynamicFile, s.HamDynamicFile)
+	// load spam dynamic to classifier, appends
+	if rdr, err := s.spamSamplesUpd.Reader(); err == nil {
+		defer rdr.Close() //nolint gosec
+		if err := s.loadClassifier(rdr, "spam"); err != nil {
+			return fmt.Errorf("can't load dynamic spam classifier: %w", err)
+		}
+	}
+
+	// load spam dynamic to samples
+	if rdr, err := s.spamSamplesUpd.Reader(); err == nil {
+		defer rdr.Close() //nolint gosec
+		for t := range tokenChan(rdr) {
+			// append tokens to tokenizedSpam
+			tokenizedSpam := s.tokenize(t)
+			s.tokenizedSpam = append(s.tokenizedSpam, tokenizedSpam)
+		}
+	}
+
+	// load ham dynamic to classifier, appends
+	if rdr, err := s.hamSamplesUpd.Reader(); err == nil {
+		defer rdr.Close() //nolint gosec
+		if err := s.loadClassifier(rdr, "ham"); err != nil {
+			return fmt.Errorf("can't load dynamic ham classifier: %w", err)
+		}
+	}
+
 	return nil
 }
 

@@ -7,22 +7,22 @@ import (
 	"sync"
 )
 
-// SpamRestMock is a mock implementation of events.SpamWeb.
+// SpamWebMock is a mock implementation of events.SpamWeb.
 //
-//	func TestSomethingThatUsesSpamRest(t *testing.T) {
+//	func TestSomethingThatUsesSpamWeb(t *testing.T) {
 //
 //		// make and configure a mocked events.SpamWeb
-//		mockedSpamRest := &SpamRestMock{
+//		mockedSpamWeb := &SpamWebMock{
 //			UnbanURLFunc: func(userID int64) string {
 //				panic("mock out the UnbanURL method")
 //			},
 //		}
 //
-//		// use mockedSpamRest in code that requires events.SpamWeb
+//		// use mockedSpamWeb in code that requires events.SpamWeb
 //		// and then make assertions.
 //
 //	}
-type SpamRestMock struct {
+type SpamWebMock struct {
 	// UnbanURLFunc mocks the UnbanURL method.
 	UnbanURLFunc func(userID int64) string
 
@@ -38,9 +38,9 @@ type SpamRestMock struct {
 }
 
 // UnbanURL calls UnbanURLFunc.
-func (mock *SpamRestMock) UnbanURL(userID int64) string {
+func (mock *SpamWebMock) UnbanURL(userID int64) string {
 	if mock.UnbanURLFunc == nil {
-		panic("SpamRestMock.UnbanURLFunc: method is nil but SpamWeb.UnbanURL was just called")
+		panic("SpamWebMock.UnbanURLFunc: method is nil but SpamWeb.UnbanURL was just called")
 	}
 	callInfo := struct {
 		UserID int64
@@ -56,8 +56,8 @@ func (mock *SpamRestMock) UnbanURL(userID int64) string {
 // UnbanURLCalls gets all the calls that were made to UnbanURL.
 // Check the length with:
 //
-//	len(mockedSpamRest.UnbanURLCalls())
-func (mock *SpamRestMock) UnbanURLCalls() []struct {
+//	len(mockedSpamWeb.UnbanURLCalls())
+func (mock *SpamWebMock) UnbanURLCalls() []struct {
 	UserID int64
 } {
 	var calls []struct {
@@ -70,14 +70,14 @@ func (mock *SpamRestMock) UnbanURLCalls() []struct {
 }
 
 // ResetUnbanURLCalls reset all the calls that were made to UnbanURL.
-func (mock *SpamRestMock) ResetUnbanURLCalls() {
+func (mock *SpamWebMock) ResetUnbanURLCalls() {
 	mock.lockUnbanURL.Lock()
 	mock.calls.UnbanURL = nil
 	mock.lockUnbanURL.Unlock()
 }
 
 // ResetCalls reset all the calls that were made to all mocked methods.
-func (mock *SpamRestMock) ResetCalls() {
+func (mock *SpamWebMock) ResetCalls() {
 	mock.lockUnbanURL.Lock()
 	mock.calls.UnbanURL = nil
 	mock.lockUnbanURL.Unlock()

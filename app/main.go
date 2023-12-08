@@ -64,6 +64,8 @@ var opts struct {
 		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"path to ham samples"`
 		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"path to exclude tokens file"`
 		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"path to stop words file"`
+		DynamicSpamFile  string `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"path to dynamic spam file"`
+		DynamicHamFile   string `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"path to dynamic ham file"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
@@ -131,6 +133,8 @@ func execute(ctx context.Context) error {
 	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
 		SpamSamplesFile:     opts.Files.SamplesSpamFile,
 		HamSamplesFile:      opts.Files.SamplesHamFile,
+		SpamDynamicFile:     opts.Files.DynamicSpamFile,
+		HamDynamicFile:      opts.Files.DynamicHamFile,
 		ExcludedTokensFile:  opts.Files.ExcludeTokenFile,
 		StopWordsFile:       opts.Files.StopWordsFile,
 		SimilarityThreshold: opts.SimilarityThreshold,

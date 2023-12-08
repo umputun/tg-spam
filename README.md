@@ -84,6 +84,12 @@ To allow such a feature, some parameters in `admin` section must be specified:
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
 
+### Updating spam samples dynamically
+
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forward a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly.
+
+Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` must be set to the mapped volume's location to stay persistent after container restart.
+
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
@@ -159,6 +165,8 @@ files:
       --files.samples-ham=    path to ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
       --files.exclude-tokens= path to exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
       --files.stop-words=     path to stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
+      --files.dynamic-spam=   path to dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
+      --files.dynamic-ham=    path to dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
 
 message:
       --message.startup=      startup message [$MESSAGE_STARTUP]

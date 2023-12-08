@@ -20,3 +20,5 @@
 # Go workspace file
 go.work
 .bin
+data/spam-dynamic.txt
+data/ham-dynamic.txt

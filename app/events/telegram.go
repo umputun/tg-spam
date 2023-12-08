@@ -20,7 +20,7 @@ import (
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
-//go:generate moq --out mocks/spam_rest.go --pkg mocks --with-resets --skip-ensure . SpamRest
+//go:generate moq --out mocks/spam_web.go --pkg mocks --with-resets --skip-ensure . SpamWeb
 
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
@@ -71,6 +71,8 @@ func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
+	UpdateSpam(msg string) error
+	UpdateHam(msg string) error
 }
 
 // SpamWeb is an interface for the web component
@@ -152,14 +154,29 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		return fmt.Errorf("failed to marshal update.Message to json: %w", errJSON)
 	}
 	log.Printf("[DEBUG] %s", string(msgJSON))
-
+	msg := l.transform(update.Message)
 	fromChat := update.Message.Chat.ID
-	if !l.isChatAllowed(fromChat) {
-		// ignore messages from other chats
+
+	if l.isAdminChat(fromChat, msg.From.Username) {
+		// message from supers to admin chat
+		if update.Message.ForwardSenderName != "" {
+			// this is a forwarded message from super to admin chat, it is an example of missed spam
+			// we need to update spam filter with this message
+			if err := l.Bot.UpdateSpam(strings.ReplaceAll(update.Message.Text, "\n", " ")); err != nil {
+				log.Printf("[WARN] failed to update spam for %q, %v", update.Message.Text, err)
+				return nil
+			}
+			log.Printf("[DEBUG] spam updated with %q", update.Message.Text)
+			// it would be nice to ban this user right away, but we don't have forwarded user ID here, it is empty in update.Message
+		}
 		return nil
 	}
 
-	msg := l.transform(update.Message)
+	if !l.isChatAllowed(fromChat) {
+		// ignore messages from other chats if not in the test list
+		return nil
+	}
+
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
 
 	resp := l.Bot.OnMessage(*msg)
@@ -214,6 +231,10 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 	return false
 }
 
+func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
+	return fromChat == l.adminChatID && l.SuperUsers.IsSuper(from)
+}
+
 func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
 	// escapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
 	// For example, telegram username with underscores would be italicized if we don't escape it.
@@ -259,7 +280,8 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 		return nil
 	}
 
-	log.Printf("[DEBUG] bot response - %+v, reply-to:%d, parse-mode:%s", resp.Text, resp.ReplyTo, resp.ParseMode)
+	log.Printf("[DEBUG] bot response - %+v, reply-to:%d, parse-mode:%s",
+		strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo, resp.ParseMode)
 	tbMsg := tbapi.NewMessage(chatID, resp.Text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	if resp.ParseMode != "" {
