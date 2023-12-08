@@ -29,7 +29,7 @@ func (s *sampleUpdater) reader() (io.ReadCloser, error) {
 
 // append a message to the file
 func (s *sampleUpdater) append(msg string) error {
-	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
 	}
