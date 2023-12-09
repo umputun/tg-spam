@@ -135,7 +135,7 @@ Use this token to access the HTTP API:
 
 #### Disabling privacy mode
 
-In order to allow bot to listen for messages in group, you need to disable privacy mode. Send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
+In some cases, for example for private groups, bot has to have privacy mode disabled. In order to do that you need to send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
 
 ```
 Umputun:
@@ -159,7 +159,7 @@ BotFather:
 Success! The new status is: DISABLED. /help
 ```
 
-**Important:** the privacy has to be disabled _before_ bot is added in the group. If you did it after, just add remove bot from the group and add again.
+**Important:** the privacy has to be disabled _before_ bot is added to the group. If you did it after, just add remove bot from the group and add again.
 
 ## All Application Options
 
