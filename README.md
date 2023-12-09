@@ -177,3 +177,41 @@ Help Options:
   -h, --help                  Show this help message
 
 ```
+
+## Using tg-spam as a library
+
+The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
+
+For more details see the [TBD]()
+
+Example:
+
+```go
+package main
+
+import (
+	"io"
+
+	tgspam "github.com/umputun/tg-spam/lib"
+)
+
+func main() {
+	detector := tgspam.NewDetector(tgspam.Config{
+		SimilarityThreshold: 0.5,
+		MinMsgLen:           50,
+		MaxEmoji:            2,
+		FirstMessageOnly:    false,
+		HTTPClient:          &http.Client{Timeout: 30 * time.Second},
+	})
+
+	// prepare samples and exclude tokens
+	spamSample := bytes.NewBufferString("this is spam\nwin a prize\n") // need io.Reader, in real life it will be a file
+	hamSample := bytes.NewBufferString("this is ham\n")
+	excludeTokens := bytes.NewBufferString(`"a", "the"`)
+
+	// load samples
+	detector.LoadSamples(excludeTokens, []io.Reader{spamSample}, []io.Reader{hamSample})
+
+	isSpam, details := detector.Check("this is spam", 123456)
+}
+```
