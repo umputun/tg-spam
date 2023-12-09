@@ -11,7 +11,7 @@ docker:
 	docker build -t umputun/tg-spam .
 
 race_test:
-	cd app && go test -race -mod=vendor -timeout=60s -count 1 ./...
+	go test -race -mod=vendor -timeout=60s -count 1 ./...
 
 prep_site:
 	cp -fv README.md site/docs/index.md

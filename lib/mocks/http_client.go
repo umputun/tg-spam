@@ -8,22 +8,22 @@ import (
 	"sync"
 )
 
-// HTTPClient is a mock implementation of bot.HTTPClient.
+// HTTPClientMock is a mock implementation of lib.HTTPClient.
 //
 //	func TestSomethingThatUsesHTTPClient(t *testing.T) {
 //
-//		// make and configure a mocked bot.HTTPClient
-//		mockedHTTPClient := &HTTPClient{
+//		// make and configure a mocked lib.HTTPClient
+//		mockedHTTPClient := &HTTPClientMock{
 //			DoFunc: func(req *http.Request) (*http.Response, error) {
 //				panic("mock out the Do method")
 //			},
 //		}
 //
-//		// use mockedHTTPClient in code that requires bot.HTTPClient
+//		// use mockedHTTPClient in code that requires lib.HTTPClient
 //		// and then make assertions.
 //
 //	}
-type HTTPClient struct {
+type HTTPClientMock struct {
 	// DoFunc mocks the Do method.
 	DoFunc func(req *http.Request) (*http.Response, error)
 
@@ -39,9 +39,9 @@ type HTTPClient struct {
 }
 
 // Do calls DoFunc.
-func (mock *HTTPClient) Do(req *http.Request) (*http.Response, error) {
+func (mock *HTTPClientMock) Do(req *http.Request) (*http.Response, error) {
 	if mock.DoFunc == nil {
-		panic("HTTPClient.DoFunc: method is nil but HTTPClient.Do was just called")
+		panic("HTTPClientMock.DoFunc: method is nil but HTTPClient.Do was just called")
 	}
 	callInfo := struct {
 		Req *http.Request
@@ -58,7 +58,7 @@ func (mock *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 // Check the length with:
 //
 //	len(mockedHTTPClient.DoCalls())
-func (mock *HTTPClient) DoCalls() []struct {
+func (mock *HTTPClientMock) DoCalls() []struct {
 	Req *http.Request
 } {
 	var calls []struct {

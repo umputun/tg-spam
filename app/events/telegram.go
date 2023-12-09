@@ -157,16 +157,19 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	msg := l.transform(update.Message)
 	fromChat := update.Message.Chat.ID
 
+	// message from admin chat
 	if l.isAdminChat(fromChat, msg.From.Username) {
 		// message from supers to admin chat
 		if update.Message.ForwardSenderName != "" {
 			// this is a forwarded message from super to admin chat, it is an example of missed spam
 			// we need to update spam filter with this message
-			if err := l.Bot.UpdateSpam(strings.ReplaceAll(update.Message.Text, "\n", " ")); err != nil {
+			msgTxt := strings.ReplaceAll(update.Message.Text, "\n", " ")
+			log.Printf("[DEBUG] forwarded message from superuser %s to admin chat: %q", msg.From.Username, msgTxt)
+			if err := l.Bot.UpdateSpam(msgTxt); err != nil {
 				log.Printf("[WARN] failed to update spam for %q, %v", update.Message.Text, err)
 				return nil
 			}
-			log.Printf("[DEBUG] spam updated with %q", update.Message.Text)
+			log.Printf("[INFO] spam updated with %q", update.Message.Text)
 			// it would be nice to ban this user right away, but we don't have forwarded user ID here, it is empty in update.Message
 		}
 		return nil
@@ -216,6 +219,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
 	}
+
 	return errs.ErrorOrNil()
 }
 

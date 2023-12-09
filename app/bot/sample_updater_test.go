@@ -15,7 +15,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer os.Remove(file.Name())
 
-		updater := newSampleUpdater(file.Name())
+		updater := NewSampleUpdater(file.Name())
 		err = updater.Append("Test message")
 		assert.NoError(t, err)
 
@@ -33,7 +33,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer os.Remove(file.Name())
 
-		updater := newSampleUpdater(file.Name())
+		updater := NewSampleUpdater(file.Name())
 		err = updater.Append("Test message\nsecond line\nthird line")
 		assert.NoError(t, err)
 
@@ -47,7 +47,7 @@ func TestSampleUpdater(t *testing.T) {
 	})
 
 	t.Run("unhappy path", func(t *testing.T) {
-		updater := newSampleUpdater("/tmp/non-existent/samples.txt")
+		updater := NewSampleUpdater("/tmp/non-existent/samples.txt")
 		err := updater.Append("Test message")
 		assert.Error(t, err)
 		_, err = updater.Reader()

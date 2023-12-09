@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umputun/tg-spam/app/bot/mocks"
+	"github.com/umputun/tg-spam/lib/mocks"
 )
 
 func TestDetector_tokenize(t *testing.T) {
@@ -78,8 +78,9 @@ func TestDetector_tokenChanMultipleReaders(t *testing.T) {
 
 func TestDetector_CheckStopWords(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
-	err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
+	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
 	require.NoError(t, err)
+	assert.Equal(t, LoadResult{StopWords: 2}, lr)
 
 	tests := []struct {
 		name     string
@@ -182,7 +183,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockedHTTPClient := &mocks.HTTPClient{
+			mockedHTTPClient := &mocks.HTTPClientMock{
 				DoFunc: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: tt.mockStatusCode,
@@ -218,9 +219,10 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 func TestDetector_CheckSimilarity(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
-	err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
 	require.NoError(t, err)
-	d.classifier.Reset() // we don't need classifier for this test
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2}, lr)
+	d.classifier.Reset() // we don't need a classifier for this test
 	assert.Len(t, d.tokenizedSpam, 2)
 	t.Logf("%+v", d.tokenizedSpam)
 	assert.Equal(t, map[string]int{"win": 1, "free": 1, "iphone": 1}, d.tokenizedSpam[0])
@@ -255,8 +257,9 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
-	err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.NAllDocument)
 	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -291,7 +294,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 }
 
 func TestDetector_UpdateSpam(t *testing.T) {
-	upd := &mocks.SampleUpdater{
+	upd := &mocks.SampleUpdaterMock{
 		AppendFunc: func(msg string) error {
 			return nil
 		},
@@ -302,8 +305,9 @@ func TestDetector_UpdateSpam(t *testing.T) {
 
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
-	err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.NAllDocument)
 	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -337,7 +341,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 }
 
 func TestDetector_UpdateHam(t *testing.T) {
-	upd := &mocks.SampleUpdater{
+	upd := &mocks.SampleUpdaterMock{
 		AppendFunc: func(msg string) error {
 			return nil
 		},
@@ -348,8 +352,9 @@ func TestDetector_UpdateHam(t *testing.T) {
 
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
-	err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.NAllDocument)
 	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -386,10 +391,12 @@ func TestDetector_Reset(t *testing.T) {
 	d := NewDetector(Config{})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
-	err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamSamples})
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamSamples})
 	require.NoError(t, err)
-	err = d.LoadStopWords(strings.NewReader("в личку\nвсем привет"))
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
+	sr, err := d.LoadStopWords(strings.NewReader("в личку\nвсем привет"))
 	require.NoError(t, err)
+	assert.Equal(t, LoadResult{StopWords: 2}, sr)
 
 	assert.Equal(t, 5, d.classifier.NAllDocument)
 	assert.Equal(t, 2, len(d.tokenizedSpam))

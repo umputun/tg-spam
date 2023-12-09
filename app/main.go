@@ -25,6 +25,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/server"
+	"github.com/umputun/tg-spam/lib"
 )
 
 var opts struct {
@@ -130,24 +131,30 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = opts.TGDbg
 
-	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
-		SpamSamplesFile:     opts.Files.SamplesSpamFile,
-		HamSamplesFile:      opts.Files.SamplesHamFile,
-		SpamDynamicFile:     opts.Files.DynamicSpamFile,
-		HamDynamicFile:      opts.Files.DynamicHamFile,
-		ExcludedTokensFile:  opts.Files.ExcludeTokenFile,
-		StopWordsFile:       opts.Files.StopWordsFile,
-		SimilarityThreshold: opts.SimilarityThreshold,
+	detector := lib.NewDetector(lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
-		HTTPClient:          &http.Client{Timeout: 5 * time.Second},
+		SimilarityThreshold: opts.SimilarityThreshold,
 		CasAPI:              opts.CAS.API,
-		SpamMsg:             opts.Message.Spam,
-		SpamDryMsg:          opts.Message.Dry,
-		ParanoidMode:        opts.ParanoidMode,
-		Dry:                 opts.Dry,
+		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
+		FirstMessageOnly:    !opts.ParanoidMode,
 	})
-	if err != nil {
+
+	spamUpd := bot.NewSampleUpdater(opts.Files.DynamicSpamFile)
+	hamUpd := bot.NewSampleUpdater(opts.Files.DynamicHamFile)
+	spamBot := bot.NewSpamFilter(ctx, detector, spamUpd, hamUpd, bot.SpamParams{
+		SpamSamplesFile:    opts.Files.SamplesSpamFile,
+		HamSamplesFile:     opts.Files.SamplesHamFile,
+		SpamDynamicFile:    opts.Files.DynamicSpamFile,
+		HamDynamicFile:     opts.Files.DynamicHamFile,
+		ExcludedTokensFile: opts.Files.ExcludeTokenFile,
+		StopWordsFile:      opts.Files.StopWordsFile,
+		SpamMsg:            opts.Message.Spam,
+		SpamDryMsg:         opts.Message.Dry,
+		Dry:                opts.Dry,
+	})
+
+	if err = spamBot.ReloadSamples(); err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 

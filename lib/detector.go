@@ -14,6 +14,7 @@ import (
 )
 
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure . SampleUpdater
+//go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient
 
 // Detector is a spam detector, thread-safe.
 type Detector struct {
@@ -45,6 +46,14 @@ type CheckResult struct {
 	Name    string // name of the check
 	Spam    bool   // true if spam
 	Details string // details of the check
+}
+
+// LoadResult is a result of loading samples.
+type LoadResult struct {
+	ExcludedTokens int // number of excluded tokens
+	SpamSamples    int // number of spam samples
+	HamSamples     int // number of ham samples
+	StopWords      int // number of stop words (phrases)
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
@@ -140,7 +149,7 @@ func (d *Detector) WithHamUpdater(s SampleUpdater) {
 
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
-func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) error {
+func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -152,6 +161,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	for t := range d.tokenChan(exclReader) {
 		d.excludedTokens = append(d.excludedTokens, strings.ToLower(t))
 	}
+	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
 	docs := []Document{}
@@ -163,6 +173,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 			tokens = append(tokens, token)
 		}
 		docs = append(docs, Document{Class: "spam", Tokens: tokens})
+		lr.SpamSamples++
 	}
 
 	for token := range d.tokenChan(hamReaders...) {
@@ -172,14 +183,16 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 			tokens = append(tokens, token)
 		}
 		docs = append(docs, Document{Class: "ham", Tokens: tokens})
+		lr.HamSamples++
 	}
 
 	d.classifier.Learn(docs...)
-	return nil
+
+	return lr, nil
 }
 
 // LoadStopWords loads stop words from a reader. Reset stop words list before loading.
-func (d *Detector) LoadStopWords(readers ...io.Reader) error {
+func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	d.stopWords = []string{}
@@ -187,7 +200,7 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) error {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
 	log.Printf("[INFO] loaded %d stop words", len(d.stopWords))
-	return nil
+	return LoadResult{StopWords: len(d.stopWords)}, nil
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
