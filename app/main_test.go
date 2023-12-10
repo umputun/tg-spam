@@ -30,7 +30,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	}
 
 	response := &bot.Response{
-		Text: "Test response",
+		Text: "Test message",
 	}
 
 	logger.Save(msg, response)
@@ -99,7 +99,7 @@ func TestMakeSpamLogWriter(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		opts.Logger.Enabled = false
 		opts.Logger.FileName = "/tmp"
-		opts.Logger.MaxSize = "1f"
+		opts.Logger.MaxSize = "10M"
 		opts.Logger.MaxBackups = 1
 		writer, err := makeSpamLogWriter()
 		assert.NoError(t, err)

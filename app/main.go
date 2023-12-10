@@ -25,6 +25,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/server"
+	"github.com/umputun/tg-spam/lib"
 )
 
 var opts struct {
@@ -42,7 +43,8 @@ var opts struct {
 		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
 	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
-	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -60,19 +62,19 @@ var opts struct {
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
 	Files struct {
-		SamplesSpamFile  string `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"path to spam samples"`
-		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"path to ham samples"`
-		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"path to exclude tokens file"`
-		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"path to stop words file"`
-		DynamicSpamFile  string `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"path to dynamic spam file"`
-		DynamicHamFile   string `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"path to dynamic ham file"`
+		SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
+		SamplesHamFile   string        `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"ham samples"`
+		ExcludeTokenFile string        `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"exclude tokens file"`
+		StopWordsFile    string        `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"stop words file"`
+		DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
+		DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
+		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
-
-	MinMsgLen    int  `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
-	MaxEmoji     int  `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message"`
-	ParanoidMode bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
+	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
+	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
+	ParanoidMode        bool    `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
@@ -124,43 +126,69 @@ func execute(ctx context.Context) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
+	// make telegram bot
 	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
 	tbAPI.Debug = opts.TGDbg
 
-	spamBot, err := bot.NewSpamFilter(ctx, bot.SpamParams{
-		SpamSamplesFile:     opts.Files.SamplesSpamFile,
-		HamSamplesFile:      opts.Files.SamplesHamFile,
-		SpamDynamicFile:     opts.Files.DynamicSpamFile,
-		HamDynamicFile:      opts.Files.DynamicHamFile,
-		ExcludedTokensFile:  opts.Files.ExcludeTokenFile,
-		StopWordsFile:       opts.Files.StopWordsFile,
-		SimilarityThreshold: opts.SimilarityThreshold,
+	// make spam detector
+	detectorConfig := lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
-		HTTPClient:          &http.Client{Timeout: 5 * time.Second},
+		SimilarityThreshold: opts.SimilarityThreshold,
 		CasAPI:              opts.CAS.API,
-		SpamMsg:             opts.Message.Spam,
-		SpamDryMsg:          opts.Message.Dry,
-		ParanoidMode:        opts.ParanoidMode,
-		Dry:                 opts.Dry,
-	})
-	if err != nil {
+		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
+		FirstMessageOnly:    !opts.ParanoidMode,
+	}
+	detector := lib.NewDetector(detectorConfig)
+	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
+
+	if opts.Files.DynamicSpamFile != "" {
+		detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))
+		log.Printf("[DEBUG] dynamic spam file: %s", opts.Files.DynamicSpamFile)
+	}
+	if opts.Files.DynamicHamFile != "" {
+		detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
+		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
+	}
+
+	// make spam bot
+	spamBotParams := bot.SpamConfig{
+		SpamSamplesFile:    opts.Files.SamplesSpamFile,
+		HamSamplesFile:     opts.Files.SamplesHamFile,
+		SpamDynamicFile:    opts.Files.DynamicSpamFile,
+		HamDynamicFile:     opts.Files.DynamicHamFile,
+		ExcludedTokensFile: opts.Files.ExcludeTokenFile,
+		StopWordsFile:      opts.Files.StopWordsFile,
+		WatchDelay:         opts.Files.WatchInterval,
+		SpamMsg:            opts.Message.Spam,
+		SpamDryMsg:         opts.Message.Dry,
+		Dry:                opts.Dry,
+	}
+	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
+	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
+
+	if err = spamBot.ReloadSamples(); err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
-	web, err := server.NewSpamWeb(tbAPI, server.Params{
+	// make web server
+	srvParams := server.Config{
+		Version:    revision,
 		TgGroup:    opts.Telegram.Group,
 		URL:        opts.Admin.URL,
 		Secret:     opts.Admin.Secret,
 		ListenAddr: opts.Admin.Address,
-	})
+	}
+	web, err := server.NewSpamWeb(tbAPI, srvParams)
+	log.Printf("[DEBUG] web params: %+v", srvParams)
 	if err != nil {
 		return fmt.Errorf("can't make spam rest, %w", err)
 	}
 
+	// make spam logger
 	loggerWr, err := makeSpamLogWriter()
 	if err != nil {
 		return fmt.Errorf("can't make spam log writer, %w", err)
@@ -179,9 +207,14 @@ func execute(ctx context.Context) error {
 		AdminGroup:   opts.Admin.Group,
 		TestingIDs:   opts.TestingIDs,
 		SpamWeb:      web,
+		Locator:      events.NewLocator(opts.HistoryDuration),
 		Dry:          opts.Dry,
 	}
+	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
+		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
 
+	// activate web server if configured
 	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
 		go func() {
 			if err := web.Run(ctx); err != nil {
@@ -192,16 +225,20 @@ func execute(ctx context.Context) error {
 		log.Print("[WARN] admin web server is disabled")
 	}
 
+	// run telegram listener and event processor
 	if err := tgListener.Do(ctx); err != nil {
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
 }
 
+// makeSpamLogger creates spam logger to keep reports about spam messages
+// it writes json lines to the provided writer
 func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
-		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
-		log.Printf("[DEBUG] spam message:  %q", msg.Text)
+		text := strings.ReplaceAll(response.Text, "\n", " ")
+		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, text)
+		log.Printf("[DEBUG] spam message: %q", text)
 		m := struct {
 			TimeStamp   string `json:"ts"`
 			DisplayName string `json:"display_name"`
@@ -213,7 +250,7 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 			DisplayName: msg.From.DisplayName,
 			UserName:    msg.From.Username,
 			UserID:      msg.From.ID,
-			Text:        strings.ReplaceAll(msg.Text, "\n", " "),
+			Text:        text,
 		}
 		line, err := json.Marshal(&m)
 		if err != nil {
@@ -226,6 +263,8 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	})
 }
 
+// makeSpamLogWriter creates spam log writer to keep reports about spam messages
+// it parses options and makes lumberjack logger with rotation
 func makeSpamLogWriter() (accessLog io.WriteCloser, err error) {
 	if !opts.Logger.Enabled {
 		return nopWriteCloser{io.Discard}, nil

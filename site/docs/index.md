@@ -84,6 +84,12 @@ To allow such a feature, some parameters in `admin` section must be specified:
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
 
+### Updating spam samples dynamically
+
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. 
+
+Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` must be set to the mapped volume's location to stay persistent after container restart.
+
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
@@ -122,6 +128,7 @@ Use this token to access the HTTP API:
 
 ```
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
+      --history-duration=     history duration (default: 1h) [$HISTORY_DURATION]
       --super=                super-users [$SUPER_USER]
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
@@ -159,6 +166,8 @@ files:
       --files.samples-ham=    path to ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
       --files.exclude-tokens= path to exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
       --files.stop-words=     path to stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
+      --files.dynamic-spam=   path to dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
+      --files.dynamic-ham=    path to dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
 
 message:
       --message.startup=      startup message [$MESSAGE_STARTUP]
@@ -168,4 +177,42 @@ message:
 Help Options:
   -h, --help                  Show this help message
 
+```
+
+## Using tg-spam as a library
+
+The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
+
+For more details see the [TBD]()
+
+Example:
+
+```go
+package main
+
+import (
+	"io"
+
+	tgspam "github.com/umputun/tg-spam/lib"
+)
+
+func main() {
+	detector := tgspam.NewDetector(tgspam.Config{
+		SimilarityThreshold: 0.5,
+		MinMsgLen:           50,
+		MaxEmoji:            2,
+		FirstMessageOnly:    false,
+		HTTPClient:          &http.Client{Timeout: 30 * time.Second},
+	})
+
+	// prepare samples and exclude tokens
+	spamSample := bytes.NewBufferString("this is spam\nwin a prize\n") // need io.Reader, in real life it will be a file
+	hamSample := bytes.NewBufferString("this is ham\n")
+	excludeTokens := bytes.NewBufferString(`"a", "the"`)
+
+	// load samples
+	detector.LoadSamples(excludeTokens, []io.Reader{spamSample}, []io.Reader{hamSample})
+
+	isSpam, details := detector.Check("this is spam", 123456)
+}
 ```

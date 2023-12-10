@@ -1,400 +1,336 @@
 package bot
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"io"
-	"net/http"
-	"strings"
-	"sync"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot/mocks"
+	"github.com/umputun/tg-spam/lib"
 )
 
-func TestFilter_OnMessage(t *testing.T) {
-	mockedHTTPClient := &mocks.HTTPClient{
-		DoFunc: func(req *http.Request) (*http.Response, error) {
-			if strings.Contains(req.URL.String(), "101") {
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": true, "description": "Is a spammer"}`)),
-				}, nil
+func TestSpamFilter_OnMessage(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	det := &mocks.DetectorMock{
+		CheckFunc: func(msg string, userID int64) (bool, []lib.CheckResult) {
+			if msg == "spam" {
+				return true, []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}
 			}
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "Not a spammer"}`)),
-			}, nil
+			return false, nil
 		},
 	}
 
-	filter, err := NewSpamFilter(context.Background(), SpamParams{
-		SpamSamplesFile:     "testdata/spam-samples.txt", // "win free iPhone\nlottery prize
-		HamSamplesFile:      "testdata/ham-samples.txt",
-		StopWordsFile:       "testdata/stop-words.txt",
-		ExcludedTokensFile:  "testdata/spam-exclude-token.txt",
-		SimilarityThreshold: 0.5,
-		MinMsgLen:           5,
-		Dry:                 false,
-		HTTPClient:          mockedHTTPClient,
-		SpamMsg:             "this is spam! go to ban",
-		MaxAllowedEmoji:     2,
+	t.Run("spam detected", func(t *testing.T) {
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
+		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
+			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true}, resp)
+		t.Logf("resp: %+v", resp)
 	})
-	require.NoError(t, err)
+
+	t.Run("spam detected, dry", func(t *testing.T) {
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
+		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
+		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
+		assert.True(t, resp.Send)
+	})
+
+	t.Run("ham detected", func(t *testing.T) {
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		resp := s.OnMessage(Message{Text: "good", From: User{ID: 1, Username: "john"}})
+		assert.Equal(t, Response{}, resp)
+	})
+
+}
+
+func TestSpamFilter_reloadSamples(t *testing.T) {
+	mockDirector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+	}
 
 	tests := []struct {
-		name     string
-		msg      Message
-		expected Response
+		name        string
+		modify      func(s *SpamConfig)
+		expectedErr error
 	}{
 		{
-			"good message",
-			Message{From: User{ID: 1, Username: "john", DisplayName: "John"}, Text: "Hello, how are you?", ID: 1},
-			Response{},
+			name:        "Successful execution",
+			modify:      func(s *SpamConfig) {},
+			expectedErr: nil,
 		},
 		{
-			"emoji spam",
-			Message{From: User{ID: 4, Username: "john", DisplayName: "John"}, Text: "Hello 😁🐶🍕 how are you? ", ID: 4},
-			Response{Text: "this is spam! go to ban: \"John\" (4)", Send: true,
-				BanInterval: permanentBanDuration, ReplyTo: 4, DeleteReplyTo: true,
-				User: User{ID: 4, Username: "john", DisplayName: "John"}},
-		},
-		{
-			"similarity spam",
-			Message{From: User{ID: 2, Username: "spammer", DisplayName: "Spammer"}, Text: "Win a free iPhone now!", ID: 2},
-			Response{Text: "this is spam! go to ban: \"Spammer\" (2)", Send: true,
-				ReplyTo: 2, BanInterval: permanentBanDuration, DeleteReplyTo: true,
-				User: User{ID: 2, Username: "spammer", DisplayName: "Spammer"},
+			name: "Spam samples file open failure",
+			modify: func(s *SpamConfig) {
+				s.SpamSamplesFile = "fail"
 			},
+			expectedErr: errors.New("failed to open spam samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
-			"classifier spam",
-			Message{From: User{ID: 2, Username: "spammer", DisplayName: "Spammer"}, Text: "free gift for you", ID: 2},
-			Response{Text: "this is spam! go to ban: \"Spammer\" (2)", Send: true,
-				ReplyTo: 2, BanInterval: permanentBanDuration, DeleteReplyTo: true,
-				User: User{ID: 2, Username: "spammer", DisplayName: "Spammer"},
+			name: "Ham samples file open failure",
+			modify: func(s *SpamConfig) {
+				s.HamSamplesFile = "fail"
 			},
+			expectedErr: errors.New("failed to open ham samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
-			"CAS spam",
-			Message{From: User{ID: 101, Username: "spammer", DisplayName: "blah"}, Text: "something something", ID: 10},
-			Response{Text: "this is spam! go to ban: \"blah\" (101)", Send: true,
-				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
-				User: User{ID: 101, Username: "spammer", DisplayName: "blah"},
+			name: "Stop words file not found",
+			modify: func(s *SpamConfig) {
+				s.StopWordsFile = "notfound"
 			},
+			expectedErr: nil,
 		},
 		{
-			"stop words spam emoji",
-			Message{From: User{ID: 102, Username: "spammer", DisplayName: "blah"}, Text: "something пишите в лс something", ID: 10},
-			Response{Text: "this is spam! go to ban: \"blah\" (102)", Send: true,
-				ReplyTo: 10, BanInterval: permanentBanDuration, DeleteReplyTo: true,
-				User: User{ID: 102, Username: "spammer", DisplayName: "blah"},
+			name: "Excluded tokens file not found",
+			modify: func(s *SpamConfig) {
+				s.ExcludedTokensFile = "notfound"
 			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.expected, filter.OnMessage(test.msg))
-		})
-	}
-}
-
-func TestIsSpam(t *testing.T) {
-	spamSamples := strings.NewReader("win free iPhone\nlottery prize")
-	filter := SpamFilter{
-		tokenizedSpam: []map[string]int{},
-		lock:          sync.RWMutex{},
-	}
-
-	tests := []struct {
-		name      string
-		message   string
-		threshold float64
-		expected  bool
-	}{
-		{"Not Spam", "Hello, how are you?", 0.5, false},
-		{"Exact Match", "Win a free iPhone now!", 0.5, true},
-		{"Similar Match", "You won a lottery prize!", 0.3, true},
-		{"High Threshold", "You won a lottery prize!", 0.9, false},
-		{"Partial Match", "win free", 0.9, false},
-		{"Low Threshold", "win free", 0.8, true},
-	}
-
-	err := filter.loadSpamSamples(spamSamples)
-	require.NoError(t, err)
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			filter.SimilarityThreshold = test.threshold // Update threshold for each test case
-			assert.Equal(t, test.expected, filter.isSpamSimilarityHigh(test.message))
-		})
-	}
-}
-
-// nolint
-func TestTooManyEmojis(t *testing.T) {
-	filter := SpamFilter{
-		SpamParams: SpamParams{MaxAllowedEmoji: 2},
-	}
-
-	tests := []struct {
-		name  string
-		input string
-		count int
-		spam  bool
-	}{
-		{"NoEmoji", "Hello, world!", 0, false},
-		{"OneEmoji", "Hi there 👋", 1, false},
-		{"TwoEmojis", "Good morning 🌞🌻", 2, false},
-		{"Mixed", "👨‍👩‍👧‍👦 Family emoji", 1, false},
-		{"EmojiSequences", "🏳️‍🌈 Rainbow flag", 1, false},
-		{"TextAfterEmoji", "😊 Have a nice day!", 1, false},
-		{"OnlyEmojis", "😁🐶🍕", 3, true},
-		{"WithCyrillic", "Привет 🌞 🍕 мир! 👋", 3, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			isSpam, count := filter.tooManyEmojis(tt.input, 2)
-			assert.Equal(t, tt.count, count)
-			assert.Equal(t, tt.spam, isSpam)
-		})
-	}
-}
-
-func TestStopWords(t *testing.T) {
-	filter := &SpamFilter{
-		stopWords: []string{"в личку", "всем привет"},
-	}
-
-	tests := []struct {
-		name     string
-		message  string
-		expected bool
-	}{
-		{
-			name:     "Stop word present",
-			message:  "Hello, please send me a message в личку",
-			expected: true,
+			expectedErr: nil,
 		},
 		{
-			name:     "Stop word present with emoji",
-			message:  "👋Всем привет\nИщу амбициозного человека к се6е в команду\nКто в поисках дополнительного заработка или хочет попробовать себя в новой  сфере деятельности! 👨🏻\u200d💻\nПишите в лс✍️",
-			expected: true,
+			name: "Spam dynamic file not found",
+			modify: func(s *SpamConfig) {
+				s.SpamDynamicFile = "notfound"
+			},
+			expectedErr: nil,
 		},
 		{
-			name:     "No stop word present",
-			message:  "Hello, how are you?",
-			expected: false,
-		},
-		{
-			name:     "Case insensitive stop word present",
-			message:  "Hello, please send me a message В ЛИЧКУ",
-			expected: true,
+			name: "Ham dynamic file not found",
+			modify: func(s *SpamConfig) {
+				s.HamDynamicFile = "notfound"
+			},
+			expectedErr: nil,
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.expected, filter.hasStopWords(test.message))
-		})
-	}
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-func TestSpam_isCasSpam(t *testing.T) {
+			// Create temporary files for each test
+			spamSamplesFile, err := os.CreateTemp("", "spam")
+			require.NoError(t, err)
+			defer os.Remove(spamSamplesFile.Name())
 
-	tests := []struct {
-		name           string
-		mockResp       string
-		mockStatusCode int
-		expected       bool
-	}{
-		{
-			name:           "User is not a spammer",
-			mockResp:       `{"ok": false, "description": "Not a spammer"}`,
-			mockStatusCode: 200,
-			expected:       false,
-		},
-		{
-			name:           "User is a spammer",
-			mockResp:       `{"ok": true, "description": "Is a spammer"}`,
-			mockStatusCode: 200,
-			expected:       true,
-		},
-		{
-			name:           "HTTP error",
-			mockResp:       "",
-			mockStatusCode: 500,
-			expected:       false,
-		},
-	}
+			hamSamplesFile, err := os.CreateTemp("", "ham")
+			require.NoError(t, err)
+			defer os.Remove(hamSamplesFile.Name())
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockedHTTPClient := &mocks.HTTPClient{
-				DoFunc: func(req *http.Request) (*http.Response, error) {
-					return &http.Response{
-						StatusCode: tt.mockStatusCode,
-						Body:       io.NopCloser(bytes.NewBufferString(tt.mockResp)),
-					}, nil
-				},
+			stopWordsFile, err := os.CreateTemp("", "stopwords")
+			require.NoError(t, err)
+			defer os.Remove(stopWordsFile.Name())
+
+			excludedTokensFile, err := os.CreateTemp("", "excludedtokens")
+			require.NoError(t, err)
+			defer os.Remove(excludedTokensFile.Name())
+
+			// Reset to default values before each test
+			params := SpamConfig{
+				SpamSamplesFile:    spamSamplesFile.Name(),
+				HamSamplesFile:     hamSamplesFile.Name(),
+				StopWordsFile:      stopWordsFile.Name(),
+				ExcludedTokensFile: excludedTokensFile.Name(),
+				SpamDynamicFile:    "optional",
+				HamDynamicFile:     "optional",
 			}
+			tc.modify(&params)
+			s := NewSpamFilter(ctx, mockDirector, params)
 
-			s := SpamFilter{SpamParams: SpamParams{
-				CasAPI:     "http://localhost",
-				HTTPClient: mockedHTTPClient,
-			}}
+			err = s.ReloadSamples()
 
-			msg := Message{
-				From: User{
-					ID:          1,
-					Username:    "testuser",
-					DisplayName: "Test User",
-				},
-				ID:   1,
-				Text: "Hello",
+			if tc.expectedErr != nil {
+				require.Error(t, err)
+				assert.Equal(t, tc.expectedErr.Error(), err.Error())
+			} else {
+				assert.NoError(t, err)
 			}
-
-			isSpam := s.isCasSpam(msg.From.ID)
-			assert.Equal(t, tt.expected, isSpam)
 		})
 	}
 }
 
-func Test_tokenChan(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []string
-	}{
-		{name: "empty", input: "", expected: []string{}},
-		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
-		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
-		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
-		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, empty tokens", input: "\"hello\",world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ch := tokenChan(bytes.NewBufferString(tt.input))
-			res := []string{}
-			for token := range ch {
-				res = append(res, token)
-			}
-			assert.Equal(t, tt.expected, res)
-		})
-	}
-}
+func TestSpamFilter_watch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-func TestSpamFilter_tokenize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected map[string]int
-	}{
-		{name: "empty", input: "", expected: map[string]int{}},
-		{name: "no filters or cleanups", input: "hello world", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with excluded tokens", input: "hello world the she", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with short tokens", input: "hello world the she a or", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with repeated tokens", input: "hello world hello world", expected: map[string]int{"hello": 2, "world": 2}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := SpamFilter{
-				excludedTokens: []string{"the", "she"},
-			}
-			assert.Equal(t, tt.expected, s.tokenize(tt.input))
-		})
-	}
-}
-
-func TestSpamFilter_UpdateSpam(t *testing.T) {
-
-	upd := &mocks.SampleUpdater{
-		AppendFunc: func(msg string) error {
-			return nil
-		},
-	}
-
-	s := SpamFilter{
-		spamSamplesUpd: upd,
-		tokenizedSpam:  []map[string]int{},
-		spamClassifier: Classifier{},
-	}
-	s.spamClassifier.Reset()
-
-	err := s.UpdateSpam("some spam message")
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}}, s.tokenizedSpam)
-	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
-
-	err = s.UpdateSpam("more things")
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]int{{"some": 1, "spam": 1, "message": 1}, {"more": 1, "things": 1}}, s.tokenizedSpam)
-	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
-}
-
-func TestSpamFilter_UpdateHam(t *testing.T) {
-
-	upd := &mocks.SampleUpdater{
-		AppendFunc: func(msg string) error {
-			return nil
-		},
-	}
-
-	s := SpamFilter{
-		hamSamplesUpd:  upd,
-		tokenizedSpam:  []map[string]int{},
-		spamClassifier: Classifier{},
-	}
-	s.spamClassifier.Reset()
-
-	err := s.UpdateHam("some spam message")
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
-	assert.Equal(t, 1, s.spamClassifier.NAllDocument)
-	assert.Equal(t, 1, len(upd.AppendCalls()))
-
-	err = s.UpdateHam("more things")
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]int{}, s.tokenizedSpam)
-	assert.Equal(t, 2, s.spamClassifier.NAllDocument)
-	assert.Equal(t, 2, len(upd.AppendCalls()))
-}
-
-func TestSpamFilter_loadDynFiles(t *testing.T) {
 	count := 0
-	upd := &mocks.SampleUpdater{
-		AppendFunc: func(msg string) error {
+	mockDetector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+			count++
+			if count == 1 { // only first call should succeed
+				return lib.LoadResult{}, nil
+			}
+			return lib.LoadResult{}, errors.New("error")
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+	}
+
+	tmpDir, err := os.MkdirTemp("", "spamfilter_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
+	spamSamplesFile := filepath.Join(tmpDir, "spam_samples.txt")
+	hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
+	stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
+
+	_, err = os.Create(excludedTokensFile)
+	require.NoError(t, err)
+	_, err = os.Create(spamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(hamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(stopWordsFile)
+	require.NoError(t, err)
+
+	NewSpamFilter(ctx, mockDetector, SpamConfig{
+		ExcludedTokensFile: excludedTokensFile,
+		SpamSamplesFile:    spamSamplesFile,
+		HamSamplesFile:     hamSamplesFile,
+		StopWordsFile:      stopWordsFile,
+		WatchDelay:         time.Millisecond * 100,
+	})
+
+	time.Sleep(200 * time.Millisecond) // let it start
+
+	assert.Equal(t, 0, len(mockDetector.LoadSamplesCalls()))
+	assert.Equal(t, 0, len(mockDetector.LoadStopWordsCalls()))
+
+	// write to spam samples file
+	message := "spam message"
+	err = os.WriteFile(spamSamplesFile, []byte(message), 0o600)
+	require.NoError(t, err)
+	// wait for reload to complete
+	time.Sleep(time.Millisecond * 200)
+
+	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
+	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
+
+	// write to ham samples file
+	message = "ham message"
+	err = os.WriteFile(hamSamplesFile, []byte(message), 0o600)
+	require.NoError(t, err)
+	// wait for reload to complete
+	time.Sleep(time.Millisecond * 200)
+	assert.Equal(t, 2, len(mockDetector.LoadSamplesCalls()))
+	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
+
+	// wait to make sure no more reloads happen
+	time.Sleep(time.Millisecond * 500)
+	assert.Equal(t, 2, len(mockDetector.LoadSamplesCalls()))
+	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
+}
+
+func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockDetector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+	}
+
+	tmpDir, err := os.MkdirTemp("", "spamfilter_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
+	spamSamplesFile := filepath.Join(tmpDir, "spam_samples.txt")
+	hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
+	stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
+
+	_, err = os.Create(excludedTokensFile)
+	require.NoError(t, err)
+	_, err = os.Create(spamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(hamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(stopWordsFile)
+	require.NoError(t, err)
+
+	NewSpamFilter(ctx, mockDetector, SpamConfig{
+		ExcludedTokensFile: excludedTokensFile,
+		SpamSamplesFile:    spamSamplesFile,
+		HamSamplesFile:     hamSamplesFile,
+		StopWordsFile:      stopWordsFile,
+		WatchDelay:         time.Millisecond * 100,
+	})
+
+	time.Sleep(200 * time.Millisecond) // let it start
+
+	// simulate rapid file changes
+	message := "spam message"
+	for i := 0; i < 5; i++ {
+		err = os.WriteFile(spamSamplesFile, []byte(message+strconv.Itoa(i)), 0o600)
+		require.NoError(t, err)
+		time.Sleep(10 * time.Millisecond) // less than the debounce interval
+	}
+
+	// wait for reload to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// ponly one reload should happen despite multiple updates
+	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
+
+	// make sure no more reloads happen
+	time.Sleep(500 * time.Millisecond)
+	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
+}
+
+func TestSpamFilter_Update(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockDetector := &mocks.DetectorMock{
+		UpdateSpamFunc: func(msg string) error {
+			if msg == "err" {
+				return errors.New("error")
+			}
 			return nil
 		},
-		ReaderFunc: func() (io.ReadCloser, error) {
-			count++
-			if count <= 2 { // two calls, for spam, one for ham
-				return io.NopCloser(bytes.NewBufferString("spam1 spam2 spam3\nspam4")), nil
+		UpdateHamFunc: func(msg string) error {
+			if msg == "err" {
+				return errors.New("error")
 			}
-			return io.NopCloser(bytes.NewBufferString("ham1\nham2\nham3")), nil
+			return nil
 		},
 	}
 
-	s := SpamFilter{
-		spamSamplesUpd: upd,
-		hamSamplesUpd:  upd,
-		tokenizedSpam:  []map[string]int{},
-		spamClassifier: Classifier{},
-	}
-	s.spamClassifier.Reset()
+	sf := NewSpamFilter(ctx, mockDetector, SpamConfig{})
 
-	err := s.loadDynFiles()
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]int{{"spam1": 1, "spam2": 1, "spam3": 1}, {"spam4": 1}}, s.tokenizedSpam)
-	assert.Equal(t, 2+3, s.spamClassifier.NAllDocument)
-	assert.Equal(t, 0, len(upd.AppendCalls()))
-	assert.Equal(t, 2+1, len(upd.ReaderCalls()))
+	t.Run("good update", func(t *testing.T) {
+		err := sf.UpdateSpam("spam")
+		assert.NoError(t, err)
+
+		err = sf.UpdateHam("ham")
+		assert.NoError(t, err)
+	})
+
+	t.Run("bad update", func(t *testing.T) {
+		err := sf.UpdateSpam("err")
+		assert.Error(t, err)
+
+		err = sf.UpdateHam("err")
+		assert.Error(t, err)
+	})
 }

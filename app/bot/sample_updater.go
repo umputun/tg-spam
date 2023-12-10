@@ -7,19 +7,19 @@ import (
 	"strings"
 )
 
-// sampleUpdater represents a file that can be read and appended to
-// this is a helper for dynamic reloading of files used by SpamFilter
-type sampleUpdater struct {
+// SampleUpdater represents a file that can be read and appended to.
+// this is a helper for dynamic reloading of samples used by SpamFilter
+type SampleUpdater struct {
 	fileName string
 }
 
-// newSampleUpdater creates a new sampleUpdater
-func newSampleUpdater(fileName string) *sampleUpdater {
-	return &sampleUpdater{fileName: fileName}
+// NewSampleUpdater creates a new SampleUpdater
+func NewSampleUpdater(fileName string) *SampleUpdater {
+	return &SampleUpdater{fileName: fileName}
 }
 
 // Reader returns a reader for the file, caller must close it
-func (s *sampleUpdater) Reader() (io.ReadCloser, error) {
+func (s *SampleUpdater) Reader() (io.ReadCloser, error) {
 	fh, err := os.Open(s.fileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s: %w", s.fileName, err)
@@ -28,7 +28,7 @@ func (s *sampleUpdater) Reader() (io.ReadCloser, error) {
 }
 
 // Append a message to the file
-func (s *sampleUpdater) Append(msg string) error {
+func (s *SampleUpdater) Append(msg string) error {
 	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644) //nolint:gosec // keep it readable by all
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
