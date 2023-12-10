@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-pkgz/notify"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/hashicorp/go-multierror"
 
@@ -160,7 +159,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	// message from admin chat
 	if l.isAdminChat(fromChat, msg.From.Username) {
-		if err := l.adminChatMsg(update, fromChat); err != nil {
+		if err := l.adminChatMsgHandler(update, fromChat); err != nil {
 			log.Printf("[WARN] failed to process admin chat message: %v", err)
 		}
 		return nil
@@ -198,7 +197,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		} else {
 			log.Print(banSuccessMessage)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
-				l.forwardToAdmin(banUserStr, msg)
+				l.reportToAdminChat(banUserStr, msg)
 			}
 		}
 	}
@@ -214,7 +213,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	return errs.ErrorOrNil()
 }
 
-func (l *TelegramListener) adminChatMsg(update tbapi.Update, fromChat int64) error {
+func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int64) error {
 	shrink := func(inp string, max int) string {
 		if len(inp) <= max {
 			return inp
@@ -255,7 +254,7 @@ func (l *TelegramListener) adminChatMsg(update tbapi.Update, fromChat int64) err
 		}
 		log.Printf("[INFO] message %d deleted", info.msgID)
 
-		err = l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, info.chatID)
+		err = l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, 0)
 		if err != nil {
 			return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
 		}
@@ -280,7 +279,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
 	return fromChat == l.adminChatID && l.SuperUsers.IsSuper(from)
 }
 
-func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
+func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message) {
 	// escapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
 	// For example, telegram username with underscores would be italicized if we don't escape it.
 	// https://core.telegram.org/bots/api#markdown-style
@@ -292,7 +291,7 @@ func (l *TelegramListener) forwardToAdmin(banUserStr string, msg *bot.Message) {
 		return text
 	}
 
-	log.Printf("[DEBUG] forward to admin ban data for %s, group: %d", banUserStr, l.adminChatID)
+	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[⛔︎ unban if wrong ⛔︎](%s)\n\n%s\n\n",
 		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), text)
@@ -338,32 +337,6 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
 	}
 
-	return nil
-}
-
-// Submit message text to telegram's group
-func (l *TelegramListener) Submit(ctx context.Context, text string) error {
-	l.msgs.once.Do(func() { l.msgs.ch = make(chan bot.Response, 100) })
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case l.msgs.ch <- bot.Response{Text: text, Send: true}:
-	}
-	return nil
-}
-
-// SubmitHTML message to telegram's group with HTML mode
-func (l *TelegramListener) SubmitHTML(ctx context.Context, text string) error {
-	// Remove unsupported HTML tags
-	text = notify.TelegramSupportedHTML(text)
-	l.msgs.once.Do(func() { l.msgs.ch = make(chan bot.Response, 100) })
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case l.msgs.ch <- bot.Response{Text: text, Send: true, ParseMode: tbapi.ModeHTML}:
-	}
 	return nil
 }
 

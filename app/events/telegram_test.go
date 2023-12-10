@@ -309,6 +309,8 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
 	defer cancel()
 
+	l.Locator.Add("text 123", 123, 88, 999999) // add message to locator
+
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
 			Chat:              &tbapi.Chat{ID: 123},
@@ -316,6 +318,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 			From:              &tbapi.User{UserName: "umputun", ID: 77},
 			Date:              int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
 			ForwardSenderName: "forwarded_name",
+			MessageID:         999999,
 		},
 	}
 
@@ -331,6 +334,14 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	require.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, "text 123", b.UpdateSpamCalls()[0].Msg)
+
+	assert.Equal(t, 2, len(mockAPI.RequestCalls()))
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
+	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).ChatID)
+	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
+
 }
 
 func TestTelegram_transformTextMessage(t *testing.T) {
@@ -507,7 +518,7 @@ func TestTelegramListener_isChatAllowed(t *testing.T) {
 	}
 }
 
-func TestTelegramListener_forwardToAdmin(t *testing.T) {
+func TestTelegramListener_reportToAdminChat(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{}, nil
@@ -531,7 +542,7 @@ func TestTelegramListener_forwardToAdmin(t *testing.T) {
 		Text: "Test\n\n_message_",
 	}
 
-	listener.forwardToAdmin("testUser", msg)
+	listener.reportToAdminChat("testUser", msg)
 
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
 	assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
