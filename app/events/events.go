@@ -1,3 +1,9 @@
+// Package events provide event handlers for telegram bot and all the high-level event handlers.
+// It parses messages, sends them to the spam detector and handles the results. It can also ban users
+// and send messages to the admin.
+//
+// In addition to that, it provides support for admin chat handling allowing to unban users via the web service and
+// update the list of spam samples.
 package events
 
 import (
