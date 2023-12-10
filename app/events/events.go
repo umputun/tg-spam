@@ -228,43 +228,45 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int
 		return string([]rune(inp)[:max]) + "..."
 	}
 
-	// message from supers to admin chat
-	if update.Message.ForwardSenderName != "" || update.FromChat() != nil {
-		// this is a forwarded message from super to admin chat, it is an example of missed spam
-		// we need to update spam filter with this message
-		msgTxt := strings.ReplaceAll(update.Message.Text, "\n", " ")
-		log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q",
-			update.Message.From.UserName, l.adminChatID, msgTxt)
-
-		if !l.Dry {
-			if err := l.Bot.UpdateSpam(msgTxt); err != nil {
-				return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
-			}
-			log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
-		}
-
-		// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limiatation,
-		// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
-		info, ok := l.Locator.Get(update.Message.Text)
-		if !ok {
-			return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
-		}
-
-		log.Printf("[DEBUG] locator found message %s", info)
-		if l.Dry {
-			return nil
-		}
-
-		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
-			return fmt.Errorf("failed to delete message %d: %w", info.msgID, err)
-		}
-		log.Printf("[INFO] message %d deleted", info.msgID)
-
-		if err := l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, 0); err != nil {
-			return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
-		}
-		log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
+	if update.Message.ForwardSenderName == "" && update.FromChat() == nil {
+		// this is a regular message from admin chat, not the forwarded one, ignore it
+		return nil
 	}
+
+	// this is a forwarded message from super to admin chat, it is an example of missed spam
+	// we need to update spam filter with this message
+	msgTxt := strings.ReplaceAll(update.Message.Text, "\n", " ")
+	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q",
+		update.Message.From.UserName, l.adminChatID, msgTxt)
+
+	if !l.Dry {
+		if err := l.Bot.UpdateSpam(msgTxt); err != nil {
+			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+		}
+		log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
+	}
+
+	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limiatation,
+	// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
+	info, ok := l.Locator.Get(update.Message.Text)
+	if !ok {
+		return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
+	}
+
+	log.Printf("[DEBUG] locator found message %s", info)
+	if l.Dry {
+		return nil
+	}
+
+	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
+		return fmt.Errorf("failed to delete message %d: %w", info.msgID, err)
+	}
+	log.Printf("[INFO] message %d deleted", info.msgID)
+
+	if err := l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, 0); err != nil {
+		return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
+	}
+	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
 	return nil
 }
 
