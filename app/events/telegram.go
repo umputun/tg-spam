@@ -182,9 +182,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	errs := new(multierror.Error)
-	isBanInvoked := resp.Send && resp.BanInterval > 0
-	// some bots may request a direct ban for given duration
-	if isBanInvoked {
+
+	// ban user if requested by bot
+	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
 		banUserStr := l.getBanUsername(resp, update)
@@ -192,21 +192,19 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
 		}
-		banSuccessMessage := fmt.Sprintf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
-		if err := l.banUserOrChannel(resp.BanInterval, fromChat, resp.User.ID, resp.ChannelID); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
-		} else {
-			log.Print(banSuccessMessage)
+		if err := l.banUserOrChannel(resp.BanInterval, fromChat, resp.User.ID, resp.ChannelID); err == nil {
+			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
 				l.reportToAdminChat(banUserStr, msg)
 			}
+		} else {
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
 		}
 	}
 
 	// delete message if requested by bot
 	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username) {
-		_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo})
-		if err != nil {
+		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
 	}
@@ -244,22 +242,20 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int
 			return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
 		}
 
-		log.Printf("[DEBUG] locator found message %+v", info)
+		log.Printf("[DEBUG] locator found message %s", info)
 		if l.Dry {
 			return nil
 		}
 
-		_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID})
-		if err != nil {
+		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
 			return fmt.Errorf("failed to delete message %d: %w", info.msgID, err)
 		}
 		log.Printf("[INFO] message %d deleted", info.msgID)
 
-		err = l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, 0)
-		if err != nil {
+		if err := l.banUserOrChannel(bot.PermanentBanDuration, fromChat, info.userID, 0); err != nil {
 			return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
 		}
-		log.Printf("[INFO] user %d %q banned", info.userID, update.Message.ForwardSenderName)
+		log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
 	}
 	return nil
 }
@@ -296,9 +292,8 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[⛔︎ unban if wrong ⛔︎](%s)\n\n%s\n\n",
 		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), text)
-	e := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID)
-	if e != nil {
-		log.Printf("[WARN] failed to send admin message, %v", e)
+	if err := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID); err != nil {
+		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
 
