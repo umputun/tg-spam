@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -234,6 +235,66 @@ func TestSpamFilter_watch(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 	assert.Equal(t, 2, len(mockDetector.LoadSamplesCalls()))
 	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
+}
+
+func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockDetector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+	}
+
+	tmpDir, err := os.MkdirTemp("", "spamfilter_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
+	spamSamplesFile := filepath.Join(tmpDir, "spam_samples.txt")
+	hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
+	stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
+
+	_, err = os.Create(excludedTokensFile)
+	require.NoError(t, err)
+	_, err = os.Create(spamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(hamSamplesFile)
+	require.NoError(t, err)
+	_, err = os.Create(stopWordsFile)
+	require.NoError(t, err)
+
+	NewSpamFilter(ctx, mockDetector, nil, nil, SpamParams{
+		ExcludedTokensFile: excludedTokensFile,
+		SpamSamplesFile:    spamSamplesFile,
+		HamSamplesFile:     hamSamplesFile,
+		StopWordsFile:      stopWordsFile,
+		WatchDelay:         time.Millisecond * 100,
+	})
+
+	time.Sleep(200 * time.Millisecond) // let it start
+
+	// simulate rapid file changes
+	message := "spam message"
+	for i := 0; i < 5; i++ {
+		err = os.WriteFile(spamSamplesFile, []byte(message+strconv.Itoa(i)), 0o600)
+		require.NoError(t, err)
+		time.Sleep(10 * time.Millisecond) // less than the debounce interval
+	}
+
+	// wait for reload to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// ponly one reload should happen despite multiple updates
+	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
+
+	// make sure no more reloads happen
+	time.Sleep(500 * time.Millisecond)
+	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
 }
 
 func TestSpamFilter_Update(t *testing.T) {
