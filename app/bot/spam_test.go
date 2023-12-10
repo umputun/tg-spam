@@ -31,7 +31,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	}
 
 	t.Run("spam detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true}, resp)
@@ -39,14 +39,14 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	})
 
 	t.Run("spam detected, dry", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
 		assert.True(t, resp.Send)
 	})
 
 	t.Run("ham detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "good", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{}, resp)
 	})
@@ -65,52 +65,52 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		modify      func(s *SpamParams)
+		modify      func(s *SpamConfig)
 		expectedErr error
 	}{
 		{
 			name:        "Successful execution",
-			modify:      func(s *SpamParams) {},
+			modify:      func(s *SpamConfig) {},
 			expectedErr: nil,
 		},
 		{
 			name: "Spam samples file open failure",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.SpamSamplesFile = "fail"
 			},
 			expectedErr: errors.New("failed to open spam samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
 			name: "Ham samples file open failure",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.HamSamplesFile = "fail"
 			},
 			expectedErr: errors.New("failed to open ham samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
 			name: "Stop words file not found",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.StopWordsFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Excluded tokens file not found",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.ExcludedTokensFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Spam dynamic file not found",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.SpamDynamicFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Ham dynamic file not found",
-			modify: func(s *SpamParams) {
+			modify: func(s *SpamConfig) {
 				s.HamDynamicFile = "notfound"
 			},
 			expectedErr: nil,
@@ -140,7 +140,7 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 			defer os.Remove(excludedTokensFile.Name())
 
 			// Reset to default values before each test
-			params := SpamParams{
+			params := SpamConfig{
 				SpamSamplesFile:    spamSamplesFile.Name(),
 				HamSamplesFile:     hamSamplesFile.Name(),
 				StopWordsFile:      stopWordsFile.Name(),
@@ -199,7 +199,7 @@ func TestSpamFilter_watch(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, SpamParams{
+	NewSpamFilter(ctx, mockDetector, SpamConfig{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -268,7 +268,7 @@ func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, SpamParams{
+	NewSpamFilter(ctx, mockDetector, SpamConfig{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -316,7 +316,7 @@ func TestSpamFilter_Update(t *testing.T) {
 		},
 	}
 
-	sf := NewSpamFilter(ctx, mockDetector, SpamParams{})
+	sf := NewSpamFilter(ctx, mockDetector, SpamConfig{})
 
 	t.Run("good update", func(t *testing.T) {
 		err := sf.UpdateSpam("spam")

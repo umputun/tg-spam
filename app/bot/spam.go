@@ -22,14 +22,14 @@ import (
 // Reloads spam samples, stop words and excluded tokens on file change.
 type SpamFilter struct {
 	director Detector
-	params   SpamParams
+	params   SpamConfig
 
 	// spamSamplesUpd sampleUpdaterInterface
 	// hamSamplesUpd  sampleUpdaterInterface
 }
 
-// SpamParams is a full set of parameters for spam bot
-type SpamParams struct {
+// SpamConfig is a full set of parameters for spam bot
+type SpamConfig struct {
 
 	// samples file names need to be watched for changes and reload.
 	SpamSamplesFile    string
@@ -57,7 +57,7 @@ type Detector interface {
 }
 
 // NewSpamFilter creates new spam filter
-func NewSpamFilter(ctx context.Context, detector Detector, params SpamParams) *SpamFilter {
+func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *SpamFilter {
 	res := &SpamFilter{director: detector, params: params}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {

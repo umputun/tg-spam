@@ -126,12 +126,14 @@ func execute(ctx context.Context) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
+	// make telegram bot
 	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
 	tbAPI.Debug = opts.TGDbg
 
+	// make spam detector
 	detectorConfig := lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
@@ -152,7 +154,8 @@ func execute(ctx context.Context) error {
 		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
 	}
 
-	spamBotParams := bot.SpamParams{
+	// make spam bot
+	spamBotParams := bot.SpamConfig{
 		SpamSamplesFile:    opts.Files.SamplesSpamFile,
 		HamSamplesFile:     opts.Files.SamplesHamFile,
 		SpamDynamicFile:    opts.Files.DynamicSpamFile,
@@ -165,13 +168,15 @@ func execute(ctx context.Context) error {
 		Dry:                opts.Dry,
 	}
 	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
-	log.Printf("[DEBUG] spam bot params: %+v", spamBotParams)
+	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err = spamBot.ReloadSamples(); err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
-	srvParams := server.Params{
+	// make web server
+	srvParams := server.Config{
+		Version:    revision,
 		TgGroup:    opts.Telegram.Group,
 		URL:        opts.Admin.URL,
 		Secret:     opts.Admin.Secret,
@@ -183,6 +188,7 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make spam rest, %w", err)
 	}
 
+	// make spam logger
 	loggerWr, err := makeSpamLogWriter()
 	if err != nil {
 		return fmt.Errorf("can't make spam log writer, %w", err)
@@ -204,10 +210,11 @@ func execute(ctx context.Context) error {
 		Locator:      events.NewLocator(opts.HistoryDuration),
 		Dry:          opts.Dry,
 	}
-	log.Printf("[DEBUG] telegram listener params: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
+	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
 
+	// activate web server if configured
 	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
 		go func() {
 			if err := web.Run(ctx); err != nil {
@@ -218,12 +225,15 @@ func execute(ctx context.Context) error {
 		log.Print("[WARN] admin web server is disabled")
 	}
 
+	// run telegram listener and event processor
 	if err := tgListener.Do(ctx); err != nil {
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
 }
 
+// makeSpamLogger creates spam logger to keep reports about spam messages
+// it writes json lines to the provided writer
 func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
 		text := strings.ReplaceAll(response.Text, "\n", " ")
@@ -253,6 +263,8 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	})
 }
 
+// makeSpamLogWriter creates spam log writer to keep reports about spam messages
+// it parses options and makes lumberjack logger with rotation
 func makeSpamLogWriter() (accessLog io.WriteCloser, err error) {
 	if !opts.Logger.Enabled {
 		return nopWriteCloser{io.Discard}, nil
