@@ -12,36 +12,43 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/didip/tollbooth/v7"
+	"github.com/didip/tollbooth_chi"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-pkgz/lgr"
+	"github.com/go-pkgz/rest"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 
-// SpamWeb is a REST API for ban/unban actions
+// SpamWeb is a web server for ban/unban actions
 type SpamWeb struct {
-	Params
+	Config
 	TbAPI  TbAPI
 	chatID int64
 }
 
-// Params defines REST API parameters
-type Params struct {
+// Config defines web server parameters
+type Config struct {
+	Version    string // version to show in /ping
 	Secret     string // secret key to sign url tokens
 	URL        string // root url
 	ListenAddr string // listen address
 	TgGroup    string // telegram group name/id
 }
 
-// TbAPI is an interface for telegram bot API, only a subset of methods used
+// TbAPI is an interface for telegram bot API, only a subset of all methods used
 type TbAPI interface {
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
 }
 
-// NewSpamWeb creates new REST API server
-func NewSpamWeb(tbAPI TbAPI, params Params) (*SpamWeb, error) {
-	res := SpamWeb{Params: params, TbAPI: tbAPI}
+// NewSpamWeb creates new server
+func NewSpamWeb(tbAPI TbAPI, params Config) (*SpamWeb, error) {
+	res := SpamWeb{Config: params, TbAPI: tbAPI}
 	chatID, err := res.getChatID(params.TgGroup)
 	if err != nil {
 		return nil, fmt.Errorf("can't get chat ID for %s: %w", params.TgGroup, err)
@@ -50,20 +57,17 @@ func NewSpamWeb(tbAPI TbAPI, params Params) (*SpamWeb, error) {
 	return &res, nil
 }
 
-// Run starts REST API server
+// Run starts server and accepts requests to unban users from telegram
 func (s *SpamWeb) Run(ctx context.Context) error {
+	router := chi.NewRouter()
+	router.Use(middleware.RealIP, rest.Recoverer(lgr.Default()), middleware.GetHead)
+	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
+	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
+	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(5, nil)))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Application", "tg-spam")
-		if _, err := w.Write([]byte("pong")); err != nil {
-			log.Printf("[WARN] failed to write response, %v", err)
-		}
-	})
-	mux.HandleFunc("/unban", s.unbanHandler)
+	router.Get("/unban", s.unbanHandler)
 
-	srv := &http.Server{Addr: s.ListenAddr, Handler: mux, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
-
+	srv := &http.Server{Addr: s.ListenAddr, Handler: router, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		if err := srv.Shutdown(ctx); err != nil {
@@ -78,31 +82,67 @@ func (s *SpamWeb) Run(ctx context.Context) error {
 	return nil
 }
 
+type htmlResponse struct {
+	Title      string
+	Message    string
+	Background string
+	Foreground string
+	StatusCode int
+}
+
 // UnbanHandler handles unban requests, GET /unban?user=<user_id>&token=<token>
 func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("user")
 	token := r.URL.Query().Get("token")
-	userID, err := s.getChatID(id)
+	userID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		log.Printf("[WARN] failed to get user ID for %q, %v", id, err)
-		s.sendHTML(w, fmt.Sprintf("failed to get user ID for %q: %v", id, err), "Error", "#ff6347", "#ffffff", http.StatusBadRequest)
+		resp := htmlResponse{
+			Title:      "Error",
+			Message:    fmt.Sprintf("failed to get user ID for %q: %v", id, err),
+			Background: "#ff6347",
+			Foreground: "#ffffff",
+			StatusCode: http.StatusBadRequest,
+		}
+		s.sendHTML(w, resp)
 		return
 	}
 	expToken := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", userID, s.Secret))))
 	if len(token) != len(expToken) || subtle.ConstantTimeCompare([]byte(token), []byte(expToken)) != 1 {
 		log.Printf("[WARN] invalid token for %q", id)
-		s.sendHTML(w, fmt.Sprintf("invalid token for %q", id), "Error", "#ff6347", "#ffffff", http.StatusForbidden)
+		resp := htmlResponse{
+			Title:      "Error",
+			Message:    fmt.Sprintf("invalid token for %q", id),
+			Background: "#ff6347",
+			Foreground: "#ffffff",
+			StatusCode: http.StatusForbidden,
+		}
+		s.sendHTML(w, resp)
 		return
 	}
 	log.Printf("[INFO] unban user %d", userID)
 	_, err = s.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: s.chatID}})
 	if err != nil {
 		log.Printf("[WARN] failed to unban %s, %v", id, err)
-		s.sendHTML(w, fmt.Sprintf("failed to unban %s: %v", id, err), "Error", "#ff6347", "#ffffff", http.StatusInternalServerError)
+		resp := htmlResponse{
+			Title:      "Error",
+			Message:    fmt.Sprintf("failed to unban %s: %v", id, err),
+			Background: "#ff6347",
+			Foreground: "#ffffff",
+			StatusCode: http.StatusInternalServerError,
+		}
+		s.sendHTML(w, resp)
 		return
 	}
 
-	s.sendHTML(w, fmt.Sprintf("user %d unbanned", userID), "Success", "#90ee90", "#000000", http.StatusOK)
+	resp := htmlResponse{
+		Title:      "Success",
+		Message:    fmt.Sprintf("user %d unbanned", userID),
+		Background: "#90ee90",
+		Foreground: "#000000",
+		StatusCode: http.StatusOK,
+	}
+	s.sendHTML(w, resp)
 }
 
 func (s *SpamWeb) getChatID(group string) (int64, error) {
@@ -126,24 +166,12 @@ func (s *SpamWeb) UnbanURL(userID int64) string {
 	return fmt.Sprintf("%s/unban?user=%d&token=%s", s.URL, userID, key)
 }
 
-func (s *SpamWeb) sendHTML(w http.ResponseWriter, msg, title, background, foreground string, statusCode int) {
-	tmplParams := struct {
-		Title      string
-		Message    string
-		Background string
-		Foreground string
-	}{
-		Title:      title,
-		Message:    msg,
-		Background: background,
-		Foreground: foreground,
-	}
-
+func (s *SpamWeb) sendHTML(w http.ResponseWriter, resp htmlResponse) {
 	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(resp.StatusCode)
 
 	htmlTmpl := template.Must(template.New("msg").Parse(msgTemplate))
-	if err := htmlTmpl.Execute(w, tmplParams); err != nil {
+	if err := htmlTmpl.Execute(w, resp); err != nil {
 		log.Printf("[WARN] failed to execute template, %v", err)
 		return
 	}

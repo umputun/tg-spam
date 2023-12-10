@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -32,7 +33,7 @@ func TestSpamRest_UnbanURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := SpamWeb{Params: Params{URL: tt.url, Secret: tt.secret}}
+			srv := SpamWeb{Config: Config{URL: tt.url, Secret: tt.secret}}
 			res := srv.UnbanURL(123)
 			assert.Equal(t, tt.want, res)
 		})
@@ -45,17 +46,23 @@ func TestSpamRest_Run(t *testing.T) {
 
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			if config.ChatConfig.SuperGroupUsername == "xxx" {
+				return tbapi.Chat{}, errors.New("not found")
+			}
 			if config.ChatConfig.SuperGroupUsername == "@group" {
 				return tbapi.Chat{ID: 10}, nil
 			}
 			return tbapi.Chat{ID: 123}, nil
 		},
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			if c.(tbapi.UnbanChatMemberConfig).UserID == 666 {
+				return nil, errors.New("failed")
+			}
 			return &tbapi.APIResponse{}, nil
 		},
 	}
 
-	srv, err := NewSpamWeb(mockAPI, Params{
+	srv, err := NewSpamWeb(mockAPI, Config{
 		ListenAddr: ":9900",
 		URL:        "http://localhost:9090",
 		Secret:     "secret",
@@ -74,6 +81,18 @@ func TestSpamRest_Run(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond) // wait for server to start
 
+	t.Run("ping", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		resp, err := http.Get("http://localhost:9900/ping")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "text/plain", resp.Header.Get("Content-Type"))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, "pong", string(body))
+	})
+
 	t.Run("unban forbidden, wrong token", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		req, err := http.NewRequest("GET", "http://localhost:9900/unban?user=123&token=ssss", http.NoBody)
@@ -89,6 +108,43 @@ func TestSpamRest_Run(t *testing.T) {
 		t.Logf("body: %s", body)
 		assert.Contains(t, string(body), "Error")
 		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("unban failed, bad id", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		req, err := http.NewRequest("GET",
+			"http://localhost:9900/unban?user=xxx&token=71199ea8c011a49df546451e456ad10b0016566a53c4861bf849ec6b2ad2a0b7", http.NoBody)
+		require.NoError(t, err)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "Error")
+		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("unban failed, unban request failed", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		req, err := http.NewRequest("GET",
+			"http://localhost:9900/unban?user=666&token=4eeb1bfa92a5c9418e8708953daaba267f86df63281da9480c53206d4cb2be32", http.NoBody)
+		require.NoError(t, err)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "Error")
+		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
+
 	})
 
 	t.Run("unban allowed, matched token", func(t *testing.T) {
