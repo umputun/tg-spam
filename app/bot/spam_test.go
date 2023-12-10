@@ -53,24 +53,6 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 }
 
 func TestSpamFilter_reloadSamples(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var osOpen = os.Open // Mock for os.Open function
-
-	// Mock os.Open
-	openOriginal := osOpen
-	defer func() { osOpen = openOriginal }()
-	osOpen = func(name string) (*os.File, error) {
-		if name == "fail" {
-			return nil, errors.New("open error")
-		}
-		if name == "notfound" {
-			return nil, os.ErrNotExist
-		}
-		return os.Open(os.DevNull) // Open a harmless file for other cases
-	}
-
 	mockDirector := &mocks.DetectorMock{
 		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
 			return lib.LoadResult{}, nil
@@ -80,64 +62,55 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 		},
 	}
 
-	s := NewSpamFilter(ctx, mockDirector, nil, nil, SpamParams{
-		SpamSamplesFile:    "/dev/null",
-		HamSamplesFile:     "/dev/null",
-		StopWordsFile:      "optional",
-		ExcludedTokensFile: "optional",
-		SpamDynamicFile:    "optional",
-		HamDynamicFile:     "optional",
-	})
-
 	tests := []struct {
 		name        string
-		modify      func()
+		modify      func(s *SpamParams)
 		expectedErr error
 	}{
 		{
 			name:        "Successful execution",
-			modify:      func() {},
+			modify:      func(s *SpamParams) {},
 			expectedErr: nil,
 		},
 		{
 			name: "Spam samples file open failure",
-			modify: func() {
-				s.params.SpamSamplesFile = "fail"
+			modify: func(s *SpamParams) {
+				s.SpamSamplesFile = "fail"
 			},
 			expectedErr: errors.New("failed to open spam samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
 			name: "Ham samples file open failure",
-			modify: func() {
-				s.params.HamSamplesFile = "fail"
+			modify: func(s *SpamParams) {
+				s.HamSamplesFile = "fail"
 			},
 			expectedErr: errors.New("failed to open ham samples file \"fail\": open fail: no such file or directory"),
 		},
 		{
 			name: "Stop words file not found",
-			modify: func() {
-				s.params.StopWordsFile = "notfound"
+			modify: func(s *SpamParams) {
+				s.StopWordsFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Excluded tokens file not found",
-			modify: func() {
-				s.params.ExcludedTokensFile = "notfound"
+			modify: func(s *SpamParams) {
+				s.ExcludedTokensFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Spam dynamic file not found",
-			modify: func() {
-				s.params.SpamDynamicFile = "notfound"
+			modify: func(s *SpamParams) {
+				s.SpamDynamicFile = "notfound"
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "Ham dynamic file not found",
-			modify: func() {
-				s.params.HamDynamicFile = "notfound"
+			modify: func(s *SpamParams) {
+				s.HamDynamicFile = "notfound"
 			},
 			expectedErr: nil,
 		},
@@ -145,17 +118,39 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Create temporary files for each test
+			spamSamplesFile, err := os.CreateTemp("", "spam")
+			require.NoError(t, err)
+			defer os.Remove(spamSamplesFile.Name())
+
+			hamSamplesFile, err := os.CreateTemp("", "ham")
+			require.NoError(t, err)
+			defer os.Remove(hamSamplesFile.Name())
+
+			stopWordsFile, err := os.CreateTemp("", "stopwords")
+			require.NoError(t, err)
+			defer os.Remove(stopWordsFile.Name())
+
+			excludedTokensFile, err := os.CreateTemp("", "excludedtokens")
+			require.NoError(t, err)
+			defer os.Remove(excludedTokensFile.Name())
+
 			// Reset to default values before each test
-			s = NewSpamFilter(ctx, mockDirector, nil, nil, SpamParams{
-				SpamSamplesFile:    "/dev/null",
-				HamSamplesFile:     "/dev/null",
-				StopWordsFile:      "optional",
-				ExcludedTokensFile: "optional",
+			params := SpamParams{
+				SpamSamplesFile:    spamSamplesFile.Name(),
+				HamSamplesFile:     hamSamplesFile.Name(),
+				StopWordsFile:      stopWordsFile.Name(),
+				ExcludedTokensFile: excludedTokensFile.Name(),
 				SpamDynamicFile:    "optional",
 				HamDynamicFile:     "optional",
-			})
-			tc.modify()
-			err := s.ReloadSamples()
+			}
+			tc.modify(&params)
+			s := NewSpamFilter(ctx, mockDirector, nil, nil, params)
+
+			err = s.ReloadSamples()
 
 			if tc.expectedErr != nil {
 				require.Error(t, err)
@@ -171,9 +166,14 @@ func TestSpamFilter_watch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	count := 0
 	mockDetector := &mocks.DetectorMock{
 		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+			count++
+			if count == 1 { // only first call should succeed
+				return lib.LoadResult{}, nil
+			}
+			return lib.LoadResult{}, errors.New("error")
 		},
 		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
 			return lib.LoadResult{}, nil
@@ -203,9 +203,10 @@ func TestSpamFilter_watch(t *testing.T) {
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
 		StopWordsFile:      stopWordsFile,
+		WatchDelay:         time.Millisecond * 100,
 	})
 
-	time.Sleep(100 * time.Millisecond) // let it start
+	time.Sleep(200 * time.Millisecond) // let it start
 
 	assert.Equal(t, 0, len(mockDetector.LoadSamplesCalls()))
 	assert.Equal(t, 0, len(mockDetector.LoadStopWordsCalls()))
@@ -215,23 +216,24 @@ func TestSpamFilter_watch(t *testing.T) {
 	err = os.WriteFile(spamSamplesFile, []byte(message), 0o600)
 	require.NoError(t, err)
 	// wait for reload to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 200)
 
 	assert.Equal(t, 1, len(mockDetector.LoadSamplesCalls()))
 	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
 
-	// make load samples fail
-	mockDetector.LoadSamplesFunc = func(_ io.Reader, _ []io.Reader, _ []io.Reader) (lib.LoadResult, error) {
-		return lib.LoadResult{}, errors.New("error")
-	}
-	// write to spam samples file
-	message = "spam message"
-	err = os.WriteFile(spamSamplesFile, []byte(message), 0o600)
+	// write to ham samples file
+	message = "ham message"
+	err = os.WriteFile(hamSamplesFile, []byte(message), 0o600)
 	require.NoError(t, err)
 	// wait for reload to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Millisecond * 200)
 	assert.Equal(t, 2, len(mockDetector.LoadSamplesCalls()))
-	cancel()
+	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
+
+	// wait to make sure no more reloads happen
+	time.Sleep(time.Millisecond * 500)
+	assert.Equal(t, 2, len(mockDetector.LoadSamplesCalls()))
+	assert.Equal(t, 1, len(mockDetector.LoadStopWordsCalls()))
 }
 
 func TestSpamFilter_Update(t *testing.T) {

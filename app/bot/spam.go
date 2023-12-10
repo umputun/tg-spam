@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-multierror"
@@ -41,6 +42,8 @@ type SpamParams struct {
 	SpamMsg    string
 	SpamDryMsg string
 
+	WatchDelay time.Duration
+
 	Dry bool
 }
 
@@ -65,7 +68,7 @@ type sampleUpdaterInterface interface {
 func NewSpamFilter(ctx context.Context, detector Detector, su, hu sampleUpdaterInterface, params SpamParams) *SpamFilter {
 	res := &SpamFilter{director: detector, params: params, spamSamplesUpd: su, hamSamplesUpd: hu}
 	go func() {
-		if err := res.watch(ctx); err != nil {
+		if err := res.watch(ctx, params.WatchDelay); err != nil {
 			log.Printf("[WARN] samples file watcher failed: %v", err)
 		}
 	}()
@@ -108,7 +111,9 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 	return nil
 }
 
-func (s *SpamFilter) watch(ctx context.Context) error {
+// watch watches for changes in samples files and reloads them
+// delay is a time to wait after the last change before reloading to avoid multiple reloads
+func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create watcher: %w", err)
@@ -116,6 +121,9 @@ func (s *SpamFilter) watch(ctx context.Context) error {
 	defer watcher.Close()
 
 	done := make(chan bool)
+	reloadTimer := time.NewTimer(delay)
+	reloadPending := false
+
 	go func() {
 		defer close(done)
 		for {
@@ -128,7 +136,15 @@ func (s *SpamFilter) watch(ctx context.Context) error {
 					return
 				}
 				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					log.Printf("[DEBUG] file %s updated", event.Name)
+					log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
+					if !reloadPending {
+						reloadPending = true
+						reloadTimer.Reset(delay)
+					}
+				}
+			case <-reloadTimer.C:
+				if reloadPending {
+					reloadPending = false
 					if err := s.ReloadSamples(); err != nil {
 						log.Printf("[WARN] %v", err)
 					}
@@ -143,12 +159,19 @@ func (s *SpamFilter) watch(ctx context.Context) error {
 	}()
 
 	errs := new(multierror.Error)
-	errs = multierror.Append(errs, watcher.Add(s.params.ExcludedTokensFile))
-	errs = multierror.Append(errs, watcher.Add(s.params.SpamSamplesFile))
-	errs = multierror.Append(errs, watcher.Add(s.params.HamSamplesFile))
-	errs = multierror.Append(errs, watcher.Add(s.params.StopWordsFile))
+	addToWatcher := func(file string) error {
+		if _, err := os.Stat(file); err != nil {
+			return fmt.Errorf("failed to stat file %q: %w", file, err)
+		}
+		log.Printf("[DEBUG] add file %q to watcher", file)
+		return watcher.Add(file)
+	}
+	errs = multierror.Append(errs, addToWatcher(s.params.ExcludedTokensFile))
+	errs = multierror.Append(errs, addToWatcher(s.params.SpamSamplesFile))
+	errs = multierror.Append(errs, addToWatcher(s.params.HamSamplesFile))
+	errs = multierror.Append(errs, addToWatcher(s.params.StopWordsFile))
 	if err := errs.ErrorOrNil(); err != nil {
-		return fmt.Errorf("failed to add files to watcher: %w", err)
+		return fmt.Errorf("failed to add some files to watcher: %w", err)
 	}
 	<-done
 	return nil

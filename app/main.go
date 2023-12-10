@@ -152,6 +152,7 @@ func execute(ctx context.Context) error {
 		StopWordsFile:      opts.Files.StopWordsFile,
 		SpamMsg:            opts.Message.Spam,
 		SpamDryMsg:         opts.Message.Dry,
+		WatchDelay:         time.Second * 5,
 		Dry:                opts.Dry,
 	})
 
