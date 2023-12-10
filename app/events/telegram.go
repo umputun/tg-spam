@@ -212,6 +212,8 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	return errs.ErrorOrNil()
 }
 
+// adminChatMsgHandler handles messages received on admin chat. This is usually forwarded spam failed
+// to be detected by the bot. We need to update spam filter with this message and ban the user.
 func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int64) error {
 	shrink := func(inp string, max int) string {
 		if utf8.RuneCountInString(inp) <= max {
