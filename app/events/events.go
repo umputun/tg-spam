@@ -246,7 +246,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int
 		log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
 	}
 
-	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limiatation,
+	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
 	info, ok := l.Locator.Get(update.Message.Text)
 	if !ok {
