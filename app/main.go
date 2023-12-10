@@ -62,19 +62,19 @@ var opts struct {
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
 	Files struct {
-		SamplesSpamFile  string `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"path to spam samples"`
-		SamplesHamFile   string `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"path to ham samples"`
-		ExcludeTokenFile string `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"path to exclude tokens file"`
-		StopWordsFile    string `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"path to stop words file"`
-		DynamicSpamFile  string `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"path to dynamic spam file"`
-		DynamicHamFile   string `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"path to dynamic ham file"`
+		SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
+		SamplesHamFile   string        `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"ham samples"`
+		ExcludeTokenFile string        `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"exclude tokens file"`
+		StopWordsFile    string        `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"stop words file"`
+		DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
+		DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
+		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
-
-	MinMsgLen    int  `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
-	MaxEmoji     int  `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message"`
-	ParanoidMode bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
+	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
+	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
+	ParanoidMode        bool    `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
@@ -149,9 +149,9 @@ func execute(ctx context.Context) error {
 		HamDynamicFile:     opts.Files.DynamicHamFile,
 		ExcludedTokensFile: opts.Files.ExcludeTokenFile,
 		StopWordsFile:      opts.Files.StopWordsFile,
+		WatchDelay:         opts.Files.WatchInterval,
 		SpamMsg:            opts.Message.Spam,
 		SpamDryMsg:         opts.Message.Dry,
-		WatchDelay:         time.Second * 5,
 		Dry:                opts.Dry,
 	})
 
