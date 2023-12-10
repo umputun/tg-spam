@@ -24,8 +24,8 @@ type SpamFilter struct {
 	director Detector
 	params   SpamParams
 
-	spamSamplesUpd sampleUpdaterInterface
-	hamSamplesUpd  sampleUpdaterInterface
+	// spamSamplesUpd sampleUpdaterInterface
+	// hamSamplesUpd  sampleUpdaterInterface
 }
 
 // SpamParams is a full set of parameters for spam bot
@@ -50,23 +50,15 @@ type SpamParams struct {
 // Detector is a spam detector interface
 type Detector interface {
 	Check(msg string, userID int64) (spam bool, cr []lib.CheckResult)
-	Reset()
-	WithSpamUpdater(s lib.SampleUpdater)
-	WithHamUpdater(s lib.SampleUpdater)
 	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (lib.LoadResult, error)
 	LoadStopWords(readers ...io.Reader) (lib.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 }
 
-type sampleUpdaterInterface interface {
-	Append(msg string) error
-	Reader() (io.ReadCloser, error)
-}
-
 // NewSpamFilter creates new spam filter
-func NewSpamFilter(ctx context.Context, detector Detector, su, hu sampleUpdaterInterface, params SpamParams) *SpamFilter {
-	res := &SpamFilter{director: detector, params: params, spamSamplesUpd: su, hamSamplesUpd: hu}
+func NewSpamFilter(ctx context.Context, detector Detector, params SpamParams) *SpamFilter {
+	res := &SpamFilter{director: detector, params: params}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {
 			log.Printf("[WARN] samples file watcher failed: %v", err)
@@ -96,7 +88,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 // UpdateSpam appends a message to the spam samples file and updates the classifier
 func (s *SpamFilter) UpdateSpam(msg string) error {
 	log.Printf("[DEBUG] update spam samples with %q", msg)
-	if err := s.spamSamplesUpd.Append(msg); err != nil {
+	if err := s.director.UpdateSpam(msg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
 	return nil
@@ -105,7 +97,7 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (s *SpamFilter) UpdateHam(msg string) error {
 	log.Printf("[DEBUG] update ham samples with %q", msg)
-	if err := s.hamSamplesUpd.Append(msg); err != nil {
+	if err := s.director.UpdateHam(msg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
 	return nil

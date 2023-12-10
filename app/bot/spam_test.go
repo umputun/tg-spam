@@ -31,7 +31,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	}
 
 	t.Run("spam detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, nil, nil, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true}, resp)
@@ -39,14 +39,14 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	})
 
 	t.Run("spam detected, dry", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, nil, nil, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
+		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
 		assert.True(t, resp.Send)
 	})
 
 	t.Run("ham detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, nil, nil, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "good", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{}, resp)
 	})
@@ -149,7 +149,7 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 				HamDynamicFile:     "optional",
 			}
 			tc.modify(&params)
-			s := NewSpamFilter(ctx, mockDirector, nil, nil, params)
+			s := NewSpamFilter(ctx, mockDirector, params)
 
 			err = s.ReloadSamples()
 
@@ -199,7 +199,7 @@ func TestSpamFilter_watch(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, nil, nil, SpamParams{
+	NewSpamFilter(ctx, mockDetector, SpamParams{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -268,7 +268,7 @@ func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, nil, nil, SpamParams{
+	NewSpamFilter(ctx, mockDetector, SpamParams{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -301,18 +301,14 @@ func TestSpamFilter_Update(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mockDetector := &mocks.DetectorMock{}
-
-	mockSpamUpdater := &mocks.SampleUpdater{
-		AppendFunc: func(msg string) error {
+	mockDetector := &mocks.DetectorMock{
+		UpdateSpamFunc: func(msg string) error {
 			if msg == "err" {
 				return errors.New("error")
 			}
 			return nil
 		},
-	}
-	mockHamUpdater := &mocks.SampleUpdater{
-		AppendFunc: func(msg string) error {
+		UpdateHamFunc: func(msg string) error {
 			if msg == "err" {
 				return errors.New("error")
 			}
@@ -320,7 +316,7 @@ func TestSpamFilter_Update(t *testing.T) {
 		},
 	}
 
-	sf := NewSpamFilter(ctx, mockDetector, mockSpamUpdater, mockHamUpdater, SpamParams{})
+	sf := NewSpamFilter(ctx, mockDetector, SpamParams{})
 
 	t.Run("good update", func(t *testing.T) {
 		err := sf.UpdateSpam("spam")

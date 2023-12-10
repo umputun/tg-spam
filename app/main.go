@@ -140,10 +140,9 @@ func execute(ctx context.Context) error {
 		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
 		FirstMessageOnly:    !opts.ParanoidMode,
 	})
-
-	spamUpd := bot.NewSampleUpdater(opts.Files.DynamicSpamFile)
-	hamUpd := bot.NewSampleUpdater(opts.Files.DynamicHamFile)
-	spamBot := bot.NewSpamFilter(ctx, detector, spamUpd, hamUpd, bot.SpamParams{
+	detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))
+	detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
+	spamBot := bot.NewSpamFilter(ctx, detector, bot.SpamParams{
 		SpamSamplesFile:    opts.Files.SamplesSpamFile,
 		HamSamplesFile:     opts.Files.SamplesHamFile,
 		SpamDynamicFile:    opts.Files.DynamicSpamFile,
