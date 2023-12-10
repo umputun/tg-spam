@@ -32,7 +32,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	t.Run("spam detected", func(t *testing.T) {
 		s := NewSpamFilter(ctx, det, nil, nil, SpamParams{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
-		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: permanentBanDuration,
+		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true}, resp)
 		t.Logf("resp: %+v", resp)
 	})

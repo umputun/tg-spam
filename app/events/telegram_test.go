@@ -38,6 +38,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		Group:      "gr",
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
+		Locator:    NewLocator(10 * time.Minute),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -98,6 +99,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
+		Locator:    NewLocator(10 * time.Minute),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -228,6 +230,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 		TbAPI:      mockAPI,
 		Bot:        b,
 		Group:      "gr",
+		Locator:    NewLocator(10 * time.Minute),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -274,6 +277,9 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
 		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
 	}
 	b := &mocks.BotMock{
 		OnMessageFunc: func(msg bot.Message) bot.Response {
@@ -297,6 +303,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		AdminGroup: "123",
 		StartupMsg: "startup",
 		SuperUsers: SuperUser{"umputun"},
+		Locator:    NewLocator(10 * time.Minute),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -306,7 +313,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		Message: &tbapi.Message{
 			Chat:              &tbapi.Chat{ID: 123},
 			Text:              "text 123",
-			From:              &tbapi.User{UserName: "umputun"},
+			From:              &tbapi.User{UserName: "umputun", ID: 77},
 			Date:              int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
 			ForwardSenderName: "forwarded_name",
 		},

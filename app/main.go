@@ -43,7 +43,8 @@ var opts struct {
 		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
 	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
 
-	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -186,6 +187,7 @@ func execute(ctx context.Context) error {
 		AdminGroup:   opts.Admin.Group,
 		TestingIDs:   opts.TestingIDs,
 		SpamWeb:      web,
+		Locator:      events.NewLocator(opts.HistoryDuration),
 		Dry:          opts.Dry,
 	}
 
