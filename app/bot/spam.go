@@ -222,7 +222,7 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 	}
 
 	log.Printf("[INFO] loaded samples - spam: %d, ham: %d, excluded tokens: %d, stop-words: %d",
-		lr.SpamSamples, lr.HamSamples, ls.ExcludedTokens, ls.StopWords)
+		lr.SpamSamples, lr.HamSamples, lr.ExcludedTokens, ls.StopWords)
 
 	return nil
 }

@@ -132,17 +132,27 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = opts.TGDbg
 
-	detector := lib.NewDetector(lib.Config{
+	detectorConfig := lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
 		SimilarityThreshold: opts.SimilarityThreshold,
 		CasAPI:              opts.CAS.API,
 		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
 		FirstMessageOnly:    !opts.ParanoidMode,
-	})
-	detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))
-	detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
-	spamBot := bot.NewSpamFilter(ctx, detector, bot.SpamParams{
+	}
+	detector := lib.NewDetector(detectorConfig)
+	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
+
+	if opts.Files.DynamicSpamFile != "" {
+		detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))
+		log.Printf("[DEBUG] dynamic spam file: %s", opts.Files.DynamicSpamFile)
+	}
+	if opts.Files.DynamicHamFile != "" {
+		detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
+		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
+	}
+
+	spamBotParams := bot.SpamParams{
 		SpamSamplesFile:    opts.Files.SamplesSpamFile,
 		HamSamplesFile:     opts.Files.SamplesHamFile,
 		SpamDynamicFile:    opts.Files.DynamicSpamFile,
@@ -153,18 +163,22 @@ func execute(ctx context.Context) error {
 		SpamMsg:            opts.Message.Spam,
 		SpamDryMsg:         opts.Message.Dry,
 		Dry:                opts.Dry,
-	})
+	}
+	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
+	log.Printf("[DEBUG] spam bot params: %+v", spamBotParams)
 
 	if err = spamBot.ReloadSamples(); err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
-	web, err := server.NewSpamWeb(tbAPI, server.Params{
+	srvParams := server.Params{
 		TgGroup:    opts.Telegram.Group,
 		URL:        opts.Admin.URL,
 		Secret:     opts.Admin.Secret,
 		ListenAddr: opts.Admin.Address,
-	})
+	}
+	web, err := server.NewSpamWeb(tbAPI, srvParams)
+	log.Printf("[DEBUG] web params: %+v", srvParams)
 	if err != nil {
 		return fmt.Errorf("can't make spam rest, %w", err)
 	}
@@ -190,6 +204,9 @@ func execute(ctx context.Context) error {
 		Locator:      events.NewLocator(opts.HistoryDuration),
 		Dry:          opts.Dry,
 	}
+	log.Printf("[DEBUG] telegram listener params: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
+		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
 
 	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
 		go func() {
@@ -209,8 +226,9 @@ func execute(ctx context.Context) error {
 
 func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
-		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, response.Text)
-		log.Printf("[DEBUG] spam message:  %q", msg.Text)
+		text := strings.ReplaceAll(response.Text, "\n", " ")
+		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, text)
+		log.Printf("[DEBUG] spam message: %q", text)
 		m := struct {
 			TimeStamp   string `json:"ts"`
 			DisplayName string `json:"display_name"`
@@ -222,7 +240,7 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 			DisplayName: msg.From.DisplayName,
 			UserName:    msg.From.Username,
 			UserID:      msg.From.ID,
-			Text:        strings.ReplaceAll(msg.Text, "\n", " "),
+			Text:        text,
 		}
 		line, err := json.Marshal(&m)
 		if err != nil {
