@@ -30,7 +30,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	}
 
 	response := &bot.Response{
-		Text: "Test response",
+		Text: "Test message",
 	}
 
 	logger.Save(msg, response)
