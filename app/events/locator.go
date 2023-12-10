@@ -39,7 +39,8 @@ func NewLocator(ttl time.Duration) *Locator {
 	}
 }
 
-// Get returns message MsgMeta for give msg
+// Get returns message MsgMeta for given msg
+// this allows to match messages from admin chat (only text available) to the original message
 func (l *Locator) Get(msg string) (MsgMeta, bool) {
 	hash := l.MsgHash(msg)
 	res, ok := l.data[hash]
@@ -51,7 +52,8 @@ func (l *Locator) MsgHash(msg string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(msg)))
 }
 
-// Add adds message to the locator
+// Add adds messages to the locator and removes old messages
+// Note: removes old messages only once per cleanupDuration and only if a new message is added
 func (l *Locator) Add(msg string, chatID, userID int64, msgID int) {
 	l.data[l.MsgHash(msg)] = MsgMeta{
 		time:   time.Now(),
