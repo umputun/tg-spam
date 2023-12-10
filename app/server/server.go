@@ -60,7 +60,7 @@ func NewSpamWeb(tbAPI TbAPI, params Config) (*SpamWeb, error) {
 // Run starts server and accepts requests to unban users from telegram
 func (s *SpamWeb) Run(ctx context.Context) error {
 	router := chi.NewRouter()
-	router.Use(rest.Recoverer(lgr.Default()), middleware.GetHead)
+	router.Use(rest.Recoverer(lgr.Default()))
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
 	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(5, nil)))
