@@ -221,7 +221,7 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 		return fmt.Errorf("failed to reload stop words: %w", err)
 	}
 
-	log.Printf("[INFO] reloaded samples - spam: %d, ham: %d, excluded tokens: %d, stop-words: %d",
+	log.Printf("[INFO] loaded samples - spam: %d, ham: %d, excluded tokens: %d, stop-words: %d",
 		lr.SpamSamples, lr.HamSamples, ls.ExcludedTokens, ls.StopWords)
 
 	return nil

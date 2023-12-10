@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/hashicorp/go-multierror"
@@ -215,10 +216,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int64) error {
 	shrink := func(inp string, max int) string {
-		if len(inp) <= max {
+		if utf8.RuneCountInString(inp) <= max {
 			return inp
 		}
-		return inp[:max] + "..."
+		return string([]rune(inp)[:max]) + "..."
 	}
 
 	// message from supers to admin chat
@@ -233,14 +234,14 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int
 			if err := l.Bot.UpdateSpam(msgTxt); err != nil {
 				return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
 			}
-			log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 20))
+			log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
 		}
 
 		// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limiatation,
 		// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
 		info, ok := l.Locator.Get(update.Message.Text)
 		if !ok {
-			return fmt.Errorf("not found %q in locator", update.Message.Text)
+			return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
 		}
 
 		log.Printf("[DEBUG] locator found message %+v", info)
