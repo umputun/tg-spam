@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -15,7 +16,6 @@ import (
 	"github.com/umputun/tg-spam/lib"
 )
 
-//go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure . sampleUpdaterInterface:SampleUpdater
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure . Detector
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
@@ -49,7 +49,7 @@ type SpamConfig struct {
 
 // Detector is a spam detector interface
 type Detector interface {
-	Check(msg string, userID int64) (spam bool, cr []lib.CheckResult)
+	Check(msg string, userID string) (spam bool, cr []lib.CheckResult)
 	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (lib.LoadResult, error)
 	LoadStopWords(readers ...io.Reader) (lib.LoadResult, error)
 	UpdateSpam(msg string) error
@@ -70,7 +70,7 @@ func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *S
 // OnMessage checks if user already approved and if not checks if user is a spammer
 func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	displayUsername := DisplayName(msg)
-	isSpam, checkResults := s.director.Check(msg.Text, msg.From.ID)
+	isSpam, checkResults := s.director.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
 	if isSpam {
 		log.Printf("[INFO] user %s detected as spammer, msg: %q, %+v", displayUsername, msg.Text, checkResults)
 		msgPrefix := s.params.SpamMsg
@@ -81,9 +81,8 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
-	} else {
-		log.Printf("[DEBUG] user %s is not a spammer, %+v", displayUsername, checkResults)
 	}
+	log.Printf("[DEBUG] user %s is not a spammer, %+v", displayUsername, checkResults)
 	return Response{} // not a spam
 }
 

@@ -15,7 +15,7 @@ import (
 //
 //		// make and configure a mocked bot.Detector
 //		mockedDetector := &DetectorMock{
-//			CheckFunc: func(msg string, userID int64) (bool, []lib.CheckResult) {
+//			CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
 //				panic("mock out the Check method")
 //			},
 //			LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
@@ -24,20 +24,11 @@ import (
 //			LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
 //				panic("mock out the LoadStopWords method")
 //			},
-//			ResetFunc: func()  {
-//				panic("mock out the Reset method")
-//			},
 //			UpdateHamFunc: func(msg string) error {
 //				panic("mock out the UpdateHam method")
 //			},
 //			UpdateSpamFunc: func(msg string) error {
 //				panic("mock out the UpdateSpam method")
-//			},
-//			WithHamUpdaterFunc: func(s lib.SampleUpdater)  {
-//				panic("mock out the WithHamUpdater method")
-//			},
-//			WithSpamUpdaterFunc: func(s lib.SampleUpdater)  {
-//				panic("mock out the WithSpamUpdater method")
 //			},
 //		}
 //
@@ -47,7 +38,7 @@ import (
 //	}
 type DetectorMock struct {
 	// CheckFunc mocks the Check method.
-	CheckFunc func(msg string, userID int64) (bool, []lib.CheckResult)
+	CheckFunc func(msg string, userID string) (bool, []lib.CheckResult)
 
 	// LoadSamplesFunc mocks the LoadSamples method.
 	LoadSamplesFunc func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error)
@@ -55,20 +46,11 @@ type DetectorMock struct {
 	// LoadStopWordsFunc mocks the LoadStopWords method.
 	LoadStopWordsFunc func(readers ...io.Reader) (lib.LoadResult, error)
 
-	// ResetFunc mocks the Reset method.
-	ResetFunc func()
-
 	// UpdateHamFunc mocks the UpdateHam method.
 	UpdateHamFunc func(msg string) error
 
 	// UpdateSpamFunc mocks the UpdateSpam method.
 	UpdateSpamFunc func(msg string) error
-
-	// WithHamUpdaterFunc mocks the WithHamUpdater method.
-	WithHamUpdaterFunc func(s lib.SampleUpdater)
-
-	// WithSpamUpdaterFunc mocks the WithSpamUpdater method.
-	WithSpamUpdaterFunc func(s lib.SampleUpdater)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -77,7 +59,7 @@ type DetectorMock struct {
 			// Msg is the msg argument value.
 			Msg string
 			// UserID is the userID argument value.
-			UserID int64
+			UserID string
 		}
 		// LoadSamples holds details about calls to the LoadSamples method.
 		LoadSamples []struct {
@@ -93,9 +75,6 @@ type DetectorMock struct {
 			// Readers is the readers argument value.
 			Readers []io.Reader
 		}
-		// Reset holds details about calls to the Reset method.
-		Reset []struct {
-		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
 			// Msg is the msg argument value.
@@ -106,35 +85,22 @@ type DetectorMock struct {
 			// Msg is the msg argument value.
 			Msg string
 		}
-		// WithHamUpdater holds details about calls to the WithHamUpdater method.
-		WithHamUpdater []struct {
-			// S is the s argument value.
-			S lib.SampleUpdater
-		}
-		// WithSpamUpdater holds details about calls to the WithSpamUpdater method.
-		WithSpamUpdater []struct {
-			// S is the s argument value.
-			S lib.SampleUpdater
-		}
 	}
-	lockCheck           sync.RWMutex
-	lockLoadSamples     sync.RWMutex
-	lockLoadStopWords   sync.RWMutex
-	lockReset           sync.RWMutex
-	lockUpdateHam       sync.RWMutex
-	lockUpdateSpam      sync.RWMutex
-	lockWithHamUpdater  sync.RWMutex
-	lockWithSpamUpdater sync.RWMutex
+	lockCheck         sync.RWMutex
+	lockLoadSamples   sync.RWMutex
+	lockLoadStopWords sync.RWMutex
+	lockUpdateHam     sync.RWMutex
+	lockUpdateSpam    sync.RWMutex
 }
 
 // Check calls CheckFunc.
-func (mock *DetectorMock) Check(msg string, userID int64) (bool, []lib.CheckResult) {
+func (mock *DetectorMock) Check(msg string, userID string) (bool, []lib.CheckResult) {
 	if mock.CheckFunc == nil {
 		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
 	}
 	callInfo := struct {
 		Msg    string
-		UserID int64
+		UserID string
 	}{
 		Msg:    msg,
 		UserID: userID,
@@ -151,11 +117,11 @@ func (mock *DetectorMock) Check(msg string, userID int64) (bool, []lib.CheckResu
 //	len(mockedDetector.CheckCalls())
 func (mock *DetectorMock) CheckCalls() []struct {
 	Msg    string
-	UserID int64
+	UserID string
 } {
 	var calls []struct {
 		Msg    string
-		UserID int64
+		UserID string
 	}
 	mock.lockCheck.RLock()
 	calls = mock.calls.Check
@@ -235,33 +201,6 @@ func (mock *DetectorMock) LoadStopWordsCalls() []struct {
 	return calls
 }
 
-// Reset calls ResetFunc.
-func (mock *DetectorMock) Reset() {
-	if mock.ResetFunc == nil {
-		panic("DetectorMock.ResetFunc: method is nil but Detector.Reset was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockReset.Lock()
-	mock.calls.Reset = append(mock.calls.Reset, callInfo)
-	mock.lockReset.Unlock()
-	mock.ResetFunc()
-}
-
-// ResetCalls gets all the calls that were made to Reset.
-// Check the length with:
-//
-//	len(mockedDetector.ResetCalls())
-func (mock *DetectorMock) ResetCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockReset.RLock()
-	calls = mock.calls.Reset
-	mock.lockReset.RUnlock()
-	return calls
-}
-
 // UpdateHam calls UpdateHamFunc.
 func (mock *DetectorMock) UpdateHam(msg string) error {
 	if mock.UpdateHamFunc == nil {
@@ -323,69 +262,5 @@ func (mock *DetectorMock) UpdateSpamCalls() []struct {
 	mock.lockUpdateSpam.RLock()
 	calls = mock.calls.UpdateSpam
 	mock.lockUpdateSpam.RUnlock()
-	return calls
-}
-
-// WithHamUpdater calls WithHamUpdaterFunc.
-func (mock *DetectorMock) WithHamUpdater(s lib.SampleUpdater) {
-	if mock.WithHamUpdaterFunc == nil {
-		panic("DetectorMock.WithHamUpdaterFunc: method is nil but Detector.WithHamUpdater was just called")
-	}
-	callInfo := struct {
-		S lib.SampleUpdater
-	}{
-		S: s,
-	}
-	mock.lockWithHamUpdater.Lock()
-	mock.calls.WithHamUpdater = append(mock.calls.WithHamUpdater, callInfo)
-	mock.lockWithHamUpdater.Unlock()
-	mock.WithHamUpdaterFunc(s)
-}
-
-// WithHamUpdaterCalls gets all the calls that were made to WithHamUpdater.
-// Check the length with:
-//
-//	len(mockedDetector.WithHamUpdaterCalls())
-func (mock *DetectorMock) WithHamUpdaterCalls() []struct {
-	S lib.SampleUpdater
-} {
-	var calls []struct {
-		S lib.SampleUpdater
-	}
-	mock.lockWithHamUpdater.RLock()
-	calls = mock.calls.WithHamUpdater
-	mock.lockWithHamUpdater.RUnlock()
-	return calls
-}
-
-// WithSpamUpdater calls WithSpamUpdaterFunc.
-func (mock *DetectorMock) WithSpamUpdater(s lib.SampleUpdater) {
-	if mock.WithSpamUpdaterFunc == nil {
-		panic("DetectorMock.WithSpamUpdaterFunc: method is nil but Detector.WithSpamUpdater was just called")
-	}
-	callInfo := struct {
-		S lib.SampleUpdater
-	}{
-		S: s,
-	}
-	mock.lockWithSpamUpdater.Lock()
-	mock.calls.WithSpamUpdater = append(mock.calls.WithSpamUpdater, callInfo)
-	mock.lockWithSpamUpdater.Unlock()
-	mock.WithSpamUpdaterFunc(s)
-}
-
-// WithSpamUpdaterCalls gets all the calls that were made to WithSpamUpdater.
-// Check the length with:
-//
-//	len(mockedDetector.WithSpamUpdaterCalls())
-func (mock *DetectorMock) WithSpamUpdaterCalls() []struct {
-	S lib.SampleUpdater
-} {
-	var calls []struct {
-		S lib.SampleUpdater
-	}
-	mock.lockWithSpamUpdater.RLock()
-	calls = mock.calls.WithSpamUpdater
-	mock.lockWithSpamUpdater.RUnlock()
 	return calls
 }

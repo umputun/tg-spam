@@ -22,7 +22,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	defer cancel()
 
 	det := &mocks.DetectorMock{
-		CheckFunc: func(msg string, userID int64) (bool, []lib.CheckResult) {
+		CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
 			if msg == "spam" {
 				return true, []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}
 			}

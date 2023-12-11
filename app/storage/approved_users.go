@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 )
 
 // ApprovedUsers is a storage for approved users ids
@@ -23,7 +24,7 @@ func NewApprovedUsers(filePath string) *ApprovedUsers {
 
 // Store saves ids to the storage, overwriting the existing content
 // data is stored in little endian, binary format. 8 bytes for each id.
-func (au *ApprovedUsers) Store(ids []int64) error {
+func (au *ApprovedUsers) Store(ids []string) error {
 	log.Printf("storing %d ids to %s", len(ids), au.filePath)
 	file, err := os.Create(au.filePath)
 	if err != nil {
@@ -32,8 +33,12 @@ func (au *ApprovedUsers) Store(ids []int64) error {
 	defer file.Close()
 
 	for _, id := range ids {
-		if err := binary.Write(file, binary.LittleEndian, id); err != nil {
-			return fmt.Errorf("failed to write id %d: %w", id, err)
+		idVal, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse id %s: %w", id, err)
+		}
+		if err := binary.Write(file, binary.LittleEndian, idVal); err != nil {
+			return fmt.Errorf("failed to write id %s: %w", id, err)
 		}
 	}
 

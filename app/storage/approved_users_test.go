@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,46 +14,41 @@ import (
 func TestApprovedUsers_StoreAndRead(t *testing.T) {
 	tests := []struct {
 		name     string
-		ids      []int64
-		expected []int64
+		ids      []string
+		expected []string
 	}{
 		{
 			name:     "empty",
-			ids:      []int64{},
-			expected: []int64{},
+			ids:      []string{},
+			expected: []string{},
 		},
 		{
 			name:     "single ID",
-			ids:      []int64{12345},
-			expected: []int64{12345},
+			ids:      []string{"12345"},
+			expected: []string{"12345"},
 		},
 		{
 			name:     "multiple IDs",
-			ids:      []int64{123, 456, 789},
-			expected: []int64{123, 456, 789},
+			ids:      []string{"123", "456", "789"},
+			expected: []string{"123", "456", "789"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary directory
 			tmpDir, err := os.MkdirTemp("", "test_approved_users")
 			require.NoError(t, err)
 			defer os.RemoveAll(tmpDir) // Clean up
 
-			// Create a file path in the temporary directory
 			filePath := tmpDir + "/testfile.bin"
 
-			// Initialize ApprovedUsers with the temporary file path
 			au := NewApprovedUsers(filePath)
 
-			// Store the IDs
 			err = au.Store(tt.ids)
 			require.NoError(t, err)
 
-			// Read the IDs back
 			var readBuffer bytes.Buffer
-			buf := make([]byte, 1024) // Buffer for reading
+			buf := make([]byte, 1024) // buffer for reading
 			for {
 				n, err := au.Read(buf)
 				if err == io.EOF {
@@ -63,16 +58,14 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 				readBuffer.Write(buf[:n])
 			}
 
-			// Convert read data back to IDs
-			var readIDs []int64
+			// convert read data back to IDs
+			var readIDs []string
 			if readBuffer.Len() > 0 {
-				for _, strID := range bytes.Split(readBuffer.Bytes(), []byte("\n")) {
-					if len(strID) == 0 {
+				for _, strID := range strings.Split(readBuffer.String(), "\n") {
+					if strID == "" {
 						continue
 					}
-					id, err := strconv.ParseInt(string(strID), 10, 64)
-					require.NoError(t, err)
-					readIDs = append(readIDs, id)
+					readIDs = append(readIDs, strID)
 				}
 			}
 
@@ -89,7 +82,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 func TestApprovedUsers_StoreFailure(t *testing.T) {
 	au := NewApprovedUsers("/invalid/path/testfile.bin")
 	// attempt to store IDs to an invalid path
-	err := au.Store([]int64{12345})
+	err := au.Store([]string{"12345"})
 	assert.Error(t, err, "store should fail with an invalid file path")
 }
 

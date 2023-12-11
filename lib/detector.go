@@ -22,7 +22,7 @@ type Detector struct {
 	Config
 	classifier     Classifier
 	tokenizedSpam  []map[string]int
-	approvedUsers  map[int64]bool
+	approvedUsers  map[string]bool
 	stopWords      []string
 	excludedTokens []string
 
@@ -73,14 +73,14 @@ func NewDetector(p Config) *Detector {
 	return &Detector{
 		Config:        p,
 		classifier:    NewClassifier(),
-		approvedUsers: make(map[int64]bool),
+		approvedUsers: make(map[string]bool),
 		tokenizedSpam: []map[string]int{},
 	}
 }
 
 // Check checks if a given message is spam. Returns true if spam.
 // Also returns a list of check results.
-func (d *Detector) Check(msg string, userID int64) (spam bool, cr []CheckResult) {
+func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 
 	if len([]rune(msg)) < d.MinMsgLen {
 		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
@@ -134,7 +134,7 @@ func (d *Detector) Reset() {
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = []string{}
 	d.classifier.Reset()
-	d.approvedUsers = make(map[int64]bool)
+	d.approvedUsers = make(map[string]bool)
 	d.stopWords = []string{}
 }
 
@@ -302,10 +302,10 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 }
 
 // ApprovedUsers returns a list of approved users.
-func (d *Detector) ApprovedUsers() (res []int64) {
+func (d *Detector) ApprovedUsers() (res []string) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
-	res = make([]int64, 0, len(d.approvedUsers))
+	res = make([]string, 0, len(d.approvedUsers))
 	for userID := range d.approvedUsers {
 		res = append(res, userID)
 	}
@@ -317,15 +317,14 @@ func (d *Detector) ApprovedUsers() (res []int64) {
 func (d *Detector) LoadApprovedUsers(r io.Reader) (count int, err error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	d.approvedUsers = make(map[int64]bool)
+	d.approvedUsers = make(map[string]bool)
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		userID := scanner.Text()
-		id, err := strconv.ParseInt(userID, 10, 64)
-		if err != nil {
-			return count, fmt.Errorf("failed to parse user id %q: %w", userID, err)
+		if userID == "" {
+			continue
 		}
-		d.approvedUsers[id] = true
+		d.approvedUsers[userID] = true
 		count++
 	}
 
@@ -405,8 +404,11 @@ func (d *Detector) cosineSimilarity(a, b map[string]int) float64 {
 	return float64(dotProduct) / (math.Sqrt(float64(normA)) * math.Sqrt(float64(normB)))
 }
 
-func (d *Detector) isCasSpam(msgID int64) CheckResult {
-	reqURL := fmt.Sprintf("%s/check?user_id=%d", d.CasAPI, msgID)
+func (d *Detector) isCasSpam(msgID string) CheckResult {
+	if _, err := strconv.ParseInt(msgID, 10, 64); err != nil {
+		return CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("invalid user id %q", msgID)}
+	}
+	reqURL := fmt.Sprintf("%s/check?user_id=%s", d.CasAPI, msgID)
 	req, err := http.NewRequest("GET", reqURL, http.NoBody)
 	if err != nil {
 		return CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to make request %s: %v", reqURL, err)}

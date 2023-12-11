@@ -111,7 +111,7 @@ func TestDetector_CheckStopWords(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spam, cr := d.Check(test.message, 0)
+			spam, cr := d.Check(test.message, "")
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "stopword", cr[0].Name)
@@ -144,7 +144,7 @@ func TestDetector_CheckEmojis(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spam, cr := d.Check(tt.input, 0)
+			spam, cr := d.Check(tt.input, "")
 			assert.Equal(t, tt.spam, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "emoji", cr[0].Name)
@@ -198,7 +198,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 				MaxAllowedEmoji:  -1,
 				FirstMessageOnly: true,
 			})
-			spam, cr := d.Check("", 123)
+			spam, cr := d.Check("", "123")
 			assert.Equal(t, tt.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "cas", cr[0].Name)
@@ -245,7 +245,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			d.Config.SimilarityThreshold = test.threshold // Update threshold for each test case
-			spam, cr := d.Check(test.message, 0)
+			spam, cr := d.Check(test.message, "")
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "similarity", cr[0].Name)
@@ -282,7 +282,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spam, cr := d.Check(test.message, 0)
+			spam, cr := d.Check(test.message, "")
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "classifier", cr[0].Name)
@@ -317,7 +317,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 
 	msg := "another good world one iphone user writes good things day"
 	t.Run("initially a little bit ham", func(t *testing.T) {
-		spam, cr := d.Check(msg, 0)
+		spam, cr := d.Check(msg, "")
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -331,7 +331,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly spam", func(t *testing.T) {
-		spam, cr := d.Check(msg, 0)
+		spam, cr := d.Check(msg, "")
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -364,7 +364,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 
 	msg := "another free good world one iphone user writes good things day"
 	t.Run("initially a little bit spam", func(t *testing.T) {
-		spam, cr := d.Check(msg, 0)
+		spam, cr := d.Check(msg, "")
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -378,7 +378,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly spam", func(t *testing.T) {
-		spam, cr := d.Check(msg, 0)
+		spam, cr := d.Check(msg, "")
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -416,35 +416,28 @@ func TestDetector(t *testing.T) {
 		loadInput     string
 		wantLoadCount int
 		wantLoadErr   bool
-		wantApproved  []int64
+		wantApproved  []string
 	}{
 		{
 			name:          "empty",
 			loadInput:     "",
 			wantLoadCount: 0,
 			wantLoadErr:   false,
-			wantApproved:  []int64{},
+			wantApproved:  []string{},
 		},
 		{
 			name:          "single user",
 			loadInput:     "12345\n",
 			wantLoadCount: 1,
 			wantLoadErr:   false,
-			wantApproved:  []int64{12345},
+			wantApproved:  []string{"12345"},
 		},
 		{
 			name:          "multiple users",
 			loadInput:     "123\n456\n789\n",
 			wantLoadCount: 3,
 			wantLoadErr:   false,
-			wantApproved:  []int64{123, 456, 789},
-		},
-		{
-			name:          "invalid user ID",
-			loadInput:     "abc\n",
-			wantLoadCount: 0,
-			wantLoadErr:   true,
-			wantApproved:  nil,
+			wantApproved:  []string{"123", "456", "789"},
 		},
 	}
 
