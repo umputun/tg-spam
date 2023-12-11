@@ -31,6 +31,10 @@ func TestTelegramListener_Do(t *testing.T) {
 		return bot.Response{}
 	}}
 
+	mockWeb := &mocks.SpamWebMock{
+		UnbanURLFunc: func(userID int64, msg string) string { return "url" },
+	}
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
@@ -39,6 +43,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
 		Locator:    NewLocator(10 * time.Minute),
+		SpamWeb:    mockWeb,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -93,6 +98,10 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		return bot.Response{}
 	}}
 
+	mockWeb := &mocks.SpamWebMock{
+		UnbanURLFunc: func(userID int64, msg string) string { return "url" },
+	}
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
@@ -100,6 +109,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
 		Locator:    NewLocator(10 * time.Minute),
+		SpamWeb:    mockWeb,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -525,13 +535,13 @@ func TestTelegramListener_reportToAdminChat(t *testing.T) {
 		},
 	}
 
-	sr := &mocks.SpamWebMock{
-		UnbanURLFunc: func(userID int64) string { return "url" },
+	mockWeb := &mocks.SpamWebMock{
+		UnbanURLFunc: func(userID int64, msg string) string { return "url" },
 	}
 
 	listener := TelegramListener{
 		TbAPI:       mockAPI,
-		SpamWeb:     sr,
+		SpamWeb:     mockWeb,
 		adminChatID: 123,
 	}
 
@@ -545,10 +555,15 @@ func TestTelegramListener_reportToAdminChat(t *testing.T) {
 	listener.reportToAdminChat("testUser", msg)
 
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test  \\_message\\_")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "[⛔︎ unban if wrong ⛔︎](url)")
+
+	assert.Equal(t, 1, len(mockWeb.UnbanURLCalls()))
+	assert.Equal(t, int64(456), mockWeb.UnbanURLCalls()[0].UserID)
+	assert.Contains(t, mockWeb.UnbanURLCalls()[0].Msg, "Test  _message_")
 }
 
 func TestTelegramListener_isAdminChat(t *testing.T) {

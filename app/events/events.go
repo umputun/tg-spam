@@ -84,7 +84,7 @@ type Bot interface {
 
 // SpamWeb is an interface for the web component
 type SpamWeb interface {
-	UnbanURL(userID int64) string
+	UnbanURL(userID int64, msg string) string
 }
 
 // Do process all events, blocked call
@@ -286,6 +286,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
 	return fromChat == l.adminChatID && l.SuperUsers.IsSuper(from)
 }
 
+// reportToAdminChat sends a message to admin chat with a link to unban the user
 func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message) {
 	// escapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
 	// For example, telegram username with underscores would be italicized if we don't escape it.
@@ -301,7 +302,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[⛔︎ unban if wrong ⛔︎](%s)\n\n%s\n\n",
-		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID), text)
+		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID, strings.ReplaceAll(msg.Text, "\n", " ")), text)
 	if err := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}

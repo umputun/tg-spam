@@ -181,8 +181,9 @@ func execute(ctx context.Context) error {
 		URL:        opts.Admin.URL,
 		Secret:     opts.Admin.Secret,
 		ListenAddr: opts.Admin.Address,
+		MaxMsg:     1024, // max message size to pass to web api
 	}
-	web, err := server.NewSpamWeb(tbAPI, srvParams)
+	web, err := server.NewSpamWeb(tbAPI, detector, srvParams)
 	log.Printf("[DEBUG] web params: %+v", srvParams)
 	if err != nil {
 		return fmt.Errorf("can't make spam rest, %w", err)
