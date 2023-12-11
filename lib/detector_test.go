@@ -409,3 +409,58 @@ func TestDetector_Reset(t *testing.T) {
 	assert.Equal(t, 0, len(d.excludedTokens))
 	assert.Equal(t, 0, len(d.stopWords))
 }
+
+func TestDetector(t *testing.T) {
+	tests := []struct {
+		name          string
+		loadInput     string
+		wantLoadCount int
+		wantLoadErr   bool
+		wantApproved  []int64
+	}{
+		{
+			name:          "empty",
+			loadInput:     "",
+			wantLoadCount: 0,
+			wantLoadErr:   false,
+			wantApproved:  []int64{},
+		},
+		{
+			name:          "single user",
+			loadInput:     "12345\n",
+			wantLoadCount: 1,
+			wantLoadErr:   false,
+			wantApproved:  []int64{12345},
+		},
+		{
+			name:          "multiple users",
+			loadInput:     "123\n456\n789\n",
+			wantLoadCount: 3,
+			wantLoadErr:   false,
+			wantApproved:  []int64{123, 456, 789},
+		},
+		{
+			name:          "invalid user ID",
+			loadInput:     "abc\n",
+			wantLoadCount: 0,
+			wantLoadErr:   true,
+			wantApproved:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Detector{}
+			r := bytes.NewBufferString(tt.loadInput)
+			count, err := d.LoadApprovedUsers(r)
+
+			assert.Equal(t, tt.wantLoadCount, count)
+			if tt.wantLoadErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.ElementsMatch(t, tt.wantApproved, d.ApprovedUsers())
+		})
+	}
+}

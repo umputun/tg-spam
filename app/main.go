@@ -25,6 +25,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/server"
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
@@ -69,6 +70,7 @@ var opts struct {
 		DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
 		DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
 		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval"`
+		ApprovedUsers    string        `long:"approved-users" env:"APPROVED_USERS" default:"data/approved-users.txt" description:"approved users file"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
@@ -152,6 +154,21 @@ func execute(ctx context.Context) error {
 	if opts.Files.DynamicHamFile != "" {
 		detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
 		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
+	}
+
+	if opts.Files.ApprovedUsers != "" {
+		approvedUsersStore := storage.NewApprovedUsers(opts.Files.ApprovedUsers)
+		defer func() {
+			if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
+				log.Printf("[WARN] can't save approved users, %v", serr)
+			}
+		}()
+		count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
+		if lerr != nil {
+			log.Printf("[WARN] can't load approved users, %v", lerr)
+		} else {
+			log.Printf("[DEBUG] approved users file: %s, loaded: %d", opts.Files.ApprovedUsers, count)
+		}
 	}
 
 	// make spam bot
