@@ -2,7 +2,6 @@ package bot
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -22,13 +21,7 @@ type Response struct {
 	User          User          // user to ban
 	ChannelID     int64         // channel to ban, if set then User and BanInterval are ignored
 	ReplyTo       int           // message to reply to, if 0 then no reply but common message
-	ParseMode     string        // parse mode for message in Telegram (we use Markdown by default)
 	DeleteReplyTo bool          // delete message what bot replays to
-}
-
-// HTTPClient wrap http.Client to allow mocking
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
 }
 
 // SenderChat is the sender of the message, sent on behalf of a chat. The

@@ -303,7 +303,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[⛔︎ unban if wrong ⛔︎](%s)\n\n%s\n\n",
 		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID, strings.ReplaceAll(msg.Text, "\n", " ")), text)
-	if err := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg, ParseMode: tbapi.ModeMarkdown}, l.adminChatID); err != nil {
+	if err := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg}, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
@@ -331,13 +331,9 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 		return nil
 	}
 
-	log.Printf("[DEBUG] bot response - %+v, reply-to:%d, parse-mode:%s",
-		strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo, resp.ParseMode)
+	log.Printf("[DEBUG] bot response - %+v, reply-to:%d", strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo)
 	tbMsg := tbapi.NewMessage(chatID, resp.Text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
-	if resp.ParseMode != "" {
-		tbMsg.ParseMode = resp.ParseMode
-	}
 	tbMsg.DisableWebPagePreview = true
 	tbMsg.ReplyToMessageID = resp.ReplyTo
 	if _, err := l.TbAPI.Send(tbMsg); err != nil {
