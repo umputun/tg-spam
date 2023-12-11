@@ -13,7 +13,7 @@ import (
 //
 //		// make and configure a mocked events.SpamWeb
 //		mockedSpamWeb := &SpamWebMock{
-//			UnbanURLFunc: func(userID int64) string {
+//			UnbanURLFunc: func(userID int64, msg string) string {
 //				panic("mock out the UnbanURL method")
 //			},
 //		}
@@ -24,7 +24,7 @@ import (
 //	}
 type SpamWebMock struct {
 	// UnbanURLFunc mocks the UnbanURL method.
-	UnbanURLFunc func(userID int64) string
+	UnbanURLFunc func(userID int64, msg string) string
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -32,25 +32,29 @@ type SpamWebMock struct {
 		UnbanURL []struct {
 			// UserID is the userID argument value.
 			UserID int64
+			// Msg is the msg argument value.
+			Msg string
 		}
 	}
 	lockUnbanURL sync.RWMutex
 }
 
 // UnbanURL calls UnbanURLFunc.
-func (mock *SpamWebMock) UnbanURL(userID int64) string {
+func (mock *SpamWebMock) UnbanURL(userID int64, msg string) string {
 	if mock.UnbanURLFunc == nil {
 		panic("SpamWebMock.UnbanURLFunc: method is nil but SpamWeb.UnbanURL was just called")
 	}
 	callInfo := struct {
 		UserID int64
+		Msg    string
 	}{
 		UserID: userID,
+		Msg:    msg,
 	}
 	mock.lockUnbanURL.Lock()
 	mock.calls.UnbanURL = append(mock.calls.UnbanURL, callInfo)
 	mock.lockUnbanURL.Unlock()
-	return mock.UnbanURLFunc(userID)
+	return mock.UnbanURLFunc(userID, msg)
 }
 
 // UnbanURLCalls gets all the calls that were made to UnbanURL.
@@ -59,9 +63,11 @@ func (mock *SpamWebMock) UnbanURL(userID int64) string {
 //	len(mockedSpamWeb.UnbanURLCalls())
 func (mock *SpamWebMock) UnbanURLCalls() []struct {
 	UserID int64
+	Msg    string
 } {
 	var calls []struct {
 		UserID int64
+		Msg    string
 	}
 	mock.lockUnbanURL.RLock()
 	calls = mock.calls.UnbanURL
