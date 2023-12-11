@@ -84,11 +84,17 @@ To allow such a feature, some parameters in `admin` section must be specified:
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
 
-### Updating spam samples dynamically
+### Updating spam and ham samples dynamically
 
 The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. 
 
-Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` must be set to the mapped volume's location to stay persistent after container restart.
+Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
+
+Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` and `--files.dynamic-ham=, [$FILES_DYNAMIC_HAM]` must be set to the mapped volume's location to stay persistent after container restart.
+
+### Updating ham samples dynamically
+
+The bot can be configured to update ham samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`) and reload it. This allows the bot to learn new ham patterns on the fly.
 
 ### Logging
 
