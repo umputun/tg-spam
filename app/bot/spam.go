@@ -69,6 +69,9 @@ func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *S
 
 // OnMessage checks if user already approved and if not checks if user is a spammer
 func (s *SpamFilter) OnMessage(msg Message) (response Response) {
+	if msg.From.ID == 0 { // don't check system messages
+		return Response{}
+	}
 	displayUsername := DisplayName(msg)
 	isSpam, checkResults := s.director.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
 	if isSpam {
