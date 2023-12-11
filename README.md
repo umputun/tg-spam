@@ -74,6 +74,8 @@ There are 4 files used by the bot to detect spam:
 
 _All 4 files are dynamically reloaded by the bot, so user can change them on the fly without restarting the bot._
 
+Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for the spam, because they already passed the initial check. IDs of those users kept in the internal list, stored in the file `approved-users.txt`. To enable this feature, user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically as long as the parameter is set and `--paranoid` mode is not enabled.
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" link in the message.
@@ -139,7 +141,7 @@ Use this token to access the HTTP API:
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
-      --max-emoji=            max emoji count in message (default: 2) [$MAX_EMOJI]
+      --max-emoji=            max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --paranoid              paranoid mode, check all messages [$PARANOID]
       --dry                   dry mode, no bans [$DRY]
       --dbg                   debug mode [$DEBUG]
@@ -168,12 +170,14 @@ cas:
       --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
 files:
-      --files.samples-spam=   path to spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
-      --files.samples-ham=    path to ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
-      --files.exclude-tokens= path to exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
-      --files.stop-words=     path to stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
-      --files.dynamic-spam=   path to dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
-      --files.dynamic-ham=    path to dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
+      --files.samples-spam=   spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
+      --files.samples-ham=    ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
+      --files.exclude-tokens= exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
+      --files.stop-words=     stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
+      --files.dynamic-spam=   dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
+      --files.dynamic-ham=    dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
+      --files.watch-interval= watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.approved-users= approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
 
 message:
       --message.startup=      startup message [$MESSAGE_STARTUP]
