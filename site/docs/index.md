@@ -74,6 +74,8 @@ There are 4 files used by the bot to detect spam:
 
 _All 4 files are dynamically reloaded by the bot, so user can change them on the fly without restarting the bot._
 
+Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for the spam, because they already passed the initial check. IDs of those users kept in the internal list, stored in the file `approved-users.txt`. To enable this feature, user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically as long as the parameter is set and `--paranoid` mode is not enabled.
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" link in the message.
@@ -84,11 +86,17 @@ To allow such a feature, some parameters in `admin` section must be specified:
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
 
-### Updating spam samples dynamically
+### Updating spam and ham samples dynamically
 
 The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. 
 
-Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` must be set to the mapped volume's location to stay persistent after container restart.
+Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
+
+Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` and `--files.dynamic-ham=, [$FILES_DYNAMIC_HAM]` must be set to the mapped volume's location to stay persistent after container restart.
+
+### Updating ham samples dynamically
+
+The bot can be configured to update ham samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`) and reload it. This allows the bot to learn new ham patterns on the fly.
 
 ### Logging
 
@@ -133,7 +141,7 @@ Use this token to access the HTTP API:
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
-      --max-emoji=            max emoji count in message (default: 2) [$MAX_EMOJI]
+      --max-emoji=            max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --paranoid              paranoid mode, check all messages [$PARANOID]
       --dry                   dry mode, no bans [$DRY]
       --dbg                   debug mode [$DEBUG]
@@ -162,12 +170,14 @@ cas:
       --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
 files:
-      --files.samples-spam=   path to spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
-      --files.samples-ham=    path to ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
-      --files.exclude-tokens= path to exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
-      --files.stop-words=     path to stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
-      --files.dynamic-spam=   path to dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
-      --files.dynamic-ham=    path to dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
+      --files.samples-spam=   spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
+      --files.samples-ham=    ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
+      --files.exclude-tokens= exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
+      --files.stop-words=     stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
+      --files.dynamic-spam=   dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
+      --files.dynamic-ham=    dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
+      --files.watch-interval= watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.approved-users= approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
 
 message:
       --message.startup=      startup message [$MESSAGE_STARTUP]
