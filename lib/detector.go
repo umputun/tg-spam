@@ -437,16 +437,16 @@ func (d *Detector) isCasSpam(msgID int64) CheckResult {
 	return CheckResult{Name: "cas", Spam: false, Details: details}
 }
 
+// isSpamClassified classify tokens from a document
 func (d *Detector) isSpamClassified(msg string) CheckResult {
-	// Classify tokens from a document
 	tm := d.tokenize(msg)
 	tokens := make([]string, 0, len(tm))
 	for token := range tm {
 		tokens = append(tokens, token)
 	}
-	allScores, class, certain := d.classifier.Classify(tokens...)
+	class, prob, certain := d.classifier.Classify(tokens...)
 	return CheckResult{Name: "classifier", Spam: class == "spam" && certain,
-		Details: fmt.Sprintf("spam:%.4f, ham:%.4f", allScores["spam"], allScores["ham"])}
+		Details: fmt.Sprintf("probability: %.2f%%, certain: %v", prob, certain)}
 }
 
 func (d *Detector) isStopWord(msg string) CheckResult {

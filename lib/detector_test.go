@@ -273,11 +273,11 @@ func TestDetector_CheckClassificator(t *testing.T) {
 		expected bool
 		desc     string
 	}{
-		{"clean ham", "Hello, how are you?", false, "spam:-12.4778, ham:-9.9163"},
-		{"clean spam", "Win a free iPhone now!", true, "spam:-10.3983, ham:-12.6889"},
-		{"mostly spam", "You won a free lottery iphone, have a good day", true, "spam:-21.9598, ham:-22.0944"},
-		{"mostly ham", "win a good day", false, "spam:-8.8943, ham:-8.2581"},
-		{"a little bit spam", "free  blah another one user writes good things iPhone day", true, "spam:-28.4337, ham:-29.5698"},
+		{"clean ham", "Hello, how are you?", false, "probability: 92.83%, certain: true"},
+		{"clean spam", "Win a free iPhone now!", true, "probability: 90.81%, certain: true"},
+		{"mostly spam", "You won a free lottery iphone, have a good day", true, "probability: 53.36%, certain: true"},
+		{"mostly ham", "win a good day", false, "probability: 65.39%, certain: true"},
+		{"a little bit spam", "free  blah another one user writes good things iPhone day", true, "probability: 75.70%, certain: true"},
 	}
 
 	for _, test := range tests {
@@ -322,7 +322,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
-		assert.Equal(t, "spam:-26.2365, ham:-25.8321", cr[0].Details)
+		assert.Equal(t, "probability: 59.97%, certain: true", cr[0].Details)
 	})
 
 	err = d.UpdateSpam("another user writes")
@@ -336,7 +336,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, true, cr[0].Spam)
-		assert.Equal(t, "spam:-26.5230, ham:-27.2162", cr[0].Details)
+		assert.Equal(t, "probability: 66.67%, certain: true", cr[0].Details)
 	})
 }
 
@@ -369,7 +369,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, true, cr[0].Spam)
-		assert.Equal(t, "spam:-28.4337, ham:-28.8766", cr[0].Details)
+		assert.Equal(t, "probability: 60.89%, certain: true", cr[0].Details)
 	})
 
 	err = d.UpdateHam("another writes things")
@@ -383,7 +383,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
-		assert.Equal(t, "spam:-30.1575, ham:-29.2050", cr[0].Details)
+		assert.Equal(t, "probability: 72.16%, certain: true", cr[0].Details)
 	})
 }
 

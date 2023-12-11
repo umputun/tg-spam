@@ -74,7 +74,7 @@ func (c *Classifier) Reset() {
 }
 
 // Classify executes the classifying process for tokens
-func (c *Classifier) Classify(tokens ...string) (map[Class]float64, Class, bool) {
+func (c *Classifier) Classify(tokens ...string) (Class, float64, bool) {
 	nVocabulary := len(c.LearningResults)
 	posteriorProbabilities := make(map[Class]float64)
 
@@ -90,10 +90,13 @@ func (c *Classifier) Classify(tokens ...string) (map[Class]float64, Class, bool)
 		}
 	}
 
+	probabilities := softmax(posteriorProbabilities) // apply softmax to posterior probabilities
+
+	// find the best class and its probability
 	var certain bool
 	var bestClass Class
 	var highestProb float64
-	for class, prob := range posteriorProbabilities {
+	for class, prob := range probabilities {
 		if highestProb == 0 || prob > highestProb {
 			certain = true
 			bestClass = class
@@ -103,7 +106,8 @@ func (c *Classifier) Classify(tokens ...string) (map[Class]float64, Class, bool)
 		}
 	}
 
-	return posteriorProbabilities, bestClass, certain
+	highestProb *= 100 // convert probability to percentage
+	return bestClass, highestProb, certain
 }
 
 func (c *Classifier) removeDuplicate(tokens ...string) []string {
@@ -119,4 +123,22 @@ func (c *Classifier) removeDuplicate(tokens ...string) []string {
 	}
 
 	return newTokens
+}
+
+// softmax converts log probabilities to normalized probabilities
+func softmax(logProbs map[Class]float64) map[Class]float64 {
+	sum := 0.0
+	probs := make(map[Class]float64)
+
+	// convert log probabilities to standard probabilities
+	for _, logProb := range logProbs {
+		sum += math.Exp(logProb)
+	}
+
+	// normalize probabilities
+	for class, logProb := range logProbs {
+		probs[class] = math.Exp(logProb) / sum
+	}
+
+	return probs
 }
