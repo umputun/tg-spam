@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -298,6 +299,37 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 	}()
 
 	return resCh
+}
+
+// ApprovedUsers returns a list of approved users.
+func (d *Detector) ApprovedUsers() (res []int64) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	res = make([]int64, 0, len(d.approvedUsers))
+	for userID := range d.approvedUsers {
+		res = append(res, userID)
+	}
+	return res
+}
+
+// LoadApprovedUsers loads a list of approved users from a reader.
+// Reset approved users list before loading. It expects a list of user IDs (int64) from the reader, one per line.
+func (d *Detector) LoadApprovedUsers(r io.Reader) (count int, err error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.approvedUsers = make(map[int64]bool)
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		userID := scanner.Text()
+		id, err := strconv.ParseInt(userID, 10, 64)
+		if err != nil {
+			return count, fmt.Errorf("failed to parse user id %q: %w", userID, err)
+		}
+		d.approvedUsers[id] = true
+		count++
+	}
+
+	return count, scanner.Err()
 }
 
 // tokenize takes a string and returns a map where the keys are unique words (tokens)
