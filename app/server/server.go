@@ -142,31 +142,18 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if user is already unbanned
-	isAlreadyUnbanned := func() bool {
+	isAlreadyUnbanned, tsPrevUnban := func() (bool, time.Time) {
 		s.unbanned.RLock()
 		defer s.unbanned.RUnlock()
-		_, ok := s.unbanned.users[userID]
-		return ok
+		ts, ok := s.unbanned.users[userID]
+		return ok, ts
 	}()
 
 	if isAlreadyUnbanned {
-		log.Printf("[WARN] user %d already unbanned", userID)
+		log.Printf("[WARN] user %d already unbanned ", userID)
 		resp := htmlResponse{
 			Title:      "Error",
-			Message:    fmt.Sprintf("user %d already unbanned", userID),
-			Background: "#ff6347",
-			Foreground: "#ffffff",
-			StatusCode: http.StatusBadRequest,
-		}
-		s.sendHTML(w, resp)
-		return
-	}
-
-	if ts, ok := s.unbanned.users[userID]; ok {
-		log.Printf("[WARN] user %d already unbanned", userID)
-		resp := htmlResponse{
-			Title:      "Error",
-			Message:    fmt.Sprintf("user %d already unbanned %v ago", userID, time.Since(ts).Round(time.Second)),
+			Message:    fmt.Sprintf("user %d already unbanned %v ago", userID, time.Since(tsPrevUnban).Round(time.Second)),
 			Background: "#ff6347",
 			Foreground: "#ffffff",
 			StatusCode: http.StatusBadRequest,

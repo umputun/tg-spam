@@ -227,6 +227,7 @@ func TestSpamWeb_Run(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		body, err = io.ReadAll(resp.Body)
 		require.NoError(t, err)
+		t.Logf("body: %s", body)
 		assert.Contains(t, string(body), "user 1239 already unbanned")
 
 	})
