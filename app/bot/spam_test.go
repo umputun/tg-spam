@@ -26,7 +26,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			if msg == "spam" {
 				return true, []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}
 			}
-			return false, nil
+			return false, []lib.CheckResult{{Name: "already approved", Spam: false, Details: "some ham"}}
 		},
 	}
 
