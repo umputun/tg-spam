@@ -169,6 +169,7 @@ func execute(ctx context.Context) error {
 		} else {
 			log.Printf("[DEBUG] approved users file: %s, loaded: %d", opts.Files.ApprovedUsers, count)
 		}
+		go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 	}
 
 	// make spam bot
@@ -319,6 +320,31 @@ func makeSpamLogWriter() (accessLog io.WriteCloser, err error) {
 		Compress:   true,
 		LocalTime:  true,
 	}, nil
+}
+
+func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *storage.ApprovedUsers, interval time.Duration) {
+	log.Printf("[DEBUG] auto-save approved users every %v", interval)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	lastCount := 0
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[DEBUG] auto-save approved users stopped")
+			return
+		case <-ticker.C:
+			ids := detector.ApprovedUsers()
+			if len(ids) == lastCount {
+				continue
+			}
+			if err := store.Store(ids); err != nil {
+				log.Printf("[WARN] can't save approved users, %v", err)
+				continue
+			}
+			lastCount = len(ids)
+			log.Printf("[DEBUG] approved users saved, count: %d", lastCount)
+		}
+	}
 }
 
 type nopWriteCloser struct{ io.Writer }
