@@ -94,10 +94,6 @@ Updating ham samples dynamically works differently. If any of privileged users u
 
 Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` and `--files.dynamic-ham=, [$FILES_DYNAMIC_HAM]` must be set to the mapped volume's location to stay persistent after container restart.
 
-### Updating ham samples dynamically
-
-The bot can be configured to update ham samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`) and reload it. This allows the bot to learn new ham patterns on the fly.
-
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
@@ -159,7 +155,8 @@ BotFather:
 Success! The new status is: DISABLED. /help
 ```
 
-**Important:** the privacy has to be disabled _before_ bot is added to the group. If you did it after, just add remove bot from the group and add again.
+**Important:** the privacy has to be disabled _before_ bot is added to the group. If it was done after, user should remove bot from the group and add again.
+
 
 ## All Application Options
 

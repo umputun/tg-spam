@@ -94,15 +94,13 @@ Updating ham samples dynamically works differently. If any of privileged users u
 
 Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` and `--files.dynamic-ham=, [$FILES_DYNAMIC_HAM]` must be set to the mapped volume's location to stay persistent after container restart.
 
-### Updating ham samples dynamically
-
-The bot can be configured to update ham samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`) and reload it. This allows the bot to learn new ham patterns on the fly.
-
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
 
-## Getting bot token for Telegram
+## Setting up the telegram bot
+
+#### Getting the token
 
 To get a token, talk to [BotFather](https://core.telegram.org/bots#6-botfather). All you need is to send `/newbot` command and choose the name for your bot (it must end in `bot`). That is it, and you got a token which you'll need to write down into remark42 configuration as `TELEGRAM_TOKEN`.
 
@@ -130,6 +128,34 @@ Done! Congratulations on your new bot. You will find it at t.me/example_comments
 Use this token to access the HTTP API:
 12345678:xy778Iltzsdr45tg
 ```
+
+#### Disabling privacy mode
+
+In some cases, for example for private groups, bot has to have privacy mode disabled. In order to do that you need to send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
+
+```
+Umputun:
+/setprivacy
+
+BotFather:
+Choose a bot to change group messages settings.
+
+Umputun:
+example_comments_bot
+
+BotFather:
+'Enable' - your bot will only receive messages that either start with the '/' symbol or mention the bot by username.
+'Disable' - your bot will receive all messages that people send to groups.
+Current status is: DISABLED
+
+Umputun:
+Disable
+
+BotFather:
+Success! The new status is: DISABLED. /help
+```
+
+**Important:** the privacy has to be disabled _before_ bot is added to the group. If it was done after, user should remove bot from the group and add again.
 
 
 ## All Application Options
