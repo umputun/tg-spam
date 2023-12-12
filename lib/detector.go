@@ -82,15 +82,15 @@ func NewDetector(p Config) *Detector {
 // Also returns a list of check results.
 func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 
-	if len([]rune(msg)) < d.MinMsgLen {
-		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
-	}
-
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
 	if d.FirstMessageOnly && d.approvedUsers[userID] {
 		return false, []CheckResult{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
+	}
+
+	if len([]rune(msg)) < d.MinMsgLen {
+		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
 	}
 
 	if len(d.stopWords) > 0 {
