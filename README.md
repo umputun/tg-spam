@@ -72,9 +72,9 @@ There are 4 files used by the bot to detect spam:
 - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words. Each line in this file is a single token (word), or a comma-separated list of words in dbl-quotes.
 - `stop-words.txt` - list of stop words to detect spam right away. Each line in this file is a single phrase (can be one or more words). The bot checks if any of those phrases are present in the message and if so, it marks the message as spam.
 
-_All 4 files are dynamically reloaded by the bot, so user can change them on the fly without restarting the bot._
+_The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
 
-Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for the spam, because they already passed the initial check. IDs of those users kept in the internal list, stored in the file `approved-users.txt`. To enable this feature, user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically as long as the parameter is set and `--paranoid` mode is not enabled.
+Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for spam because they have already passed the initial check. IDs of those users are kept in the internal list and stored in the file approved-users.txt. To enable this feature, the user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically if the parameter is set and --paranoid mode is not enabled.
 
 ### Admin chat/group
 
