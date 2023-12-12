@@ -25,7 +25,7 @@ func NewApprovedUsers(filePath string) *ApprovedUsers {
 // Store saves ids to the storage, overwriting the existing content
 // data is stored in little endian, binary format. 8 bytes for each id.
 func (au *ApprovedUsers) Store(ids []string) error {
-	log.Printf("storing %d ids to %s", len(ids), au.filePath)
+	log.Printf("[DEBUG] storing %d ids to %s", len(ids), au.filePath)
 	file, err := os.Create(au.filePath)
 	if err != nil {
 		return err
