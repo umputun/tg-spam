@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -74,8 +75,13 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	}
 	displayUsername := DisplayName(msg)
 	isSpam, checkResults := s.director.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
+	crs := []string{}
+	for _, cr := range checkResults {
+		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
+	}
+	checkResultStr := strings.Join(crs, ", ")
 	if isSpam {
-		log.Printf("[INFO] user %s detected as spammer, msg: %q, %+v", displayUsername, msg.Text, checkResults)
+		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text)
 		msgPrefix := s.params.SpamMsg
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
@@ -85,7 +91,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
 	}
-	log.Printf("[DEBUG] user %s is not a spammer, %+v", displayUsername, checkResults)
+	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)
 	return Response{} // not a spam
 }
 
