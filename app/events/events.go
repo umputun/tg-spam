@@ -133,7 +133,6 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			if update.Message == nil {
-				log.Print("[DEBUG] empty message body")
 				continue
 			}
 			if update.Message.Chat == nil {
