@@ -458,7 +458,7 @@ func (d *Detector) isStopWord(msg string) CheckResult {
 			return CheckResult{Name: "stopword", Spam: true, Details: word}
 		}
 	}
-	return CheckResult{Name: "stopword", Spam: false}
+	return CheckResult{Name: "stopword", Spam: false, Details: "not found"}
 }
 
 func (d *Detector) isManyEmojis(msg string) CheckResult {
