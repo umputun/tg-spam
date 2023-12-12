@@ -342,7 +342,6 @@ func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *s
 				continue
 			}
 			lastCount = len(ids)
-			log.Printf("[DEBUG] approved users saved, count: %d", lastCount)
 		}
 	}
 }
