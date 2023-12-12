@@ -176,6 +176,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		return nil
 	}
 
+	// ignore empty messages
+	if strings.TrimSpace(msg.Text) == "" {
+		return nil
+	}
+
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
 	l.Locator.Add(update.Message.Text, fromChat, msg.From.ID, msg.ID) // save message to locator
 	resp := l.Bot.OnMessage(*msg)
