@@ -164,12 +164,12 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if comprMsg := r.URL.Query().Get("msg"); comprMsg != "" {
-		msg, derr := s.decompressString(comprMsg)
+	if msg != "" {
+		decompMsg, derr := s.decompressString(msg)
 		if derr != nil {
-			log.Printf("[WARN] failed to decompress message %q, %v", comprMsg, derr)
+			log.Printf("[WARN] failed to decompress message %q, %v", msg, derr)
 		} else {
-			if derr := s.detector.UpdateHam(msg); derr != nil {
+			if derr := s.detector.UpdateHam(decompMsg); derr != nil {
 				log.Printf("[WARN] failed to update ham, %v", derr)
 			}
 		}
