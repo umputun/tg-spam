@@ -86,9 +86,11 @@ To allow such a feature, some parameters in `admin` section must be specified:
 - `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
 - `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
 
+
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. 
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
+--history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
@@ -161,8 +163,10 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
+Application Options:
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=     history duration (default: 1h) [$HISTORY_DURATION]
+      --history-min-size=     history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
       --super=                super-users [$SUPER_USER]
       --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
@@ -226,6 +230,75 @@ To do so, three conditions must be met:
 - admin name(s) should be set with `--super [$SUPER_USER]` parameter.  
 
 After that, the moment admin run into a spam message, he could forward it to the tg-spam bot. The bot will add this message to the spam samples file, ban user and delete the message. By doing so, the bot will learn new spam patterns on the fly and eventually will be able to detect spam without admin help. Note: the only thing admin should do is to forward the message to the bot, no need to add any text or comments, or remove/ban the original spammer. The bot will do all the work.
+
+## Example of docker-compose.yml
+
+This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
+
+As a reverse proxy for the bot, this example has [reproxy](https://reproxy.io) with auto-generated SSL certificates from Let's Encrypt. The bot is running on the host `tg-spam.radio-t.com` and reproxy is configured to proxy all the requests to this host to the bot. The bot is listening on port 8080, so reproxy is configured to listen on ports 80 and 443 and proxy all the requests to port 8080.
+
+
+```yaml
+services:
+  
+  tg-spam:
+    image: umputun/tg-spam:latest
+    hostname: tg-spam
+    restart: always
+    container_name: tg-spam
+    user: "1000:1000" # set uid:gid to host user to avoid permission issues with mounted volumes
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      - TZ=America/Chicago
+      - TELEGRAM_TOKEN=ххххх
+      - TELEGRAM_GROUP=radio_t_chat
+      - ADMIN_URL=https://tg-spam.radio-t.com # this is the external url where the bot is running
+      - ADMIN_SECRET=ххххххх
+      - ADMIN_GROUP=-403767890
+      - TESTING_ID=200319999
+      - LOGGER_ENABLED=true
+      - LOGGER_FILE=/srv/log/tg-spam.log
+      - LOGGER_MAX_SIZE=5M
+      - FILES_DYNAMIC_SPAM=/srv/var/dynamic-spam.txt
+      - FILES_DYNAMIC_HAM=/srv/var/dynamic-ham.txt
+      - FILES_APPROVED_USERS=/srv/var/approved-users.dat
+      - NO_SPAM_REPLY=true
+      - DEBUG=true
+    volumes:
+      - ./log/tg-spam:/srv/log
+      - ./var/tg-spam:/srv/var
+    command: --super=umputun --super=bobuk --super=grayru --super=ksenks
+    labels:
+      reproxy.enabled: 1
+      reproxy.server: 'tg-spam.radio-t.com'
+      reproxy.route: '^/(.*)'
+        
+  reproxy:
+    image: ghcr.io/umputun/reproxy:latest
+    restart: always
+    hostname: reproxy
+    container_name: reproxy
+    logging: *default_logging
+    ports:
+      - "80:8080"
+      - "443:8443"
+    environment:
+      - TZ=America/Chicago
+      - DOCKER_ENABLED=true
+      - SSL_TYPE=auto
+      - SSL_ACME_EMAIL=umputun@gmail.com
+      - SSL_ACME_FQDN=tg-spam.radio-t.com
+      - SSL_ACME_LOCATION=/srv/var/ssl
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./var/ssl:/srv/var/ssl
+```
+
+All the proxy parts are purely optional. If the user currently runs any reverse proxy, it can be configured to proxy all the requests for the given server name to the bot. If the user doesn't have any reverse proxy, it is possible to run the bot on any port exposed to the internet directly, for example, on 80. Having SSL is not strictly required as the request validation is done via encoded secret. I.e. it is totally fine to run the bot without SSL and without any reverse proxy in front of it.
 
 
 ## Using tg-spam as a library
