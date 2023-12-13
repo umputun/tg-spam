@@ -9,7 +9,10 @@ import (
 	"strconv"
 )
 
-// ApprovedUsers is a storage for approved users ids
+// ApprovedUsers is a storage for approved users ids, not thread-safe.
+//
+// Clients should not reuse ApprovedUsers for multiple goroutines, create a new instance instead.
+// Even if access to Store and Read is synchronized, the underlying file is not.
 type ApprovedUsers struct {
 	filePath string
 	file     *os.File

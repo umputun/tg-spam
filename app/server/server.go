@@ -84,6 +84,7 @@ func (s *SpamWeb) Run(ctx context.Context) error {
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
 	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
+	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
 	router.Get("/unban", s.unbanHandler)
 
