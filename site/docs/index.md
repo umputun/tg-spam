@@ -215,6 +215,19 @@ Help Options:
 
 ```
 
+## Running the bot with an empty set of samples
+
+The provided set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans. 
+
+To do so, three conditions must be met:
+
+- `--files.samples-spam [$FILES_SAMPLES_SPAM]` and `--files.samples-ham= [$FILES_SAMPLES_HAM]` must be set to the new location without any samples. In the case of docker container, those files must be mapped to the host volume.
+- admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above.
+- admin name(s) should be set with `--super [$SUPER_USER]` parameter.  
+
+After that, the moment admin run into a spam message, he could forward it to the tg-spam bot. The bot will add this message to the spam samples file, ban user and delete the message. By doing so, the bot will learn new spam patterns on the fly and eventually will be able to detect spam without admin help. Note: the only thing admin should do is to forward the message to the bot, no need to add any text or comments, or remove/ban the original spammer. The bot will do all the work.
+
+
 ## Using tg-spam as a library
 
 The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
