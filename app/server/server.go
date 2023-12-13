@@ -39,7 +39,7 @@ type SpamWeb struct {
 
 	unbanned struct {
 		sync.RWMutex
-		users map[int64]time.Time
+		users map[string]time.Time // key is the combination of userID and message hash
 	}
 }
 
@@ -68,7 +68,7 @@ type Detector interface {
 // NewSpamWeb creates new server
 func NewSpamWeb(tbAPI TbAPI, detector Detector, params Config) (*SpamWeb, error) {
 	res := SpamWeb{Config: params, TbAPI: tbAPI, detector: detector}
-	res.unbanned.users = make(map[int64]time.Time)
+	res.unbanned.users = make(map[string]time.Time)
 	chatID, err := res.getChatID(params.TgGroup)
 	if err != nil {
 		return nil, fmt.Errorf("can't get chat ID for %s: %w", params.TgGroup, err)
@@ -83,7 +83,7 @@ func (s *SpamWeb) Run(ctx context.Context) error {
 	router.Use(rest.Recoverer(lgr.Default()))
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
-	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(10, nil)))
+	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
 
 	router.Get("/unban", s.unbanHandler)
 
@@ -115,6 +115,8 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("user")
 	token := r.URL.Query().Get("token")
 	userID, err := strconv.ParseInt(id, 10, 64)
+	msg := r.URL.Query().Get("msg")
+
 	if err != nil {
 		log.Printf("[WARN] failed to get user ID for %q, %v", id, err)
 		resp := htmlResponse{
@@ -145,7 +147,7 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	isAlreadyUnbanned, tsPrevUnban := func() (bool, time.Time) {
 		s.unbanned.RLock()
 		defer s.unbanned.RUnlock()
-		ts, ok := s.unbanned.users[userID]
+		ts, ok := s.unbanned.users[s.unbanKey(userID, msg)]
 		return ok, ts
 	}()
 
@@ -197,7 +199,7 @@ func (s *SpamWeb) unbanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.unbanned.Lock()
-	s.unbanned.users[userID] = time.Now()
+	s.unbanned.users[s.unbanKey(userID, msg)] = time.Now()
 	s.unbanned.Unlock()
 
 	s.sendHTML(w, resp)
@@ -306,6 +308,11 @@ func (s *SpamWeb) decompressString(compressed string) (string, error) {
 	}
 
 	return string(decoded), nil
+}
+
+// unbanKey returns key for unbanned users map, converts the key to sha256
+func (s *SpamWeb) unbanKey(id int64, msg string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", id, msg))))
 }
 
 var msgTemplate = `<!DOCTYPE html>

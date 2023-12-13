@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -231,6 +233,40 @@ func TestSpamWeb_Run(t *testing.T) {
 		assert.Contains(t, string(body), "user 1239 already unbanned")
 
 	})
+
+	t.Run("unban allowed with second attempt, but different msg", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		mockDetector.ResetCalls()
+		req, err := http.NewRequest("GET",
+			"http://localhost:9900/unban?user=1239&token=e2b5356cfe79210553b4a0bc89310ea5961dc76e86046b07c61e479c9835623c&msg=123", http.NoBody)
+		require.NoError(t, err)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+		assert.Equal(t, int64(10), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).ChatID)
+		assert.Equal(t, int64(1239), mockAPI.RequestCalls()[0].C.(tbapi.UnbanChatMemberConfig).UserID)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "Success")
+		assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
+		assert.Equal(t, 0, len(mockDetector.UpdateHamCalls()), "no message, nothing to update")
+
+		// second attempt
+		resp, err = client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("body: %s", body)
+		assert.Contains(t, string(body), "user 1239 already unbanned")
+
+	})
+
 	t.Run("unban allowed, matched token with msg", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		mockDetector.ResetCalls()
@@ -371,4 +407,40 @@ func TestSpamWeb_CompressAndDecompressString(t *testing.T) {
 			assert.Equal(t, tc.input, decompressed)
 		})
 	}
+}
+
+func TestUnbanKey(t *testing.T) {
+	s := SpamWeb{}
+
+	t.Run("GeneratesCorrectKey", func(t *testing.T) {
+		id := int64(123)
+		msg := "test message"
+		expectedKey := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d::%s", id, msg))))
+
+		key := s.unbanKey(id, msg)
+
+		assert.Equal(t, expectedKey, key)
+	})
+
+	t.Run("GeneratesDifferentKeysForDifferentIDs", func(t *testing.T) {
+		id1 := int64(123)
+		id2 := int64(456)
+		msg := "test message"
+
+		key1 := s.unbanKey(id1, msg)
+		key2 := s.unbanKey(id2, msg)
+
+		assert.NotEqual(t, key1, key2)
+	})
+
+	t.Run("GeneratesDifferentKeysForDifferentMessages", func(t *testing.T) {
+		id := int64(123)
+		msg1 := "test message 1"
+		msg2 := "test message 2"
+
+		key1 := s.unbanKey(id, msg1)
+		key2 := s.unbanKey(id, msg2)
+
+		assert.NotEqual(t, key1, key2)
+	})
 }
