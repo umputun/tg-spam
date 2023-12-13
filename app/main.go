@@ -46,6 +46,7 @@ var opts struct {
 
 	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
+	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -226,7 +227,7 @@ func execute(ctx context.Context) error {
 		AdminGroup:   opts.Admin.Group,
 		TestingIDs:   opts.TestingIDs,
 		SpamWeb:      web,
-		Locator:      events.NewLocator(opts.HistoryDuration),
+		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
 		Dry:          opts.Dry,
 	}
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",

@@ -42,7 +42,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		Group:      "gr",
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
-		Locator:    NewLocator(10 * time.Minute),
+		Locator:    NewLocator(10*time.Minute, 10),
 		SpamWeb:    mockWeb,
 	}
 
@@ -108,7 +108,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10 * time.Minute),
+		Locator:    NewLocator(10*time.Minute, 0),
 		SpamWeb:    mockWeb,
 	}
 
@@ -240,7 +240,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 		TbAPI:      mockAPI,
 		Bot:        b,
 		Group:      "gr",
-		Locator:    NewLocator(10 * time.Minute),
+		Locator:    NewLocator(10*time.Minute, 0),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -313,7 +313,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		AdminGroup: "123",
 		StartupMsg: "startup",
 		SuperUsers: SuperUser{"umputun"},
-		Locator:    NewLocator(10 * time.Minute),
+		Locator:    NewLocator(10*time.Minute, 0),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)

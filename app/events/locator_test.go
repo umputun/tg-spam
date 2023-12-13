@@ -10,7 +10,7 @@ import (
 
 func TestNewLocator(t *testing.T) {
 	ttl := 10 * time.Minute
-	locator := NewLocator(ttl)
+	locator := NewLocator(ttl, 10)
 	require.NotNil(t, locator)
 
 	assert.Equal(t, ttl, locator.ttl)
@@ -20,7 +20,7 @@ func TestNewLocator(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	locator := NewLocator(10 * time.Minute)
+	locator := NewLocator(10*time.Minute, 10)
 
 	// adding a message
 	msg := "test message"
@@ -42,7 +42,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestMsgHash(t *testing.T) {
-	locator := NewLocator(10 * time.Minute)
+	locator := NewLocator(10*time.Minute, 10)
 
 	t.Run("hash for empty message", func(t *testing.T) {
 		hash := locator.MsgHash("")
@@ -63,7 +63,7 @@ func TestMsgHash(t *testing.T) {
 func TestAddAndCleanup(t *testing.T) {
 	ttl := 2 * time.Second
 	cleanupDuration := 1 * time.Second
-	locator := NewLocator(ttl)
+	locator := NewLocator(ttl, 0)
 	locator.cleanupDuration = cleanupDuration
 
 	// Adding a message
@@ -86,4 +86,39 @@ func TestAddAndCleanup(t *testing.T) {
 
 	_, existsAfterCleanup := locator.data[hash]
 	assert.False(t, existsAfterCleanup)
+}
+
+func TestAddAndCleanup_withMinSize(t *testing.T) {
+	ttl := 2 * time.Second
+	cleanupDuration := 1 * time.Second
+	locator := NewLocator(ttl, 2)
+	locator.cleanupDuration = cleanupDuration
+
+	// Adding first message
+	msg := "test message"
+	chatID := int64(123)
+	userID := int64(456)
+	msgID := 7890
+	locator.Add(msg, chatID, userID, msgID) // add first message
+
+	hash := locator.MsgHash(msg)
+	meta, exists := locator.data[hash]
+	require.True(t, exists)
+	assert.Equal(t, chatID, meta.chatID)
+	assert.Equal(t, userID, meta.userID)
+	assert.Equal(t, msgID, meta.msgID)
+
+	// wait for cleanup duration and add another message to trigger cleanup
+	time.Sleep(cleanupDuration + time.Second)
+	locator.Add("second message", 789, 555, 1011)
+	_, existsAfterCleanup := locator.data[hash]
+	assert.True(t, existsAfterCleanup, "minSize should prevent cleanup")
+
+	// wait for cleanup duration and add another message to trigger cleanup
+	time.Sleep(cleanupDuration + time.Second)
+	locator.Add("third message", chatID, 9000, 2000)
+	_, existsAfterCleanup = locator.data[hash]
+	assert.False(t, existsAfterCleanup, "minSize should allow cleanup")
+
+	assert.Len(t, locator.data, 2, "should keep minSize messages")
 }
