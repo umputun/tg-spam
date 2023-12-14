@@ -222,8 +222,6 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
 
-As a reverse proxy for the bot, this example has [reproxy](https://reproxy.io) with auto-generated SSL certificates from Let's Encrypt. The bot is running on the host `tg-spam.radio-t.com` and reproxy is configured to proxy all the requests to this host to the bot. The bot is listening on port 8080, so reproxy is configured to listen on ports 80 and 443 and proxy all the requests to port 8080.
-
 
 ```yaml
 services:
@@ -242,10 +240,8 @@ services:
     environment:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN=ххххх
-      - TELEGRAM_GROUP=example_chat # public group name
-      - ADMIN_URL=https://tg-spam.example.com # this is the external url where the bot is running
-      - ADMIN_SECRET=ххххххх
-      - ADMIN_GROUP=-403767890 # private group id
+      - TELEGRAM_GROUP=example_chat # public group name to monitor and protect
+      - ADMIN_GROUP=-403767890 # private group id for admin spam-reports
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
@@ -258,34 +254,7 @@ services:
       - ./log/tg-spam:/srv/log
       - ./var/tg-spam:/srv/var
     command: --super=name1 --super=name2 --super=name3
-    labels:
-      reproxy.enabled: 1
-      reproxy.server: 'tg-spam.example.com'
-      reproxy.route: '^/(.*)'
-        
-  reproxy:
-    image: ghcr.io/umputun/reproxy:latest
-    restart: always
-    hostname: reproxy
-    container_name: reproxy
-    logging: *default_logging
-    ports:
-      - "80:8080"
-      - "443:8443"
-    environment:
-      - TZ=America/Chicago
-      - DOCKER_ENABLED=true
-      - SSL_TYPE=auto
-      - SSL_ACME_EMAIL=example@gmail.com
-      - SSL_ACME_FQDN=tg-spam.example.com
-      - SSL_ACME_LOCATION=/srv/var/ssl
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./var/ssl:/srv/var/ssl
 ```
-
-All the proxy parts are purely optional. If the user currently runs any reverse proxy, it can be configured to proxy all the requests for the given server name to the bot. If the user doesn't have any reverse proxy, it is possible to run the bot on any port exposed to the internet directly, for example, on 80. Having SSL is not strictly required as the request validation is done via encoded secret. I.e. it is totally fine to run the bot without SSL and without any reverse proxy in front of it.
-
 
 ## Using tg-spam as a library
 
