@@ -17,6 +17,9 @@ import (
 //			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
 //				panic("mock out the GetChat method")
 //			},
+//			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+//				panic("mock out the GetChatAdministrators method")
+//			},
 //			GetUpdatesChanFunc: func(config tbapi.UpdateConfig) tbapi.UpdatesChannel {
 //				panic("mock out the GetUpdatesChan method")
 //			},
@@ -36,6 +39,9 @@ type TbAPIMock struct {
 	// GetChatFunc mocks the GetChat method.
 	GetChatFunc func(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
 
+	// GetChatAdministratorsFunc mocks the GetChatAdministrators method.
+	GetChatAdministratorsFunc func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
+
 	// GetUpdatesChanFunc mocks the GetUpdatesChan method.
 	GetUpdatesChanFunc func(config tbapi.UpdateConfig) tbapi.UpdatesChannel
 
@@ -51,6 +57,11 @@ type TbAPIMock struct {
 		GetChat []struct {
 			// Config is the config argument value.
 			Config tbapi.ChatInfoConfig
+		}
+		// GetChatAdministrators holds details about calls to the GetChatAdministrators method.
+		GetChatAdministrators []struct {
+			// Config is the config argument value.
+			Config tbapi.ChatAdministratorsConfig
 		}
 		// GetUpdatesChan holds details about calls to the GetUpdatesChan method.
 		GetUpdatesChan []struct {
@@ -68,10 +79,11 @@ type TbAPIMock struct {
 			C tbapi.Chattable
 		}
 	}
-	lockGetChat        sync.RWMutex
-	lockGetUpdatesChan sync.RWMutex
-	lockRequest        sync.RWMutex
-	lockSend           sync.RWMutex
+	lockGetChat               sync.RWMutex
+	lockGetChatAdministrators sync.RWMutex
+	lockGetUpdatesChan        sync.RWMutex
+	lockRequest               sync.RWMutex
+	lockSend                  sync.RWMutex
 }
 
 // GetChat calls GetChatFunc.
@@ -111,6 +123,45 @@ func (mock *TbAPIMock) ResetGetChatCalls() {
 	mock.lockGetChat.Lock()
 	mock.calls.GetChat = nil
 	mock.lockGetChat.Unlock()
+}
+
+// GetChatAdministrators calls GetChatAdministratorsFunc.
+func (mock *TbAPIMock) GetChatAdministrators(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+	if mock.GetChatAdministratorsFunc == nil {
+		panic("TbAPIMock.GetChatAdministratorsFunc: method is nil but TbAPI.GetChatAdministrators was just called")
+	}
+	callInfo := struct {
+		Config tbapi.ChatAdministratorsConfig
+	}{
+		Config: config,
+	}
+	mock.lockGetChatAdministrators.Lock()
+	mock.calls.GetChatAdministrators = append(mock.calls.GetChatAdministrators, callInfo)
+	mock.lockGetChatAdministrators.Unlock()
+	return mock.GetChatAdministratorsFunc(config)
+}
+
+// GetChatAdministratorsCalls gets all the calls that were made to GetChatAdministrators.
+// Check the length with:
+//
+//	len(mockedTbAPI.GetChatAdministratorsCalls())
+func (mock *TbAPIMock) GetChatAdministratorsCalls() []struct {
+	Config tbapi.ChatAdministratorsConfig
+} {
+	var calls []struct {
+		Config tbapi.ChatAdministratorsConfig
+	}
+	mock.lockGetChatAdministrators.RLock()
+	calls = mock.calls.GetChatAdministrators
+	mock.lockGetChatAdministrators.RUnlock()
+	return calls
+}
+
+// ResetGetChatAdministratorsCalls reset all the calls that were made to GetChatAdministrators.
+func (mock *TbAPIMock) ResetGetChatAdministratorsCalls() {
+	mock.lockGetChatAdministrators.Lock()
+	mock.calls.GetChatAdministrators = nil
+	mock.lockGetChatAdministrators.Unlock()
 }
 
 // GetUpdatesChan calls GetUpdatesChanFunc.
@@ -235,6 +286,10 @@ func (mock *TbAPIMock) ResetCalls() {
 	mock.lockGetChat.Lock()
 	mock.calls.GetChat = nil
 	mock.lockGetChat.Unlock()
+
+	mock.lockGetChatAdministrators.Lock()
+	mock.calls.GetChatAdministrators = nil
+	mock.lockGetChatAdministrators.Unlock()
 
 	mock.lockGetUpdatesChan.Lock()
 	mock.calls.GetUpdatesChan = nil

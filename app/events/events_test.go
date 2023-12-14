@@ -22,6 +22,17 @@ func TestTelegramListener_Do(t *testing.T) {
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
 		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return []tbapi.ChatMember{
+				{
+					User: &tbapi.User{
+						UserName: "admin",
+						ID:       1,
+					},
+					Status: "administrator",
+				},
+			}, nil
+		},
 	}
 	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
@@ -39,6 +50,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
 		Locator:    NewLocator(10*time.Minute, 10),
+		SuperUsers: SuperUser{"super"},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -60,10 +72,14 @@ func TestTelegramListener_Do(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
+	assert.Equal(t, SuperUser{"super", "admin"}, l.SuperUsers)
+
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
 	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
+	assert.Equal(t, 1, len(mockAPI.GetChatAdministratorsCalls()))
+
 }
 
 func TestTelegramListener_DoWithBotBan(t *testing.T) {
@@ -77,6 +93,9 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		},
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			return &tbapi.APIResponse{}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
 		},
 	}
 	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
@@ -215,6 +234,9 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
 	}
 	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
@@ -280,6 +302,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
 	}
 	b := &mocks.BotMock{
 		OnMessageFunc: func(msg bot.Message) bot.Response {
@@ -358,6 +381,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			return &tbapi.APIResponse{}, nil
 		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
 	}
 	b := &mocks.BotMock{
 		UpdateHamFunc: func(msg string) error {

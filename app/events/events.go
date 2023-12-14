@@ -59,6 +59,7 @@ type TbAPI interface {
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
+	GetChatAdministrators(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
 }
 
 // SpamLogger is an interface for spam logger
@@ -93,6 +94,20 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	var getChatErr error
 	if l.chatID, getChatErr = l.getChatID(l.Group); getChatErr != nil {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
+	}
+
+	admins, err := l.TbAPI.GetChatAdministrators(tbapi.ChatAdministratorsConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	if err != nil {
+		log.Printf("[WARN] failed to get chat administrators: %v", err)
+	} else {
+		for _, admin := range admins {
+			l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
+		}
+		adminNames := make([]string, len(admins))
+		for i, admin := range admins {
+			adminNames[i] = admin.User.UserName
+		}
+		log.Printf("[INFO] add admins to superusers: {%s}", strings.Join(adminNames, ", "))
 	}
 
 	if l.AdminGroup != "" {
