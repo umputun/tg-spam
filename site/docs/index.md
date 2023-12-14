@@ -1,6 +1,6 @@
 # tg-spam
 
-TG-Spam is a self-hosted anti-spam bot designed for Telegram, offering a seamless and effective solution to keep unwanted spam at bay. Carefully engineered to minimize disruptions for legitimate users while being a formidable barrier against spam bots. TG-Spam utilizes advanced detection techniques to maintain a spam-free environment.
+TG-Spam is an effective, self-hosted anti-spam bot specifically crafted for Telegram groups. Setting it up is straightforward as a Docker container, needing just a Telegram token and a group name or ID for the user to get started. Once activated, TG-Spam oversees messages, leveraging an advanced spam detection methods to pinpoint and eliminate spam content.
 
 <div align="center">
   <img class="logo" src="logo.png" width="400px" alt="TG-Spam | Spam Hunter"/>
@@ -14,9 +14,7 @@ TG-Spam is a self-hosted anti-spam bot designed for Telegram, offering a seamles
 
 ## What is it and how it works?
 
-TG-Spam is a sophisticated anti-spam bot tailored for Telegram groups, designed to run seamlessly as a Docker container. It is simple to set up, requiring only a telegram token and a group name or ID to begin its operation. Once deployed, TG-Spam diligently monitors all messages, employing a robust spam detection system to identify and eliminate spam content.
-
-### Key Features of Spam Detection
+TG-Spam keeps an eye on messages in Telegram groups, looking out for spam. It's quick to act, deleting spammy messages and banning the users who send them. The bot is also smart and gets smarter over time, learning from human guidance to catch new kinds of spam. It's a self-hosted tool that's pretty flexible in how you set it up, working great as a Docker container on anything from a small VPS to a Raspberry Pi. Plus, its Docker image supports various architectures like amd64, arm64, and armv7, and there are also binaries available for Linux, macOS, and Windows.
 
 TG-Spam's spam detection algorithm is multifaceted, incorporating several criteria to ensure high accuracy and efficiency:
 
