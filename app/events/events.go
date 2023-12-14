@@ -42,7 +42,6 @@ type TelegramListener struct {
 	StartupMsg   string
 	NoSpamReply  bool
 	Dry          bool
-	SpamWeb      SpamWeb
 	Locator      *Locator
 
 	chatID      int64
@@ -130,6 +129,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		case update, ok := <-updates:
 			if !ok {
 				return fmt.Errorf("telegram update chan closed")
+			}
+
+			if update.CallbackQuery != nil {
+				if err := l.handleUnbanCallback(update.CallbackQuery); err != nil {
+					log.Printf("[WARN] failed to process callback: %v", err)
+					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+				}
+				continue
 			}
 
 			if update.Message == nil {
@@ -305,11 +312,56 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 
 	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
-	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n[⛔︎ unban if wrong ⛔︎](%s)\n\n%s\n\n",
-		banUserStr, msg.From.ID, l.SpamWeb.UnbanURL(msg.From.ID, strings.ReplaceAll(msg.Text, "\n", " ")), text)
-	if err := l.sendBotResponse(bot.Response{Send: true, Text: forwardMsg}, l.adminChatID); err != nil {
+	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
+	if err := l.sendActionResponse(forwardMsg, "unban user", msg.From, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
+}
+
+// handleUnbanCallback handles a callback from Telegram, which is a response to a message with inline keyboard.
+// The callback contains user info, which is used to unban the user.
+func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error {
+	callbackData := query.Data
+	chatID := query.Message.Chat.ID // this is ID of admin chat
+	if chatID != l.adminChatID {    // ignore callbacks from other chats, only admin chat is allowed
+		return nil
+	}
+	log.Printf("[DEBUG] unban callback, chatID: %d, msg: %s, orig: %q", chatID, callbackData, query.Message.Text)
+	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
+	if _, err := l.TbAPI.Request(callbackResponse); err != nil {
+		return fmt.Errorf("failed to send callback response: %w", err)
+	}
+	// unmarshal user info from callback data
+	var user bot.User
+	if err := json.Unmarshal([]byte(callbackData), &user); err != nil {
+		return fmt.Errorf("failed to unmarshal callback user data: %w", err)
+	}
+
+	// update ham samples, the original message is from the second line, remove newlines and spaces
+	msgLines := strings.Split(query.Message.Text, "\n")
+	if len(msgLines) < 2 {
+		return fmt.Errorf("unexpected message from callback data: %q", query.Message.Text)
+	}
+	cleanMsg := strings.Join(msgLines[1:], " ")
+	cleanMsg = strings.TrimSpace(strings.ReplaceAll(cleanMsg, "\n", " "))
+	if derr := l.Bot.UpdateHam(cleanMsg); derr != nil {
+		return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, derr)
+	}
+
+	// unban user
+	_, err := l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: user.ID, ChatID: l.chatID}})
+	if err != nil {
+		return fmt.Errorf("failed to unban user %+v: %w", user, err)
+	}
+
+	// edit the message to remove the reply markup (button)
+	emptyKeyboard := tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+	editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, emptyKeyboard)
+	if _, err := l.TbAPI.Send(editMsg); err != nil {
+		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+	}
+
+	return nil
 }
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
@@ -330,6 +382,7 @@ func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update
 }
 
 // sendBotResponse sends bot's answer to tg channel
+// actionText is a text for the button to unban user, optional
 func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) error {
 	if !resp.Send {
 		return nil
@@ -340,10 +393,35 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	tbMsg.DisableWebPagePreview = true
 	tbMsg.ReplyToMessageID = resp.ReplyTo
+
 	if _, err := l.TbAPI.Send(tbMsg); err != nil {
 		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
 	}
 
+	return nil
+}
+
+// sendBotResponse sends bot's answer to tg channel
+// actionText is a text for the button to unban user, optional
+func (l *TelegramListener) sendActionResponse(text, action string, user bot.User, chatID int64) error {
+	log.Printf("[DEBUG] action response %q: user %+v, text: %q", action, user, strings.ReplaceAll(text, "\n", "\\n"))
+	tbMsg := tbapi.NewMessage(chatID, text)
+	tbMsg.ParseMode = tbapi.ModeMarkdown
+	tbMsg.DisableWebPagePreview = true
+
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user metadata: %w", err)
+	}
+	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData(action, string(userJSON)),
+		),
+	)
+
+	if _, err := l.TbAPI.Send(tbMsg); err != nil {
+		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
+	}
 	return nil
 }
 
