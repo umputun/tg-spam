@@ -206,7 +206,6 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		l.SpamLogger.Save(msg, &resp)
 		banUserStr := l.getBanUsername(resp, update)
 		if l.SuperUsers.IsSuper(msg.From.Username) {
-			l.reportToAdminChat(banUserStr, msg)
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
 		}
