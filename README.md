@@ -156,7 +156,6 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
-      --admin-group=          admin group name, or channel id [$ADMIN_GROUP]
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=     history duration (default: 1h) [$HISTORY_DURATION]
       --history-min-size=     history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -166,6 +165,7 @@ Success! The new status is: DISABLED. /help
       --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=            max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --paranoid              paranoid mode, check all messages [$PARANOID]
+      --admin.group=          admin group name, or channel id [$ADMIN_GROUP]
       --dry                   dry mode, no bans [$DRY]
       --dbg                   debug mode [$DEBUG]
       --tg-dbg                telegram debug mode [$TG_DEBUG]

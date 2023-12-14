@@ -36,7 +36,7 @@ var opts struct {
 		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
-	AdminGroup      string        `long:"admin-group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
+	AdminGroup      string        `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
 	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
