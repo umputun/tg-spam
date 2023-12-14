@@ -101,6 +101,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		log.Printf("[WARN] failed to get chat administrators: %v", err)
 	} else {
 		for _, admin := range admins {
+			if admin.User.UserName == "" {
+				continue
+			}
 			l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
 		}
 		adminNames := make([]string, len(admins))
