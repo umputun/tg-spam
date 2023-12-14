@@ -76,18 +76,13 @@ Another useful feature is the ability to keep the list of approved users persist
 
 ### Admin chat/group
 
-Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" link in the message.
+Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" button on the message.
 
-To allow such a feature, some parameters in `admin` section must be specified:
-
-- `--admin.url=, [$ADMIN_URL]` - root url, like `https://example.com`. This should point to the server where the bot is running. This is used to generate links to the admin page.
-- `--admin.group=,  [$ADMIN_GROUP]` - admin chat/group name/id. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. 
-- `--admin.secret=, [$ADMIN_SECRET]` - admin secret. This is a secret string to protect generated links. It is recommended to set it to some random, long string.
-
+To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts.
 
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.url=, [$ADMIN_URL]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
 --history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
@@ -161,7 +156,7 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
-Application Options:
+      --admin-group=          admin group name, or channel id [$ADMIN_GROUP]
       --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=     history duration (default: 1h) [$HISTORY_DURATION]
       --history-min-size=     history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -180,12 +175,6 @@ telegram:
       --telegram.group=       group name/id [$TELEGRAM_GROUP]
       --telegram.timeout=     http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
       --telegram.idle=        idle duration (default: 30s) [$TELEGRAM_IDLE]
-
-admin:
-      --admin.url=            admin root url [$ADMIN_URL]
-      --admin.address=        admin listen address (default: :8080) [$ADMIN_ADDRESS]
-      --admin.secret=         admin secret [$ADMIN_SECRET]
-      --admin.group=          admin group name/id [$ADMIN_GROUP]
 
 logger:
       --logger.enabled        enable spam rotated logs [$LOGGER_ENABLED]
