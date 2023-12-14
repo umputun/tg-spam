@@ -206,6 +206,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		l.SpamLogger.Save(msg, &resp)
 		banUserStr := l.getBanUsername(resp, update)
 		if l.SuperUsers.IsSuper(msg.From.Username) {
+			l.reportToAdminChat(banUserStr, msg)
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
 		}
@@ -326,15 +327,15 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	if chatID != l.adminChatID {    // ignore callbacks from other chats, only admin chat is allowed
 		return nil
 	}
-	log.Printf("[DEBUG] unban callback, chatID: %d, msg: %s, orig: %q", chatID, callbackData, query.Message.Text)
+	log.Printf("[DEBUG] unban callback, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := l.TbAPI.Request(callbackResponse); err != nil {
 		return fmt.Errorf("failed to send callback response: %w", err)
 	}
-	// unmarshal user info from callback data
-	var user bot.User
-	if err := json.Unmarshal([]byte(callbackData), &user); err != nil {
-		return fmt.Errorf("failed to unmarshal callback user data: %w", err)
+
+	userID, err := strconv.ParseInt(callbackData, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse callback data %q: %w", callbackData, err)
 	}
 
 	// update ham samples, the original message is from the second line, remove newlines and spaces
@@ -349,9 +350,9 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	}
 
 	// unban user
-	_, err := l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: user.ID, ChatID: l.chatID}})
+	_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
 	if err != nil {
-		return fmt.Errorf("failed to unban user %+v: %w", user, err)
+		return fmt.Errorf("failed to unban user %d: %w", userID, err)
 	}
 
 	// edit the message to remove the reply markup (button)
@@ -409,13 +410,9 @@ func (l *TelegramListener) sendActionResponse(text, action string, user bot.User
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	tbMsg.DisableWebPagePreview = true
 
-	userJSON, err := json.Marshal(user)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user metadata: %w", err)
-	}
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData(action, string(userJSON)),
+			tbapi.NewInlineKeyboardButtonData(action, fmt.Sprintf("%d", user.ID)),
 		),
 	)
 

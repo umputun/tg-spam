@@ -380,7 +380,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: `{"id": 777, "user_name": "user1", "display_name": "First Last"}`,
+			Data: "777",
 			Message: &tbapi.Message{
 				MessageID: 987654,
 				Chat:      &tbapi.Chat{ID: 123},
