@@ -77,9 +77,9 @@ type Image struct {
 
 // User defines user info of the Message
 type User struct {
-	ID          int64
-	Username    string
-	DisplayName string
+	ID          int64  `json:"id"`
+	Username    string `json:"user_name,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // DisplayName returns user's display name or username or id
