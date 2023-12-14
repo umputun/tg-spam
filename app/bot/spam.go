@@ -137,12 +137,10 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
-					if !reloadPending {
-						reloadPending = true
-						reloadTimer.Reset(delay)
-					}
+				log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
+				if !reloadPending {
+					reloadPending = true
+					reloadTimer.Reset(delay)
 				}
 			case <-reloadTimer.C:
 				if reloadPending {
