@@ -24,7 +24,6 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
-	"github.com/umputun/tg-spam/app/server"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
@@ -37,13 +36,7 @@ var opts struct {
 		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
-	Admin struct {
-		URL     string `long:"url" env:"URL" description:"admin root url"`
-		Address string `long:"address" env:"ADDRESS" default:":8080" description:"admin listen address"`
-		Secret  string `long:"secret" env:"SECRET" description:"admin secret"`
-		Group   string `long:"group" env:"GROUP" description:"admin group name/id"`
-	} `group:"admin" namespace:"admin" env-namespace:"ADMIN"`
-
+	AdminGroup      string        `long:"admin-group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
 	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
@@ -104,7 +97,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	setupLog(opts.Dbg, opts.Telegram.Token, opts.Admin.Secret)
+	setupLog(opts.Dbg, opts.Telegram.Token)
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -193,21 +186,6 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
-	// make web server
-	srvParams := server.Config{
-		Version:    revision,
-		TgGroup:    opts.Telegram.Group,
-		URL:        opts.Admin.URL,
-		Secret:     opts.Admin.Secret,
-		ListenAddr: opts.Admin.Address,
-		MaxMsg:     1024, // max message size to pass to web api
-	}
-	web, err := server.NewSpamWeb(tbAPI, detector, srvParams)
-	log.Printf("[DEBUG] web params: %+v", srvParams)
-	if err != nil {
-		return fmt.Errorf("can't make spam rest, %w", err)
-	}
-
 	// make spam logger
 	loggerWr, err := makeSpamLogWriter()
 	if err != nil {
@@ -224,26 +202,14 @@ func execute(ctx context.Context) error {
 		StartupMsg:   opts.Message.Startup,
 		NoSpamReply:  opts.NoSpamReply,
 		SpamLogger:   makeSpamLogger(loggerWr),
-		AdminGroup:   opts.Admin.Group,
+		AdminGroup:   opts.AdminGroup,
 		TestingIDs:   opts.TestingIDs,
-		SpamWeb:      web,
 		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
 		Dry:          opts.Dry,
 	}
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
-
-	// activate web server if configured
-	if opts.Admin.URL != "" && opts.Admin.Secret != "" {
-		go func() {
-			if err := web.Run(ctx); err != nil {
-				log.Printf("[ERROR] admin web server failed, %v", err)
-			}
-		}()
-	} else {
-		log.Print("[WARN] admin web server is disabled")
-	}
 
 	// run telegram listener and event processor
 	if err := tgListener.Do(ctx); err != nil {
