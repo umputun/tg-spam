@@ -133,7 +133,7 @@ Use this token to access the HTTP API:
 
 #### Disabling privacy mode
 
-In some cases, for example for private groups, bot has to have privacy mode disabled. In order to do that you need to send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
+In some cases, for example, for private groups, bot has to have privacy mode disabled. In order to do that user need to send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
 
 ```
 Umputun:
@@ -255,11 +255,10 @@ services:
     environment:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN=ххххх
-      - TELEGRAM_GROUP=radio_t_chat
-      - ADMIN_URL=https://tg-spam.radio-t.com # this is the external url where the bot is running
+      - TELEGRAM_GROUP=example_chat # public group name
+      - ADMIN_URL=https://tg-spam.example.com # this is the external url where the bot is running
       - ADMIN_SECRET=ххххххх
-      - ADMIN_GROUP=-403767890
-      - TESTING_ID=200319999
+      - ADMIN_GROUP=-403767890 # private group id
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
@@ -271,10 +270,10 @@ services:
     volumes:
       - ./log/tg-spam:/srv/log
       - ./var/tg-spam:/srv/var
-    command: --super=umputun --super=bobuk --super=grayru --super=ksenks
+    command: --super=name1 --super=name2 --super=name3
     labels:
       reproxy.enabled: 1
-      reproxy.server: 'tg-spam.radio-t.com'
+      reproxy.server: 'tg-spam.example.com'
       reproxy.route: '^/(.*)'
         
   reproxy:
@@ -290,8 +289,8 @@ services:
       - TZ=America/Chicago
       - DOCKER_ENABLED=true
       - SSL_TYPE=auto
-      - SSL_ACME_EMAIL=umputun@gmail.com
-      - SSL_ACME_FQDN=tg-spam.radio-t.com
+      - SSL_ACME_EMAIL=example@gmail.com
+      - SSL_ACME_FQDN=tg-spam.example.com
       - SSL_ACME_LOCATION=/srv/var/ssl
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
