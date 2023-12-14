@@ -212,7 +212,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		if err := l.banUserOrChannel(resp.BanInterval, fromChat, resp.User.ID, resp.ChannelID); err == nil {
 			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
-				l.reportToAdminChat(banUserStr, msg)
+				l.reportToAdminChat(banUserStr, msg) // TODO: remove
 			}
 		} else {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
@@ -354,9 +354,12 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return fmt.Errorf("failed to unban user %d: %w", userID, err)
 	}
 
-	// edit the message to remove the reply markup (button)
-	emptyKeyboard := tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, emptyKeyboard)
+	// Create an edit message with new text and an empty keyboard
+	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_",
+		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+	editMsg.ParseMode = tbapi.ModeMarkdown
 	if _, err := l.TbAPI.Send(editMsg); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
