@@ -89,16 +89,16 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 		return false, []CheckResult{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
 	}
 
-	if len([]rune(msg)) < d.MinMsgLen {
-		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
-	}
-
 	if len(d.stopWords) > 0 {
 		cr = append(cr, d.isStopWord(msg))
 	}
 
 	if d.MaxAllowedEmoji >= 0 {
 		cr = append(cr, d.isManyEmojis(msg))
+	}
+
+	if len([]rune(msg)) < d.MinMsgLen {
+		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
 	}
 
 	if d.SimilarityThreshold > 0 && len(d.tokenizedSpam) > 0 {
