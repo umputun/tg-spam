@@ -1,3 +1,4 @@
+# example of minimal compose file to run tg-spam
 services:
   tg-spam:
     image: umputun/tg-spam:master # use :latest tag for production
@@ -10,11 +11,5 @@ services:
         max-size: "10m"
         max-file: "5"
     environment:
-      - TZ=America/Chicago
       - TELEGRAM_TOKEN
       - TELEGRAM_GROUP
-      - DRY=true
-      - DEBUG=true
-    volumes:
-      - ./var:/srv/data # map user-provided samples to /srv/data
-    command: --super=name1 --super=name2
