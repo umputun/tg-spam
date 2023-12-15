@@ -15,6 +15,9 @@ import (
 //
 //		// make and configure a mocked bot.Detector
 //		mockedDetector := &DetectorMock{
+//			AddApprovedUsersFunc: func(ids ...string)  {
+//				panic("mock out the AddApprovedUsers method")
+//			},
 //			CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
 //				panic("mock out the Check method")
 //			},
@@ -37,6 +40,9 @@ import (
 //
 //	}
 type DetectorMock struct {
+	// AddApprovedUsersFunc mocks the AddApprovedUsers method.
+	AddApprovedUsersFunc func(ids ...string)
+
 	// CheckFunc mocks the Check method.
 	CheckFunc func(msg string, userID string) (bool, []lib.CheckResult)
 
@@ -54,6 +60,11 @@ type DetectorMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// AddApprovedUsers holds details about calls to the AddApprovedUsers method.
+		AddApprovedUsers []struct {
+			// Ids is the ids argument value.
+			Ids []string
+		}
 		// Check holds details about calls to the Check method.
 		Check []struct {
 			// Msg is the msg argument value.
@@ -86,11 +97,51 @@ type DetectorMock struct {
 			Msg string
 		}
 	}
-	lockCheck         sync.RWMutex
-	lockLoadSamples   sync.RWMutex
-	lockLoadStopWords sync.RWMutex
-	lockUpdateHam     sync.RWMutex
-	lockUpdateSpam    sync.RWMutex
+	lockAddApprovedUsers sync.RWMutex
+	lockCheck            sync.RWMutex
+	lockLoadSamples      sync.RWMutex
+	lockLoadStopWords    sync.RWMutex
+	lockUpdateHam        sync.RWMutex
+	lockUpdateSpam       sync.RWMutex
+}
+
+// AddApprovedUsers calls AddApprovedUsersFunc.
+func (mock *DetectorMock) AddApprovedUsers(ids ...string) {
+	if mock.AddApprovedUsersFunc == nil {
+		panic("DetectorMock.AddApprovedUsersFunc: method is nil but Detector.AddApprovedUsers was just called")
+	}
+	callInfo := struct {
+		Ids []string
+	}{
+		Ids: ids,
+	}
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = append(mock.calls.AddApprovedUsers, callInfo)
+	mock.lockAddApprovedUsers.Unlock()
+	mock.AddApprovedUsersFunc(ids...)
+}
+
+// AddApprovedUsersCalls gets all the calls that were made to AddApprovedUsers.
+// Check the length with:
+//
+//	len(mockedDetector.AddApprovedUsersCalls())
+func (mock *DetectorMock) AddApprovedUsersCalls() []struct {
+	Ids []string
+} {
+	var calls []struct {
+		Ids []string
+	}
+	mock.lockAddApprovedUsers.RLock()
+	calls = mock.calls.AddApprovedUsers
+	mock.lockAddApprovedUsers.RUnlock()
+	return calls
+}
+
+// ResetAddApprovedUsersCalls reset all the calls that were made to AddApprovedUsers.
+func (mock *DetectorMock) ResetAddApprovedUsersCalls() {
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = nil
+	mock.lockAddApprovedUsers.Unlock()
 }
 
 // Check calls CheckFunc.
@@ -127,6 +178,13 @@ func (mock *DetectorMock) CheckCalls() []struct {
 	calls = mock.calls.Check
 	mock.lockCheck.RUnlock()
 	return calls
+}
+
+// ResetCheckCalls reset all the calls that were made to Check.
+func (mock *DetectorMock) ResetCheckCalls() {
+	mock.lockCheck.Lock()
+	mock.calls.Check = nil
+	mock.lockCheck.Unlock()
 }
 
 // LoadSamples calls LoadSamplesFunc.
@@ -169,6 +227,13 @@ func (mock *DetectorMock) LoadSamplesCalls() []struct {
 	return calls
 }
 
+// ResetLoadSamplesCalls reset all the calls that were made to LoadSamples.
+func (mock *DetectorMock) ResetLoadSamplesCalls() {
+	mock.lockLoadSamples.Lock()
+	mock.calls.LoadSamples = nil
+	mock.lockLoadSamples.Unlock()
+}
+
 // LoadStopWords calls LoadStopWordsFunc.
 func (mock *DetectorMock) LoadStopWords(readers ...io.Reader) (lib.LoadResult, error) {
 	if mock.LoadStopWordsFunc == nil {
@@ -199,6 +264,13 @@ func (mock *DetectorMock) LoadStopWordsCalls() []struct {
 	calls = mock.calls.LoadStopWords
 	mock.lockLoadStopWords.RUnlock()
 	return calls
+}
+
+// ResetLoadStopWordsCalls reset all the calls that were made to LoadStopWords.
+func (mock *DetectorMock) ResetLoadStopWordsCalls() {
+	mock.lockLoadStopWords.Lock()
+	mock.calls.LoadStopWords = nil
+	mock.lockLoadStopWords.Unlock()
 }
 
 // UpdateHam calls UpdateHamFunc.
@@ -233,6 +305,13 @@ func (mock *DetectorMock) UpdateHamCalls() []struct {
 	return calls
 }
 
+// ResetUpdateHamCalls reset all the calls that were made to UpdateHam.
+func (mock *DetectorMock) ResetUpdateHamCalls() {
+	mock.lockUpdateHam.Lock()
+	mock.calls.UpdateHam = nil
+	mock.lockUpdateHam.Unlock()
+}
+
 // UpdateSpam calls UpdateSpamFunc.
 func (mock *DetectorMock) UpdateSpam(msg string) error {
 	if mock.UpdateSpamFunc == nil {
@@ -263,4 +342,38 @@ func (mock *DetectorMock) UpdateSpamCalls() []struct {
 	calls = mock.calls.UpdateSpam
 	mock.lockUpdateSpam.RUnlock()
 	return calls
+}
+
+// ResetUpdateSpamCalls reset all the calls that were made to UpdateSpam.
+func (mock *DetectorMock) ResetUpdateSpamCalls() {
+	mock.lockUpdateSpam.Lock()
+	mock.calls.UpdateSpam = nil
+	mock.lockUpdateSpam.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *DetectorMock) ResetCalls() {
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = nil
+	mock.lockAddApprovedUsers.Unlock()
+
+	mock.lockCheck.Lock()
+	mock.calls.Check = nil
+	mock.lockCheck.Unlock()
+
+	mock.lockLoadSamples.Lock()
+	mock.calls.LoadSamples = nil
+	mock.lockLoadSamples.Unlock()
+
+	mock.lockLoadStopWords.Lock()
+	mock.calls.LoadStopWords = nil
+	mock.lockLoadStopWords.Unlock()
+
+	mock.lockUpdateHam.Lock()
+	mock.calls.UpdateHam = nil
+	mock.lockUpdateHam.Unlock()
+
+	mock.lockUpdateSpam.Lock()
+	mock.calls.UpdateSpam = nil
+	mock.lockUpdateSpam.Unlock()
 }

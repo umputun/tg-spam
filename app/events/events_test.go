@@ -388,6 +388,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		UpdateHamFunc: func(msg string) error {
 			return nil
 		},
+		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
 	l := TelegramListener{
@@ -431,6 +432,8 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.UnbanChatMemberConfig).UserID)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
+	require.Equal(t, 1, len(b.AddApprovedUsersCalls()))
+	assert.Equal(t, int64(777), b.AddApprovedUsersCalls()[0].ID)
 }
 
 func TestTelegram_transformTextMessage(t *testing.T) {

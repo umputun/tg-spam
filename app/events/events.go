@@ -80,6 +80,7 @@ type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
+	AddApprovedUsers(id int64, ids ...int64)
 }
 
 // SpamWeb is an interface for the web component
@@ -358,6 +359,9 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	if err != nil {
 		return fmt.Errorf("failed to unban user %d: %w", userID, err)
 	}
+
+	// add user to the approved list
+	l.Bot.AddApprovedUsers(userID)
 
 	// Create an edit message with new text and an empty keyboard
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_",

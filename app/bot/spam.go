@@ -17,7 +17,7 @@ import (
 	"github.com/umputun/tg-spam/lib"
 )
 
-//go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure . Detector
+//go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.
@@ -55,6 +55,7 @@ type Detector interface {
 	LoadStopWords(readers ...io.Reader) (lib.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
+	AddApprovedUsers(ids ...string)
 }
 
 // NewSpamFilter creates new spam filter
@@ -111,6 +112,17 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
 	return nil
+}
+
+// AddApprovedUsers adds users to the list of approved users
+func (s *SpamFilter) AddApprovedUsers(id int64, ids ...int64) {
+	combinedIDs := append([]int64{id}, ids...)
+	log.Printf("[DEBUG] add aproved users: %v", combinedIDs)
+	sids := make([]string, len(combinedIDs))
+	for i, id := range combinedIDs {
+		sids[i] = strconv.FormatInt(id, 10)
+	}
+	s.director.AddApprovedUsers(sids...)
 }
 
 // watch watches for changes in samples files and reloads them

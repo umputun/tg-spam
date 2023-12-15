@@ -334,3 +334,31 @@ func TestSpamFilter_Update(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestAddApprovedUsers(t *testing.T) {
+	mockDirector := &mocks.DetectorMock{AddApprovedUsersFunc: func(ids ...string) {}}
+
+	t.Run("add single approved user", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.AddApprovedUsers(1)
+		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
+		assert.Equal(t, []string{"1"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
+	})
+
+	t.Run("add multiple approved users", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.AddApprovedUsers(1, 2, 3)
+		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
+		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
+	})
+
+	t.Run("add empty list of approved users", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.AddApprovedUsers(1, 2, 3)
+		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
+		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
+	})
+}

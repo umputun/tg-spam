@@ -148,6 +148,15 @@ func (d *Detector) WithHamUpdater(s SampleUpdater) {
 	d.hamSamplesUpd = s
 }
 
+// AddApprovedUsers adds user IDs to the list of approved users.
+func (d *Detector) AddApprovedUsers(ids ...string) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	for _, id := range ids {
+		d.approvedUsers[id] = true
+	}
+}
+
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
 func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {

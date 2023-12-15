@@ -14,6 +14,9 @@ import (
 //
 //		// make and configure a mocked events.Bot
 //		mockedBot := &BotMock{
+//			AddApprovedUsersFunc: func(id int64, ids ...int64)  {
+//				panic("mock out the AddApprovedUsers method")
+//			},
 //			OnMessageFunc: func(msg bot.Message) bot.Response {
 //				panic("mock out the OnMessage method")
 //			},
@@ -30,6 +33,9 @@ import (
 //
 //	}
 type BotMock struct {
+	// AddApprovedUsersFunc mocks the AddApprovedUsers method.
+	AddApprovedUsersFunc func(id int64, ids ...int64)
+
 	// OnMessageFunc mocks the OnMessage method.
 	OnMessageFunc func(msg bot.Message) bot.Response
 
@@ -41,6 +47,13 @@ type BotMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// AddApprovedUsers holds details about calls to the AddApprovedUsers method.
+		AddApprovedUsers []struct {
+			// ID is the id argument value.
+			ID int64
+			// Ids is the ids argument value.
+			Ids []int64
+		}
 		// OnMessage holds details about calls to the OnMessage method.
 		OnMessage []struct {
 			// Msg is the msg argument value.
@@ -57,9 +70,53 @@ type BotMock struct {
 			Msg string
 		}
 	}
-	lockOnMessage  sync.RWMutex
-	lockUpdateHam  sync.RWMutex
-	lockUpdateSpam sync.RWMutex
+	lockAddApprovedUsers sync.RWMutex
+	lockOnMessage        sync.RWMutex
+	lockUpdateHam        sync.RWMutex
+	lockUpdateSpam       sync.RWMutex
+}
+
+// AddApprovedUsers calls AddApprovedUsersFunc.
+func (mock *BotMock) AddApprovedUsers(id int64, ids ...int64) {
+	if mock.AddApprovedUsersFunc == nil {
+		panic("BotMock.AddApprovedUsersFunc: method is nil but Bot.AddApprovedUsers was just called")
+	}
+	callInfo := struct {
+		ID  int64
+		Ids []int64
+	}{
+		ID:  id,
+		Ids: ids,
+	}
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = append(mock.calls.AddApprovedUsers, callInfo)
+	mock.lockAddApprovedUsers.Unlock()
+	mock.AddApprovedUsersFunc(id, ids...)
+}
+
+// AddApprovedUsersCalls gets all the calls that were made to AddApprovedUsers.
+// Check the length with:
+//
+//	len(mockedBot.AddApprovedUsersCalls())
+func (mock *BotMock) AddApprovedUsersCalls() []struct {
+	ID  int64
+	Ids []int64
+} {
+	var calls []struct {
+		ID  int64
+		Ids []int64
+	}
+	mock.lockAddApprovedUsers.RLock()
+	calls = mock.calls.AddApprovedUsers
+	mock.lockAddApprovedUsers.RUnlock()
+	return calls
+}
+
+// ResetAddApprovedUsersCalls reset all the calls that were made to AddApprovedUsers.
+func (mock *BotMock) ResetAddApprovedUsersCalls() {
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = nil
+	mock.lockAddApprovedUsers.Unlock()
 }
 
 // OnMessage calls OnMessageFunc.
@@ -181,6 +238,10 @@ func (mock *BotMock) ResetUpdateSpamCalls() {
 
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *BotMock) ResetCalls() {
+	mock.lockAddApprovedUsers.Lock()
+	mock.calls.AddApprovedUsers = nil
+	mock.lockAddApprovedUsers.Unlock()
+
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = nil
 	mock.lockOnMessage.Unlock()
