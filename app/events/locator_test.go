@@ -109,13 +109,13 @@ func TestAddAndCleanup_withMinSize(t *testing.T) {
 	assert.Equal(t, msgID, meta.msgID)
 
 	// wait for cleanup duration and add another message to trigger cleanup
-	time.Sleep(cleanupDuration + time.Second)
+	time.Sleep(cleanupDuration + time.Millisecond*200)
 	locator.Add("second message", 789, 555, 1011)
 	_, existsAfterCleanup := locator.data[hash]
 	assert.True(t, existsAfterCleanup, "minSize should prevent cleanup")
 
 	// wait for cleanup duration and add another message to trigger cleanup
-	time.Sleep(cleanupDuration + time.Second)
+	time.Sleep(cleanupDuration + +time.Millisecond*200)
 	locator.Add("third message", chatID, 9000, 2000)
 	_, existsAfterCleanup = locator.data[hash]
 	assert.False(t, existsAfterCleanup, "minSize should allow cleanup")
