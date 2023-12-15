@@ -96,21 +96,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
 	}
 
-	admins, err := l.TbAPI.GetChatAdministrators(tbapi.ChatAdministratorsConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
-	if err != nil {
-		log.Printf("[WARN] failed to get chat administrators: %v", err)
-	} else {
-		for _, admin := range admins {
-			if admin.User.UserName == "" {
-				continue
-			}
-			l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
-		}
-		adminNames := make([]string, len(admins))
-		for i, admin := range admins {
-			adminNames[i] = admin.User.UserName
-		}
-		log.Printf("[INFO] add admins to superusers: {%s}", strings.Join(adminNames, ", "))
+	if err := l.updateSupers(); err != nil {
+		log.Printf("[WARN] failed to update superusers: %v", err)
 	}
 
 	if l.AdminGroup != "" {
@@ -454,6 +441,41 @@ func (l *TelegramListener) getChatID(group string) (int64, error) {
 	}
 
 	return chat.ID, nil
+}
+
+// updateSupers updates the list of super-users based on the chat administrators fetched from the Telegram API.
+func (l *TelegramListener) updateSupers() error {
+	isSuper := func(username string) bool {
+		for _, super := range l.SuperUsers {
+			if super == username {
+				return true
+			}
+		}
+		return false
+	}
+
+	admins, err := l.TbAPI.GetChatAdministrators(tbapi.ChatAdministratorsConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	if err != nil {
+		return fmt.Errorf("failed to get chat administrators: %w", err)
+	}
+	for _, admin := range admins {
+		if strings.TrimSpace(admin.User.UserName) == "" {
+			continue
+		}
+		if isSuper(admin.User.UserName) {
+			continue // already in the list
+		}
+		l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
+	}
+
+	// prepare formatted list of superusers
+	adminNames := make([]string, len(admins))
+	for i, admin := range admins {
+		adminNames[i] = admin.User.UserName
+	}
+	log.Printf("[INFO] add admins to superusers: {%s}", strings.Join(adminNames, ", "))
+
+	return err
 }
 
 // The bot must be an administrator in the supergroup for this to work

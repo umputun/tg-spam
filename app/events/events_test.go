@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -723,6 +724,79 @@ func TestSuperUser_IsSuper(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, tt.super.IsSuper(tt.userName))
+		})
+	}
+}
+
+func TestUpdateSupers(t *testing.T) {
+	tests := []struct {
+		name            string
+		superUsers      SuperUser
+		chatAdmins      []tbapi.ChatMember
+		adminFetchError error
+		expectedResult  []string
+		expectedErr     bool
+	}{
+		{
+			name:           "empty admins",
+			chatAdmins:     make([]tbapi.ChatMember, 0),
+			expectedResult: make([]string, 0),
+			expectedErr:    false,
+		},
+		{
+			name:           "non-empty admin usernames",
+			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
+			expectedResult: []string{"admin1", "admin2"},
+			expectedErr:    false,
+		},
+		{
+			name:           "non-empty admin usernames, existing supers",
+			superUsers:     SuperUser{"super1"},
+			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
+			expectedResult: []string{"super1", "admin1", "admin2"},
+			expectedErr:    false,
+		},
+		{
+			name:           "non-empty admin usernames, existing supers with duplicate",
+			superUsers:     SuperUser{"admin1"},
+			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
+			expectedResult: []string{"admin1", "admin2"},
+			expectedErr:    false,
+		},
+		{
+			name: "admin usernames with empty string",
+			chatAdmins: []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: ""}},
+				{User: &tbapi.User{UserName: "admin2"}}},
+			expectedResult: []string{"admin1", "admin2"},
+			expectedErr:    false,
+		},
+		{
+			name:            "fetching admins returns error",
+			chatAdmins:      []tbapi.ChatMember{},
+			adminFetchError: errors.New("fetch error"),
+			expectedResult:  []string{},
+			expectedErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{
+				TbAPI: &mocks.TbAPIMock{
+					GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+						return tt.chatAdmins, tt.adminFetchError
+					},
+				},
+				SuperUsers: tt.superUsers,
+			}
+
+			err := l.updateSupers()
+			if tt.expectedErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers)
+			}
 		})
 	}
 }
