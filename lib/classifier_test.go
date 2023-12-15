@@ -7,41 +7,41 @@ import (
 )
 
 const (
-	good Class = "good"
-	bad  Class = "bad"
+	good spamClass = "good"
+	bad  spamClass = "bad"
 )
 
 func TestClassifier_Classify(t *testing.T) {
 	tests := []struct {
 		name        string
 		tokens      []string
-		expected    Class
+		expected    spamClass
 		certain     bool
 		probability float64
 	}{
 		{
-			name:        "Tokens match good class",
+			name:        "tokens match good class",
 			tokens:      []string{"tall", "handsome", "rich"},
 			expected:    good,
 			certain:     true,
 			probability: 88.88,
 		},
 		{
-			name:        "Tokens partial match good class",
+			name:        "tokens partial match good class",
 			tokens:      []string{"tall", "handsome", "happy"},
 			expected:    good,
 			certain:     true,
 			probability: 80.00,
 		},
 		{
-			name:        "Tokens match bad class",
+			name:        "tokens match bad class",
 			tokens:      []string{"bald", "poor", "ugly"},
 			expected:    bad,
 			certain:     true,
 			probability: 88.88,
 		},
 		{
-			name:        "Tokens match multiple classes",
+			name:        "tokens match multiple classes",
 			tokens:      []string{"tall", "poor", "healthy", "wealthy", "happy", "handsome"},
 			expected:    good,
 			certain:     true,
@@ -55,15 +55,15 @@ func TestClassifier_Classify(t *testing.T) {
 		},
 	}
 
-	classifier := NewClassifier()
-	classifier.Learn(
-		NewDocument(good, "tall", "handsome", "rich"),
-		NewDocument(bad, "bald", "poor", "ugly"),
+	classifier := newClassifier()
+	classifier.learn(
+		newDocument(good, "tall", "handsome", "rich"),
+		newDocument(bad, "bald", "poor", "ugly"),
 	)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			class, p, certain := classifier.Classify(tt.tokens...)
+			class, p, certain := classifier.classify(tt.tokens...)
 			t.Logf("probability: %v", p)
 			assert.InDelta(t, tt.probability, p, 0.01, "probability")
 			if !tt.certain {

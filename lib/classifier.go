@@ -4,88 +4,88 @@ import "math"
 
 // based on the code from https://github.com/RadhiFadlillah/go-bayesian/blob/master/classifier.go
 
-// Class is alias of string, representing class of a document
-type Class string
+// spamClass is alias of string, representing class of a document
+type spamClass string
 
-// Document is a group of tokens with certain class
-type Document struct {
-	Class  Class
-	Tokens []string
+// document is a group of tokens with certain class
+type document struct {
+	spamClass spamClass
+	tokens    []string
 }
 
-// NewDocument return new Document
-func NewDocument(class Class, tokens ...string) Document {
-	return Document{
-		Class:  class,
-		Tokens: tokens,
+// newDocument return new document
+func newDocument(class spamClass, tokens ...string) document {
+	return document{
+		spamClass: class,
+		tokens:    tokens,
 	}
 }
 
-// Classifier is object for a classifying document
-type Classifier struct {
-	LearningResults    map[string]map[Class]int
-	PriorProbabilities map[Class]float64
-	NDocumentByClass   map[Class]int
-	NFrequencyByClass  map[Class]int
-	NAllDocument       int
+// classifier is object for a classifying document
+type classifier struct {
+	learningResults    map[string]map[spamClass]int
+	priorProbabilities map[spamClass]float64
+	nDocumentByClass   map[spamClass]int
+	nFrequencyByClass  map[spamClass]int
+	nAllDocument       int
 }
 
-// NewClassifier returns new Classifier
-func NewClassifier() Classifier {
-	return Classifier{
-		LearningResults:    make(map[string]map[Class]int),
-		PriorProbabilities: make(map[Class]float64),
-		NDocumentByClass:   make(map[Class]int),
-		NFrequencyByClass:  make(map[Class]int),
+// newClassifier returns new classifier
+func newClassifier() classifier {
+	return classifier{
+		learningResults:    make(map[string]map[spamClass]int),
+		priorProbabilities: make(map[spamClass]float64),
+		nDocumentByClass:   make(map[spamClass]int),
+		nFrequencyByClass:  make(map[spamClass]int),
 	}
 }
 
-// Learn executes the learning process for this classifier
-func (c *Classifier) Learn(docs ...Document) {
-	c.NAllDocument += len(docs)
+// learn executes the learning process for this classifier
+func (c *classifier) learn(docs ...document) {
+	c.nAllDocument += len(docs)
 
 	for _, doc := range docs {
-		c.NDocumentByClass[doc.Class]++
-		tokens := c.removeDuplicate(doc.Tokens...)
+		c.nDocumentByClass[doc.spamClass]++
+		tokens := c.removeDuplicate(doc.tokens...)
 
 		for _, token := range tokens {
-			c.NFrequencyByClass[doc.Class]++
+			c.nFrequencyByClass[doc.spamClass]++
 
-			if _, exist := c.LearningResults[token]; !exist {
-				c.LearningResults[token] = make(map[Class]int)
+			if _, exist := c.learningResults[token]; !exist {
+				c.learningResults[token] = make(map[spamClass]int)
 			}
 
-			c.LearningResults[token][doc.Class]++
+			c.learningResults[token][doc.spamClass]++
 		}
 	}
 
-	for class, nDocument := range c.NDocumentByClass {
-		c.PriorProbabilities[class] = math.Log(float64(nDocument) / float64(c.NAllDocument))
+	for class, nDocument := range c.nDocumentByClass {
+		c.priorProbabilities[class] = math.Log(float64(nDocument) / float64(c.nAllDocument))
 	}
 }
 
-// Reset resets all learning results
-func (c *Classifier) Reset() {
-	c.LearningResults = make(map[string]map[Class]int)
-	c.PriorProbabilities = make(map[Class]float64)
-	c.NDocumentByClass = make(map[Class]int)
-	c.NFrequencyByClass = make(map[Class]int)
-	c.NAllDocument = 0
+// reset resets all learning results
+func (c *classifier) reset() {
+	c.learningResults = make(map[string]map[spamClass]int)
+	c.priorProbabilities = make(map[spamClass]float64)
+	c.nDocumentByClass = make(map[spamClass]int)
+	c.nFrequencyByClass = make(map[spamClass]int)
+	c.nAllDocument = 0
 }
 
-// Classify executes the classifying process for tokens
-func (c *Classifier) Classify(tokens ...string) (Class, float64, bool) {
-	nVocabulary := len(c.LearningResults)
-	posteriorProbabilities := make(map[Class]float64)
+// classify executes the classifying process for tokens
+func (c *classifier) classify(tokens ...string) (spamClass, float64, bool) {
+	nVocabulary := len(c.learningResults)
+	posteriorProbabilities := make(map[spamClass]float64)
 
-	for class, priorProb := range c.PriorProbabilities {
+	for class, priorProb := range c.priorProbabilities {
 		posteriorProbabilities[class] = priorProb
 	}
 	tokens = c.removeDuplicate(tokens...)
 
-	for class, freqByClass := range c.NFrequencyByClass {
+	for class, freqByClass := range c.nFrequencyByClass {
 		for _, token := range tokens {
-			nToken := c.LearningResults[token][class]
+			nToken := c.learningResults[token][class]
 			posteriorProbabilities[class] += math.Log(float64(nToken+1) / float64(freqByClass+nVocabulary))
 		}
 	}
@@ -94,7 +94,7 @@ func (c *Classifier) Classify(tokens ...string) (Class, float64, bool) {
 
 	// find the best class and its probability
 	var certain bool
-	var bestClass Class
+	var bestClass spamClass
 	var highestProb float64
 	for class, prob := range probabilities {
 		if highestProb == 0 || prob > highestProb {
@@ -110,7 +110,7 @@ func (c *Classifier) Classify(tokens ...string) (Class, float64, bool) {
 	return bestClass, highestProb, certain
 }
 
-func (c *Classifier) removeDuplicate(tokens ...string) []string {
+func (c *classifier) removeDuplicate(tokens ...string) []string {
 	mapTokens := make(map[string]struct{})
 	newTokens := []string{}
 
@@ -126,9 +126,9 @@ func (c *Classifier) removeDuplicate(tokens ...string) []string {
 }
 
 // softmax converts log probabilities to normalized probabilities
-func softmax(logProbs map[Class]float64) map[Class]float64 {
+func softmax(logProbs map[spamClass]float64) map[spamClass]float64 {
 	sum := 0.0
-	probs := make(map[Class]float64)
+	probs := make(map[spamClass]float64)
 
 	// convert log probabilities to standard probabilities
 	for _, logProb := range logProbs {

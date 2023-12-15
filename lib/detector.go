@@ -20,7 +20,7 @@ import (
 // Detector is a spam detector, thread-safe.
 type Detector struct {
 	Config
-	classifier     Classifier
+	classifier     classifier
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]bool
 	stopWords      []string
@@ -72,7 +72,7 @@ type HTTPClient interface {
 func NewDetector(p Config) *Detector {
 	return &Detector{
 		Config:        p,
-		classifier:    NewClassifier(),
+		classifier:    newClassifier(),
 		approvedUsers: make(map[string]bool),
 		tokenizedSpam: []map[string]int{},
 	}
@@ -105,7 +105,7 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 		cr = append(cr, d.isSpamSimilarityHigh(msg))
 	}
 
-	if d.classifier.NAllDocument > 0 {
+	if d.classifier.nAllDocument > 0 {
 		cr = append(cr, d.isSpamClassified(msg))
 	}
 
@@ -133,7 +133,7 @@ func (d *Detector) Reset() {
 
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = []string{}
-	d.classifier.Reset()
+	d.classifier.reset()
 	d.approvedUsers = make(map[string]bool)
 	d.stopWords = []string{}
 }
@@ -156,7 +156,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = []string{}
-	d.classifier.Reset()
+	d.classifier.reset()
 
 	// excluded tokens should be loaded before spam samples
 	for t := range d.tokenChan(exclReader) {
@@ -165,7 +165,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
-	docs := []Document{}
+	docs := []document{}
 	for token := range d.tokenChan(spamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
@@ -173,7 +173,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, Document{Class: "spam", Tokens: tokens})
+		docs = append(docs, document{spamClass: "spam", tokens: tokens})
 		lr.SpamSamples++
 	}
 
@@ -183,11 +183,11 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, Document{Class: "ham", Tokens: tokens})
+		docs = append(docs, document{spamClass: "ham", tokens: tokens})
 		lr.HamSamples++
 	}
 
-	d.classifier.Learn(docs...)
+	d.classifier.learn(docs...)
 
 	return lr, nil
 }
@@ -220,7 +220,7 @@ func (d *Detector) UpdateSpam(msg string) error {
 	}
 
 	// load spam samples and update the classifier with them
-	docs := []Document{}
+	docs := []document{}
 	for token := range d.tokenChan(bytes.NewBufferString(msg)) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
@@ -228,9 +228,9 @@ func (d *Detector) UpdateSpam(msg string) error {
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, Document{Class: "spam", Tokens: tokens})
+		docs = append(docs, document{spamClass: "spam", tokens: tokens})
 	}
-	d.classifier.Learn(docs...)
+	d.classifier.learn(docs...)
 	return nil
 }
 
@@ -249,16 +249,16 @@ func (d *Detector) UpdateHam(msg string) error {
 	}
 
 	// load ham samples and update the classifier with them
-	docs := []Document{}
+	docs := []document{}
 	for token := range d.tokenChan(bytes.NewBufferString(msg)) {
 		tokenizedHam := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedHam))
 		for token := range tokenizedHam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, Document{Class: "ham", Tokens: tokens})
+		docs = append(docs, document{spamClass: "ham", tokens: tokens})
 	}
-	d.classifier.Learn(docs...)
+	d.classifier.learn(docs...)
 	return nil
 }
 
@@ -446,7 +446,7 @@ func (d *Detector) isSpamClassified(msg string) CheckResult {
 	for token := range tm {
 		tokens = append(tokens, token)
 	}
-	class, prob, certain := d.classifier.Classify(tokens...)
+	class, prob, certain := d.classifier.classify(tokens...)
 	return CheckResult{Name: "classifier", Spam: class == "spam" && certain,
 		Details: fmt.Sprintf("probability: %.2f%%, certain: %v", prob, certain)}
 }

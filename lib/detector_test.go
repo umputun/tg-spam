@@ -222,7 +222,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2}, lr)
-	d.classifier.Reset() // we don't need a classifier for this test
+	d.classifier.reset() // we don't need a classifier for this test
 	assert.Len(t, d.tokenizedSpam, 2)
 	t.Logf("%+v", d.tokenizedSpam)
 	assert.Equal(t, map[string]int{"win": 1, "free": 1, "iphone": 1}, d.tokenizedSpam[0])
@@ -261,11 +261,11 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
-	assert.Equal(t, 5, d.classifier.NAllDocument)
-	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
+	assert.Equal(t, 5, d.classifier.nAllDocument)
+	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
 		"prize": {"spam": 1}, "hello": {"ham": 1}, "world": {"ham": 1}, "how": {"ham": 1}, "are": {"ham": 1}, "you": {"ham": 1},
 		"have": {"ham": 1}, "good": {"ham": 1}, "day": {"ham": 1}}
-	assert.Equal(t, exp, d.classifier.LearningResults)
+	assert.Equal(t, exp, d.classifier.learningResults)
 
 	tests := []struct {
 		name     string
@@ -309,11 +309,11 @@ func TestDetector_UpdateSpam(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
-	assert.Equal(t, 5, d.classifier.NAllDocument)
-	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
+	assert.Equal(t, 5, d.classifier.nAllDocument)
+	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
 		"prize": {"spam": 1}, "hello": {"ham": 1}, "world": {"ham": 1}, "how": {"ham": 1}, "are": {"ham": 1}, "you": {"ham": 1},
 		"have": {"ham": 1}, "good": {"ham": 1}, "day": {"ham": 1}}
-	assert.Equal(t, exp, d.classifier.LearningResults)
+	assert.Equal(t, exp, d.classifier.learningResults)
 
 	msg := "another good world one iphone user writes good things day"
 	t.Run("initially a little bit ham", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 
 	err = d.UpdateSpam("another user writes")
 	assert.NoError(t, err)
-	assert.Equal(t, 6, d.classifier.NAllDocument)
+	assert.Equal(t, 6, d.classifier.nAllDocument)
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly spam", func(t *testing.T) {
@@ -356,11 +356,11 @@ func TestDetector_UpdateHam(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
-	assert.Equal(t, 5, d.classifier.NAllDocument)
-	exp := map[string]map[Class]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
+	assert.Equal(t, 5, d.classifier.nAllDocument)
+	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
 		"prize": {"spam": 1}, "hello": {"ham": 1}, "world": {"ham": 1}, "how": {"ham": 1}, "are": {"ham": 1}, "you": {"ham": 1},
 		"have": {"ham": 1}, "good": {"ham": 1}, "day": {"ham": 1}}
-	assert.Equal(t, exp, d.classifier.LearningResults)
+	assert.Equal(t, exp, d.classifier.learningResults)
 
 	msg := "another free good world one iphone user writes good things day"
 	t.Run("initially a little bit spam", func(t *testing.T) {
@@ -374,7 +374,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 
 	err = d.UpdateHam("another writes things")
 	assert.NoError(t, err)
-	assert.Equal(t, 6, d.classifier.NAllDocument)
+	assert.Equal(t, 6, d.classifier.nAllDocument)
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly spam", func(t *testing.T) {
@@ -398,13 +398,13 @@ func TestDetector_Reset(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{StopWords: 2}, sr)
 
-	assert.Equal(t, 5, d.classifier.NAllDocument)
+	assert.Equal(t, 5, d.classifier.nAllDocument)
 	assert.Equal(t, 2, len(d.tokenizedSpam))
 	assert.Equal(t, 1, len(d.excludedTokens))
 	assert.Equal(t, 2, len(d.stopWords))
 
 	d.Reset()
-	assert.Equal(t, 0, d.classifier.NAllDocument)
+	assert.Equal(t, 0, d.classifier.nAllDocument)
 	assert.Equal(t, 0, len(d.tokenizedSpam))
 	assert.Equal(t, 0, len(d.excludedTokens))
 	assert.Equal(t, 0, len(d.stopWords))

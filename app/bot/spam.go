@@ -217,7 +217,7 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 	}
 	defer hamDynamicReader.Close()
 
-	// reload samples and stop-words. note: we don't need Reset as LoadSamples and LoadStopWords clear the state first
+	// reload samples and stop-words. note: we don't need reset as LoadSamples and LoadStopWords clear the state first
 	lr, err := s.director.LoadSamples(exclReader, []io.Reader{spamReader, spamDynamicReader},
 		[]io.Reader{hamReader, hamDynamicReader})
 	if err != nil {

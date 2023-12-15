@@ -139,7 +139,7 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 			require.NoError(t, err)
 			defer os.Remove(excludedTokensFile.Name())
 
-			// Reset to default values before each test
+			// reset to default values before each test
 			params := SpamConfig{
 				SpamSamplesFile:    spamSamplesFile.Name(),
 				HamSamplesFile:     hamSamplesFile.Name(),
