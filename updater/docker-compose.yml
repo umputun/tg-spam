@@ -28,7 +28,6 @@ services:
       - FILES_DYNAMIC_HAM=/srv/data/dynamic-ham.txt
       - FILES_APPROVED_USERS=/srv/data/approved-users.dat
       - NO_SPAM_REPLY=true
-      - DEBUG=true
     volumes:
       - ./tg-spam-samples:/srv/data   # map user-provided samples to /srv/data
       - ./log:/srv/log                # map log folder to /srv/log
