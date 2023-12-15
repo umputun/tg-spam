@@ -264,6 +264,12 @@ services:
     command: --super=name1 --super=name2 --super=name3
 ```
 
+## Updating spam and ham samples from remote git repository
+
+A small utility and docker container provided to update spam and ham samples from a remote git repository. The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. For more details see [updater/README.md](https://github.com/umputun/tg-spam/tree/master/updater/README.md).
+
+It also has an example of [docker-compose.yml](https://github.com/umputun/tg-spam/tree/master/updater/docker-compose.yml) to run it as a container side-by-side with the bot.
+
 ## Using tg-spam as a library
 
 The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.

@@ -1,9 +1,46 @@
-# example of docker-compose.yml file to run updater
+# example of docker-compose.yml file to run tg-spam with updater
+# updater gets samples from github repo "https://github.com/radio-t/tg-spam-samples.git and updates tg-spam samples
 services:
-  tg-spam-updater:
-    image: ghcr.io/umputun/tg-spam-updater:latest
+  tg-spam:
+    image: umputun/tg-spam:latest # use :master tag for latest (unstable) version
+    hostname: tg-spam
     restart: always
+    container_name: tg-spam
     user: "1000:1000" # run with the same user as the host machine to avoid permission issues
-    command: ["https://github.com/radio-t/tg-spam-samples.git", "/samples"]
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      - TZ=America/Chicago
+      - TELEGRAM_TOKEN # set your telegram token in .env file
+      - TELEGRAM_GROUP # set your telegram group in .env file
+      - ADMIN_GROUP=-403777777777 # admin group id
+      - LOGGER_ENABLED=true
+      - LOGGER_FILE=/srv/log/tg-spam.log
+      - LOGGER_MAX_SIZE=5M
+      - FILES_SAMPLES_SPAM=/srv/data/spam-samples.txt
+      - FILES_SAMPLES_HAM=/srv/data/ham-samples.txt
+      - FILES_EXCLUDE_TOKENS=/srv/data/exclude-tokens.txt
+      - FILES_STOP_WORDS=/srv/data/stop-words.txt
+      - FILES_DYNAMIC_SPAM=/srv/data/dynamic-spam.txt
+      - FILES_DYNAMIC_HAM=/srv/data/dynamic-ham.txt
+      - FILES_APPROVED_USERS=/srv/data/approved-users.dat
+      - NO_SPAM_REPLY=true
+      - DEBUG=true
+    volumes:
+      - ./tg-spam-samples:/srv/data   # map user-provided samples to /srv/data
+      - ./log:/srv/log                # map log folder to /srv/log
+    command: --super=name1 --super=name2
+
+  tg-spam-updater:
+    image: ghcr.io/umputun/tg-spam-updater:latest # use :master tag for latest (unstable) version
+    hostname: tg-spam-updater
+    container_name: tg-spam-updater
+    restart: always
+    logging: *default_logging
+    user: "1000:1000" # run with the same user as the host machine to avoid permission issues
     volumes:
       - ./tg-spam-samples:/samples
+    command: ["https://github.com/radio-t/tg-spam-samples.git", "/samples"]
