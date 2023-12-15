@@ -458,6 +458,7 @@ func (l *TelegramListener) updateSupers() error {
 	if err != nil {
 		return fmt.Errorf("failed to get chat administrators: %w", err)
 	}
+
 	for _, admin := range admins {
 		if strings.TrimSpace(admin.User.UserName) == "" {
 			continue
@@ -468,13 +469,7 @@ func (l *TelegramListener) updateSupers() error {
 		l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
 	}
 
-	// prepare formatted list of superusers
-	adminNames := make([]string, len(admins))
-	for i, admin := range admins {
-		adminNames[i] = admin.User.UserName
-	}
-	log.Printf("[INFO] add admins to superusers: {%s}", strings.Join(adminNames, ", "))
-
+	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
 	return err
 }
 
