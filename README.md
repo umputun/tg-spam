@@ -274,7 +274,7 @@ It also has an example of [docker-compose.yml](https://github.com/umputun/tg-spa
 
 The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
 
-For more details see the [TBD]()
+For more details, see the docs on [pkg.go.dev](https://pkg.go.dev/github.com/umputun/tg-spam/lib)
 
 Example:
 
