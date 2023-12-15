@@ -1,7 +1,19 @@
-name: build
-on: [push, pull_request]
-jobs:
+name: build-app
+on:
+  push:
+    branches:
+    tags:
+    paths_ignored:
+      - ".github/workflows/updater.yml"
+      - "updater/**"
+      - "**.md"
+  pull_request:
+    paths_ignored:
+      - ".github/workflows/updater.yml"
+      - "updater/**"
+      - "**.md"
 
+jobs:
   build:
     name: build
     runs-on: ubuntu-latest

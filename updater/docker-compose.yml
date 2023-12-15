@@ -1,0 +1,9 @@
+# example of docker-compose.yml file to run updater
+services:
+  tg-spam-updater:
+    image: ghcr.io/umputun/tg-spam-updater:latest
+    restart: always
+    user: "1000:1000" # run with the same user as the host machine to avoid permission issues
+    command: ["https://github.com/radio-t/tg-spam-samples.git", "/samples"]
+    volumes:
+      - ./tg-spam-samples:/samples
