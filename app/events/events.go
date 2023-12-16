@@ -322,7 +322,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
-	if err := l.sendUnban(forwardMsg, "unban user", msg.From, l.adminChatID); err != nil {
+	if err := l.sendUnban(forwardMsg, "change ban status for user", msg.From, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
