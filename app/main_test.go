@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -69,12 +70,13 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		require.NoError(t, err)
 		defer os.Remove(file.Name())
 
+		var opts options
 		opts.Logger.Enabled = true
 		opts.Logger.FileName = file.Name()
 		opts.Logger.MaxSize = "1M"
 		opts.Logger.MaxBackups = 1
 
-		writer, err := makeSpamLogWriter()
+		writer, err := makeSpamLogWriter(opts)
 		require.NoError(t, err)
 
 		_, err = writer.Write([]byte("Test log entry\n"))
@@ -91,22 +93,24 @@ func TestMakeSpamLogWriter(t *testing.T) {
 	})
 
 	t.Run("failed on wrong size", func(t *testing.T) {
+		var opts options
 		opts.Logger.Enabled = true
 		opts.Logger.FileName = "/tmp"
 		opts.Logger.MaxSize = "1f"
 		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter()
+		writer, err := makeSpamLogWriter(opts)
 		assert.Error(t, err)
 		t.Log(err)
 		assert.Nil(t, writer)
 	})
 
 	t.Run("disabled", func(t *testing.T) {
+		var opts options
 		opts.Logger.Enabled = false
 		opts.Logger.FileName = "/tmp"
 		opts.Logger.MaxSize = "10M"
 		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter()
+		writer, err := makeSpamLogWriter(opts)
 		assert.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
 	})
@@ -133,4 +137,54 @@ func Test_autoSaveApprovedUsers(t *testing.T) {
 	fi, err := os.Stat(tmpFile.Name())
 	require.NoError(t, err)
 	assert.Equal(t, int64(8)*3, fi.Size())
+}
+
+func Test_makeDetector(t *testing.T) {
+	t.Run("no options", func(t *testing.T) {
+		var opts options
+		res := makeDetector(opts)
+		assert.NotNil(t, res)
+	})
+
+	t.Run("with options", func(t *testing.T) {
+		var opts options
+		opts.OpenAI.Token = "123"
+		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
+		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		res := makeDetector(opts)
+		assert.NotNil(t, res)
+	})
+}
+
+func Test_makeSpamBot(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	t.Run("no options", func(t *testing.T) {
+		var opts options
+		_, err := makeSpamBot(ctx, opts, nil)
+		assert.Error(t, err)
+	})
+
+	t.Run("with valid options", func(t *testing.T) {
+		var opts options
+		tmpDir, err := os.MkdirTemp("", "spambot_main_test")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpDir)
+
+		_, err = os.Create(filepath.Join(tmpDir, "spam.txt"))
+		require.NoError(t, err)
+		_, err = os.Create(filepath.Join(tmpDir, "ham.txt"))
+		require.NoError(t, err)
+		_, err = os.Create(filepath.Join(tmpDir, "exclude.txt"))
+		require.NoError(t, err)
+
+		opts.Files.SamplesSpamFile = filepath.Join(tmpDir, "spam.txt")
+		opts.Files.SamplesHamFile = filepath.Join(tmpDir, "ham.txt")
+		opts.Files.ExcludeTokenFile = filepath.Join(tmpDir, "exclude.txt")
+
+		res, err := makeSpamBot(ctx, opts, makeDetector(opts))
+		assert.NoError(t, err)
+		assert.NotNil(t, res)
+	})
 }

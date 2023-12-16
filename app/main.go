@@ -29,7 +29,7 @@ import (
 	"github.com/umputun/tg-spam/lib"
 )
 
-var opts struct {
+type options struct {
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token" required:"true"`
 		Group        string        `long:"group" env:"GROUP" description:"group name/id" required:"true"`
@@ -98,7 +98,7 @@ var revision = "local"
 
 func main() {
 	fmt.Printf("tg-spam %s\n", revision)
-
+	var opts options
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
@@ -122,13 +122,13 @@ func main() {
 		cancel()
 	}()
 
-	if err := execute(ctx); err != nil {
+	if err := execute(ctx, opts); err != nil {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
 	}
 }
 
-func execute(ctx context.Context) error {
+func execute(ctx context.Context, opts options) error {
 	if opts.Dry {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
@@ -140,7 +140,67 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = opts.TGDbg
 
-	// make spam detector
+	// make detector with all sample files loaded
+	detector := makeDetector(opts)
+
+	// load approved users and start auto-save
+	if opts.Files.ApprovedUsers != "" {
+		approvedUsersStore := storage.NewApprovedUsers(opts.Files.ApprovedUsers)
+		defer func() {
+			if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
+				log.Printf("[WARN] can't save approved users, %v", serr)
+			}
+		}()
+		count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
+		if lerr != nil {
+			log.Printf("[WARN] can't load approved users, %v", lerr)
+		} else {
+			log.Printf("[DEBUG] approved users file: %s, loaded: %d", opts.Files.ApprovedUsers, count)
+		}
+		go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
+	}
+
+	// make spam bot
+	spamBot, err := makeSpamBot(ctx, opts, detector)
+	if err != nil {
+		return fmt.Errorf("can't make spam bot, %w", err)
+	}
+
+	// make spam logger
+	loggerWr, err := makeSpamLogWriter(opts)
+	if err != nil {
+		return fmt.Errorf("can't make spam log writer, %w", err)
+	}
+	defer loggerWr.Close()
+
+	// make telegram listener
+	tgListener := events.TelegramListener{
+		TbAPI:        tbAPI,
+		Group:        opts.Telegram.Group,
+		IdleDuration: opts.Telegram.IdleDuration,
+		SuperUsers:   opts.SuperUsers,
+		Bot:          spamBot,
+		StartupMsg:   opts.Message.Startup,
+		NoSpamReply:  opts.NoSpamReply,
+		SpamLogger:   makeSpamLogger(loggerWr),
+		AdminGroup:   opts.AdminGroup,
+		TestingIDs:   opts.TestingIDs,
+		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
+		TrainingMode: opts.Training,
+		Dry:          opts.Dry,
+	}
+	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
+		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
+
+	// run telegram listener and event processor loop
+	if err := tgListener.Do(ctx); err != nil {
+		return fmt.Errorf("telegram listener failed, %w", err)
+	}
+	return nil
+}
+
+func makeDetector(opts options) *lib.Detector {
 	detectorConfig := lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
@@ -173,24 +233,10 @@ func execute(ctx context.Context) error {
 		detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
 		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
 	}
+	return detector
+}
 
-	if opts.Files.ApprovedUsers != "" {
-		approvedUsersStore := storage.NewApprovedUsers(opts.Files.ApprovedUsers)
-		defer func() {
-			if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
-				log.Printf("[WARN] can't save approved users, %v", serr)
-			}
-		}()
-		count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
-		if lerr != nil {
-			log.Printf("[WARN] can't load approved users, %v", lerr)
-		} else {
-			log.Printf("[DEBUG] approved users file: %s, loaded: %d", opts.Files.ApprovedUsers, count)
-		}
-		go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
-	}
-
-	// make spam bot
+func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bot.SpamFilter, error) {
 	spamBotParams := bot.SpamConfig{
 		SpamSamplesFile:    opts.Files.SamplesSpamFile,
 		HamSamplesFile:     opts.Files.SamplesHamFile,
@@ -206,41 +252,10 @@ func execute(ctx context.Context) error {
 	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
-	if err = spamBot.ReloadSamples(); err != nil {
-		return fmt.Errorf("can't make spam bot, %w", err)
+	if err := spamBot.ReloadSamples(); err != nil {
+		return nil, fmt.Errorf("can't relaod samples, %w", err)
 	}
-
-	// make spam logger
-	loggerWr, err := makeSpamLogWriter()
-	if err != nil {
-		return fmt.Errorf("can't make spam log writer, %w", err)
-	}
-	defer loggerWr.Close()
-
-	tgListener := events.TelegramListener{
-		TbAPI:        tbAPI,
-		Group:        opts.Telegram.Group,
-		IdleDuration: opts.Telegram.IdleDuration,
-		SuperUsers:   opts.SuperUsers,
-		Bot:          spamBot,
-		StartupMsg:   opts.Message.Startup,
-		NoSpamReply:  opts.NoSpamReply,
-		SpamLogger:   makeSpamLogger(loggerWr),
-		AdminGroup:   opts.AdminGroup,
-		TestingIDs:   opts.TestingIDs,
-		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
-		TrainingMode: opts.Training,
-		Dry:          opts.Dry,
-	}
-	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",
-		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry)
-
-	// run telegram listener and event processor
-	if err := tgListener.Do(ctx); err != nil {
-		return fmt.Errorf("telegram listener failed, %w", err)
-	}
-	return nil
+	return spamBot, nil
 }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
@@ -276,7 +291,7 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 
 // makeSpamLogWriter creates spam log writer to keep reports about spam messages
 // it parses options and makes lumberjack logger with rotation
-func makeSpamLogWriter() (accessLog io.WriteCloser, err error) {
+func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 	if !opts.Logger.Enabled {
 		return nopWriteCloser{io.Discard}, nil
 	}
