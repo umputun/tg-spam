@@ -180,6 +180,7 @@ Success! The new status is: DISABLED. /help
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
+      --training                    training mode, do not ban [$TRAINING]
 
 telegram:
       --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
@@ -244,6 +245,8 @@ To do so, three conditions must be met:
 - admin name(s) should be set with `--super [$SUPER_USER]` parameter.  
 
 After that, the moment admin run into a spam message, he could forward it to the tg-spam bot. The bot will add this message to the spam samples file, ban user and delete the message. By doing so, the bot will learn new spam patterns on the fly and eventually will be able to detect spam without admin help. Note: the only thing admin should do is to forward the message to the bot, no need to add any text or comments, or remove/ban the original spammer. The bot will do all the work.
+
+In case if such a training on a live system is not possible, the bot can be trained without banning user and deleting messages. Setting `--training ` parameter will disable banning and deleting messages but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot.
 
 ## Example of docker-compose.yml
 
