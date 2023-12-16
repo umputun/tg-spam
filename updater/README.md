@@ -4,8 +4,7 @@ A small utility to update tg-spam samples from remote git repository
 
 ## Usage
 
-The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. It detects the environment and acts accordingly. For example, if it is run as a docker container, it will update the samples every minute. However, if it runs as a part of a cron job, it will update the samples only if the remote repository has changed since the last update (or if the local repository is missing).
-
+The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. It detects the environment and acts accordingly. For example, if it is run as a docker container, it will update the samples every minute. However, if it runs as a part of a cron job, it will update the samples once per run, only if the remote repository has changed since the last update (or if the local repository is missing).
 
 ### Docker
 
