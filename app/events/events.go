@@ -183,7 +183,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	// message from admin chat
 	if l.isAdminChat(fromChat, msg.From.Username) {
-		if err := l.adminChatMsgHandler(update, fromChat); err != nil {
+		if err := l.adminChatMsgHandler(update); err != nil {
 			log.Printf("[WARN] failed to process admin chat message: %v", err)
 		}
 		return nil
@@ -243,8 +243,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 // adminChatMsgHandler handles messages received on admin chat. This is usually forwarded spam failed
 // to be detected by the bot. We need to update spam filter with this message and ban the user.
-// Note: fromChat is the chat ID of the chat where the message was received, i.e. the admin chat ID.
-func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int64) error {
+func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	shrink := func(inp string, max int) string {
 		if utf8.RuneCountInString(inp) <= max {
 			return inp
