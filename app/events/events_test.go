@@ -223,6 +223,68 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	})
 }
 
+func TestTelegramListener_DoWithTraining(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			return tbapi.Chat{ID: 123}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "ChannelBot"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+		t.Logf("on-message: %+v", msg)
+		return bot.Response{DeleteReplyTo: true, ReplyTo: msg.ID, ChannelID: msg.ChatID, BanInterval: time.Hour,
+			Send: true, Text: "bot's answer", User: bot.User{Username: "user", ID: 1, DisplayName: "First Last"}}
+	}}
+
+	l := TelegramListener{
+		SpamLogger:   mockLogger,
+		TbAPI:        mockAPI,
+		Bot:          b,
+		Group:        "gr",
+		Locator:      NewLocator(10*time.Minute, 0),
+		TrainingMode: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat: &tbapi.Chat{ID: 123},
+			Text: "text 321",
+			From: &tbapi.User{UserName: "user", ID: 136817688},
+			SenderChat: &tbapi.Chat{
+				ID:       12345,
+				UserName: "test_bot",
+			},
+			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+	assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+	assert.Equal(t, "text 321", mockLogger.SaveCalls()[0].Msg.Text)
+	assert.Equal(t, "user", mockLogger.SaveCalls()[0].Msg.From.Username)
+	assert.Equal(t, 0, len(mockAPI.SendCalls()), "no messages should be sent in training mode")
+	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+
+}
+
 func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{

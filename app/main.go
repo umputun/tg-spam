@@ -88,9 +88,10 @@ var opts struct {
 		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
 
-	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
+	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
+	Dry      bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
+	Dbg      bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	TGDbg    bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
 var revision = "local"
@@ -228,6 +229,7 @@ func execute(ctx context.Context) error {
 		AdminGroup:   opts.AdminGroup,
 		TestingIDs:   opts.TestingIDs,
 		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
+		TrainingMode: opts.Training,
 		Dry:          opts.Dry,
 	}
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v}",

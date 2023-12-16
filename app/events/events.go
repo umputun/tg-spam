@@ -41,6 +41,7 @@ type TelegramListener struct {
 	TestingIDs   []int64
 	StartupMsg   string
 	NoSpamReply  bool
+	TrainingMode bool
 	Dry          bool
 	Locator      *Locator
 
@@ -92,6 +93,10 @@ type SpamWeb interface {
 func (l *TelegramListener) Do(ctx context.Context) error {
 	log.Printf("[INFO] start telegram listener for %q", l.Group)
 
+	if l.TrainingMode {
+		log.Printf("[WARN] training mode, no bans")
+	}
+
 	var getChatErr error
 	if l.chatID, getChatErr = l.getChatID(l.Group); getChatErr != nil {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
@@ -115,7 +120,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		}
 	})
 
-	if l.StartupMsg != "" {
+	if l.StartupMsg != "" && !l.TrainingMode && !l.Dry {
 		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
 			log.Printf("[WARN] failed to send startup message, %v", err)
 		}
@@ -198,7 +203,8 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	l.Locator.Add(update.Message.Text, fromChat, msg.From.ID, msg.ID) // save message to locator
 	resp := l.Bot.OnMessage(*msg)
 
-	if resp.Send && !l.NoSpamReply {
+	// send response to the channel if allowed
+	if resp.Send && !l.NoSpamReply && !l.TrainingMode {
 		if err := l.sendBotResponse(resp, fromChat); err != nil {
 			log.Printf("[WARN] failed to respond on update, %v", err)
 		}
@@ -226,7 +232,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// delete message if requested by bot
-	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username) {
+	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username) && !l.TrainingMode {
 		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
@@ -271,7 +277,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update, fromChat int
 	}
 
 	log.Printf("[DEBUG] locator found message %s", info)
-	if l.Dry {
+	if l.Dry || l.TrainingMode {
 		return nil
 	}
 
@@ -386,15 +392,17 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	}
 
 	// unban user
-	_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
-	if err != nil {
-		return fmt.Errorf("failed to unban user %d: %w", userID, err)
+	if !l.TrainingMode {
+		_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
+		if err != nil {
+			return fmt.Errorf("failed to unban user %d: %w", userID, err)
+		}
 	}
 
 	// add user to the approved list
 	l.Bot.AddApprovedUsers(userID)
 
-	// Create an edit message with new text and an empty keyboard
+	// Create the original forwarded message with new indication of "unbanned" and an empty keyboard
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_",
 		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
 	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
@@ -417,7 +425,7 @@ func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update
 	if update.Message.SenderChat != nil {
 		botChat.UserName = update.Message.SenderChat.UserName
 	}
-	// if not set, that means the ban comes from superuser and username should be taken from ReplyToMessage
+	// if botChat.UserName not set, that means the ban comes from superuser and username should be taken from ReplyToMessage
 	if botChat.UserName == "" && update.Message.ReplyToMessage.SenderChat != nil {
 		botChat.UserName = update.Message.ReplyToMessage.SenderChat.UserName
 	}
@@ -522,6 +530,11 @@ func (l *TelegramListener) banUserOrChannel(duration time.Duration, chatID, user
 
 	if l.Dry {
 		log.Printf("[INFO] dry run: ban %d for %v", userID, duration)
+		return nil
+	}
+
+	if l.TrainingMode {
+		log.Printf("[INFO] training mode: ban %d for %v", userID, duration)
 		return nil
 	}
 
