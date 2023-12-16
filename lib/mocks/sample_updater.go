@@ -65,7 +65,7 @@ func (mock *SampleUpdaterMock) Append(msg string) error {
 }
 
 // AppendCalls gets all the calls that were made to Append.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedSampleUpdater.AppendCalls())
 func (mock *SampleUpdaterMock) AppendCalls() []struct {
@@ -94,7 +94,7 @@ func (mock *SampleUpdaterMock) Reader() (io.ReadCloser, error) {
 }
 
 // ReaderCalls gets all the calls that were made to Reader.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedSampleUpdater.ReaderCalls())
 func (mock *SampleUpdaterMock) ReaderCalls() []struct {

@@ -103,7 +103,7 @@ func (mock *TbAPIMock) GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error) 
 }
 
 // GetChatCalls gets all the calls that were made to GetChat.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedTbAPI.GetChatCalls())
 func (mock *TbAPIMock) GetChatCalls() []struct {
@@ -142,7 +142,7 @@ func (mock *TbAPIMock) GetChatAdministrators(config tbapi.ChatAdministratorsConf
 }
 
 // GetChatAdministratorsCalls gets all the calls that were made to GetChatAdministrators.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedTbAPI.GetChatAdministratorsCalls())
 func (mock *TbAPIMock) GetChatAdministratorsCalls() []struct {
@@ -181,7 +181,7 @@ func (mock *TbAPIMock) GetUpdatesChan(config tbapi.UpdateConfig) tbapi.UpdatesCh
 }
 
 // GetUpdatesChanCalls gets all the calls that were made to GetUpdatesChan.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedTbAPI.GetUpdatesChanCalls())
 func (mock *TbAPIMock) GetUpdatesChanCalls() []struct {
@@ -220,7 +220,7 @@ func (mock *TbAPIMock) Request(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 }
 
 // RequestCalls gets all the calls that were made to Request.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedTbAPI.RequestCalls())
 func (mock *TbAPIMock) RequestCalls() []struct {
@@ -259,7 +259,7 @@ func (mock *TbAPIMock) Send(c tbapi.Chattable) (tbapi.Message, error) {
 }
 
 // SendCalls gets all the calls that were made to Send.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedTbAPI.SendCalls())
 func (mock *TbAPIMock) SendCalls() []struct {

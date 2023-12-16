@@ -21,6 +21,7 @@ import (
 type Detector struct {
 	Config
 	classifier     classifier
+	openaiChecker  *openAIChecker
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]bool
 	stopWords      []string
@@ -78,6 +79,11 @@ func NewDetector(p Config) *Detector {
 	}
 }
 
+// WithOpenAIChecker sets an openAIChecker for spam checking.
+func (d *Detector) WithOpenAIChecker(client openAIClient, params OpenAIConfig) {
+	d.openaiChecker = newOpenAIChecker(client, params)
+}
+
 // Check checks if a given message is spam. Returns true if spam.
 // Also returns a list of check results.
 func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
@@ -115,6 +121,16 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 
 	for _, r := range cr {
 		if r.Spam {
+			return true, cr
+		}
+	}
+
+	// we hit openai only if all other checks passed because it's slow and expensive
+	// we also don't want to hit openai for every message
+	if d.openaiChecker != nil && d.FirstMessageOnly {
+		spam, details := d.openaiChecker.check(msg)
+		cr = append(cr, details)
+		if spam {
 			return true, cr
 		}
 	}

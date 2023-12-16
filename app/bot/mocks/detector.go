@@ -19,7 +19,7 @@ import (
 //				panic("mock out the AddApprovedUsers method")
 //			},
 //			CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
-//				panic("mock out the Check method")
+//				panic("mock out the check method")
 //			},
 //			LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
 //				panic("mock out the LoadSamples method")
@@ -147,7 +147,7 @@ func (mock *DetectorMock) ResetAddApprovedUsersCalls() {
 // Check calls CheckFunc.
 func (mock *DetectorMock) Check(msg string, userID string) (bool, []lib.CheckResult) {
 	if mock.CheckFunc == nil {
-		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
+		panic("DetectorMock.CheckFunc: method is nil but Detector.check was just called")
 	}
 	callInfo := struct {
 		Msg    string

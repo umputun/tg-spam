@@ -55,7 +55,7 @@ func (mock *HTTPClientMock) Do(req *http.Request) (*http.Response, error) {
 }
 
 // DoCalls gets all the calls that were made to Do.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedHTTPClient.DoCalls())
 func (mock *HTTPClientMock) DoCalls() []struct {

@@ -95,7 +95,7 @@ func (mock *BotMock) AddApprovedUsers(id int64, ids ...int64) {
 }
 
 // AddApprovedUsersCalls gets all the calls that were made to AddApprovedUsers.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedBot.AddApprovedUsersCalls())
 func (mock *BotMock) AddApprovedUsersCalls() []struct {
@@ -136,7 +136,7 @@ func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
 }
 
 // OnMessageCalls gets all the calls that were made to OnMessage.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedBot.OnMessageCalls())
 func (mock *BotMock) OnMessageCalls() []struct {
@@ -175,7 +175,7 @@ func (mock *BotMock) UpdateHam(msg string) error {
 }
 
 // UpdateHamCalls gets all the calls that were made to UpdateHam.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedBot.UpdateHamCalls())
 func (mock *BotMock) UpdateHamCalls() []struct {
@@ -214,7 +214,7 @@ func (mock *BotMock) UpdateSpam(msg string) error {
 }
 
 // UpdateSpamCalls gets all the calls that were made to UpdateSpam.
-// Check the length with:
+// check the length with:
 //
 //	len(mockedBot.UpdateSpamCalls())
 func (mock *BotMock) UpdateSpamCalls() []struct {

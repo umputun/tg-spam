@@ -8,6 +8,8 @@ require (
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
+	github.com/sashabaranov/go-openai v1.17.9
 	github.com/stretchr/testify v1.8.4
 	github.com/umputun/go-flags v1.5.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -15,10 +17,13 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/samber/lo v1.37.0 // indirect
+	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
