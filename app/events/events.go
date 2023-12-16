@@ -218,7 +218,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		if err := l.banUserOrChannel(resp.BanInterval, fromChat, resp.User.ID, resp.ChannelID); err == nil {
 			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
-				l.reportToAdminChat(banUserStr, msg) // TODO: remove
+				l.reportToAdminChat(banUserStr, msg)
 			}
 		} else {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
@@ -305,9 +305,6 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
 
 // reportToAdminChat sends a message to admin chat with a link to unban the user
 func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message) {
-	// escapeMarkDownV1Text escapes markdownV1 special characters, used in places where we want to send text as-is.
-	// For example, telegram username with underscores would be italicized if we don't escape it.
-	// https://core.telegram.org/bots/api#markdown-style
 	escapeMarkDownV1Text := func(text string) string {
 		escSymbols := []string{"_", "*", "`", "["}
 		for _, esc := range escSymbols {
@@ -319,7 +316,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
-	if err := l.sendActionResponse(forwardMsg, "unban user", msg.From, l.adminChatID); err != nil {
+	if err := l.sendUnban(forwardMsg, "unban user", msg.From, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
@@ -332,7 +329,41 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	if chatID != l.adminChatID {    // ignore callbacks from other chats, only admin chat is allowed
 		return nil
 	}
-	log.Printf("[DEBUG] unban callback, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+
+	// if callback data starts with "?", we should show a confirmation message
+	if strings.HasPrefix(callbackData, "?") {
+		// Replace with confirmation buttons
+		confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
+			tbapi.NewInlineKeyboardRow(
+				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]), // remove "?" prefix
+				tbapi.NewInlineKeyboardButtonData("Keep it banned", "no"),
+			),
+		)
+		editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, confirmationKeyboard)
+		if _, err := l.TbAPI.Send(editMsg); err != nil {
+			return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		}
+		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		return nil
+	}
+
+	// if callback data is "no", we should not unban the user, but rather clear the keyboard and do nothing
+	if callbackData == "no" {
+		// clear keyboard and update message text with confirmation
+		updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
+			query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+		editMsg.ParseMode = tbapi.ModeMarkdown
+		if _, err := l.TbAPI.Send(editMsg); err != nil {
+			return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		}
+		log.Printf("[DEBUG] unban confirmation rejected, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		return nil
+	}
+
+	// if callback data is not "no" and does not start with "?", we should unban the user
+	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := l.TbAPI.Request(callbackResponse); err != nil {
 		return fmt.Errorf("failed to send callback response: %w", err)
@@ -413,9 +444,9 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	return nil
 }
 
-// sendBotResponse sends bot's answer to tg channel
-// actionText is a text for the button to unban user, optional
-func (l *TelegramListener) sendActionResponse(text, action string, user bot.User, chatID int64) error {
+// sendUnban sends unban request to admin chat
+// text is message with details and action it for the button label to unban, which is user id prefixed with "? for confirmation
+func (l *TelegramListener) sendUnban(text, action string, user bot.User, chatID int64) error {
 	log.Printf("[DEBUG] action response %q: user %+v, text: %q", action, user, strings.ReplaceAll(text, "\n", "\\n"))
 	tbMsg := tbapi.NewMessage(chatID, text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
@@ -423,7 +454,7 @@ func (l *TelegramListener) sendActionResponse(text, action string, user bot.User
 
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData(action, fmt.Sprintf("%d", user.ID)),
+			tbapi.NewInlineKeyboardButtonData(action, fmt.Sprintf("?%d", user.ID)), // ?userID to request confirmation
 		),
 	)
 
