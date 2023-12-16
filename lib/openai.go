@@ -33,7 +33,7 @@ type openAIClient interface {
 	CreateChatCompletion(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
 }
 
-const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json  with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80`
+const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80`
 
 type openAIResponse struct {
 	IsSpam     bool   `json:"spam"`
@@ -45,6 +45,18 @@ type openAIResponse struct {
 func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 	if params.SystemPrompt == "" {
 		params.SystemPrompt = defaultPrompt
+	}
+	if params.MaxTokensResponse == 0 {
+		params.MaxTokensResponse = 1024
+	}
+	if params.MaxTokensRequest == 0 {
+		params.MaxTokensRequest = 1024
+	}
+	if params.MaxSymbolsRequest == 0 {
+		params.MaxSymbolsRequest = 8192
+	}
+	if params.Model == "" {
+		params.Model = "gpt-4"
 	}
 	return &openAIChecker{client: client, params: params}
 }
