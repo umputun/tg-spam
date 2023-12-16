@@ -40,7 +40,7 @@ func ExampleNewDetector() {
 	}
 	fmt.Println("Loaded", res.SpamSamples, "spam samples and", res.HamSamples, "ham samples")
 
-	// Check a message for spam
+	// check a message for spam
 	isSpam, info := detector.Check("This is a test message", "user1")
 	if isSpam {
 		fmt.Println("The message is spam, info:", info)

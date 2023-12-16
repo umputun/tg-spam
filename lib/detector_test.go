@@ -2,6 +2,7 @@ package lib
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -291,6 +293,77 @@ func TestDetector_CheckClassificator(t *testing.T) {
 			assert.Equal(t, test.desc, cr[0].Details)
 		})
 	}
+}
+
+func TestDetector_CheckOpenAI(t *testing.T) {
+	t.Run("with openai and first-only", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		spam, cr := d.Check("some message 1234", "")
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "openai", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr[0].Details)
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("with openai and not first-only", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		spam, cr := d.Check("some message 1234", "")
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 0)
+		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("without openai", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		spam, cr := d.Check("some message 1234", "")
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 0)
+	})
+
+	t.Run("with openai, first-only but spam detected before", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.LoadStopWords(strings.NewReader("some message"))
+
+		spam, cr := d.Check("some message 1234", "")
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "some message", cr[0].Details)
+		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
 }
 
 func TestDetector_UpdateSpam(t *testing.T) {

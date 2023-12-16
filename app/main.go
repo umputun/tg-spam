@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -55,6 +56,15 @@ var opts struct {
 		API     string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
 		Timeout time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
+
+	OpenAI struct {
+		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
+		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	Files struct {
 		SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
@@ -97,7 +107,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	setupLog(opts.Dbg, opts.Telegram.Token)
+	setupLog(opts.Dbg, opts.Telegram.Token, opts.OpenAI.Token)
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,6 +150,19 @@ func execute(ctx context.Context) error {
 	}
 	detector := lib.NewDetector(detectorConfig)
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
+
+	if opts.OpenAI.Token != "" {
+		log.Printf("[WARN] openai enabled")
+		openAIConfig := lib.OpenAIConfig{
+			SystemPrompt:      opts.OpenAI.Prompt,
+			Model:             opts.OpenAI.Model,
+			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
+			MaxTokensRequest:  opts.OpenAI.MaxTokensRequestMaxTokensRequest,
+			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
+		}
+		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
+		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)
+	}
 
 	if opts.Files.DynamicSpamFile != "" {
 		detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))

@@ -22,6 +22,7 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Integration with Combot Anti-Spam System (CAS)**: It cross-references users with the Combot Anti-Spam System, a reputable external anti-spam database.
 - **Spam Message Similarity Check**: TG-Spam assesses the overall resemblance of each message to known spam patterns.
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
+- **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
@@ -73,6 +74,16 @@ There are 4 files used by the bot to detect spam:
 _The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
 
 Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for spam because they have already passed the initial check. IDs of those users are kept in the internal list and stored in the file approved-users.txt. To enable this feature, the user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically if the parameter is set and --paranoid mode is not enabled.
+
+### OpenAI integration
+
+Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+
+To keep the number of calls low and the price manageable, the bot uses the following approach:
+
+- Only the first message from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
+- OpenAI check is the last in the chain of checks. If any of the previous checks marked the message as spam, the bot will not call OpenAI.
+- By default, OpenAI integration is disabled. 
 
 ### Admin chat/group
 
@@ -156,53 +167,61 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
-      --testing-id=           testing ids, allow bot to reply to them [$TESTING_ID]
-      --history-duration=     history duration (default: 1h) [$HISTORY_DURATION]
-      --history-min-size=     history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
-      --super=                super-users [$SUPER_USER]
-      --no-spam-reply         do not reply to spam messages [$NO_SPAM_REPLY]
-      --similarity-threshold= spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
-      --min-msg-len=          min message length to check (default: 50) [$MIN_MSG_LEN]
-      --max-emoji=            max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
-      --paranoid              paranoid mode, check all messages [$PARANOID]
-      --admin.group=          admin group name, or channel id [$ADMIN_GROUP]
-      --dry                   dry mode, no bans [$DRY]
-      --dbg                   debug mode [$DEBUG]
-      --tg-dbg                telegram debug mode [$TG_DEBUG]
+      --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
+      --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
+      --history-duration=           history duration (default: 1h) [$HISTORY_DURATION]
+      --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
+      --super=                      super-users [$SUPER_USER]
+      --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
+      --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
+      --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
+      --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
+      --paranoid                    paranoid mode, check all messages [$PARANOID]
+      --dry                         dry mode, no bans [$DRY]
+      --dbg                         debug mode [$DEBUG]
+      --tg-dbg                      telegram debug mode [$TG_DEBUG]
 
 telegram:
-      --telegram.token=       telegram bot token [$TELEGRAM_TOKEN]
-      --telegram.group=       group name/id [$TELEGRAM_GROUP]
-      --telegram.timeout=     http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
-      --telegram.idle=        idle duration (default: 30s) [$TELEGRAM_IDLE]
+      --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
+      --telegram.group=             group name/id [$TELEGRAM_GROUP]
+      --telegram.timeout=           http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
+      --telegram.idle=              idle duration (default: 30s) [$TELEGRAM_IDLE]
 
 logger:
-      --logger.enabled        enable spam rotated logs [$LOGGER_ENABLED]
-      --logger.file=          location of spam log (default: tg-spam.log) [$LOGGER_FILE]
-      --logger.max-size=      maximum size before it gets rotated (default: 100M) [$LOGGER_MAX_SIZE]
-      --logger.max-backups=   maximum number of old log files to retain (default: 10) [$LOGGER_MAX_BACKUPS]
+      --logger.enabled              enable spam rotated logs [$LOGGER_ENABLED]
+      --logger.file=                location of spam log (default: tg-spam.log) [$LOGGER_FILE]
+      --logger.max-size=            maximum size before it gets rotated (default: 100M) [$LOGGER_MAX_SIZE]
+      --logger.max-backups=         maximum number of old log files to retain (default: 10) [$LOGGER_MAX_BACKUPS]
 
 cas:
-      --cas.api=              CAS API (default: https://api.cas.chat) [$CAS_API]
-      --cas.timeout=          CAS timeout (default: 5s) [$CAS_TIMEOUT]
+      --cas.api=                    CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.timeout=                CAS timeout (default: 5s) [$CAS_TIMEOUT]
+
+openai:
+      --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
+      --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
+      --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
+      --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
+      --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
 
 files:
-      --files.samples-spam=   spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
-      --files.samples-ham=    ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
-      --files.exclude-tokens= exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
-      --files.stop-words=     stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
-      --files.dynamic-spam=   dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
-      --files.dynamic-ham=    dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
-      --files.watch-interval= watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
-      --files.approved-users= approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
+      --files.samples-spam=         spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
+      --files.samples-ham=          ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
+      --files.exclude-tokens=       exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
+      --files.stop-words=           stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
+      --files.dynamic-spam=         dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
+      --files.dynamic-ham=          dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
+      --files.watch-interval=       watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.approved-users=       approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
 
 message:
-      --message.startup=      startup message [$MESSAGE_STARTUP]
-      --message.spam=         spam message (default: this is spam) [$MESSAGE_SPAM]
-      --message.dry=          spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
+      --message.startup=            startup message [$MESSAGE_STARTUP]
+      --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
+      --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
 
 Help Options:
-  -h, --help                  Show this help message
+  -h, --help                        Show this help message
 
 ```
 
