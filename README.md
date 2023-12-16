@@ -75,7 +75,25 @@ _The bot dynamically reloads all 4 files, so user can change them on the fly wit
 
 Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for spam because they have already passed the initial check. IDs of those users are kept in the internal list and stored in the file approved-users.txt. To enable this feature, the user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically if the parameter is set and --paranoid mode is not enabled.
 
-### OpenAI integration
+### Configuring spam detection modules and parameters
+
+**Message Analysis**
+
+This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]` and `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]` parameters point to existing files. It can be disabled by setting those parameters to empty strings or non-existing files.
+
+**Spam message similarity check**
+
+This check uses provides samples files and active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.  
+
+**Stop Words Comparison**
+
+If stop words file is provided, the bot will check the message for the presence of any of the phrases in the file. The bot is enabled as long as `--files.stop-words=, [$FILES_STOP_WORDS]` parameter points to an existing file. It can be disabled by setting this parameter to an empty string or non-existing file.
+
+**Combot Anti-Spam System (CAS) integration**
+
+Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
+
+**OpenAI integration**
 
 Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
@@ -84,6 +102,14 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 - Only the first message from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
 - OpenAI check is the last in the chain of checks. If any of the previous checks marked the message as spam, the bot will not call OpenAI.
 - By default, OpenAI integration is disabled. 
+
+**Emoji Count**
+
+If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJI]` (default is 2), the message is marked as spam. Setting the max emoji count to -1 will effectively disable this check. Note: setting it to 0 will mark all the messages with any emoji as spam.
+
+**Minimum message length**
+
+This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. This check is needed to avoid false positives on short messages.
 
 ### Admin chat/group
 
