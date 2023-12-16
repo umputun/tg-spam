@@ -218,7 +218,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		if err := l.banUserOrChannel(resp.BanInterval, fromChat, resp.User.ID, resp.ChannelID); err == nil {
 			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
-				l.reportToAdminChat(banUserStr, msg) // TODO: remove
+				l.reportToAdminChat(banUserStr, msg)
 			}
 		} else {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
@@ -335,7 +335,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		// Replace with confirmation buttons
 		confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
 			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData),
+				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]), // remove "?" prefix
 				tbapi.NewInlineKeyboardButtonData("Keep it banned", "no"),
 			),
 		)
@@ -349,11 +349,12 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 
 	// if callback data is "no", we should not unban the user, but rather clear the keyboard and do nothing
 	if callbackData == "no" {
-		// clear keyboard
-		emptyKeyboard := tbapi.InlineKeyboardMarkup{
-			InlineKeyboard: [][]tbapi.InlineKeyboardButton{},
-		}
-		editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, emptyKeyboard)
+		// clear keyboard and update message text with confirmation
+		updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
+			query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+		editMsg.ParseMode = tbapi.ModeMarkdown
 		if _, err := l.TbAPI.Send(editMsg); err != nil {
 			return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
@@ -361,6 +362,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
+	// if callback data is not "no" and does not start with "?", we should unban the user
 	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := l.TbAPI.Request(callbackResponse); err != nil {

@@ -561,9 +561,10 @@ func TestTelegramListener_DoWithAdminUnBanDecline(t *testing.T) {
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
-	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageReplyMarkupConfig).MessageID)
-	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageReplyMarkupConfig).ReplyMarkup.InlineKeyboard
+	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
+	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
 	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
