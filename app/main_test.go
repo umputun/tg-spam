@@ -153,6 +153,33 @@ func Test_makeDetector(t *testing.T) {
 		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
 		res := makeDetector(opts)
 		assert.NotNil(t, res)
+		assert.Equal(t, 0, res.FirstMessagesCount)
+		assert.Equal(t, true, res.FirstMessageOnly)
+	})
+
+	t.Run("with first msgs count", func(t *testing.T) {
+		var opts options
+		opts.OpenAI.Token = "123"
+		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
+		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.FirstMessagesCount = 10
+		res := makeDetector(opts)
+		assert.NotNil(t, res)
+		assert.Equal(t, 10, res.FirstMessagesCount)
+		assert.Equal(t, true, res.FirstMessageOnly)
+	})
+
+	t.Run("with first msgs count and paranoid", func(t *testing.T) {
+		var opts options
+		opts.OpenAI.Token = "123"
+		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
+		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.FirstMessagesCount = 10
+		opts.ParanoidMode = true
+		res := makeDetector(opts)
+		assert.NotNil(t, res)
+		assert.Equal(t, 0, res.FirstMessagesCount)
+		assert.Equal(t, false, res.FirstMessageOnly)
 	})
 }
 

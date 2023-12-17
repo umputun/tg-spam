@@ -17,67 +17,6 @@ import (
 	"github.com/umputun/tg-spam/lib/mocks"
 )
 
-func TestDetector_tokenize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected map[string]int
-	}{
-		{name: "empty", input: "", expected: map[string]int{}},
-		{name: "no filters or cleanups", input: "hello world", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with excluded tokens", input: "hello world the she", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with short tokens", input: "hello world the she a or", expected: map[string]int{"hello": 1, "world": 1}},
-		{name: "with repeated tokens", input: "hello world hello world", expected: map[string]int{"hello": 2, "world": 2}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d := Detector{
-				excludedTokens: []string{"the", "she"},
-			}
-			assert.Equal(t, tt.expected, d.tokenize(tt.input))
-		})
-	}
-}
-
-func TestDetector_tokenChan(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []string
-	}{
-		{name: "empty", input: "", expected: []string{}},
-		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
-		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
-		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
-		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, empty tokens", input: "\"hello\",world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
-	}
-
-	d := Detector{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ch := d.tokenChan(bytes.NewBufferString(tt.input))
-			res := []string{}
-			for token := range ch {
-				res = append(res, token)
-			}
-			assert.Equal(t, tt.expected, res)
-		})
-	}
-}
-
-func TestDetector_tokenChanMultipleReaders(t *testing.T) {
-	d := Detector{}
-	ch := d.tokenChan(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
-	res := []string{}
-	for token := range ch {
-		res = append(res, token)
-	}
-	assert.Equal(t, []string{"hello", "world", "something, new"}, res)
-}
-
 func TestDetector_CheckStopWords(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
@@ -531,6 +470,64 @@ func TestDetector(t *testing.T) {
 	}
 }
 
+func TestDetector_FirstMessagesCount(t *testing.T) {
+	t.Run("first message is spam", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
+		spam, _ := d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		assert.Equal(t, true, spam)
+	})
+	t.Run("first messages are ham, third is spam", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
+
+		// first ham
+		spam, _ := d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		// second ham
+		spam, _ = d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		assert.Equal(t, true, spam)
+	})
+	t.Run("first messages are ham, spam after approved", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
+
+		// first ham
+		spam, _ := d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		// second ham
+		spam, _ = d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		// third ham
+		spam, _ = d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		assert.Equal(t, false, spam, "spam is not detected because user is approved")
+	})
+	t.Run("first messages are ham, spam after approved, FirstMessageOnly were false", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: false})
+
+		// first ham
+		spam, _ := d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		// second ham
+		spam, _ = d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		// third ham
+		spam, _ = d.Check("ham, no emojis", "123")
+		assert.Equal(t, false, spam)
+
+		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		assert.Equal(t, false, spam)
+	})
+}
+
 func TestDetector_AddApprovedUsers(t *testing.T) {
 	t.Run("user not approved, sent spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
@@ -543,7 +540,7 @@ func TestDetector_AddApprovedUsers(t *testing.T) {
 		assert.Equal(t, "stopword", info[0].Name)
 	})
 
-	t.Run("user not approved, spam check avoided", func(t *testing.T) {
+	t.Run("user pre-approved, spam check avoided", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
 		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
 		require.NoError(t, err)
@@ -554,4 +551,77 @@ func TestDetector_AddApprovedUsers(t *testing.T) {
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 	})
+
+	t.Run("user pre-approved with count, spam check avoided", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessagesCount: 10})
+		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+		d.AddApprovedUsers("123")
+		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		t.Logf("%+v", info)
+		assert.Equal(t, false, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "pre-approved", info[0].Name)
+	})
+}
+
+func TestDetector_tokenize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]int
+	}{
+		{name: "empty", input: "", expected: map[string]int{}},
+		{name: "no filters or cleanups", input: "hello world", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with excluded tokens", input: "hello world the she", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with short tokens", input: "hello world the she a or", expected: map[string]int{"hello": 1, "world": 1}},
+		{name: "with repeated tokens", input: "hello world hello world", expected: map[string]int{"hello": 2, "world": 2}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := Detector{
+				excludedTokens: []string{"the", "she"},
+			}
+			assert.Equal(t, tt.expected, d.tokenize(tt.input))
+		})
+	}
+}
+
+func TestDetector_tokenChan(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{name: "empty", input: "", expected: []string{}},
+		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
+		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
+		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
+		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
+		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},
+		{name: "tokens comma separated, empty tokens", input: "\"hello\",world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
+	}
+
+	d := Detector{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := d.tokenChan(bytes.NewBufferString(tt.input))
+			res := []string{}
+			for token := range ch {
+				res = append(res, token)
+			}
+			assert.Equal(t, tt.expected, res)
+		})
+	}
+}
+
+func TestDetector_tokenChanMultipleReaders(t *testing.T) {
+	d := Detector{}
+	ch := d.tokenChan(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
+	res := []string{}
+	for token := range ch {
+		res = append(res, token)
+	}
+	assert.Equal(t, []string{"hello", "world", "something, new"}, res)
 }
