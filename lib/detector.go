@@ -144,7 +144,7 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 	}
 
 	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
-		d.approvedUsers[userID] = d.approvedUsers[userID] + 1
+		d.approvedUsers[userID]++
 	}
 
 	return false, cr
