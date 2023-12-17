@@ -81,6 +81,7 @@ type options struct {
 	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
 	ParanoidMode        bool    `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
+	FirstMessagesCount  int     `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
 
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
@@ -208,7 +209,19 @@ func makeDetector(opts options) *lib.Detector {
 		CasAPI:              opts.CAS.API,
 		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
 		FirstMessageOnly:    !opts.ParanoidMode,
+		FirstMessagesCount:  opts.FirstMessagesCount,
 	}
+
+	// FirstMessagesCount and ParanoidMode are mutually exclusive.
+	// ParanoidMode still here for backward compatibility only.
+	if opts.FirstMessagesCount > 0 { // if FirstMessagesCount is set, FirstMessageOnly is enforced
+		detectorConfig.FirstMessageOnly = true
+	}
+	if opts.ParanoidMode { // if ParanoidMode is set, FirstMessagesCount is ignored
+		detectorConfig.FirstMessageOnly = false
+		detectorConfig.FirstMessagesCount = 0
+	}
+
 	detector := lib.NewDetector(detectorConfig)
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 

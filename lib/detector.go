@@ -23,7 +23,7 @@ type Detector struct {
 	classifier     classifier
 	openaiChecker  *openAIChecker
 	tokenizedSpam  []map[string]int
-	approvedUsers  map[string]bool
+	approvedUsers  map[string]int
 	stopWords      []string
 	excludedTokens []string
 
@@ -40,6 +40,7 @@ type Config struct {
 	MaxAllowedEmoji     int        // maximum number of emojis allowed in a message
 	CasAPI              string     // CAS API URL
 	FirstMessageOnly    bool       // if true, only the first message from a user is checked
+	FirstMessagesCount  int        // number of first messages to check for spam
 	HTTPClient          HTTPClient // http client to use for requests
 }
 
@@ -71,12 +72,19 @@ type HTTPClient interface {
 
 // NewDetector makes a new Detector with the given config.
 func NewDetector(p Config) *Detector {
-	return &Detector{
+	res := &Detector{
 		Config:        p,
 		classifier:    newClassifier(),
-		approvedUsers: make(map[string]bool),
+		approvedUsers: make(map[string]int),
 		tokenizedSpam: []map[string]int{},
 	}
+	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
+	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
+	// the reason for the redundant FirstMessageOnly flag is to avoid breaking api compatibility.
+	if p.FirstMessagesCount > 0 {
+		res.FirstMessageOnly = true
+	}
+	return res
 }
 
 // WithOpenAIChecker sets an openAIChecker for spam checking.
@@ -91,7 +99,7 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
-	if d.FirstMessageOnly && d.approvedUsers[userID] {
+	if d.FirstMessageOnly && d.approvedUsers[userID] > d.FirstMessagesCount {
 		return false, []CheckResult{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
 	}
 
@@ -135,8 +143,8 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 		}
 	}
 
-	if d.FirstMessageOnly {
-		d.approvedUsers[userID] = true
+	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+		d.approvedUsers[userID] = d.approvedUsers[userID] + 1
 	}
 
 	return false, cr
@@ -150,7 +158,7 @@ func (d *Detector) Reset() {
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = []string{}
 	d.classifier.reset()
-	d.approvedUsers = make(map[string]bool)
+	d.approvedUsers = make(map[string]int)
 	d.stopWords = []string{}
 }
 
@@ -169,7 +177,7 @@ func (d *Detector) AddApprovedUsers(ids ...string) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	for _, id := range ids {
-		d.approvedUsers[id] = true
+		d.approvedUsers[id] = d.FirstMessagesCount + 1 // +1 to skip first message check if count is 0
 	}
 }
 
@@ -342,14 +350,14 @@ func (d *Detector) ApprovedUsers() (res []string) {
 func (d *Detector) LoadApprovedUsers(r io.Reader) (count int, err error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	d.approvedUsers = make(map[string]bool)
+	d.approvedUsers = make(map[string]int)
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		userID := scanner.Text()
 		if userID == "" {
 			continue
 		}
-		d.approvedUsers[userID] = true
+		d.approvedUsers[userID] = d.FirstMessagesCount + 1
 		count++
 	}
 

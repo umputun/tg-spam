@@ -203,6 +203,7 @@ Success! The new status is: DISABLED. /help
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
+      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]      
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
@@ -259,6 +260,12 @@ Help Options:
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
+- `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
+- `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
+- `--training` - if set to `true`, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
+- `--dry` - if set to `true`, the bot will not ban users and delete messages. This is useful for testing purposes.
+- `--dbg` - if set to `true`, the bot will print debug information to the console.
+- `--tg-dbg` - if set to `true`, the bot will print debug information from the telegram library to the console.
 
 ## Running the bot with an empty set of samples
 
