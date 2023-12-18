@@ -395,7 +395,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
 	defer cancel()
 
-	l.Locator.Add("text 123", 123, 88, 999999) // add message to locator
+	l.Locator.AddMessage("text 123", 123, 88, 999999) // add message to locator
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
