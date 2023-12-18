@@ -364,3 +364,31 @@ func TestAddApprovedUsers(t *testing.T) {
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
 	})
 }
+
+func TestRemoveApprovedUsers(t *testing.T) {
+	mockDirector := &mocks.DetectorMock{RemoveApprovedUsersFunc: func(ids ...string) {}}
+
+	t.Run("remove single approved user", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.RemoveApprovedUsers(1)
+		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
+		assert.Equal(t, []string{"1"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+	})
+
+	t.Run("remove multiple approved users", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.RemoveApprovedUsers(1, 2, 3)
+		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
+		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+	})
+
+	t.Run("remove empty list of approved users", func(t *testing.T) {
+		mockDirector.ResetCalls()
+		sf := SpamFilter{director: mockDirector}
+		sf.RemoveApprovedUsers(1, 2, 3)
+		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
+		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+	})
+}

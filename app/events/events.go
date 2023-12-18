@@ -82,6 +82,7 @@ type Bot interface {
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUsers(id int64, ids ...int64)
+	RemoveApprovedUsers(id int64, ids ...int64)
 }
 
 // SpamWeb is an interface for the web component
@@ -305,6 +306,10 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.userID, 0); err != nil {
 		return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
 	}
+
+	// remove user from the approved list
+	l.Bot.RemoveApprovedUsers(info.userID)
+
 	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
 	return nil
 }

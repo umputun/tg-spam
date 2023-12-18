@@ -380,6 +380,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 			t.Logf("update-spam: %s", msg)
 			return nil
 		},
+		RemoveApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
 	l := TelegramListener{
@@ -428,6 +429,9 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).ChatID)
 	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
+
+	assert.Equal(t, 1, len(b.RemoveApprovedUsersCalls()))
+	assert.Equal(t, int64(88), b.RemoveApprovedUsersCalls()[0].ID)
 }
 
 func TestTelegramListener_DoWithForwarded_Reply(t *testing.T) {

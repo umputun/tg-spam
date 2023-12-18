@@ -58,7 +58,7 @@ func (mock *SpamWebMock) UnbanURL(userID int64, msg string) string {
 }
 
 // UnbanURLCalls gets all the calls that were made to UnbanURL.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedSpamWeb.UnbanURLCalls())
 func (mock *SpamWebMock) UnbanURLCalls() []struct {

@@ -59,7 +59,7 @@ func (mock *SpamLoggerMock) Save(msg *bot.Message, response *bot.Response) {
 }
 
 // SaveCalls gets all the calls that were made to Save.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedSpamLogger.SaveCalls())
 func (mock *SpamLoggerMock) SaveCalls() []struct {

@@ -537,7 +537,7 @@ func TestDetector_FirstMessagesCount(t *testing.T) {
 	})
 }
 
-func TestDetector_AddApprovedUsers(t *testing.T) {
+func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 	t.Run("user not approved, sent spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
 		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
@@ -572,6 +572,26 @@ func TestDetector_AddApprovedUsers(t *testing.T) {
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 	})
+
+	t.Run("remove user", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
+		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+		d.AddApprovedUsers("123")
+		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		t.Logf("%+v", info)
+		assert.Equal(t, false, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "pre-approved", info[0].Name)
+
+		d.RemoveApprovedUsers("123")
+		isSpam, info = d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		t.Logf("%+v", info)
+		assert.Equal(t, true, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "stopword", info[0].Name)
+	})
+
 }
 
 func TestDetector_tokenize(t *testing.T) {

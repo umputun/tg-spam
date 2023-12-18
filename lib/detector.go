@@ -182,6 +182,15 @@ func (d *Detector) AddApprovedUsers(ids ...string) {
 	}
 }
 
+// RemoveApprovedUsers removes user IDs from the list of approved users.
+func (d *Detector) RemoveApprovedUsers(ids ...string) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	for _, id := range ids {
+		delete(d.approvedUsers, id)
+	}
+}
+
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
 func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {
