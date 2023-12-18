@@ -399,7 +399,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			}
 		}
 
-		updText := query.Message.Text + "\nspam detection results:\n" + spamInfoText
+		updText := query.Message.Text + "\n\nspam detection results:\n" + spamInfoText
 		confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
 		if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
 			confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
