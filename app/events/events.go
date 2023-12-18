@@ -292,26 +292,30 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] locator found message %s", info)
-	if l.Dry || l.TrainingMode {
-		return nil
-	}
-
-	// delete message
-	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
-		return fmt.Errorf("failed to delete message %d: %w", info.msgID, err)
-	}
-	log.Printf("[INFO] message %d deleted", info.msgID)
-
-	// ban user
-	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.userID, 0); err != nil {
-		return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
-	}
 
 	// remove user from the approved list
 	l.Bot.RemoveApprovedUsers(info.userID)
 
+	if l.Dry || l.TrainingMode {
+		return nil
+	}
+
+	errs := new(multierror.Error)
+
+	// delete message
+	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.msgID, err))
+	} else {
+		log.Printf("[INFO] message %d deleted", info.msgID)
+	}
+
+	// ban user
+	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.userID, 0); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.userID, err))
+	}
+
 	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
-	return nil
+	return errs.ErrorOrNil()
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
