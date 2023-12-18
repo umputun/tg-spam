@@ -79,7 +79,7 @@ Another useful feature is the ability to keep the list of approved users persist
 
 **Message Analysis**
 
-This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]` and `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]` parameters point to existing files. It can be disabled by setting those parameters to empty strings or non-existing files.
+This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]` and `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]` parameters point to existing files. It can be disabled by setting those parameters to empty strings or non-existing files. There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
 
 **Spam message similarity check**
 
@@ -200,6 +200,7 @@ Success! The new status is: DISABLED. /help
       --super=                      super-users [$SUPER_USER]
       --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
+      --min-probability=            min spam probability to ban (default: 50) [$MIN_PROBABILITY]
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --paranoid                    paranoid mode, check all messages [$PARANOID]

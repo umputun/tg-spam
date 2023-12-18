@@ -42,6 +42,7 @@ type Config struct {
 	FirstMessageOnly    bool       // if true, only the first message from a user is checked
 	FirstMessagesCount  int        // number of first messages to check for spam
 	HTTPClient          HTTPClient // http client to use for requests
+	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 }
 
 // CheckResult is a result of spam check.
@@ -480,8 +481,9 @@ func (d *Detector) isSpamClassified(msg string) CheckResult {
 		tokens = append(tokens, token)
 	}
 	class, prob, certain := d.classifier.classify(tokens...)
-	return CheckResult{Name: "classifier", Spam: class == "spam" && certain,
-		Details: fmt.Sprintf("probability: %.2f%%, certain: %v", prob, certain)}
+	isSpam := class == "spam" && certain && (d.MinSpamProbability == 0 || prob >= d.MinSpamProbability)
+	return CheckResult{Name: "classifier", Spam: isSpam,
+		Details: fmt.Sprintf("probability of %s: %.2f%%", class, prob)}
 }
 
 func (d *Detector) isStopWord(msg string) CheckResult {

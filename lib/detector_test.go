@@ -195,7 +195,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 }
 
 func TestDetector_CheckClassificator(t *testing.T) {
-	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
@@ -214,11 +214,12 @@ func TestDetector_CheckClassificator(t *testing.T) {
 		expected bool
 		desc     string
 	}{
-		{"clean ham", "Hello, how are you?", false, "probability: 92.83%, certain: true"},
-		{"clean spam", "Win a free iPhone now!", true, "probability: 90.81%, certain: true"},
-		{"mostly spam", "You won a free lottery iphone, have a good day", true, "probability: 53.36%, certain: true"},
-		{"mostly ham", "win a good day", false, "probability: 65.39%, certain: true"},
-		{"a little bit spam", "free  blah another one user writes good things iPhone day", true, "probability: 75.70%, certain: true"},
+		{"clean ham", "Hello, how are you?", false, "probability of ham: 92.83%"},
+		{"clean spam", "Win a free iPhone now!", true, "probability of spam: 90.81%"},
+		{"a little bit spam", "You won a free lottery iphone good day", true, "probability of spam: 66.23%"},
+		{"spam below threshold", "You won a free lottery iphone have a good day", false, "probability of spam: 53.36%"},
+		{"mostly ham", "win a good day", false, "probability of ham: 65.39%"},
+		{"mostly spam", "free  blah another one user writes good things iPhone day", true, "probability of spam: 75.70%"},
 	}
 
 	for _, test := range tests {
@@ -232,6 +233,14 @@ func TestDetector_CheckClassificator(t *testing.T) {
 			assert.Equal(t, test.desc, cr[0].Details)
 		})
 	}
+
+	t.Run("without minSpamProbability", func(t *testing.T) {
+		d.MinSpamProbability = 0
+		spam, cr := d.Check("You won a free lottery iphone have a good day", "")
+		assert.True(t, spam)
+		assert.Equal(t, "probability of spam: 53.36%", cr[0].Details)
+
+	})
 }
 
 func TestDetector_CheckOpenAI(t *testing.T) {
@@ -334,7 +343,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
-		assert.Equal(t, "probability: 59.97%, certain: true", cr[0].Details)
+		assert.Equal(t, "probability of ham: 59.97%", cr[0].Details)
 	})
 
 	err = d.UpdateSpam("another user writes")
@@ -348,7 +357,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, true, cr[0].Spam)
-		assert.Equal(t, "probability: 66.67%, certain: true", cr[0].Details)
+		assert.Equal(t, "probability of spam: 66.67%", cr[0].Details)
 	})
 }
 
@@ -381,7 +390,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, true, cr[0].Spam)
-		assert.Equal(t, "probability: 60.89%, certain: true", cr[0].Details)
+		assert.Equal(t, "probability of spam: 60.89%", cr[0].Details)
 	})
 
 	err = d.UpdateHam("another writes things")
@@ -389,13 +398,13 @@ func TestDetector_UpdateHam(t *testing.T) {
 	assert.Equal(t, 6, d.classifier.nAllDocument)
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
-	t.Run("after update mostly spam", func(t *testing.T) {
+	t.Run("after update mostly ham", func(t *testing.T) {
 		spam, cr := d.Check(msg, "")
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
-		assert.Equal(t, "probability: 72.16%, certain: true", cr[0].Details)
+		assert.Equal(t, "probability of ham: 72.16%", cr[0].Details)
 	})
 }
 
