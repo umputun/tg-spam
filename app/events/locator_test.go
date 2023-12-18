@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umputun/tg-spam/lib"
 )
 
 func TestNewLocator(t *testing.T) {
@@ -15,11 +17,13 @@ func TestNewLocator(t *testing.T) {
 
 	assert.Equal(t, ttl, locator.ttl)
 	assert.NotZero(t, locator.cleanupDuration)
-	assert.NotNil(t, locator.data)
-	assert.WithinDuration(t, time.Now(), locator.lastRemoval, time.Second)
+	assert.NotNil(t, locator.msgs.data)
+	assert.NotNil(t, locator.spam.data)
+	assert.WithinDuration(t, time.Now(), locator.msgs.lastRemoval, time.Second)
+	assert.WithinDuration(t, time.Now(), locator.spam.lastRemoval, time.Second)
 }
 
-func TestGet(t *testing.T) {
+func TestGetMessage(t *testing.T) {
 	locator := NewLocator(10*time.Minute, 10)
 
 	// adding a message
@@ -27,17 +31,38 @@ func TestGet(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.Add(msg, chatID, userID, msgID)
+	locator.AddMessage(msg, chatID, userID, msgID)
 
 	// test retrieval of existing message
-	info, found := locator.Get("test message")
+	info, found := locator.Message("test message")
 	require.True(t, found)
 	assert.Equal(t, msgID, info.msgID)
 	assert.Equal(t, chatID, info.chatID)
 	assert.Equal(t, userID, info.userID)
 
 	// test retrieval of non-existing message
-	_, found = locator.Get("no such message") // non-existing msgID
+	_, found = locator.Message("no such message") // non-existing msgID
+	assert.False(t, found)
+}
+
+func TestGetSpam(t *testing.T) {
+	locator := NewLocator(10*time.Minute, 10)
+
+	// adding a message
+	userID := int64(456)
+	checkResults := []lib.CheckResult{
+		{Name: "test", Spam: true, Details: "test spam"},
+		{Name: "test2", Spam: false, Details: "test not spam"},
+	}
+	locator.AddSpam(userID, checkResults)
+
+	// test retrieval of existing message
+	res, found := locator.Spam(userID)
+	require.True(t, found)
+	assert.Equal(t, checkResults, res.checks)
+
+	// test retrieval of non-existing message
+	_, found = locator.Spam(int64(1)) // non-existing msgID
 	assert.False(t, found)
 }
 
@@ -60,7 +85,7 @@ func TestMsgHash(t *testing.T) {
 	})
 }
 
-func TestAddAndCleanup(t *testing.T) {
+func TestAddMessageAndCleanup(t *testing.T) {
 	ttl := 2 * time.Second
 	cleanupDuration := 1 * time.Second
 	locator := NewLocator(ttl, 0)
@@ -71,10 +96,10 @@ func TestAddAndCleanup(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.Add(msg, chatID, userID, msgID)
+	locator.AddMessage(msg, chatID, userID, msgID)
 
 	hash := locator.MsgHash(msg)
-	meta, exists := locator.data[hash]
+	meta, exists := locator.msgs.data[hash]
 	require.True(t, exists)
 	assert.Equal(t, chatID, meta.chatID)
 	assert.Equal(t, userID, meta.userID)
@@ -82,9 +107,9 @@ func TestAddAndCleanup(t *testing.T) {
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + time.Second)
-	locator.Add("another message", 789, 555, 1011)
+	locator.AddMessage("another message", 789, 555, 1011)
 
-	_, existsAfterCleanup := locator.data[hash]
+	_, existsAfterCleanup := locator.msgs.data[hash]
 	assert.False(t, existsAfterCleanup)
 }
 
@@ -99,10 +124,10 @@ func TestAddAndCleanup_withMinSize(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.Add(msg, chatID, userID, msgID) // add first message
+	locator.AddMessage(msg, chatID, userID, msgID) // add first message
 
 	hash := locator.MsgHash(msg)
-	meta, exists := locator.data[hash]
+	meta, exists := locator.msgs.data[hash]
 	require.True(t, exists)
 	assert.Equal(t, chatID, meta.chatID)
 	assert.Equal(t, userID, meta.userID)
@@ -110,15 +135,41 @@ func TestAddAndCleanup_withMinSize(t *testing.T) {
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + time.Millisecond*200)
-	locator.Add("second message", 789, 555, 1011)
-	_, existsAfterCleanup := locator.data[hash]
+	locator.AddMessage("second message", 789, 555, 1011)
+	_, existsAfterCleanup := locator.msgs.data[hash]
 	assert.True(t, existsAfterCleanup, "minSize should prevent cleanup")
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + +time.Millisecond*200)
-	locator.Add("third message", chatID, 9000, 2000)
-	_, existsAfterCleanup = locator.data[hash]
+	locator.AddMessage("third message", chatID, 9000, 2000)
+	_, existsAfterCleanup = locator.msgs.data[hash]
 	assert.False(t, existsAfterCleanup, "minSize should allow cleanup")
 
-	assert.Len(t, locator.data, 2, "should keep minSize messages")
+	assert.Len(t, locator.msgs.data, 2, "should keep minSize messages")
+}
+
+func TestAddSpamAndCleanup(t *testing.T) {
+	ttl := 2 * time.Second
+	cleanupDuration := 1 * time.Second
+	locator := NewLocator(ttl, 0)
+	locator.cleanupDuration = cleanupDuration
+
+	// Adding a spam
+	msgID := int64(123)
+	checkResults := []lib.CheckResult{{Name: "test", Spam: true, Details: "test spam"}}
+	locator.AddSpam(msgID, checkResults)
+
+	meta, exists := locator.spam.data[msgID]
+	require.True(t, exists)
+	assert.Equal(t, []lib.CheckResult{{Name: "test", Spam: true, Details: "test spam"}}, meta.checks)
+
+	// wait for cleanup duration and add another message to trigger cleanup
+	time.Sleep(cleanupDuration + time.Second)
+	locator.AddSpam(789, []lib.CheckResult{{Name: "test2", Spam: true, Details: "test spam2"}})
+
+	_, existsAfterCleanup := locator.spam.data[msgID]
+	assert.False(t, existsAfterCleanup)
+
+	_, existsAfterCleanup = locator.spam.data[int64(789)]
+	assert.True(t, existsAfterCleanup)
 }

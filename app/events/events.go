@@ -200,7 +200,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	l.Locator.Add(update.Message.Text, fromChat, msg.From.ID, msg.ID) // save message to locator
+	l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.ID) // save message to locator
 	resp := l.Bot.OnMessage(*msg)
 
 	// send response to the channel if allowed
@@ -271,7 +271,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
-	info, ok := l.Locator.Get(update.Message.Text)
+	info, ok := l.Locator.Message(update.Message.Text)
 	if !ok {
 		return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
 	}
@@ -319,7 +319,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 		return text
 	}
 
-	log.Printf("[DEBUG] report to admin chat, ban data for %s, group: %d", banUserStr, l.adminChatID)
+	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
 	if err := l.sendUnban(forwardMsg, "change ban status for user", msg.From, l.adminChatID); err != nil {
@@ -336,7 +336,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
-	// if callback data starts with "?", we should show a confirmation message
+	// if callback msgsData starts with "?", we should show a confirmation message
 	if strings.HasPrefix(callbackData, "?") {
 		// Replace with confirmation buttons
 		confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
@@ -353,7 +353,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
-	// if callback data is "no", we should not unban the user, but rather clear the keyboard and do nothing
+	// if callback msgsData is "no", we should not unban the user, but rather clear the keyboard and do nothing
 	if callbackData == "no" {
 		// clear keyboard and update message text with confirmation
 		updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
@@ -368,7 +368,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
-	// if callback data is not "no" and does not start with "?", we should unban the user
+	// if callback msgsData is not "no" and does not start with "?", we should unban the user
 	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := l.TbAPI.Request(callbackResponse); err != nil {
@@ -377,13 +377,13 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 
 	userID, err := strconv.ParseInt(callbackData, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to parse callback data %q: %w", callbackData, err)
+		return fmt.Errorf("failed to parse callback msgsData %q: %w", callbackData, err)
 	}
 
 	// update ham samples, the original message is from the second line, remove newlines and spaces
 	msgLines := strings.Split(query.Message.Text, "\n")
 	if len(msgLines) < 2 {
-		return fmt.Errorf("unexpected message from callback data: %q", query.Message.Text)
+		return fmt.Errorf("unexpected message from callback msgsData: %q", query.Message.Text)
 	}
 	cleanMsg := strings.Join(msgLines[1:], " ")
 	cleanMsg = strings.TrimSpace(strings.ReplaceAll(cleanMsg, "\n", " "))
