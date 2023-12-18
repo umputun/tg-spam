@@ -256,17 +256,12 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		}
 		return string([]rune(inp)[:max]) + "..."
 	}
-	log.Printf("[DEBUG] message from admin chat: %+v", update)
+	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %s",
+		update.Message.MessageID, update.UpdateID, update.Message.From.UserName, update.Message.ForwardSenderName)
 
 	if update.Message.ForwardSenderName == "" && update.FromChat() == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
 		log.Printf("[DEBUG] message from admin chat, but not forwarded, ignore it, %+v", update.Message)
-		return nil
-	}
-
-	if update.Message.ReplyToMessage != nil {
-		// this is a reply to a message, ignore it
-		log.Printf("[DEBUG] message from admin chat, but reply to a message, ignore it, %+v", update.Message)
 		return nil
 	}
 
@@ -275,14 +270,6 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	msgTxt := strings.ReplaceAll(update.Message.Text, "\n", " ")
 	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q",
 		update.Message.From.UserName, l.adminChatID, msgTxt)
-
-	// update spam samples
-	if !l.Dry {
-		if err := l.Bot.UpdateSpam(msgTxt); err != nil {
-			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
-		}
-		log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
-	}
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
@@ -295,6 +282,14 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 
 	// remove user from the approved list
 	l.Bot.RemoveApprovedUsers(info.userID)
+
+	// update spam samples
+	if !l.Dry {
+		if err := l.Bot.UpdateSpam(msgTxt); err != nil {
+			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+		}
+		log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
+	}
 
 	if l.Dry || l.TrainingMode {
 		return nil
