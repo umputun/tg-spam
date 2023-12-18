@@ -275,7 +275,8 @@ func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bo
 // it writes json lines to the provided writer
 func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
-		text := strings.ReplaceAll(response.Text, "\n", " ")
+		text := strings.ReplaceAll(msg.Text, "\n", " ")
+		text = strings.TrimSpace(text)
 		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, text)
 		log.Printf("[DEBUG] spam message: %s", text)
 		m := struct {

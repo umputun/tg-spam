@@ -32,11 +32,11 @@ func TestMakeSpamLogger(t *testing.T) {
 			DisplayName: "Test User",
 			Username:    "testuser",
 		},
-		Text: "Test message",
+		Text: "Test message\nblah blah  \n\n\n",
 	}
 
 	response := &bot.Response{
-		Text: "Test message",
+		Text: "spam detected",
 	}
 
 	logger.Save(msg, response)
@@ -57,7 +57,7 @@ func TestMakeSpamLogger(t *testing.T) {
 		assert.Equal(t, "Test User", logEntry["display_name"])
 		assert.Equal(t, "testuser", logEntry["user_name"])
 		assert.Equal(t, float64(123), logEntry["user_id"]) // json.Unmarshal converts numbers to float64
-		assert.Equal(t, "Test message", logEntry["text"])
+		assert.Equal(t, "Test message blah blah", logEntry["text"])
 	}
 
 	assert.NoError(t, scanner.Err())
