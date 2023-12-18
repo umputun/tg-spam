@@ -498,3 +498,11 @@ func (d *Detector) isManyEmojis(msg string) CheckResult {
 	count := countEmoji(msg)
 	return CheckResult{Name: "emoji", Spam: count > d.MaxAllowedEmoji, Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
 }
+
+func (c *CheckResult) String() string {
+	spamOrHam := "ham"
+	if c.Spam {
+		spamOrHam = "spam"
+	}
+	return fmt.Sprintf("%s: %s, %s", c.Name, spamOrHam, c.Details)
+}

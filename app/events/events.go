@@ -216,7 +216,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
+		l.Locator.AddSpam(msg.From.ID, resp.CheckResults)
 		banUserStr := l.getBanUsername(resp, update)
+
 		if l.SuperUsers.IsSuper(msg.From.Username) {
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
@@ -309,7 +311,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
 	return fromChat == l.adminChatID && l.SuperUsers.IsSuper(from)
 }
 
-// reportToAdminChat sends a message to admin chat with a link to unban the user
+// reportToAdminChat sends a message to admin chat with a button to unban the user
 func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message) {
 	escapeMarkDownV1Text := func(text string) string {
 		escSymbols := []string{"_", "*", "`", "["}
@@ -322,7 +324,7 @@ func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, l.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
-	if err := l.sendUnban(forwardMsg, "change ban status for user", msg.From, l.adminChatID); err != nil {
+	if err := l.sendWithUnbanMarkup(forwardMsg, "change ban status for user", msg.From, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
@@ -341,8 +343,8 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		// Replace with confirmation buttons
 		confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
 			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]), // remove "?" prefix
-				tbapi.NewInlineKeyboardButtonData("Keep it banned", "no"),
+				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]),     // remove "?" prefix
+				tbapi.NewInlineKeyboardButtonData("Keep it banned", "+"+callbackData[1:]), // add "+" prefix
 			),
 		)
 		editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, confirmationKeyboard)
@@ -353,8 +355,8 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
-	// if callback msgsData is "no", we should not unban the user, but rather clear the keyboard and do nothing
-	if callbackData == "no" {
+	// if callback msgsData starts with "+", we should not unban the user, but rather clear the keyboard and add to spam samples
+	if strings.HasPrefix(callbackData, "+") {
 		// clear keyboard and update message text with confirmation
 		updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
 			query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
@@ -364,7 +366,51 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		if _, err := l.TbAPI.Send(editMsg); err != nil {
 			return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
+
+		cleanMsg, err := l.getCleanMessage(query.Message.Text)
+		if err != nil {
+			return fmt.Errorf("failed to get clean message: %w", err)
+		}
+		if err := l.Bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
+			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+		}
+
 		log.Printf("[DEBUG] unban confirmation rejected, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		return nil
+	}
+
+	// if callback msgsData starts with "!", we should show a spam info details
+	if strings.HasPrefix(callbackData, "!") {
+		spamInfoText := "**can't get spam info**"
+		spamInfo := []string{}
+		userID, err := strconv.ParseInt(callbackData[1:], 10, 64)
+		if err != nil {
+			spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID %q: %v**", callbackData[1:], err))
+		}
+		if userID != 0 {
+			info, found := l.Locator.Spam(userID)
+			if found {
+				for _, check := range info.checks {
+					spamInfo = append(spamInfo, check.String())
+				}
+			}
+			if len(spamInfo) > 0 {
+				spamInfoText = strings.Join(spamInfo, "\n")
+			}
+		}
+
+		updText := query.Message.Text + "\nspam detection results:\n" + spamInfoText
+		confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
+		if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
+			confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
+			confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
+		}
+		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
+		if _, err := l.TbAPI.Send(editMsg); err != nil {
+			return fmt.Errorf("failed to add spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		}
+		log.Printf("[DEBUG] spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 		return nil
 	}
 
@@ -380,13 +426,12 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return fmt.Errorf("failed to parse callback msgsData %q: %w", callbackData, err)
 	}
 
-	// update ham samples, the original message is from the second line, remove newlines and spaces
-	msgLines := strings.Split(query.Message.Text, "\n")
-	if len(msgLines) < 2 {
-		return fmt.Errorf("unexpected message from callback msgsData: %q", query.Message.Text)
+	// get the original spam message
+	cleanMsg, err := l.getCleanMessage(query.Message.Text)
+	if err != nil {
+		return fmt.Errorf("failed to get clean message: %w", err)
 	}
-	cleanMsg := strings.Join(msgLines[1:], " ")
-	cleanMsg = strings.TrimSpace(strings.ReplaceAll(cleanMsg, "\n", " "))
+	// update ham samples, the original message is from the second line, remove newlines and spaces
 	if derr := l.Bot.UpdateHam(cleanMsg); derr != nil {
 		return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, derr)
 	}
@@ -413,6 +458,28 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 	}
 
 	return nil
+}
+
+// getCleanMessage returns the original message without spam info and buttons and without newlines
+func (l *TelegramListener) getCleanMessage(msg string) (string, error) {
+	// the original message is from the second line, remove newlines and spaces
+	msgLines := strings.Split(msg, "\n")
+	if len(msgLines) < 2 {
+		return "", fmt.Errorf("unexpected message from callback msgsData: %q", msg)
+	}
+
+	spamInfoLine := len(msgLines)
+	for i, line := range msgLines {
+		if strings.HasPrefix(line, "spam detection results:") {
+			spamInfoLine = i
+			break
+		}
+	}
+
+	// Adjust the slice to include the line before spamInfoLine
+	cleanMsg := strings.Join(msgLines[1:spamInfoLine], " ")
+	cleanMsg = strings.TrimSpace(cleanMsg)
+	return cleanMsg, nil
 }
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
@@ -452,9 +519,10 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	return nil
 }
 
-// sendUnban sends unban request to admin chat
+// sendWithUnbanMarkup sends message to admin chat and add buttons to ui.
 // text is message with details and action it for the button label to unban, which is user id prefixed with "? for confirmation
-func (l *TelegramListener) sendUnban(text, action string, user bot.User, chatID int64) error {
+// second button is to show info about the spam analysis.
+func (l *TelegramListener) sendWithUnbanMarkup(text, action string, user bot.User, chatID int64) error {
 	log.Printf("[DEBUG] action response %q: user %+v, text: %q", action, user, strings.ReplaceAll(text, "\n", "\\n"))
 	tbMsg := tbapi.NewMessage(chatID, text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
@@ -462,7 +530,8 @@ func (l *TelegramListener) sendUnban(text, action string, user bot.User, chatID 
 
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData(action, fmt.Sprintf("?%d", user.ID)), // ?userID to request confirmation
+			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("?%d", user.ID)), // ?userID to request confirmation
+			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("!%d", user.ID)),    // !userID to request info
 		),
 	)
 

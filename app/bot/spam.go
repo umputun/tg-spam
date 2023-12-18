@@ -24,9 +24,6 @@ import (
 type SpamFilter struct {
 	director Detector
 	params   SpamConfig
-
-	// spamSamplesUpd sampleUpdaterInterface
-	// hamSamplesUpd  sampleUpdaterInterface
 }
 
 // SpamConfig is a full set of parameters for spam bot
@@ -88,12 +85,12 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 			msgPrefix = s.params.SpamDryMsg
 		}
 		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
-		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration,
+		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration, CheckResults: checkResults,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
 	}
 	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)
-	return Response{} // not a spam
+	return Response{CheckResults: checkResults} // not a spam
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
