@@ -261,6 +261,12 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		return nil
 	}
 
+	if update.FromChat().ID != l.chatID {
+		log.Printf("[DEBUG] forwarded message from other chat %d to admin group %s, ignored", update.FromChat().ID, l.AdminGroup)
+		// this is a forwarded message from other chats, not the one we monitor, ignore it
+		return nil
+	}
+
 	// this is a forwarded message from super to admin chat, it is an example of missed spam
 	// we need to update spam filter with this message
 	msgTxt := strings.ReplaceAll(update.Message.Text, "\n", " ")
