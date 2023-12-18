@@ -255,14 +255,17 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		}
 		return string([]rune(inp)[:max]) + "..."
 	}
+	log.Printf("[DEBUG] message from admin chat: %+v", update)
 
 	if update.Message.ForwardSenderName == "" && update.FromChat() == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
+		log.Printf("[DEBUG] message from admin chat, but not forwarded, ignore it, %+v", update.Message)
 		return nil
 	}
 
 	if update.Message.ReplyToMessage != nil {
 		// this is a reply to a message, ignore it
+		log.Printf("[DEBUG] message from admin chat, but reply to a message, ignore it, %+v", update.Message)
 		return nil
 	}
 
@@ -319,7 +322,15 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 }
 
 func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
-	return fromChat == l.adminChatID && l.SuperUsers.IsSuper(from)
+	if fromChat == l.adminChatID {
+		log.Printf("[DEBUG] message in admin chat %d, from %s", fromChat, from)
+		if !l.SuperUsers.IsSuper(from) {
+			log.Printf("[DEBUG] %s is not superuser in admin chat, ignored", from)
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 // reportToAdminChat sends a message to admin chat with a button to unban the user

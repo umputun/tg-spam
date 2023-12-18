@@ -1073,9 +1073,9 @@ func TestTelegramListener_isAdminChat(t *testing.T) {
 			expect:   false,
 		},
 		{
-			name:     "not allowed, fromUser is not superuser and fromChat is not chatID",
-			fromChat: 456,
-			chatID:   123777,
+			name:     "not allowed, fromUser is not superuser but fromChat is chatID",
+			fromChat: 123,
+			chatID:   123,
 			fromUser: "user",
 			expect:   false,
 		},
