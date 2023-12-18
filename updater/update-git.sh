@@ -34,7 +34,7 @@ else
 fi
 
 # clone the git repo if it doesn't exist
-if [ ! -d "$location" ]; then
+if [ ! -d "$location/.git" ]; then
   log "cloning git repo to $location"
   git clone -q $gitrepo $location
   ls -l $location
