@@ -430,7 +430,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
 }
 
-func TestTelegramListener_DoWithForwarded_WrongChat(t *testing.T) {
+func TestTelegramListener_DoWithForwarded_Reply(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
@@ -476,12 +476,13 @@ func TestTelegramListener_DoWithForwarded_WrongChat(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat:              &tbapi.Chat{ID: 123999},
+			Chat:              &tbapi.Chat{ID: 123},
 			Text:              "text 123",
 			From:              &tbapi.User{UserName: "umputun", ID: 77},
 			Date:              int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
 			ForwardSenderName: "forwarded_name",
 			MessageID:         999999,
+			ReplyToMessage:    &tbapi.Message{}, // reply to message
 		},
 	}
 

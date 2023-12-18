@@ -261,9 +261,8 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		return nil
 	}
 
-	if update.FromChat().ID != l.chatID {
-		log.Printf("[DEBUG] forwarded message from other chat %d to admin group %s, ignored", update.FromChat().ID, l.AdminGroup)
-		// this is a forwarded message from other chats, not the one we monitor, ignore it
+	if update.Message.ReplyToMessage != nil {
+		// this is a reply to a message, ignore it
 		return nil
 	}
 
@@ -273,6 +272,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q",
 		update.Message.From.UserName, l.adminChatID, msgTxt)
 
+	// update spam samples
 	if !l.Dry {
 		if err := l.Bot.UpdateSpam(msgTxt); err != nil {
 			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
@@ -292,11 +292,13 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		return nil
 	}
 
+	// delete message
 	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
 		return fmt.Errorf("failed to delete message %d: %w", info.msgID, err)
 	}
 	log.Printf("[INFO] message %d deleted", info.msgID)
 
+	// ban user
 	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.userID, 0); err != nil {
 		return fmt.Errorf("failed to ban user %d: %w", info.userID, err)
 	}
