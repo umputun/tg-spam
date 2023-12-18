@@ -20,6 +20,9 @@ import (
 //			OnMessageFunc: func(msg bot.Message) bot.Response {
 //				panic("mock out the OnMessage method")
 //			},
+//			RemoveApprovedUsersFunc: func(id int64, ids ...int64)  {
+//				panic("mock out the RemoveApprovedUsers method")
+//			},
 //			UpdateHamFunc: func(msg string) error {
 //				panic("mock out the UpdateHam method")
 //			},
@@ -38,6 +41,9 @@ type BotMock struct {
 
 	// OnMessageFunc mocks the OnMessage method.
 	OnMessageFunc func(msg bot.Message) bot.Response
+
+	// RemoveApprovedUsersFunc mocks the RemoveApprovedUsers method.
+	RemoveApprovedUsersFunc func(id int64, ids ...int64)
 
 	// UpdateHamFunc mocks the UpdateHam method.
 	UpdateHamFunc func(msg string) error
@@ -59,6 +65,13 @@ type BotMock struct {
 			// Msg is the msg argument value.
 			Msg bot.Message
 		}
+		// RemoveApprovedUsers holds details about calls to the RemoveApprovedUsers method.
+		RemoveApprovedUsers []struct {
+			// ID is the id argument value.
+			ID int64
+			// Ids is the ids argument value.
+			Ids []int64
+		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
 			// Msg is the msg argument value.
@@ -70,10 +83,11 @@ type BotMock struct {
 			Msg string
 		}
 	}
-	lockAddApprovedUsers sync.RWMutex
-	lockOnMessage        sync.RWMutex
-	lockUpdateHam        sync.RWMutex
-	lockUpdateSpam       sync.RWMutex
+	lockAddApprovedUsers    sync.RWMutex
+	lockOnMessage           sync.RWMutex
+	lockRemoveApprovedUsers sync.RWMutex
+	lockUpdateHam           sync.RWMutex
+	lockUpdateSpam          sync.RWMutex
 }
 
 // AddApprovedUsers calls AddApprovedUsersFunc.
@@ -95,7 +109,7 @@ func (mock *BotMock) AddApprovedUsers(id int64, ids ...int64) {
 }
 
 // AddApprovedUsersCalls gets all the calls that were made to AddApprovedUsers.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedBot.AddApprovedUsersCalls())
 func (mock *BotMock) AddApprovedUsersCalls() []struct {
@@ -136,7 +150,7 @@ func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
 }
 
 // OnMessageCalls gets all the calls that were made to OnMessage.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedBot.OnMessageCalls())
 func (mock *BotMock) OnMessageCalls() []struct {
@@ -158,6 +172,49 @@ func (mock *BotMock) ResetOnMessageCalls() {
 	mock.lockOnMessage.Unlock()
 }
 
+// RemoveApprovedUsers calls RemoveApprovedUsersFunc.
+func (mock *BotMock) RemoveApprovedUsers(id int64, ids ...int64) {
+	if mock.RemoveApprovedUsersFunc == nil {
+		panic("BotMock.RemoveApprovedUsersFunc: method is nil but Bot.RemoveApprovedUsers was just called")
+	}
+	callInfo := struct {
+		ID  int64
+		Ids []int64
+	}{
+		ID:  id,
+		Ids: ids,
+	}
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = append(mock.calls.RemoveApprovedUsers, callInfo)
+	mock.lockRemoveApprovedUsers.Unlock()
+	mock.RemoveApprovedUsersFunc(id, ids...)
+}
+
+// RemoveApprovedUsersCalls gets all the calls that were made to RemoveApprovedUsers.
+// Check the length with:
+//
+//	len(mockedBot.RemoveApprovedUsersCalls())
+func (mock *BotMock) RemoveApprovedUsersCalls() []struct {
+	ID  int64
+	Ids []int64
+} {
+	var calls []struct {
+		ID  int64
+		Ids []int64
+	}
+	mock.lockRemoveApprovedUsers.RLock()
+	calls = mock.calls.RemoveApprovedUsers
+	mock.lockRemoveApprovedUsers.RUnlock()
+	return calls
+}
+
+// ResetRemoveApprovedUsersCalls reset all the calls that were made to RemoveApprovedUsers.
+func (mock *BotMock) ResetRemoveApprovedUsersCalls() {
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = nil
+	mock.lockRemoveApprovedUsers.Unlock()
+}
+
 // UpdateHam calls UpdateHamFunc.
 func (mock *BotMock) UpdateHam(msg string) error {
 	if mock.UpdateHamFunc == nil {
@@ -175,7 +232,7 @@ func (mock *BotMock) UpdateHam(msg string) error {
 }
 
 // UpdateHamCalls gets all the calls that were made to UpdateHam.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedBot.UpdateHamCalls())
 func (mock *BotMock) UpdateHamCalls() []struct {
@@ -214,7 +271,7 @@ func (mock *BotMock) UpdateSpam(msg string) error {
 }
 
 // UpdateSpamCalls gets all the calls that were made to UpdateSpam.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedBot.UpdateSpamCalls())
 func (mock *BotMock) UpdateSpamCalls() []struct {
@@ -245,6 +302,10 @@ func (mock *BotMock) ResetCalls() {
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = nil
 	mock.lockOnMessage.Unlock()
+
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = nil
+	mock.lockRemoveApprovedUsers.Unlock()
 
 	mock.lockUpdateHam.Lock()
 	mock.calls.UpdateHam = nil

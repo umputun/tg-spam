@@ -19,13 +19,16 @@ import (
 //				panic("mock out the AddApprovedUsers method")
 //			},
 //			CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
-//				panic("mock out the check method")
+//				panic("mock out the Check method")
 //			},
 //			LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
 //				panic("mock out the LoadSamples method")
 //			},
 //			LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
 //				panic("mock out the LoadStopWords method")
+//			},
+//			RemoveApprovedUsersFunc: func(ids ...string)  {
+//				panic("mock out the RemoveApprovedUsers method")
 //			},
 //			UpdateHamFunc: func(msg string) error {
 //				panic("mock out the UpdateHam method")
@@ -51,6 +54,9 @@ type DetectorMock struct {
 
 	// LoadStopWordsFunc mocks the LoadStopWords method.
 	LoadStopWordsFunc func(readers ...io.Reader) (lib.LoadResult, error)
+
+	// RemoveApprovedUsersFunc mocks the RemoveApprovedUsers method.
+	RemoveApprovedUsersFunc func(ids ...string)
 
 	// UpdateHamFunc mocks the UpdateHam method.
 	UpdateHamFunc func(msg string) error
@@ -86,6 +92,11 @@ type DetectorMock struct {
 			// Readers is the readers argument value.
 			Readers []io.Reader
 		}
+		// RemoveApprovedUsers holds details about calls to the RemoveApprovedUsers method.
+		RemoveApprovedUsers []struct {
+			// Ids is the ids argument value.
+			Ids []string
+		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
 			// Msg is the msg argument value.
@@ -97,12 +108,13 @@ type DetectorMock struct {
 			Msg string
 		}
 	}
-	lockAddApprovedUsers sync.RWMutex
-	lockCheck            sync.RWMutex
-	lockLoadSamples      sync.RWMutex
-	lockLoadStopWords    sync.RWMutex
-	lockUpdateHam        sync.RWMutex
-	lockUpdateSpam       sync.RWMutex
+	lockAddApprovedUsers    sync.RWMutex
+	lockCheck               sync.RWMutex
+	lockLoadSamples         sync.RWMutex
+	lockLoadStopWords       sync.RWMutex
+	lockRemoveApprovedUsers sync.RWMutex
+	lockUpdateHam           sync.RWMutex
+	lockUpdateSpam          sync.RWMutex
 }
 
 // AddApprovedUsers calls AddApprovedUsersFunc.
@@ -147,7 +159,7 @@ func (mock *DetectorMock) ResetAddApprovedUsersCalls() {
 // Check calls CheckFunc.
 func (mock *DetectorMock) Check(msg string, userID string) (bool, []lib.CheckResult) {
 	if mock.CheckFunc == nil {
-		panic("DetectorMock.CheckFunc: method is nil but Detector.check was just called")
+		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
 	}
 	callInfo := struct {
 		Msg    string
@@ -273,6 +285,45 @@ func (mock *DetectorMock) ResetLoadStopWordsCalls() {
 	mock.lockLoadStopWords.Unlock()
 }
 
+// RemoveApprovedUsers calls RemoveApprovedUsersFunc.
+func (mock *DetectorMock) RemoveApprovedUsers(ids ...string) {
+	if mock.RemoveApprovedUsersFunc == nil {
+		panic("DetectorMock.RemoveApprovedUsersFunc: method is nil but Detector.RemoveApprovedUsers was just called")
+	}
+	callInfo := struct {
+		Ids []string
+	}{
+		Ids: ids,
+	}
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = append(mock.calls.RemoveApprovedUsers, callInfo)
+	mock.lockRemoveApprovedUsers.Unlock()
+	mock.RemoveApprovedUsersFunc(ids...)
+}
+
+// RemoveApprovedUsersCalls gets all the calls that were made to RemoveApprovedUsers.
+// Check the length with:
+//
+//	len(mockedDetector.RemoveApprovedUsersCalls())
+func (mock *DetectorMock) RemoveApprovedUsersCalls() []struct {
+	Ids []string
+} {
+	var calls []struct {
+		Ids []string
+	}
+	mock.lockRemoveApprovedUsers.RLock()
+	calls = mock.calls.RemoveApprovedUsers
+	mock.lockRemoveApprovedUsers.RUnlock()
+	return calls
+}
+
+// ResetRemoveApprovedUsersCalls reset all the calls that were made to RemoveApprovedUsers.
+func (mock *DetectorMock) ResetRemoveApprovedUsersCalls() {
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = nil
+	mock.lockRemoveApprovedUsers.Unlock()
+}
+
 // UpdateHam calls UpdateHamFunc.
 func (mock *DetectorMock) UpdateHam(msg string) error {
 	if mock.UpdateHamFunc == nil {
@@ -368,6 +419,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockLoadStopWords.Lock()
 	mock.calls.LoadStopWords = nil
 	mock.lockLoadStopWords.Unlock()
+
+	mock.lockRemoveApprovedUsers.Lock()
+	mock.calls.RemoveApprovedUsers = nil
+	mock.lockRemoveApprovedUsers.Unlock()
 
 	mock.lockUpdateHam.Lock()
 	mock.calls.UpdateHam = nil
