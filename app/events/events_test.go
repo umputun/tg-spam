@@ -12,6 +12,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
+	"github.com/umputun/tg-spam/lib"
 )
 
 func TestTelegramListener_Do(t *testing.T) {
@@ -634,7 +635,7 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
 }
 
-func TestTelegramListener_DoWithAdminUnBanDecline(t *testing.T) {
+func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
@@ -652,7 +653,7 @@ func TestTelegramListener_DoWithAdminUnBanDecline(t *testing.T) {
 		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
 	}
 	b := &mocks.BotMock{
-		UpdateHamFunc: func(msg string) error {
+		UpdateSpamFunc: func(msg string) error {
 			return nil
 		},
 		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
@@ -673,7 +674,7 @@ func TestTelegramListener_DoWithAdminUnBanDecline(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "no", // no means decline
+			Data: "+999", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -692,11 +693,77 @@ func TestTelegramListener_DoWithAdminUnBanDecline(t *testing.T) {
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
-	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
 	assert.Equal(t, 0, len(kb), "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
+	assert.Equal(t, 0, len(b.UpdateHamCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+}
+
+func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			return tbapi.Chat{ID: 123}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			if mc, ok := c.(tbapi.MessageConfig); ok {
+				return tbapi.Message{Text: mc.Text, From: &tbapi.User{UserName: "user"}}, nil
+			}
+			return tbapi.Message{}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
+	}
+	b := &mocks.BotMock{}
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        b,
+		SuperUsers: SuperUser{"admin"},
+		Group:      "gr",
+		Locator:    NewLocator(10*time.Minute, 0),
+		AdminGroup: "123",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		CallbackQuery: &tbapi.CallbackQuery{
+			Data: "!999", // ! means we show info
+			Message: &tbapi.Message{
+				MessageID:   987654,
+				Chat:        &tbapi.Chat{ID: 123},
+				Text:        "unban user blah\n\nthis was the spam",
+				From:        &tbapi.User{UserName: "user", ID: 999},
+				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			},
+			From: &tbapi.User{UserName: "admin", ID: 1000},
+		},
+	}
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	l.Locator.AddSpam(999, []lib.CheckResult{{Name: "rule1", Spam: true, Details: "details1"}, {Name: "rule2", Spam: true, Details: "details2"}})
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
+	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
+	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "results:\nrule1: spam, details1\nrule2: spam, details2")
+	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+	assert.Equal(t, 0, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
 }
@@ -902,7 +969,7 @@ func TestTelegramListener_reportToAdminChat(t *testing.T) {
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test  \\_message\\_")
 	assert.NotNil(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup)
-	assert.Equal(t, "change ban status for user",
+	assert.Equal(t, "⛔︎ change ban status for user",
 		mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup).InlineKeyboard[0][0].Text)
 }
 
@@ -1064,6 +1131,48 @@ func TestUpdateSupers(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers)
+			}
+		})
+	}
+}
+
+func TestGetCleanMessage(t *testing.T) {
+	tl := &TelegramListener{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		err      bool
+	}{
+		{
+			name:     "with spam detection results",
+			input:    "Line 1\nLine 2\nspam detection results:\nLine 4",
+			expected: "Line 2",
+			err:      false,
+		},
+		{
+			name:     "without spam detection results",
+			input:    "Line 1\nLine 2\nLine 3",
+			expected: "Line 2 Line 3",
+			err:      false,
+		},
+		{
+			name:     "only one line",
+			input:    "Line 1",
+			expected: "",
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tl.getCleanMessage(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
 			}
 		})
 	}

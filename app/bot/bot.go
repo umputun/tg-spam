@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/umputun/tg-spam/lib"
 )
 
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient:HTTPClient
@@ -16,12 +18,13 @@ var PermanentBanDuration = time.Hour * 24 * 400
 // Response describes bot's reaction on particular message
 type Response struct {
 	Text          string
-	Send          bool          // status
-	BanInterval   time.Duration // bots banning user set the interval
-	User          User          // user to ban
-	ChannelID     int64         // channel to ban, if set then User and BanInterval are ignored
-	ReplyTo       int           // message to reply to, if 0 then no reply but common message
-	DeleteReplyTo bool          // delete message what bot replays to
+	Send          bool              // status
+	BanInterval   time.Duration     // bots banning user set the interval
+	User          User              // user to ban
+	ChannelID     int64             // channel to ban, if set then User and BanInterval are ignored
+	ReplyTo       int               // message to reply to, if 0 then no reply but common message
+	DeleteReplyTo bool              // delete message what bot replays to
+	CheckResults  []lib.CheckResult // check results for the message
 }
 
 // SenderChat is the sender of the message, sent on behalf of a chat. The

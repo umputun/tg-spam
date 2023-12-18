@@ -625,3 +625,37 @@ func TestDetector_tokenChanMultipleReaders(t *testing.T) {
 	}
 	assert.Equal(t, []string{"hello", "world", "something, new"}, res)
 }
+
+func TestCheckResult_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *CheckResult
+		expected string
+	}{
+		{
+			name: "test spam",
+			input: &CheckResult{
+				Name:    "name1",
+				Spam:    true,
+				Details: "details",
+			},
+			expected: "name1: spam, details",
+		},
+		{
+			name: "test ham",
+			input: &CheckResult{
+				Name:    "name2",
+				Spam:    false,
+				Details: "details",
+			},
+			expected: "name2: ham, details",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := tt.input.String()
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
