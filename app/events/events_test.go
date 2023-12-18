@@ -761,7 +761,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
 	assert.Equal(t, 0, len(kb), "buttons cleared")
-	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "results:\nrule1: spam, details1\nrule2: spam, details2")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "results**\n- rule1: spam, details1\n- rule2: spam, details2")
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 	assert.Equal(t, 0, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))

@@ -220,6 +220,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		banUserStr := l.getBanUsername(resp, update)
 
 		if l.SuperUsers.IsSuper(msg.From.Username) {
+			if l.TrainingMode {
+				l.reportToAdminChat(banUserStr, msg)
+			}
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
 		}
@@ -351,7 +354,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		if _, err := l.TbAPI.Send(editMsg); err != nil {
 			return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
-		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[:1], query.Message.Text)
 		return nil
 	}
 
@@ -391,7 +394,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			info, found := l.Locator.Spam(userID)
 			if found {
 				for _, check := range info.checks {
-					spamInfo = append(spamInfo, check.String())
+					spamInfo = append(spamInfo, "- "+check.String())
 				}
 			}
 			if len(spamInfo) > 0 {
@@ -399,7 +402,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			}
 		}
 
-		updText := query.Message.Text + "\n\nspam detection results:\n" + spamInfoText
+		updText := query.Message.Text + "\n\n**spam detection results**\n" + spamInfoText
 		confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
 		if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
 			confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
@@ -407,6 +410,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		}
 		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
+		editMsg.ParseMode = tbapi.ModeMarkdown
 		if _, err := l.TbAPI.Send(editMsg); err != nil {
 			return fmt.Errorf("failed to add spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
@@ -414,7 +418,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		return nil
 	}
 
-	// if callback msgsData is not "no" and does not start with "?", we should unban the user
+	// callback msgsData here is userID, we should unban the user
 	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := l.TbAPI.Request(callbackResponse); err != nil {

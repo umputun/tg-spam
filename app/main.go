@@ -82,6 +82,7 @@ type options struct {
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
 	ParanoidMode        bool    `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 	FirstMessagesCount  int     `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
+	MinSpamProbability  float64 `long:"min-probability" env:"MIN_PROBABILITY" default:"50" description:"min spam probability percent to ban"`
 
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
@@ -206,6 +207,7 @@ func makeDetector(opts options) *lib.Detector {
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
 		SimilarityThreshold: opts.SimilarityThreshold,
+		MinSpamProbability:  opts.MinSpamProbability,
 		CasAPI:              opts.CAS.API,
 		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
 		FirstMessageOnly:    !opts.ParanoidMode,
