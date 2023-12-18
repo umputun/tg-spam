@@ -31,7 +31,7 @@ func TestGetMessage(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.AddMessage(msg, chatID, userID, msgID)
+	locator.AddMessage(msg, chatID, userID, "user", msgID)
 
 	// test retrieval of existing message
 	info, found := locator.Message("test message")
@@ -39,6 +39,7 @@ func TestGetMessage(t *testing.T) {
 	assert.Equal(t, msgID, info.msgID)
 	assert.Equal(t, chatID, info.chatID)
 	assert.Equal(t, userID, info.userID)
+	assert.Equal(t, "user", info.userName)
 
 	// test retrieval of non-existing message
 	_, found = locator.Message("no such message") // non-existing msgID
@@ -96,18 +97,19 @@ func TestAddMessageAndCleanup(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.AddMessage(msg, chatID, userID, msgID)
+	locator.AddMessage(msg, chatID, userID, "user1", msgID)
 
 	hash := locator.MsgHash(msg)
 	meta, exists := locator.msgs.data[hash]
 	require.True(t, exists)
 	assert.Equal(t, chatID, meta.chatID)
 	assert.Equal(t, userID, meta.userID)
+	assert.Equal(t, "user1", meta.userName)
 	assert.Equal(t, msgID, meta.msgID)
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + time.Second)
-	locator.AddMessage("another message", 789, 555, 1011)
+	locator.AddMessage("another message", 789, 555, "user2", 1011)
 
 	_, existsAfterCleanup := locator.msgs.data[hash]
 	assert.False(t, existsAfterCleanup)
@@ -124,7 +126,7 @@ func TestAddAndCleanup_withMinSize(t *testing.T) {
 	chatID := int64(123)
 	userID := int64(456)
 	msgID := 7890
-	locator.AddMessage(msg, chatID, userID, msgID) // add first message
+	locator.AddMessage(msg, chatID, userID, "user1", msgID) // add first message
 
 	hash := locator.MsgHash(msg)
 	meta, exists := locator.msgs.data[hash]
@@ -135,13 +137,13 @@ func TestAddAndCleanup_withMinSize(t *testing.T) {
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + time.Millisecond*200)
-	locator.AddMessage("second message", 789, 555, 1011)
+	locator.AddMessage("second message", 789, 555, "user2", 1011)
 	_, existsAfterCleanup := locator.msgs.data[hash]
 	assert.True(t, existsAfterCleanup, "minSize should prevent cleanup")
 
 	// wait for cleanup duration and add another message to trigger cleanup
 	time.Sleep(cleanupDuration + +time.Millisecond*200)
-	locator.AddMessage("third message", chatID, 9000, 2000)
+	locator.AddMessage("third message", chatID, 9000, "user3", 2000)
 	_, existsAfterCleanup = locator.msgs.data[hash]
 	assert.False(t, existsAfterCleanup, "minSize should allow cleanup")
 

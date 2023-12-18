@@ -397,7 +397,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
 	defer cancel()
 
-	l.Locator.AddMessage("text 123", 123, 88, 999999) // add message to locator
+	l.Locator.AddMessage("text 123", 123, 88, "user", 999999) // add message to locator
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
@@ -418,15 +418,18 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
+	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "detection results")
+	assert.Equal(t, int64(123), mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ChatID)
+
 	require.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, "text 123", b.UpdateSpamCalls()[0].Msg)
 
 	assert.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
-
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).ChatID)
 	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
 

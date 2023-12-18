@@ -201,7 +201,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.ID) // save message to locator
+	l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID) // save message to locator
 	resp := l.Bot.OnMessage(*msg)
 
 	// send response to the channel if allowed
@@ -259,9 +259,8 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %s",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName, update.Message.ForwardSenderName)
 
-	if update.Message.ForwardSenderName == "" && update.FromChat() == nil {
+	if update.Message.ForwardSenderName == "" && update.Message.ForwardFrom == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
-		log.Printf("[DEBUG] message from admin chat, but not forwarded, ignore it, %+v", update.Message)
 		return nil
 	}
 
@@ -279,9 +278,28 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] locator found message %s", info)
+	errs := new(multierror.Error)
 
 	// remove user from the approved list
 	l.Bot.RemoveApprovedUsers(info.userID)
+
+	// make message with spam info and send to admin chat
+	spamInfo := []string{}
+	resp := l.Bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.userID}})
+	spamInfoText := "**can't get spam info**"
+	for _, check := range resp.CheckResults {
+		spamInfo = append(spamInfo, "- "+check.String())
+	}
+	if len(spamInfo) > 0 {
+		spamInfoText = strings.Join(spamInfo, "\n")
+	}
+	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
+		info.userName, info.userID, spamInfoText)
+	msg := tbapi.NewMessage(l.adminChatID, newMsgText)
+	msg.ParseMode = tbapi.ModeMarkdown
+	if _, err := l.TbAPI.Send(msg); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
+	}
 
 	// update spam samples
 	if !l.Dry {
@@ -294,8 +312,6 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	if l.Dry || l.TrainingMode {
 		return nil
 	}
-
-	errs := new(multierror.Error)
 
 	// delete message
 	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {

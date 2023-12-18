@@ -29,10 +29,11 @@ type Locator struct {
 
 // MsgMeta stores message metadata
 type MsgMeta struct {
-	time   time.Time
-	chatID int64
-	userID int64
-	msgID  int
+	time     time.Time
+	chatID   int64
+	userID   int64
+	userName string
+	msgID    int
 }
 
 // SpamData stores spam data for a given user
@@ -42,7 +43,8 @@ type SpamData struct {
 }
 
 func (m MsgMeta) String() string {
-	return fmt.Sprintf("{chatID: %d, userID: %d, msgID: %d, time: %s}", m.chatID, m.userID, m.msgID, m.time.Format(time.RFC3339))
+	return fmt.Sprintf("{chatID: %d, user name: %s, userID: %d, msgID: %d, time: %s}",
+		m.chatID, m.userName, m.userID, m.msgID, m.time.Format(time.RFC3339))
 }
 
 func (s SpamData) String() string {
@@ -80,12 +82,13 @@ func (l *Locator) MsgHash(msg string) string {
 // Messages are removed the total number of messages exceeds minSize and the last cleanup was performed more than cleanupDuration ago.
 // The reason for minSize is to avoid removing messages on low-traffic chats where admin visits are rare.
 // Note: removes old messages only once per cleanupDuration and only if a new message is added
-func (l *Locator) AddMessage(msg string, chatID, userID int64, msgID int) {
+func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, msgID int) {
 	l.msgs.data[l.MsgHash(msg)] = MsgMeta{
-		time:   time.Now(),
-		chatID: chatID,
-		userID: userID,
-		msgID:  msgID,
+		time:     time.Now(),
+		chatID:   chatID,
+		userID:   userID,
+		userName: userName,
+		msgID:    msgID,
 	}
 
 	if time.Since(l.msgs.lastRemoval) < l.cleanupDuration || len(l.msgs.data) <= l.minSize {
