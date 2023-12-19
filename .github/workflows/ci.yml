@@ -2,11 +2,15 @@ name: build-app
 on:
   push:
     branches:
+      paths_ignored:
+        - ".github/workflows/updater.yml"
+        - "updater/**"
+        - "**.md"
     tags:
-    paths_ignored:
-      - ".github/workflows/updater.yml"
-      - "updater/**"
-      - "**.md"
+      paths_ignored:
+        - ".github/workflows/updater.yml"
+        - "updater/**"
+        - "**.md"
   pull_request:
     paths_ignored:
       - ".github/workflows/updater.yml"
