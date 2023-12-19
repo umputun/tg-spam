@@ -59,6 +59,7 @@ type options struct {
 
 	OpenAI struct {
 		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
 		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
 		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
@@ -212,6 +213,7 @@ func makeDetector(opts options) *lib.Detector {
 		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
 		FirstMessageOnly:    !opts.ParanoidMode,
 		FirstMessagesCount:  opts.FirstMessagesCount,
+		OpenAIVeto:          opts.OpenAI.Veto,
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.

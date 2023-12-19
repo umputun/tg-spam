@@ -43,6 +43,7 @@ type Config struct {
 	FirstMessagesCount  int        // number of first messages to check for spam
 	HTTPClient          HTTPClient // http client to use for requests
 	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
+	OpenAIVeto          bool       // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
 }
 
 // CheckResult is a result of spam check.
@@ -128,26 +129,33 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 		cr = append(cr, d.isCasSpam(userID))
 	}
 
+	spamDetected := false
 	for _, r := range cr {
 		if r.Spam {
-			return true, cr
+			spamDetected = true
+			break
 		}
 	}
 
-	// we hit openai only if all other checks passed because it's slow and expensive
-	// we also don't want to hit openai for every message
-	if d.openaiChecker != nil && d.FirstMessageOnly {
-		spam, details := d.openaiChecker.check(msg)
-		cr = append(cr, details)
-		if spam {
-			return true, cr
+	// we hit openai in two cases:
+	//  - all other checks passed (ham result) and OpenAIVeto is false. In this case, openai primary used to improve false negative rate
+	//  - one of the checks failed (spam result) and OpenAIVeto is true. In this case, openai primary used to improve false positive rate
+	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
+	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
+		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
+			spam, details := d.openaiChecker.check(msg)
+			cr = append(cr, details)
+			spamDetected = spam
 		}
+	}
+
+	if spamDetected {
+		return true, cr
 	}
 
 	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
 		d.approvedUsers[userID]++
 	}
-
 	return false, cr
 }
 
