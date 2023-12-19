@@ -43,6 +43,7 @@ type TelegramListener struct {
 	NoSpamReply  bool
 	TrainingMode bool
 	Dry          bool
+	KeepUser     bool
 	Locator      *Locator
 
 	chatID      int64
@@ -481,7 +482,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 
 	// unban user
 	if !l.TrainingMode {
-		_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}})
+		_, err = l.TbAPI.Request(tbapi.UnbanChatMemberConfig{ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: l.chatID}, OnlyIfBanned: l.KeepUser})
 		if err != nil {
 			return fmt.Errorf("failed to unban user %d: %w", userID, err)
 		}
