@@ -28,8 +28,12 @@
 //   - Config.MinMsgLen defines the minimum message length for spam checks. Messages shorter
 //     than this threshold are ignored. A negative value or zero deactivates this check.
 //
+//   - Config.MinSpamProbability defines minimum spam probability to consider a message spam with classifier, if 0 - ignored
+//
 //   - Config.FirstMessageOnly specifies whether only the first message from a given userID should
 //     be checked.
+//
+//   - Config.FirstMessagesCount the number of first messages to check for spam
 //
 //   - Config.CasAPI specifies the URL of the CAS API to use for spam detection. If this is empty, the
 //     detector will not use the CAS API checks.
@@ -41,4 +45,6 @@
 // spam and ham samples on the fly. Those methods are thread-safe and can be called concurrently.
 // To call them Detector.WithSpamUpdater and Detector.WithHamUpdater methods should be used first to provide
 // user-defined structs that implement the SampleUpdater interface.
+//
+// The user can also add (lib.AddApprovedUsers) and remove (lib.RemoveApprovedUsers) users to/from the list of approved user ids.
 package lib
