@@ -2,6 +2,7 @@
 
 gitrepo=$1
 location=$(realpath ${2:-./samples})
+internal_location="/srv/.samples"
 
 if [ -z "$gitrepo" ]; then
   echo "error: you must specify a git repo url as the first argument."
@@ -12,44 +13,34 @@ log() {
   echo "$(date +"%Y-%m-%d %H:%M:%S") $1"
 }
 
-# update the git repo if there are changes
-function update() {
-  git -C $location fetch
-  if [ "$(git -C $location rev-parse HEAD)" != "$(git -C $location rev-parse @{u})" ]; then
-    log "changes detected - updating"
-    git -C $location pull
-    ls -l $location
+sync_files() {
+  rsync -av --update --checksum --info=name --exclude='.git' --exclude=".github" --exclude='README.md' "$internal_location/" "$location/" | grep -v '^\.\/$'
+}
+
+# Clone or update the internal git repo and sync changes to $location
+function sync_repo() {
+  if [ ! -d "$internal_location/.git" ]; then
+    log "cloning git repo to $internal_location"
+    git clone -q $gitrepo $internal_location
+    sync_files
   else
-    log "no changes detected in $location"
+    git -C $internal_location fetch
+    if [ "$(git -C $internal_location rev-parse HEAD)" != "$(git -C $internal_location rev-parse @{u})" ]; then
+      log "changes detected - updating"
+      git -C $internal_location pull
+      sync_files
+    fi
   fi
 }
 
-# check if we are running inside docker or from terminal
-if [ -n "$UPDATER_IN_DOCKER" ]; then
-  log "running inside docker"
-elif [ -t 0 ]; then
-  log "running from terminal"
-else
-  log "running from cron scheduler"
-fi
+# Initial setup
+log "setting up"
+mkdir -p "$location"
+sync_repo
 
-# clone the git repo if it doesn't exist
-if [ ! -d "$location/.git" ]; then
-  log "cloning git repo to $location"
-  git clone -q $gitrepo $location
-  ls -l $location
-fi
-
-# check if we are running inside docker or from terminal
-# if we are running from cron scheduler, run the updater once and exit
-# if we are running inside docker, run the updater in an endless loop
-if [ -n "$UPDATER_IN_DOCKER" ] || [ -t 0 ]; then
-  log "running updater in endless loop, every minute"
-  while true; do
-    update
-    sleep 1m
-  done
-else
-  update
-  exit 0
-fi
+# Running loop
+log "running updater in endless loop, every minute"
+while true; do
+  sync_repo
+  sleep 1m
+done

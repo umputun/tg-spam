@@ -32,3 +32,7 @@ services:
     volumes:
       - ./tg-spam-samples:/samples
 ```
+
+**permission issues**
+
+If the updater is run as a Docker container, there may be a discrepancy in file ownership between the host and the container. By default, containers run with a user ID (UID) of 1001. If the host's directory is owned by a different user, this can lead to permission issues. To circumvent this, you can use the `APP_UID` environment variable, either from the command line or within a Docker Compose file. For instance: `docker run -d --name tg-spam-updater -e APP_UID=502 ....`. It's also recommended to create the samples directory on the host before running the container.
