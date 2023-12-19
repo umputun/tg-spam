@@ -99,8 +99,8 @@ Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other 
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- Only the first message from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
-- OpenAI check is the last in the chain of checks. If any of the previous checks marked the message as spam, the bot will not call OpenAI.
+- Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
+- OpenAI check is the last in the chain of checks. Unless `--openai.veto` is not set, the bot will not even call OpenAI if any of the previous checks marked the message as spam. However, if `--openai.veto` is set, it will be called and the message will be marked as spam only if OpenAI thinks so.
 - By default, OpenAI integration is disabled. 
 
 **Emoji Count**
@@ -230,6 +230,7 @@ openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
       --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
+      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
