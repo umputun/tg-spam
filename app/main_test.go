@@ -127,7 +127,12 @@ func Test_autoSaveApprovedUsers(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "approved_users")
 	require.NoError(t, err)
-	wr := storage.NewApprovedUsers(tmpFile.Name())
+	defer os.Remove(tmpFile.Name())
+
+	db, err := storage.NewSqliteDB(tmpFile.Name())
+	require.NoError(t, err)
+	wr, err := storage.NewApprovedUsers(db)
+	require.NoError(t, err)
 	go autoSaveApprovedUsers(ctx, director, wr, time.Millisecond*100)
 
 	spam, _ := director.Check("some message to check, should be fine", "999")
@@ -136,7 +141,11 @@ func Test_autoSaveApprovedUsers(t *testing.T) {
 
 	fi, err := os.Stat(tmpFile.Name())
 	require.NoError(t, err)
-	assert.Equal(t, int64(8)*3, fi.Size())
+	assert.True(t, fi.Size() > 0)
+
+	count, err = director.LoadApprovedUsers(wr)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
 }
 
 func Test_makeDetector(t *testing.T) {

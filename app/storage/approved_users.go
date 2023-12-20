@@ -1,73 +1,84 @@
 package storage
 
 import (
-	"encoding/binary"
+	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strconv"
+	"time"
+
+	"github.com/jmoiron/sqlx"
+	_ "modernc.org/sqlite" // sqlite driver loaded here
 )
 
-// ApprovedUsers is a storage for approved users ids, not thread-safe.
-//
-// Clients should not reuse ApprovedUsers for multiple goroutines, create a new instance instead.
-// Even if access to Store and Read is synchronized, the underlying file is not.
+// ApprovedUsers is a storage for approved users ids
+// Read is not thread-safe
 type ApprovedUsers struct {
-	filePath string
-	file     *os.File
+	db         *sqlx.DB
+	lastReadID int64 // last id for read. Note: this is not a thread-safe part, don't call parallel reads!
 }
 
 // NewApprovedUsers creates a new ApprovedUsers storage
-func NewApprovedUsers(filePath string) *ApprovedUsers {
-	return &ApprovedUsers{
-		filePath: filePath,
+func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS approved_users " +
+		"(id INTEGER PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create approved_users table: %w", err)
 	}
+	return &ApprovedUsers{db: db}, nil
 }
 
 // Store saves ids to the storage, overwriting the existing content
-// data is stored in little endian, binary format. 8 bytes for each id.
 func (au *ApprovedUsers) Store(ids []string) error {
-	log.Printf("[DEBUG] storing %d ids to %s", len(ids), au.filePath)
-	file, err := os.Create(au.filePath)
+	log.Printf("[DEBUG] storing %d ids", len(ids))
+
+	tx, err := au.db.Beginx()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer file.Close()
+
+	var committed bool
+	defer func() {
+		// rollback if not committed due to error
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("[WARN] failed to rollback transaction: %v", err)
+			}
+		}
+	}()
 
 	for _, id := range ids {
 		idVal, err := strconv.ParseInt(id, 10, 64)
 		if err != nil {
 			return fmt.Errorf("failed to parse id %s: %w", id, err)
 		}
-		if err := binary.Write(file, binary.LittleEndian, idVal); err != nil {
-			return fmt.Errorf("failed to write id %s: %w", id, err)
+
+		_, err = tx.Exec("INSERT OR REPLACE INTO approved_users (id, timestamp) VALUES (?, ?)", idVal, time.Now())
+		if err != nil {
+			return fmt.Errorf("failed to insert id %s: %w", id, err)
 		}
 	}
-
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	committed = true
 	return nil
 }
 
 // Read reads ids from the storage
 // Each read returns one id, followed by a newline
 func (au *ApprovedUsers) Read(p []byte) (n int, err error) {
-	if au.file == nil {
-		file, e := os.Open(au.filePath)
-		if e != nil {
-			return 0, e
-		}
-		au.file = file
-	}
-
+	row := au.db.QueryRow("SELECT id FROM approved_users WHERE id > ? ORDER BY id LIMIT 1", au.lastReadID)
 	var id int64
-	if err = binary.Read(au.file, binary.LittleEndian, &id); err != nil {
-		if err == io.EOF {
-			_ = au.file.Close() // we don't care about the error here, read-only
-			au.file = nil
+	if err := row.Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, io.EOF
 		}
-		return 0, err
+		return 0, fmt.Errorf("failed to read id: %w", err)
 	}
-
+	au.lastReadID = id
 	idBytes := []byte(fmt.Sprintf("%d\n", id))
 	n = copy(p, idBytes)
 	return n, nil

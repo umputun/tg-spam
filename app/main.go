@@ -38,9 +38,10 @@ type options struct {
 		PreserveUnbanned bool          `long:"preserve-unbanned" env:"PRESERVE_UNBANNED" description:"preserve user after unban"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
-	AdminGroup      string        `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
-	TestingIDs      []int64       `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
-	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"1h" description:"history duration"`
+	AdminGroup string  `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
+	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
+
+	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
 
 	Logger struct {
@@ -69,22 +70,23 @@ type options struct {
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	Files struct {
+		Data             string        `long:"data" env:"DATA" default:"data/tg-spam.db" description:"data db file"`
 		SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
 		SamplesHamFile   string        `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"ham samples"`
 		ExcludeTokenFile string        `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"exclude tokens file"`
 		StopWordsFile    string        `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"stop words file"`
 		DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
 		DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
-		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval"`
-		ApprovedUsers    string        `long:"approved-users" env:"APPROVED_USERS" default:"data/approved-users.txt" description:"approved users file"`
+		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
 	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
-	ParanoidMode        bool    `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
-	FirstMessagesCount  int     `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
 	MinSpamProbability  float64 `long:"min-probability" env:"MIN_PROBABILITY" default:"50" description:"min spam probability percent to ban"`
+
+	ParanoidMode       bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
+	FirstMessagesCount int  `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
 
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
@@ -147,22 +149,29 @@ func execute(ctx context.Context, opts options) error {
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
 
-	// load approved users and start auto-save
-	if opts.Files.ApprovedUsers != "" {
-		approvedUsersStore := storage.NewApprovedUsers(opts.Files.ApprovedUsers)
-		defer func() {
-			if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
-				log.Printf("[WARN] can't save approved users, %v", serr)
-			}
-		}()
-		count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
-		if lerr != nil {
-			log.Printf("[WARN] can't load approved users, %v", lerr)
-		} else {
-			log.Printf("[DEBUG] approved users file: %s, loaded: %d", opts.Files.ApprovedUsers, count)
-		}
-		go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
+	dataDb, err := storage.NewSqliteDB(opts.Files.Data)
+	if err != nil {
+		return fmt.Errorf("can't make data db, %w", err)
 	}
+	log.Printf("[DEBUG] data db: %s", opts.Files.Data)
+
+	// load approved users and start auto-save
+	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDb)
+	if auErr != nil {
+		return fmt.Errorf("can't make approved users store, %w", auErr)
+	}
+	defer func() {
+		if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
+			log.Printf("[WARN] can't save approved users, %v", serr)
+		}
+	}()
+	count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
+	if lerr != nil {
+		log.Printf("[WARN] can't load approved users, %v", lerr)
+	} else {
+		log.Printf("[DEBUG] approved users from: %s, loaded: %d", opts.Files.Data, count)
+	}
+	go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, detector)
@@ -177,6 +186,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 	defer loggerWr.Close()
 
+	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDb)
 	// make telegram listener
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,
@@ -189,7 +199,7 @@ func execute(ctx context.Context, opts options) error {
 		SpamLogger:   makeSpamLogger(loggerWr),
 		AdminGroup:   opts.AdminGroup,
 		TestingIDs:   opts.TestingIDs,
-		Locator:      events.NewLocator(opts.HistoryDuration, opts.HistoryMinSize),
+		Locator:      locator,
 		TrainingMode: opts.Training,
 		Dry:          opts.Dry,
 		KeepUser:     !opts.Telegram.PreserveUnbanned,

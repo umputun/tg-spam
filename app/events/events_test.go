@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
@@ -44,6 +46,9 @@ func TestTelegramListener_Do(t *testing.T) {
 		return bot.Response{}
 	}}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
@@ -51,7 +56,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		Group:      "gr",
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
-		Locator:    NewLocator(10*time.Minute, 10),
+		Locator:    locator,
 		SuperUsers: SuperUser{"super"},
 	}
 
@@ -114,13 +119,16 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		return bot.Response{}
 	}}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -246,12 +254,15 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 			Send: true, Text: "bot's answer", User: bot.User{Username: "user", ID: 1, DisplayName: "First Last"}}
 	}}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger:   mockLogger,
 		TbAPI:        mockAPI,
 		Bot:          b,
 		Group:        "gr",
-		Locator:      NewLocator(10*time.Minute, 0),
+		Locator:      locator,
 		TrainingMode: true,
 	}
 
@@ -311,12 +322,15 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 		return bot.Response{}
 	}}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -383,6 +397,9 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		RemoveApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
@@ -391,7 +408,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		AdminGroup: "123",
 		StartupMsg: "startup",
 		SuperUsers: SuperUser{"umputun"},
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -461,13 +478,16 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 		AdminGroup: "123",
 	}
 
@@ -531,13 +551,16 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger:   mockLogger,
 		TbAPI:        mockAPI,
 		Bot:          b,
 		SuperUsers:   SuperUser{"admin"},
 		Group:        "gr",
-		Locator:      NewLocator(10*time.Minute, 0),
+		Locator:      locator,
 		AdminGroup:   "123",
 		TrainingMode: true,
 	}
@@ -600,13 +623,16 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 		AdminGroup: "123",
 	}
 
@@ -666,13 +692,16 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
 	}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 		AdminGroup: "123",
 	}
 
@@ -729,13 +758,16 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	}
 	b := &mocks.BotMock{}
 
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
 		SuperUsers: SuperUser{"admin"},
 		Group:      "gr",
-		Locator:    NewLocator(10*time.Minute, 0),
+		Locator:    locator,
 		AdminGroup: "123",
 	}
 
@@ -1182,5 +1214,18 @@ func TestGetCleanMessage(t *testing.T) {
 				assert.Equal(t, tt.expected, result)
 			}
 		})
+	}
+}
+
+func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
+	f, err := os.CreateTemp("", "locator")
+	require.NoError(t, err)
+	db, err := storage.NewSqliteDB(f.Name())
+	require.NoError(t, err)
+
+	loc, err = storage.NewLocator(10*time.Minute, 100, db)
+	require.NoError(t, err)
+	return loc, func() {
+		os.Remove(f.Name())
 	}
 }
