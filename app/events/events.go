@@ -289,7 +289,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	resp := l.Bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.userID}})
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
-		spamInfo = append(spamInfo, "- "+check.String())
+		spamInfo = append(spamInfo, "- "+l.escapeMarkDownV1Text(check.String()))
 	}
 	if len(spamInfo) > 0 {
 		spamInfoText = strings.Join(spamInfo, "\n")
@@ -356,16 +356,8 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
 
 // reportToAdminChat sends a message to admin chat with a button to unban the user
 func (l *TelegramListener) reportToAdminChat(banUserStr string, msg *bot.Message) {
-	escapeMarkDownV1Text := func(text string) string {
-		escSymbols := []string{"_", "*", "`", "["}
-		for _, esc := range escSymbols {
-			text = strings.Replace(text, esc, "\\"+esc, -1)
-		}
-		return text
-	}
-
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, l.adminChatID)
-	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
+	text := strings.ReplaceAll(l.escapeMarkDownV1Text(msg.Text), "\n", " ")
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
 	if err := l.sendWithUnbanMarkup(forwardMsg, "change ban", msg.From, l.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
@@ -434,7 +426,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			info, found := l.Locator.Spam(userID)
 			if found {
 				for _, check := range info.checks {
-					spamInfo = append(spamInfo, "- "+check.String())
+					spamInfo = append(spamInfo, "- "+l.escapeMarkDownV1Text(check.String()))
 				}
 			}
 			if len(spamInfo) > 0 {
@@ -452,7 +444,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
 		editMsg.ParseMode = tbapi.ModeMarkdown
 		if _, err := l.TbAPI.Send(editMsg); err != nil {
-			return fmt.Errorf("failed to add spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+			return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
 		log.Printf("[DEBUG] spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 		return nil
@@ -787,6 +779,14 @@ func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]
 	}
 
 	return &result
+}
+
+func (l *TelegramListener) escapeMarkDownV1Text(text string) string {
+	escSymbols := []string{"_", "*", "`", "["}
+	for _, esc := range escSymbols {
+		text = strings.Replace(text, esc, "\\"+esc, -1)
+	}
+	return text
 }
 
 // SuperUser for moderators
