@@ -20,6 +20,9 @@
 # Go workspace file
 go.work
 .bin
+
+.idea
+
 data/spam-dynamic.txt
 data/ham-dynamic.txt
 data/approved-users.txt
