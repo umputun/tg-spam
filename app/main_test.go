@@ -127,7 +127,12 @@ func Test_autoSaveApprovedUsers(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "approved_users")
 	require.NoError(t, err)
-	wr := storage.NewApprovedUsers(tmpFile.Name())
+	defer os.Remove(tmpFile.Name())
+
+	db, err := storage.NewSqliteDB(tmpFile.Name())
+	require.NoError(t, err)
+	wr, err := storage.NewApprovedUsers(db)
+	require.NoError(t, err)
 	go autoSaveApprovedUsers(ctx, director, wr, time.Millisecond*100)
 
 	spam, _ := director.Check("some message to check, should be fine", "999")
@@ -136,7 +141,11 @@ func Test_autoSaveApprovedUsers(t *testing.T) {
 
 	fi, err := os.Stat(tmpFile.Name())
 	require.NoError(t, err)
-	assert.Equal(t, int64(8)*3, fi.Size())
+	assert.True(t, fi.Size() > 0)
+
+	count, err = director.LoadApprovedUsers(wr)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
 }
 
 func Test_makeDetector(t *testing.T) {
@@ -146,22 +155,11 @@ func Test_makeDetector(t *testing.T) {
 		assert.NotNil(t, res)
 	})
 
-	t.Run("with options", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
-		res := makeDetector(opts)
-		assert.NotNil(t, res)
-		assert.Equal(t, 0, res.FirstMessagesCount)
-		assert.Equal(t, true, res.FirstMessageOnly)
-	})
-
 	t.Run("with first msgs count", func(t *testing.T) {
 		var opts options
 		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.Files.SamplesDataPath = "/tmp"
+		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
 		res := makeDetector(opts)
 		assert.NotNil(t, res)
@@ -172,8 +170,8 @@ func Test_makeDetector(t *testing.T) {
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
 		var opts options
 		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.Files.SamplesDataPath = "/tmp"
+		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
 		opts.ParanoidMode = true
 		res := makeDetector(opts)
@@ -199,16 +197,14 @@ func Test_makeSpamBot(t *testing.T) {
 		require.NoError(t, err)
 		defer os.RemoveAll(tmpDir)
 
-		_, err = os.Create(filepath.Join(tmpDir, "spam.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, samplesSpamFile))
 		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, "ham.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, samplesHamFile))
 		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, "exclude.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, excludeTokensFile))
 		require.NoError(t, err)
 
-		opts.Files.SamplesSpamFile = filepath.Join(tmpDir, "spam.txt")
-		opts.Files.SamplesHamFile = filepath.Join(tmpDir, "ham.txt")
-		opts.Files.ExcludeTokenFile = filepath.Join(tmpDir, "exclude.txt")
+		opts.Files.SamplesDataPath = tmpDir
 
 		res, err := makeSpamBot(ctx, opts, makeDetector(opts))
 		assert.NoError(t, err)

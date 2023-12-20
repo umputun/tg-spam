@@ -41,8 +41,10 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			defer os.RemoveAll(tmpDir) // Clean up
 
 			filePath := tmpDir + "/testfile.bin"
-
-			au := NewApprovedUsers(filePath)
+			db, err := NewSqliteDB(filePath)
+			require.NoError(t, err)
+			au, err := NewApprovedUsers(db)
+			require.NoError(t, err)
 
 			err = au.Store(tt.ids)
 			require.NoError(t, err)
@@ -77,19 +79,4 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestApprovedUsers_StoreFailure(t *testing.T) {
-	au := NewApprovedUsers("/invalid/path/testfile.bin")
-	// attempt to store IDs to an invalid path
-	err := au.Store([]string{"12345"})
-	assert.Error(t, err, "store should fail with an invalid file path")
-}
-
-func TestApprovedUsers_ReadFailure(t *testing.T) {
-	au := NewApprovedUsers("/invalid/path/testfile.bin")
-	// attempt to read from a non-existent file
-	buf := make([]byte, 1024)
-	_, err := au.Read(buf)
-	assert.Error(t, err, "read should fail with a non-existent file")
 }

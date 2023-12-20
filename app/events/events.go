@@ -21,6 +21,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/lib"
 )
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
@@ -44,7 +46,7 @@ type TelegramListener struct {
 	TrainingMode bool
 	Dry          bool
 	KeepUser     bool
-	Locator      *Locator
+	Locator      Locator
 
 	chatID      int64
 	adminChatID int64
@@ -75,6 +77,15 @@ type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
 // Save is a function that implements SpamLogger interface
 func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
 	f(msg, response)
+}
+
+// Locator is an interface for message locator
+type Locator interface {
+	AddMessage(msg string, chatID, userID int64, userName string, msgID int) error
+	AddSpam(userID int64, checks []lib.CheckResult) error
+	Message(msg string) (storage.MsgMeta, bool)
+	Spam(userID int64) (storage.SpamData, bool)
+	MsgHash(msg string) string
 }
 
 // Bot is an interface for bot events.
@@ -202,7 +213,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID) // save message to locator
+	if err := l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+		log.Printf("[WARN] failed to add message to locator: %v", err)
+	}
 	resp := l.Bot.OnMessage(*msg)
 
 	// send response to the channel if allowed
@@ -218,7 +231,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
-		l.Locator.AddSpam(msg.From.ID, resp.CheckResults)
+		if err := l.Locator.AddSpam(msg.From.ID, resp.CheckResults); err != nil {
+			log.Printf("[WARN] failed to add spam to locator: %v", err)
+		}
 		banUserStr := l.getBanUsername(resp, update)
 
 		if l.SuperUsers.IsSuper(msg.From.Username) {
@@ -282,11 +297,11 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	errs := new(multierror.Error)
 
 	// remove user from the approved list
-	l.Bot.RemoveApprovedUsers(info.userID)
+	l.Bot.RemoveApprovedUsers(info.UserID)
 
 	// make message with spam info and send to admin chat
 	spamInfo := []string{}
-	resp := l.Bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.userID}})
+	resp := l.Bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.UserID}})
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+l.escapeMarkDownV1Text(check.String()))
@@ -295,7 +310,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
 	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
-		info.userName, info.userID, spamInfoText)
+		info.UserName, info.UserID, spamInfoText)
 	msg := tbapi.NewMessage(l.adminChatID, newMsgText)
 	msg.ParseMode = tbapi.ModeMarkdown
 	if _, err := l.TbAPI.Send(msg); err != nil {
@@ -315,18 +330,18 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	}
 
 	// delete message
-	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.msgID}); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.msgID, err))
+	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: info.MsgID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
 	} else {
-		log.Printf("[INFO] message %d deleted", info.msgID)
+		log.Printf("[INFO] message %d deleted", info.MsgID)
 	}
 
 	// ban user
-	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.userID, 0); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.userID, err))
+	if err := l.banUserOrChannel(bot.PermanentBanDuration, l.chatID, info.UserID, 0); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
 	}
 
-	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.userID)
+	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.UserID)
 	return errs.ErrorOrNil()
 }
 
@@ -425,7 +440,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		if userID != 0 {
 			info, found := l.Locator.Spam(userID)
 			if found {
-				for _, check := range info.checks {
+				for _, check := range info.Checks {
 					spamInfo = append(spamInfo, "- "+l.escapeMarkDownV1Text(check.String()))
 				}
 			}

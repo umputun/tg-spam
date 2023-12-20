@@ -47,14 +47,9 @@ As long as theses two parameters are set, the bot will work. Don't forget to add
 
 There are some customizations available.
 
-First of all - data files, the bot is using some data files to detect spam. They are located in the `/data` directory of the container and can be mounted from the host. The default files are:
+First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
 
-- `spam-samples.txt` - list of spam samples
-- `ham-samples.txt` - list of ham (non-spam) samples
-- `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words
-- `stop-words.txt` - list of stop words to detect spam right away
-
-User can specify custom location for them with `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]`, `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]`, `--files.stop-words=, [$FILES_STOP_WORDS]` parameters.
+User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located. 
 
 Second, are messages the bot is sending. There are three messages user may want to customize:
 
@@ -73,13 +68,13 @@ There are 4 files used by the bot to detect spam:
 
 _The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
 
-Another useful feature is the ability to keep the list of approved users persistently. The bot will not ban those users and won't check their messages for spam because they have already passed the initial check. IDs of those users are kept in the internal list and stored in the file approved-users.txt. To enable this feature, the user must specify the file with the list of approved users with `--files.approved-users=, [$FILES_APPROVED_USERS]` parameter. The file is binary and can't be edited manually. The bot handles it automatically if the parameter is set and --paranoid mode is not enabled.
+Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
 
 ### Configuring spam detection modules and parameters
 
 **Message Analysis**
 
-This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples-spam=, [$FILES_SAMPLES_SPAM]`, `--files.samples-ham=, [$FILES_SAMPLES_HAM]` and `--files.exclude-tokens=, [$FILES_EXCLUDE_TOKENS]` parameters point to existing files. It can be disabled by setting those parameters to empty strings or non-existing files. There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
+This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
 
 **Spam message similarity check**
 
@@ -87,7 +82,7 @@ This check uses provides samples files and active by default. The bot compares t
 
 **Stop Words Comparison**
 
-If stop words file is provided, the bot will check the message for the presence of any of the phrases in the file. The bot is enabled as long as `--files.stop-words=, [$FILES_STOP_WORDS]` parameter points to an existing file. It can be disabled by setting this parameter to an empty string or non-existing file.
+If stop words file is present, the bot will check the message for the presence of any of the phrases in the file. The bot is enabled as long as `stop-words.txt` file is present in samples directory and not empty. 
 
 **Combot Anti-Spam System (CAS) integration**
 
@@ -124,7 +119,7 @@ The bot can be configured to update spam samples dynamically. To enable this fea
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
-Note: if the bot is running in docker container, `--files.dynamic-spam=, [$FILES_DYNAMIC_SPAM]` and `--files.dynamic-ham=, [$FILES_DYNAMIC_HAM]` must be set to the mapped volume's location to stay persistent after container restart.
+Both dynamic spam and ham files are located in the directory set by `--files.dynamic=, [$FILES_DYNAMIC]` parameter. User should mount this directory from the host to keep the data persistent. 
 
 ### Logging
 
@@ -195,20 +190,20 @@ Success! The new status is: DISABLED. /help
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
-      --history-duration=           history duration (default: 1h) [$HISTORY_DURATION]
+      --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
       --super=                      super-users [$SUPER_USER]
       --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
-      --min-probability=            min spam probability to ban (default: 50) [$MIN_PROBABILITY]
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
+      --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
-      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]      
+      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
+      --training                    training mode, passive spam detection only [$TRAINING]
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
-      --training                    training mode, do not ban [$TRAINING]
 
 telegram:
       --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
@@ -229,22 +224,17 @@ cas:
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
       --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
-      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
 
 files:
-      --files.samples-spam=         spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
-      --files.samples-ham=          ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
-      --files.exclude-tokens=       exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
-      --files.stop-words=           stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
-      --files.dynamic-spam=         dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
-      --files.dynamic-ham=          dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
-      --files.watch-interval=       watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
-      --files.approved-users=       approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
+      --files.samples=              samples data path (default: data) [$FILES_SAMPLES]
+      --files.dynamic=              dynamic data path (default: data) [$FILES_DYNAMIC]
+      --files.watch-interval=       watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
 
 message:
       --message.startup=            startup message [$MESSAGE_STARTUP]
@@ -253,6 +243,7 @@ message:
 
 Help Options:
   -h, --help                        Show this help message
+
 
 ```
 
@@ -275,9 +266,10 @@ Help Options:
 
 The provided set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans. 
 
-To do so, three conditions must be met:
+To do so, several conditions must be met:
 
-- `--files.samples-spam [$FILES_SAMPLES_SPAM]` and `--files.samples-ham= [$FILES_SAMPLES_HAM]` must be set to the new location without any samples. In the case of docker container, those files must be mapped to the host volume.
+- `--files.samples [$FILES_SAMPLES]` must be set to the new location (directory) without `spam-samples.txt` and `ham-samples.txt` files.
+- `--files.dynamic [$FILES_DYNAMIC]` must be set to the new location (directory) where the bot will keep all the dynamic data files. In the case of docker container, this directory must be mapped to the host volume.
 - admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above.
 - admin name(s) should be set with `--super [$SUPER_USER]` parameter.  
 
@@ -312,9 +304,7 @@ services:
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
-      - FILES_DYNAMIC_SPAM=/srv/var/dynamic-spam.txt
-      - FILES_DYNAMIC_HAM=/srv/var/dynamic-ham.txt
-      - FILES_APPROVED_USERS=/srv/var/approved-users.dat
+      - FILES_DYNAMIC=/srv/var
       - NO_SPAM_REPLY=true
       - DEBUG=true
     volumes:
