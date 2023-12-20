@@ -195,26 +195,27 @@ Success! The new status is: DISABLED. /help
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
-      --history-duration=           history duration (default: 1h) [$HISTORY_DURATION]
+      --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
       --super=                      super-users [$SUPER_USER]
       --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
       --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
-      --min-probability=            min spam probability to ban (default: 50) [$MIN_PROBABILITY]
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
+      --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
-      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]      
+      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
+      --training                    training mode, passive spam detection only [$TRAINING]
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
-      --training                    training mode, do not ban [$TRAINING]
 
 telegram:
       --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
       --telegram.group=             group name/id [$TELEGRAM_GROUP]
       --telegram.timeout=           http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
       --telegram.idle=              idle duration (default: 30s) [$TELEGRAM_IDLE]
+      --telegram.preserve-unbanned  preserve user after unban [$TELEGRAM_PRESERVE_UNBANNED]
 
 logger:
       --logger.enabled              enable spam rotated logs [$LOGGER_ENABLED]
@@ -228,22 +229,22 @@ cas:
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
       --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
-      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
 
 files:
+      --files.data=                 data db file (default: data/tg-spam.db) [$FILES_DATA]
       --files.samples-spam=         spam samples (default: data/spam-samples.txt) [$FILES_SAMPLES_SPAM]
       --files.samples-ham=          ham samples (default: data/ham-samples.txt) [$FILES_SAMPLES_HAM]
       --files.exclude-tokens=       exclude tokens file (default: data/exclude-tokens.txt) [$FILES_EXCLUDE_TOKENS]
       --files.stop-words=           stop words file (default: data/stop-words.txt) [$FILES_STOP_WORDS]
       --files.dynamic-spam=         dynamic spam file (default: data/spam-dynamic.txt) [$FILES_DYNAMIC_SPAM]
       --files.dynamic-ham=          dynamic ham file (default: data/ham-dynamic.txt) [$FILES_DYNAMIC_HAM]
-      --files.watch-interval=       watch interval (default: 5s) [$FILES_WATCH_INTERVAL]
-      --files.approved-users=       approved users file (default: data/approved-users.txt) [$FILES_APPROVED_USERS]
+      --files.watch-interval=       watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
 
 message:
       --message.startup=            startup message [$MESSAGE_STARTUP]
@@ -261,6 +262,7 @@ Help Options:
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
+- `--telegram.preserve-unbanned` - if set to `true`, the bot **will not remove** unbanned user from the group, which is default behaviour of [telegram API unbanChatMember](https://core.telegram.org/bots/api#unbanchatmember) method.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
