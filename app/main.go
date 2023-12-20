@@ -146,6 +146,14 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
+	// make samples and dynamic data dirs
+	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
+		return fmt.Errorf("can't make samples dir, %w", err)
+	}
+	if err := os.MkdirAll(opts.Files.DynamicDataPath, 0o700); err != nil {
+		return fmt.Errorf("can't make dynamic dir, %w", err)
+	}
+
 	// make telegram bot
 	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
 	if err != nil {
