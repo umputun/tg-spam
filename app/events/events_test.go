@@ -807,7 +807,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
 }
 
-func TestTelegram_transformTextMessage(t *testing.T) {
+func TestTelegramListener_transformTextMessage(t *testing.T) {
 	l := TelegramListener{}
 	assert.Equal(
 		t,
@@ -841,7 +841,7 @@ func TestTelegram_transformTextMessage(t *testing.T) {
 	)
 }
 
-func TestTelegram_transformPhoto(t *testing.T) {
+func TestTelegramListener_transformPhoto(t *testing.T) {
 	l := TelegramListener{}
 	assert.Equal(
 		t,
@@ -897,7 +897,7 @@ func TestTelegram_transformPhoto(t *testing.T) {
 	)
 }
 
-func TestTelegram_transformEntities(t *testing.T) {
+func TestTelegramListener__transformEntities(t *testing.T) {
 	l := TelegramListener{}
 	assert.Equal(
 		t,
@@ -1175,7 +1175,7 @@ func TestUpdateSupers(t *testing.T) {
 	}
 }
 
-func TestGetCleanMessage(t *testing.T) {
+func TestTelegramListener_getCleanMessage(t *testing.T) {
 	tl := &TelegramListener{}
 
 	tests := []struct {
@@ -1212,6 +1212,41 @@ func TestGetCleanMessage(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestTelegramListener_escapeMarkDownV1Text(t *testing.T) {
+	listener := TelegramListener{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Test with all markdown symbols",
+			input:    "_*`[",
+			expected: "\\_\\*\\`\\[",
+		},
+		{
+			name:     "Test with no markdown symbols",
+			input:    "Hello World",
+			expected: "Hello World",
+		},
+		{
+			name:     "Test with mixed content",
+			input:    "Hello_World*`[",
+			expected: "Hello\\_World\\*\\`\\[",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := listener.escapeMarkDownV1Text(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}
