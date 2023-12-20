@@ -149,14 +149,14 @@ func execute(ctx context.Context, opts options) error {
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
 
-	dataDb, err := storage.NewSqliteDB(opts.Files.Data)
+	dataDB, err := storage.NewSqliteDB(opts.Files.Data)
 	if err != nil {
 		return fmt.Errorf("can't make data db, %w", err)
 	}
 	log.Printf("[DEBUG] data db: %s", opts.Files.Data)
 
 	// load approved users and start auto-save
-	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDb)
+	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -186,7 +186,11 @@ func execute(ctx context.Context, opts options) error {
 	}
 	defer loggerWr.Close()
 
-	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDb)
+	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDB)
+	if err != nil {
+		return fmt.Errorf("can't make locator, %w", err)
+	}
+
 	// make telegram listener
 	tgListener := events.TelegramListener{
 		TbAPI:        tbAPI,

@@ -79,6 +79,7 @@ func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
 	f(msg, response)
 }
 
+// Locator is an interface for message locator
 type Locator interface {
 	AddMessage(msg string, chatID, userID int64, userName string, msgID int) error
 	AddSpam(userID int64, checks []lib.CheckResult) error
@@ -212,7 +213,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID) // save message to locator
+	if err := l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+		log.Printf("[WARN] failed to add message to locator: %v", err)
+	}
 	resp := l.Bot.OnMessage(*msg)
 
 	// send response to the channel if allowed
@@ -228,7 +231,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
-		l.Locator.AddSpam(msg.From.ID, resp.CheckResults)
+		if err := l.Locator.AddSpam(msg.From.ID, resp.CheckResults); err != nil {
+			log.Printf("[WARN] failed to add spam to locator: %v", err)
+		}
 		banUserStr := l.getBanUsername(resp, update)
 
 		if l.SuperUsers.IsSuper(msg.From.Username) {
