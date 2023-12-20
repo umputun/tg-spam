@@ -311,9 +311,7 @@ func (l *TelegramListener) adminChatMsgHandler(update tbapi.Update) error {
 	}
 	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
 		info.UserName, info.UserID, spamInfoText)
-	msg := tbapi.NewMessage(l.adminChatID, newMsgText)
-	msg.ParseMode = tbapi.ModeMarkdown
-	if _, err := l.TbAPI.Send(msg); err != nil {
+	if err := l.send(tbapi.NewMessage(l.adminChatID, newMsgText)); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
 	}
 
@@ -398,7 +396,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			),
 		)
 		editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, confirmationKeyboard)
-		if _, err := l.TbAPI.Send(editMsg); err != nil {
+		if err := l.send(editMsg); err != nil {
 			return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
 		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[:1], query.Message.Text)
@@ -412,8 +410,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 			query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
 		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-		editMsg.ParseMode = tbapi.ModeMarkdown
-		if _, err := l.TbAPI.Send(editMsg); err != nil {
+		if err := l.send(editMsg); err != nil {
 			return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
 
@@ -458,7 +455,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
 		editMsg.ParseMode = tbapi.ModeMarkdown
-		if _, err := l.TbAPI.Send(editMsg); err != nil {
+		if err := l.send(editMsg); err != nil {
 			return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 		}
 		log.Printf("[DEBUG] spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
@@ -503,8 +500,7 @@ func (l *TelegramListener) handleUnbanCallback(query *tbapi.CallbackQuery) error
 		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
 	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	editMsg.ParseMode = tbapi.ModeMarkdown
-	if _, err := l.TbAPI.Send(editMsg); err != nil {
+	if err := l.send(editMsg); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
 
@@ -563,7 +559,7 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	tbMsg.DisableWebPagePreview = true
 	tbMsg.ReplyToMessageID = resp.ReplyTo
 
-	if _, err := l.TbAPI.Send(tbMsg); err != nil {
+	if err := l.send(tbMsg); err != nil {
 		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
 	}
 
@@ -588,6 +584,35 @@ func (l *TelegramListener) sendWithUnbanMarkup(text, action string, user bot.Use
 
 	if _, err := l.TbAPI.Send(tbMsg); err != nil {
 		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
+	}
+	return nil
+}
+
+// send message to the telegram as markdown first and if failed - as plain text
+func (l *TelegramListener) send(tbMsg tbapi.Chattable) error {
+	withParseMode := func(tbMsg tbapi.Chattable, parseMode string) tbapi.Chattable {
+		switch msg := tbMsg.(type) {
+		case tbapi.MessageConfig:
+			msg.ParseMode = parseMode
+			msg.DisableWebPagePreview = true
+			return msg
+		case tbapi.EditMessageTextConfig:
+			msg.ParseMode = parseMode
+			msg.DisableWebPagePreview = true
+			return msg
+		case tbapi.EditMessageReplyMarkupConfig:
+			return msg
+		}
+		return tbMsg // don't touch other types
+	}
+
+	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
+	if _, err := l.TbAPI.Send(msg); err != nil {
+		log.Printf("[WARN] failed to send message as markdown, %v", err)
+		msg = withParseMode(tbMsg, "") // try plain text
+		if _, err := l.TbAPI.Send(msg); err != nil {
+			return fmt.Errorf("can't send message to telegram: %w", err)
+		}
 	}
 	return nil
 }
