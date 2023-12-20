@@ -20,17 +20,13 @@ services:
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
-      - FILES_SAMPLES_SPAM=/srv/data/spam-samples.txt
-      - FILES_SAMPLES_HAM=/srv/data/ham-samples.txt
-      - FILES_EXCLUDE_TOKENS=/srv/data/exclude-tokens.txt
-      - FILES_STOP_WORDS=/srv/data/stop-words.txt
-      - FILES_DYNAMIC_SPAM=/srv/data/dynamic-spam.txt
-      - FILES_DYNAMIC_HAM=/srv/data/dynamic-ham.txt
-      - FILES_APPROVED_USERS=/srv/data/approved-users.dat
+      - FILES_SAMPLES=/srv/samples
+      - FILES_DYNAMIC=/srv/dynamic
       - NO_SPAM_REPLY=true
     volumes:
-      - ./tg-spam-samples:/srv/data   # map user-provided samples to /srv/data
-      - ./log:/srv/log                # map log folder to /srv/log
+      - ./tg-spam-samples:/srv/samples  # map user-provided samples to /srv/samples
+      - ./tg-spam-dynamic:/srv/dynamic  # map user-provided dynamic location to /srv/dynamic
+      - ./log:/srv/log                  # map log folder to /srv/log
     command: --super=name1 --super=name2
 
   tg-spam-updater:
