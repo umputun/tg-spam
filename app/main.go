@@ -109,7 +109,7 @@ const (
 	samplesSpamFile   = "spam-samples.txt"
 	samplesHamFile    = "ham-samples.txt"
 	excludeTokensFile = "exclude-tokens.txt"
-	stopWordsFile     = "stop-words.txt"
+	stopWordsFile     = "stop-words.txt" //nolint:gosec // false positive
 	dynamicSpamFile   = "spam-dynamic.txt"
 	dynamicHamFile    = "ham-dynamic.txt"
 	dataFile          = "tg-spam.db"
