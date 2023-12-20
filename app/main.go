@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -70,14 +71,17 @@ type options struct {
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	Files struct {
-		Data             string        `long:"data" env:"DATA" default:"data/tg-spam.db" description:"data db file"`
-		SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
-		SamplesHamFile   string        `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"ham samples"`
-		ExcludeTokenFile string        `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"exclude tokens file"`
-		StopWordsFile    string        `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"stop words file"`
-		DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
-		DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
-		WatchInterval    time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path"`
+		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
+		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files"`
+		//
+		// Data             string        `long:"data" env:"DATA" default:"data/tg-spam.db" description:"data db file"`
+		// SamplesSpamFile  string        `long:"samples-spam" env:"SAMPLES_SPAM" default:"data/spam-samples.txt" description:"spam samples"`
+		// SamplesHamFile   string        `long:"samples-ham" env:"SAMPLES_HAM" default:"data/ham-samples.txt" description:"ham samples"`
+		// ExcludeTokenFile string        `long:"exclude-tokens" env:"EXCLUDE_TOKENS" default:"data/exclude-tokens.txt" description:"exclude tokens file"`
+		// StopWordsFile    string        `long:"stop-words" env:"STOP_WORDS" default:"data/stop-words.txt" description:"stop words file"`
+		// DynamicSpamFile  string        `long:"dynamic-spam" env:"DYNAMIC_SPAM" default:"data/spam-dynamic.txt" description:"dynamic spam file"`
+		// DynamicHamFile   string        `long:"dynamic-ham" env:"DYNAMIC_HAM" default:"data/ham-dynamic.txt" description:"dynamic ham file"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
@@ -99,6 +103,17 @@ type options struct {
 	Dbg      bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	TGDbg    bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
+
+// file names
+const (
+	samplesSpamFile   = "spam-samples.txt"
+	samplesHamFile    = "ham-samples.txt"
+	excludeTokensFile = "exclude-tokens.txt"
+	stopWordsFile     = "stop-words.txt"
+	dynamicSpamFile   = "spam-dynamic.txt"
+	dynamicHamFile    = "ham-dynamic.txt"
+	dataFile          = "tg-spam.db"
+)
 
 var revision = "local"
 
@@ -149,11 +164,12 @@ func execute(ctx context.Context, opts options) error {
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
 
-	dataDB, err := storage.NewSqliteDB(opts.Files.Data)
+	dataFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
+	dataDB, err := storage.NewSqliteDB(dataFile)
 	if err != nil {
 		return fmt.Errorf("can't make data db, %w", err)
 	}
-	log.Printf("[DEBUG] data db: %s", opts.Files.Data)
+	log.Printf("[DEBUG] data db: %s", dataFile)
 
 	// load approved users and start auto-save
 	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
@@ -169,7 +185,7 @@ func execute(ctx context.Context, opts options) error {
 	if lerr != nil {
 		log.Printf("[WARN] can't load approved users, %v", lerr)
 	} else {
-		log.Printf("[DEBUG] approved users from: %s, loaded: %d", opts.Files.Data, count)
+		log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
 	}
 	go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 
@@ -258,25 +274,25 @@ func makeDetector(opts options) *lib.Detector {
 		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)
 	}
 
-	if opts.Files.DynamicSpamFile != "" {
-		detector.WithSpamUpdater(bot.NewSampleUpdater(opts.Files.DynamicSpamFile))
-		log.Printf("[DEBUG] dynamic spam file: %s", opts.Files.DynamicSpamFile)
-	}
-	if opts.Files.DynamicHamFile != "" {
-		detector.WithHamUpdater(bot.NewSampleUpdater(opts.Files.DynamicHamFile))
-		log.Printf("[DEBUG] dynamic ham file: %s", opts.Files.DynamicHamFile)
-	}
+	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
+	detector.WithSpamUpdater(bot.NewSampleUpdater(dynSpamFile))
+	log.Printf("[DEBUG] dynamic spam file: %s", dynSpamFile)
+
+	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
+	detector.WithHamUpdater(bot.NewSampleUpdater(dynHamFile))
+	log.Printf("[DEBUG] dynamic ham file: %s", dynHamFile)
+
 	return detector
 }
 
 func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bot.SpamFilter, error) {
 	spamBotParams := bot.SpamConfig{
-		SpamSamplesFile:    opts.Files.SamplesSpamFile,
-		HamSamplesFile:     opts.Files.SamplesHamFile,
-		SpamDynamicFile:    opts.Files.DynamicSpamFile,
-		HamDynamicFile:     opts.Files.DynamicHamFile,
-		ExcludedTokensFile: opts.Files.ExcludeTokenFile,
-		StopWordsFile:      opts.Files.StopWordsFile,
+		SpamSamplesFile:    filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
+		HamSamplesFile:     filepath.Join(opts.Files.SamplesDataPath, samplesHamFile),
+		StopWordsFile:      filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
+		ExcludedTokensFile: filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		SpamDynamicFile:    filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile),
+		HamDynamicFile:     filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile),
 		WatchDelay:         opts.Files.WatchInterval,
 		SpamMsg:            opts.Message.Spam,
 		SpamDryMsg:         opts.Message.Dry,

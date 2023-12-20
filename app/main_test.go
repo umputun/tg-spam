@@ -155,22 +155,11 @@ func Test_makeDetector(t *testing.T) {
 		assert.NotNil(t, res)
 	})
 
-	t.Run("with options", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
-		res := makeDetector(opts)
-		assert.NotNil(t, res)
-		assert.Equal(t, 0, res.FirstMessagesCount)
-		assert.Equal(t, true, res.FirstMessageOnly)
-	})
-
 	t.Run("with first msgs count", func(t *testing.T) {
 		var opts options
 		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.Files.SamplesDataPath = "/tmp"
+		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
 		res := makeDetector(opts)
 		assert.NotNil(t, res)
@@ -181,8 +170,8 @@ func Test_makeDetector(t *testing.T) {
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
 		var opts options
 		opts.OpenAI.Token = "123"
-		opts.Files.DynamicSpamFile = "/tmp/dynamic_spam.txt"
-		opts.Files.DynamicHamFile = "/tmp/dynamic_ham.txt"
+		opts.Files.SamplesDataPath = "/tmp"
+		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
 		opts.ParanoidMode = true
 		res := makeDetector(opts)
@@ -208,16 +197,14 @@ func Test_makeSpamBot(t *testing.T) {
 		require.NoError(t, err)
 		defer os.RemoveAll(tmpDir)
 
-		_, err = os.Create(filepath.Join(tmpDir, "spam.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, samplesSpamFile))
 		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, "ham.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, samplesHamFile))
 		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, "exclude.txt"))
+		_, err = os.Create(filepath.Join(tmpDir, excludeTokensFile))
 		require.NoError(t, err)
 
-		opts.Files.SamplesSpamFile = filepath.Join(tmpDir, "spam.txt")
-		opts.Files.SamplesHamFile = filepath.Join(tmpDir, "ham.txt")
-		opts.Files.ExcludeTokenFile = filepath.Join(tmpDir, "exclude.txt")
+		opts.Files.SamplesDataPath = tmpDir
 
 		res, err := makeSpamBot(ctx, opts, makeDetector(opts))
 		assert.NoError(t, err)
