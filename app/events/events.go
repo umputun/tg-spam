@@ -66,6 +66,35 @@ func escapeMarkDownV1Text(text string) string {
 	return text
 }
 
+// send a message to the telegram as markdown first and if failed - as plain text
+func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
+	withParseMode := func(tbMsg tbapi.Chattable, parseMode string) tbapi.Chattable {
+		switch msg := tbMsg.(type) {
+		case tbapi.MessageConfig:
+			msg.ParseMode = parseMode
+			msg.DisableWebPagePreview = true
+			return msg
+		case tbapi.EditMessageTextConfig:
+			msg.ParseMode = parseMode
+			msg.DisableWebPagePreview = true
+			return msg
+		case tbapi.EditMessageReplyMarkupConfig:
+			return msg
+		}
+		return tbMsg // don't touch other types
+	}
+
+	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
+	if _, err := tbAPI.Send(msg); err != nil {
+		log.Printf("[WARN] failed to send message as markdown, %v", err)
+		msg = withParseMode(tbMsg, "") // try plain text
+		if _, err := tbAPI.Send(msg); err != nil {
+			return fmt.Errorf("can't send message to telegram: %w", err)
+		}
+	}
+	return nil
+}
+
 type banRequest struct {
 	tbAPI TbAPI
 

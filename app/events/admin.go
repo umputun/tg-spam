@@ -84,7 +84,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	}
 	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
 		info.UserName, info.UserID, spamInfoText)
-	if err := a.send(tbapi.NewMessage(a.adminChatID, newMsgText)); err != nil {
+	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
 	}
 
@@ -177,7 +177,7 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 		),
 	)
 	editMsg := tbapi.NewEditMessageReplyMarkup(query.Message.Chat.ID, query.Message.MessageID, confirmationKeyboard)
-	if err := a.send(editMsg); err != nil {
+	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 	return nil
@@ -193,7 +193,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := a.send(editMsg); err != nil {
+	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
@@ -252,7 +252,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
 	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := a.send(editMsg); err != nil {
+	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
 	return nil
@@ -291,7 +291,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
 	editMsg.ParseMode = tbapi.ModeMarkdown
-	if err := a.send(editMsg); err != nil {
+	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 	return nil
@@ -317,35 +317,6 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 	cleanMsg := strings.Join(msgLines[1:spamInfoLine], " ")
 	cleanMsg = strings.TrimSpace(cleanMsg)
 	return cleanMsg, nil
-}
-
-// send message to the telegram as markdown first and if failed - as plain text
-func (a *admin) send(tbMsg tbapi.Chattable) error {
-	withParseMode := func(tbMsg tbapi.Chattable, parseMode string) tbapi.Chattable {
-		switch msg := tbMsg.(type) {
-		case tbapi.MessageConfig:
-			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
-			return msg
-		case tbapi.EditMessageTextConfig:
-			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
-			return msg
-		case tbapi.EditMessageReplyMarkupConfig:
-			return msg
-		}
-		return tbMsg // don't touch other types
-	}
-
-	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
-	if _, err := a.tbAPI.Send(msg); err != nil {
-		log.Printf("[WARN] failed to send message as markdown, %v", err)
-		msg = withParseMode(tbMsg, "") // try plain text
-		if _, err := a.tbAPI.Send(msg); err != nil {
-			return fmt.Errorf("can't send message to telegram: %w", err)
-		}
-	}
-	return nil
 }
 
 // sendWithUnbanMarkup sends message to admin chat and add buttons to ui.

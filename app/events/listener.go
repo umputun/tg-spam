@@ -270,39 +270,10 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	tbMsg.DisableWebPagePreview = true
 	tbMsg.ReplyToMessageID = resp.ReplyTo
 
-	if err := l.send(tbMsg); err != nil {
+	if err := send(tbMsg, l.TbAPI); err != nil {
 		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
 	}
 
-	return nil
-}
-
-// send message to the telegram as markdown first and if failed - as plain text
-func (l *TelegramListener) send(tbMsg tbapi.Chattable) error {
-	withParseMode := func(tbMsg tbapi.Chattable, parseMode string) tbapi.Chattable {
-		switch msg := tbMsg.(type) {
-		case tbapi.MessageConfig:
-			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
-			return msg
-		case tbapi.EditMessageTextConfig:
-			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
-			return msg
-		case tbapi.EditMessageReplyMarkupConfig:
-			return msg
-		}
-		return tbMsg // don't touch other types
-	}
-
-	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
-	if _, err := l.TbAPI.Send(msg); err != nil {
-		log.Printf("[WARN] failed to send message as markdown, %v", err)
-		msg = withParseMode(tbMsg, "") // try plain text
-		if _, err := l.TbAPI.Send(msg); err != nil {
-			return fmt.Errorf("can't send message to telegram: %w", err)
-		}
-	}
 	return nil
 }
 
