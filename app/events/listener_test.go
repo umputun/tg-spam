@@ -739,6 +739,79 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
 }
 
+func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			return tbapi.Chat{ID: 123}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			if mc, ok := c.(tbapi.MessageConfig); ok {
+				return tbapi.Message{Text: mc.Text, From: &tbapi.User{UserName: "user"}}, nil
+			}
+			return tbapi.Message{}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
+	}
+	b := &mocks.BotMock{
+		UpdateSpamFunc: func(msg string) error {
+			return nil
+		},
+		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+	}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger:   mockLogger,
+		TbAPI:        mockAPI,
+		Bot:          b,
+		SuperUsers:   SuperUser{"admin"},
+		Group:        "gr",
+		Locator:      locator,
+		AdminGroup:   "123",
+		TrainingMode: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		CallbackQuery: &tbapi.CallbackQuery{
+			Data: "+999", // + means unban declined
+			Message: &tbapi.Message{
+				MessageID:   987654,
+				Chat:        &tbapi.Chat{ID: 123},
+				Text:        "unban user blah\n\nthis was the ham, not spam",
+				From:        &tbapi.User{UserName: "user", ID: 999},
+				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			},
+			From: &tbapi.User{UserName: "admin", ID: 1000},
+		},
+	}
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
+	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
+	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
+	assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+	assert.Equal(t, int64(999), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).UserID, "user banned")
+	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
+	assert.Equal(t, 0, len(b.UpdateHamCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+}
+
 func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{

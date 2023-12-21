@@ -169,11 +169,17 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 // callback data: +userID
 func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
+
+	keepBanned := "Keep it banned"
+	if a.trainingMode {
+		keepBanned = "Confirm ban"
+	}
+
 	// replace button with confirmation/rejection buttons
 	confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]),     // remove "?" prefix
-			tbapi.NewInlineKeyboardButtonData("Keep it banned", "+"+callbackData[1:]), // add "+" prefix
+			tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]), // remove "?" prefix
+			tbapi.NewInlineKeyboardButtonData(keepBanned, "+"+callbackData[1:]),   // add "+" prefix
 		),
 	)
 	editMsg := tbapi.NewEditMessageReplyMarkup(query.Message.Chat.ID, query.Message.MessageID, confirmationKeyboard)
@@ -204,6 +210,26 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	if err := a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
 		return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
 	}
+
+	// in training mode, the user is not banned automatically. here we do the real ban & delete the message
+	if a.trainingMode {
+		banReq := banRequest{
+			duration: bot.PermanentBanDuration,
+			userID:   query.Message.From.ID,
+			chatID:   a.primChatID,
+			tbAPI:    a.tbAPI,
+			dry:      a.dry,
+			training: false, // reset training flag, ban for real
+		}
+		if err := banUserOrChannel(banReq); err != nil {
+			return fmt.Errorf("failed to ban user %d: %w", query.Message.From.ID, err)
+		}
+		if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: query.Message.MessageID}); err != nil {
+			return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+		}
+		log.Printf("[INFO] user %q (%d) banned", query.Message.From.UserName, query.Message.From.ID)
+	}
+
 	return nil
 }
 
