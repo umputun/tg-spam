@@ -222,11 +222,12 @@ func execute(ctx context.Context, opts options) error {
 		Locator:      locator,
 		TrainingMode: opts.Training,
 		Dry:          opts.Dry,
-		KeepUser:     !opts.Telegram.PreserveUnbanned,
+		KeepUser:     opts.Telegram.PreserveUnbanned,
 	}
-	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v, dry: %v, preserve-unbanned: %v}",
+	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
+		" dry: %v, training: %v, preserve-unbanned: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry, tgListener.KeepUser)
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry, tgListener.TrainingMode, tgListener.KeepUser)
 
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil {
