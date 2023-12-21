@@ -58,6 +58,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		log.Printf("[WARN] training mode, no bans")
 	}
 
+	// get chat ID for the group we are monitoring
 	var getChatErr error
 	if l.chatID, getChatErr = l.getChatID(l.Group); getChatErr != nil {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
@@ -68,6 +69,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	if l.AdminGroup != "" {
+		// get chat ID for the admin group
 		if l.adminChatID, getChatErr = l.getChatID(l.AdminGroup); getChatErr != nil {
 			return fmt.Errorf("failed to get chat ID for admin group %q: %w", l.AdminGroup, getChatErr)
 		}
@@ -81,6 +83,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		}
 	})
 
+	// send startup message if any set
 	if l.StartupMsg != "" && !l.TrainingMode && !l.Dry {
 		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
 			log.Printf("[WARN] failed to send startup message, %v", err)

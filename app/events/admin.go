@@ -133,7 +133,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		if err := a.callbackAskBanConfirmation(query); err != nil {
 			return fmt.Errorf("failed to make ban confirmation dialog: %w", err)
 		}
-		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[:1], query.Message.Text)
+		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[1:], query.Message.Text)
 		return nil
 	}
 
@@ -214,6 +214,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
 	chatID := query.Message.Chat.ID // this is ID of admin chat
+	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s", chatID, callbackData)
 	// callback msgsData here is userID, we should unban the user
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := a.tbAPI.Request(callbackResponse); err != nil {
@@ -225,7 +226,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to parse callback msgsData %q: %w", callbackData, err)
 	}
 
-	// get the original spam message
+	// get the original spam message to update ham samples
 	cleanMsg, err := a.getCleanMessage(query.Message.Text)
 	if err != nil {
 		return fmt.Errorf("failed to get clean message: %w", err)
@@ -237,6 +238,8 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 
 	// unban user if not in training mode
 	if !a.trainingMode {
+		// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
+		// https://core.telegram.org/bots/api#unbanchatmember
 		_, err = a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}, OnlyIfBanned: a.keepUser})
 		if err != nil {
