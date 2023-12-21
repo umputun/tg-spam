@@ -132,7 +132,8 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		if err := a.callbackAskBanConfirmation(query); err != nil {
 			return fmt.Errorf("failed to make ban confirmation dialog: %w", err)
 		}
-		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[1:], query.Message.Text)
+		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q",
+			chatID, callbackData[1:], query.Message.Text)
 		return nil
 	}
 

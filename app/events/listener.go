@@ -92,6 +92,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
 		trainingMode: l.TrainingMode, keepUser: l.KeepUser, dry: l.Dry}
+	log.Printf("[DEBUG] admin handler created. %+v", l.adminHandler)
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
