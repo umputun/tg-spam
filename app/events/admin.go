@@ -130,16 +130,8 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 
 	// if callback msgsData starts with "?", we should show a confirmation message
 	if strings.HasPrefix(callbackData, "?") {
-		// Replace with confirmation buttons
-		confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
-			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]),     // remove "?" prefix
-				tbapi.NewInlineKeyboardButtonData("Keep it banned", "+"+callbackData[1:]), // add "+" prefix
-			),
-		)
-		editMsg := tbapi.NewEditMessageReplyMarkup(chatID, query.Message.MessageID, confirmationKeyboard)
-		if err := a.send(editMsg); err != nil {
-			return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		if err := a.callbackAskBanConfirmation(query); err != nil {
+			return fmt.Errorf("failed to make ban confirmation dialog: %w", err)
 		}
 		log.Printf("[DEBUG] unban confirmation sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData[:1], query.Message.Text)
 		return nil
@@ -147,58 +139,17 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 
 	// if callback msgsData starts with "+", we should not unban the user, but rather clear the keyboard and add to spam samples
 	if strings.HasPrefix(callbackData, "+") {
-		// clear keyboard and update message text with confirmation
-		updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
-			query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
-		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
-		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-		if err := a.send(editMsg); err != nil {
-			return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		if err := a.callbackBanConfirmed(query); err != nil {
+			return fmt.Errorf("failed confirmation ban: %w", err)
 		}
-
-		cleanMsg, err := a.getCleanMessage(query.Message.Text)
-		if err != nil {
-			return fmt.Errorf("failed to get clean message: %w", err)
-		}
-		if err := a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
-			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
-		}
-
-		log.Printf("[DEBUG] unban confirmation rejected, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		log.Printf("[DEBUG] ban confirmation rejected, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 		return nil
 	}
 
 	// if callback msgsData starts with "!", we should show a spam info details
 	if strings.HasPrefix(callbackData, "!") {
-		spamInfoText := "**can't get spam info**"
-		spamInfo := []string{}
-		userID, err := strconv.ParseInt(callbackData[1:], 10, 64)
-		if err != nil {
-			spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID %q: %v**", callbackData[1:], err))
-		}
-		if userID != 0 {
-			info, found := a.locator.Spam(userID)
-			if found {
-				for _, check := range info.Checks {
-					spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
-				}
-			}
-			if len(spamInfo) > 0 {
-				spamInfoText = strings.Join(spamInfo, "\n")
-			}
-		}
-
-		updText := query.Message.Text + "\n\n**spam detection results**\n" + spamInfoText
-		confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
-		if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
-			confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
-			confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
-		}
-		editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
-		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
-		editMsg.ParseMode = tbapi.ModeMarkdown
-		if err := a.send(editMsg); err != nil {
-			return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+		if err := a.callbackShowInfo(query); err != nil {
+			return fmt.Errorf("failed to show spam info: %w", err)
 		}
 		log.Printf("[DEBUG] spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 		return nil
@@ -206,6 +157,64 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 
 	// callback msgsData here is userID, we should unban the user
 	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+	if err := a.callbackUnbanConfirmed(query); err != nil {
+		return fmt.Errorf("failed to unban user: %w", err)
+	}
+	log.Printf("[DEBUG] user unbanned, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+
+	return nil
+}
+
+// callbackAskBanConfirmation sends a confirmation message to admin chat with two buttons: "unban" and "keep it banned"
+// callback data: +userID
+func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
+	callbackData := query.Data
+	// replace button with confirmation/rejection buttons
+	confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]),     // remove "?" prefix
+			tbapi.NewInlineKeyboardButtonData("Keep it banned", "+"+callbackData[1:]), // add "+" prefix
+		),
+	)
+	editMsg := tbapi.NewEditMessageReplyMarkup(query.Message.Chat.ID, query.Message.MessageID, confirmationKeyboard)
+	if err := a.send(editMsg); err != nil {
+		return fmt.Errorf("failed to make confiramtion, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
+	}
+	return nil
+}
+
+// callbackBanConfirmed handles the callback when user kept banned
+// it clears the keyboard and updates the message text with confirmation of ban kept in place.
+// it also updates spam samples with the original message
+// callback data: +userID
+func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
+	// clear keyboard and update message text with confirmation
+	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
+		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+	if err := a.send(editMsg); err != nil {
+		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
+	}
+
+	cleanMsg, err := a.getCleanMessage(query.Message.Text)
+	if err != nil {
+		return fmt.Errorf("failed to get clean message: %w", err)
+	}
+	if err := a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
+		return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+	}
+	return nil
+}
+
+// callbackUnbanConfirmed handles the callback when user unbanned.
+// it clears the keyboard and updates the message text with confirmation of unban.
+// also it unbans the user, adds it to the approved list and updates ham samples with the original message.
+// callback data: userID
+func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
+	callbackData := query.Data
+	chatID := query.Message.Chat.ID // this is ID of admin chat
+	// callback msgsData here is userID, we should unban the user
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := a.tbAPI.Request(callbackResponse); err != nil {
 		return fmt.Errorf("failed to send callback response: %w", err)
@@ -246,7 +255,45 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 	if err := a.send(editMsg); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
+	return nil
+}
 
+// callbackShowInfo handles the callback when user asks for spam detection details for the ban.
+// callback data: !userID
+func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
+	callbackData := query.Data
+	spamInfoText := "**can't get spam info**"
+	spamInfo := []string{}
+	userID, err := strconv.ParseInt(callbackData[1:], 10, 64)
+	if err != nil {
+		spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID %q: %v**", callbackData[1:], err))
+	}
+
+	// collect spam detection details
+	if userID != 0 {
+		info, found := a.locator.Spam(userID)
+		if found {
+			for _, check := range info.Checks {
+				spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+			}
+		}
+		if len(spamInfo) > 0 {
+			spamInfoText = strings.Join(spamInfo, "\n")
+		}
+	}
+
+	updText := query.Message.Text + "\n\n**spam detection results**\n" + spamInfoText
+	confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
+	if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
+		confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
+		confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
+	}
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
+	editMsg.ParseMode = tbapi.ModeMarkdown
+	if err := a.send(editMsg); err != nil {
+		return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
+	}
 	return nil
 }
 
