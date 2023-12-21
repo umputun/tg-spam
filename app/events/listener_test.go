@@ -57,7 +57,7 @@ func TestTelegramListener_Do(t *testing.T) {
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
 		Locator:    locator,
-		SuperUsers: SuperUser{"super"},
+		SuperUsers: SuperUsers{"super"},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -79,7 +79,7 @@ func TestTelegramListener_Do(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, SuperUser{"super", "admin"}, l.SuperUsers)
+	assert.Equal(t, SuperUsers{"super", "admin"}, l.SuperUsers)
 
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
 	require.Equal(t, 2, len(mockAPI.SendCalls()))
@@ -126,7 +126,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
-		SuperUsers: SuperUser{"admin"},
+		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
 	}
@@ -407,7 +407,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		Group:      "gr",
 		AdminGroup: "123",
 		StartupMsg: "startup",
-		SuperUsers: SuperUser{"umputun"},
+		SuperUsers: SuperUsers{"umputun"},
 		Locator:    locator,
 	}
 
@@ -485,7 +485,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
-		SuperUsers: SuperUser{"admin"},
+		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
 		AdminGroup: "123",
@@ -558,7 +558,7 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 		SpamLogger:   mockLogger,
 		TbAPI:        mockAPI,
 		Bot:          b,
-		SuperUsers:   SuperUser{"admin"},
+		SuperUsers:   SuperUsers{"admin"},
 		Group:        "gr",
 		Locator:      locator,
 		AdminGroup:   "123",
@@ -630,7 +630,7 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
-		SuperUsers: SuperUser{"admin"},
+		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
 		AdminGroup: "123",
@@ -699,7 +699,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
-		SuperUsers: SuperUser{"admin"},
+		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
 		AdminGroup: "123",
@@ -770,7 +770,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 		SpamLogger:   mockLogger,
 		TbAPI:        mockAPI,
 		Bot:          b,
-		SuperUsers:   SuperUser{"admin"},
+		SuperUsers:   SuperUsers{"admin"},
 		Group:        "gr",
 		Locator:      locator,
 		AdminGroup:   "123",
@@ -838,7 +838,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
 		Bot:        b,
-		SuperUsers: SuperUser{"admin"},
+		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
 		AdminGroup: "123",
@@ -1096,7 +1096,7 @@ func TestTelegramListener_isAdminChat(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			listener := TelegramListener{
 				adminChatID: tc.chatID,
-				SuperUsers:  SuperUser{"umputun"},
+				SuperUsers:  SuperUsers{"umputun"},
 			}
 			result := listener.isAdminChat(tc.fromChat, tc.fromUser)
 			assert.Equal(t, tc.expect, result)
@@ -1107,31 +1107,31 @@ func TestTelegramListener_isAdminChat(t *testing.T) {
 func TestSuperUser_IsSuper(t *testing.T) {
 	tests := []struct {
 		name     string
-		super    SuperUser
+		super    SuperUsers
 		userName string
 		want     bool
 	}{
 		{
 			name:     "User is a super user",
-			super:    SuperUser{"Alice", "Bob"},
+			super:    SuperUsers{"Alice", "Bob"},
 			userName: "Alice",
 			want:     true,
 		},
 		{
 			name:     "User is not a super user",
-			super:    SuperUser{"Alice", "Bob"},
+			super:    SuperUsers{"Alice", "Bob"},
 			userName: "Charlie",
 			want:     false,
 		},
 		{
 			name:     "User is a super user with slash prefix",
-			super:    SuperUser{"/Alice", "Bob"},
+			super:    SuperUsers{"/Alice", "Bob"},
 			userName: "Alice",
 			want:     true,
 		},
 		{
 			name:     "User is not a super user with slash prefix",
-			super:    SuperUser{"/Alice", "Bob"},
+			super:    SuperUsers{"/Alice", "Bob"},
 			userName: "Charlie",
 			want:     false,
 		},
@@ -1147,7 +1147,7 @@ func TestSuperUser_IsSuper(t *testing.T) {
 func TestUpdateSupers(t *testing.T) {
 	tests := []struct {
 		name            string
-		superUsers      SuperUser
+		superUsers      SuperUsers
 		chatAdmins      []tbapi.ChatMember
 		adminFetchError error
 		expectedResult  []string
@@ -1167,14 +1167,14 @@ func TestUpdateSupers(t *testing.T) {
 		},
 		{
 			name:           "non-empty admin usernames, existing supers",
-			superUsers:     SuperUser{"super1"},
+			superUsers:     SuperUsers{"super1"},
 			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
 			expectedResult: []string{"super1", "admin1", "admin2"},
 			expectedErr:    false,
 		},
 		{
 			name:           "non-empty admin usernames, existing supers with duplicate",
-			superUsers:     SuperUser{"admin1"},
+			superUsers:     SuperUsers{"admin1"},
 			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
 			expectedResult: []string{"admin1", "admin2"},
 			expectedErr:    false,

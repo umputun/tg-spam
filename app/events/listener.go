@@ -31,7 +31,7 @@ type TelegramListener struct {
 	Group        string // can be int64 or public group username (without "@" prefix)
 	AdminGroup   string // can be int64 or public group username (without "@" prefix)
 	IdleDuration time.Duration
-	SuperUsers   SuperUser
+	SuperUsers   SuperUsers
 	TestingIDs   []int64
 	StartupMsg   string
 	NoSpamReply  bool
@@ -91,7 +91,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		trainingMode: l.TrainingMode, keepUser: l.KeepUser, dry: l.Dry}
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, keepUser: l.KeepUser, dry: l.Dry}
 	log.Printf("[DEBUG] admin handler created. %+v", l.adminHandler)
 
 	u := tbapi.NewUpdate(0)
@@ -421,11 +421,11 @@ func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]
 	return &result
 }
 
-// SuperUser for moderators
-type SuperUser []string
+// SuperUsers for moderators
+type SuperUsers []string
 
 // IsSuper checks if username in the list of super users
-func (s SuperUser) IsSuper(userName string) bool {
+func (s SuperUsers) IsSuper(userName string) bool {
 	for _, super := range s {
 		if strings.EqualFold(userName, super) || strings.EqualFold("/"+userName, super) {
 			return true

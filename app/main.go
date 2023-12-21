@@ -52,8 +52,8 @@ type options struct {
 		MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
 	} `group:"logger" namespace:"logger" env-namespace:"LOGGER"`
 
-	SuperUsers  events.SuperUser `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
-	NoSpamReply bool             `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
+	SuperUsers  events.SuperUsers `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
+	NoSpamReply bool              `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 
 	CAS struct {
 		API     string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`

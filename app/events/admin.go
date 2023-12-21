@@ -20,6 +20,7 @@ type admin struct {
 	tbAPI        TbAPI
 	bot          Bot
 	locator      Locator
+	superUsers   SuperUsers
 	primChatID   int64
 	adminChatID  int64
 	trainingMode bool
@@ -69,6 +70,11 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	log.Printf("[DEBUG] locator found message %s", info)
 	errs := new(multierror.Error)
+
+	// check if the forwarded message will ban a super-user and ignore it
+	if info.UserName != "" && a.superUsers.IsSuper(info.UserName) {
+		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID)
+	}
 
 	// remove user from the approved list
 	a.bot.RemoveApprovedUsers(info.UserID)
