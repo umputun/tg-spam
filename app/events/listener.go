@@ -113,6 +113,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName) {
 				if err := l.adminHandler.MsgHandler(update); err != nil {
 					log.Printf("[WARN] failed to process admin chat message: %v", err)
+					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
 				}
 				continue
 			}
