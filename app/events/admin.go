@@ -37,8 +37,9 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
-// MsgHandler handles messages received on admin chat. This is usually forwarded spam failed
-// to be detected by the bot. We need to update spam filter with this message and ban the user.
+// MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
+// to be detected by the bot. we need to update spam filter with this message and ban the user.
+// the user will be baned even in training mode, but not in the dry mode.
 func (a *admin) MsgHandler(update tbapi.Update) error {
 	shrink := func(inp string, max int) string {
 		if utf8.RuneCountInString(inp) <= max {
@@ -60,7 +61,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q", update.Message.From.UserName, a.adminChatID, msgTxt)
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
-	// it is empty in update.Message. To ban this user, we need to get the match on the message from the locator and ban from there.
+	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
 	info, ok := a.locator.Message(update.Message.Text)
 	if !ok {
 		return fmt.Errorf("not found %q in locator", shrink(update.Message.Text, 50))
@@ -88,17 +89,15 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
 	}
 
-	// update spam samples
-	if !a.dry {
-		if err := a.bot.UpdateSpam(msgTxt); err != nil {
-			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
-		}
-		log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
+	if a.dry {
+		return errs.ErrorOrNil()
 	}
 
-	if a.dry || a.trainingMode {
-		return nil
+	// update spam samples
+	if err := a.bot.UpdateSpam(msgTxt); err != nil {
+		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
 	}
+	log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
 
 	// delete message
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: info.MsgID}); err != nil {

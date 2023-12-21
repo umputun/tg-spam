@@ -279,7 +279,9 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot.
 
-In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly.
+In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly. 
+
+Pls note: Missed spam messages forwarded to the admin chat will be removed from the primary chat group and the user will be banned.
 
 ## Example of docker-compose.yml
 
