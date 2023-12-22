@@ -130,10 +130,11 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 	// check for message length exceed the minimum size, if min message length is set.
 	// the check is done after first simple checks, because stop words and emojis can be triggered by short messages as well.
 	if len([]rune(msg)) < d.MinMsgLen {
+		cr := append(cr, CheckResult{Name: "message length", Spam: false, Details: "too short"})
 		if isSpamDetected(cr) {
 			return true, cr // spam from checks above
 		}
-		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
+		return false, cr
 	}
 
 	// check for spam similarity  if similarity threshold is set and spam samples are loaded
