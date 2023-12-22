@@ -97,6 +97,16 @@ func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 
 // Check checks if a given message is spam. Returns true if spam and also returns a list of check results.
 func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
+
+	isSpamDetected := func(cr []CheckResult) bool {
+		for _, r := range cr {
+			if r.Spam {
+				return true
+			}
+		}
+		return false
+	}
+
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
@@ -120,6 +130,9 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 	// check for message length exceed the minimum size, if min message length is set.
 	// the check is done after first simple checks, because stop words and emojis can be triggered by short messages as well.
 	if len([]rune(msg)) < d.MinMsgLen {
+		if isSpamDetected(cr) {
+			return true, cr // spam from checks above
+		}
 		return false, []CheckResult{{Name: "message length", Spam: false, Details: "too short"}}
 	}
 
@@ -138,13 +151,7 @@ func (d *Detector) Check(msg, userID string) (spam bool, cr []CheckResult) {
 		cr = append(cr, d.isCasSpam(userID))
 	}
 
-	spamDetected := false
-	for _, r := range cr {
-		if r.Spam {
-			spamDetected = true
-			break
-		}
-	}
+	spamDetected := isSpamDetected(cr)
 
 	// we hit openai in two cases:
 	//  - all other checks passed (ham result) and OpenAIVeto is false. In this case, openai primary used to improve false negative rate
@@ -490,7 +497,7 @@ func (d *Detector) isSpamClassified(msg string) CheckResult {
 // isStopWord checks if a given message contains any of the stop words.
 func (d *Detector) isStopWord(msg string) CheckResult {
 	cleanMsg := cleanEmoji(strings.ToLower(msg))
-	for _, word := range d.stopWords {
+	for _, word := range d.stopWords { // stop words are already lowercased
 		if strings.Contains(cleanMsg, strings.ToLower(word)) {
 			return CheckResult{Name: "stopword", Spam: true, Details: word}
 		}

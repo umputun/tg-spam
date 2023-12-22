@@ -17,9 +17,61 @@ import (
 	"github.com/umputun/tg-spam/lib/mocks"
 )
 
+func TestDetector_CheckWithShort(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 150})
+	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
+	require.NoError(t, err)
+	assert.Equal(t, LoadResult{StopWords: 2}, lr)
+
+	t.Run("short message without spam", func(t *testing.T) {
+		spam, cr := d.Check("good message", "")
+		assert.False(t, spam)
+		require.Len(t, cr, 1, "should have short-msg check only: %+v", cr)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+	})
+
+	t.Run("short message with stopwords", func(t *testing.T) {
+		spam, cr := d.Check("Hello, please send me a message в личку", "")
+		assert.True(t, spam)
+		require.Len(t, cr, 2, "should have both checks: %+v", cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "в личку", cr[0].Details)
+		assert.Equal(t, "emoji", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "0/1", cr[1].Details)
+	})
+
+	t.Run("short message with emojis", func(t *testing.T) {
+		spam, cr := d.Check("Hello 😁🐶🍕", "")
+		assert.True(t, spam)
+		require.Len(t, cr, 2, "should have both checks: %+v", cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "not found", cr[0].Details)
+		assert.Equal(t, "emoji", cr[1].Name)
+		assert.Equal(t, true, cr[1].Spam)
+		assert.Equal(t, "3/1", cr[1].Details)
+	})
+
+	t.Run("short message with emojis and stop words", func(t *testing.T) {
+		spam, cr := d.Check("Hello 😁🐶🍕в личку", "")
+		assert.True(t, spam)
+		require.Len(t, cr, 2, "should have both checks: %+v", cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "в личку", cr[0].Details)
+		assert.Equal(t, "emoji", cr[1].Name)
+		assert.Equal(t, true, cr[1].Spam)
+		assert.Equal(t, "3/1", cr[1].Details)
+	})
+}
+
 func TestDetector_CheckStopWords(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
-	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
+	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсеМ прИвет"))
 	require.NoError(t, err)
 	assert.Equal(t, LoadResult{StopWords: 2}, lr)
 
@@ -30,7 +82,7 @@ func TestDetector_CheckStopWords(t *testing.T) {
 	}{
 		{
 			name:     "Stop word present",
-			message:  "Hello, please send me a message в личку",
+			message:  "Hello, please send me a message в личкУ",
 			expected: true,
 		},
 		{
