@@ -1,6 +1,7 @@
 package events
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -213,27 +214,55 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	if err != nil {
 		return fmt.Errorf("failed to get clean message: %w", err)
 	}
+
 	if err := a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
 		return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
 	}
 
+	callbackData := query.Data
+	userID, parseErr := strconv.ParseInt(callbackData[1:], 10, 64)
+	if parseErr != nil {
+		return fmt.Errorf("failed to parse callback's userID %q: %w", callbackData[1:], parseErr)
+	}
+
 	// in training mode, the user is not banned automatically. here we do the real ban & delete the message
 	if a.trainingMode {
+		errs := new(multierror.Error)
 		banReq := banRequest{
 			duration: bot.PermanentBanDuration,
-			userID:   query.Message.From.ID,
+			userID:   userID,
 			chatID:   a.primChatID,
 			tbAPI:    a.tbAPI,
 			dry:      a.dry,
 			training: false, // reset training flag, ban for real
 		}
+
+		// ban user, if fails continue to delete message
 		if err := banUserOrChannel(banReq); err != nil {
-			return fmt.Errorf("failed to ban user %d: %w", query.Message.From.ID, err)
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
 		}
-		if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: query.Message.MessageID}); err != nil {
-			return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+
+		msgData, found := a.locator.Message(cleanMsg)
+		if !found {
+			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator", cleanMsg))
 		}
-		log.Printf("[INFO] user %q (%d) banned", query.Message.From.UserName, query.Message.From.ID)
+		if found {
+			if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: msgData.MsgID}); err != nil {
+				return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+			}
+		}
+
+		// any errors happened above will be returned
+		if errs.ErrorOrNil() != nil {
+			errMsgs := []string{}
+			for _, err := range errs.Errors {
+				errStr := err.Error()
+				errMsgs = append(errMsgs, errStr)
+			}
+			return errors.New(strings.Join(errMsgs, "\n")) // reformat to be md friendly
+		}
+
+		log.Printf("[INFO] user %q (%d) banned", msgData.UserName, msgData.UserID)
 	}
 
 	return nil
