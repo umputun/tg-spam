@@ -237,16 +237,23 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 			training: false, // reset training flag, ban for real
 		}
 
-		// ban user, if fails continue to delete message
-		if err := banUserOrChannel(banReq); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
-		}
-
+		// get details from locator about msg to delete and user to ban
 		msgData, found := a.locator.Message(cleanMsg)
 		if !found {
 			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator", cleanMsg))
 		}
+
+		msgFromSuper := found && msgData.UserName != "" && a.superUsers.IsSuper(msgData.UserName)
+
+		// ban user (don't try supers), if fails continue to delete message
+		if !msgFromSuper {
+			if err := banUserOrChannel(banReq); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
+			}
+		}
+
 		if found {
+			// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
 			if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: msgData.MsgID}); err != nil {
 				return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
 			}
