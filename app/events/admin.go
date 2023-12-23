@@ -29,6 +29,12 @@ type admin struct {
 	dry          bool
 }
 
+const (
+	confirmationPrefix = "?"
+	banPrefix          = "+"
+	infoPrefix         = "!"
+)
+
 // ReportBan a ban message to admin chat with a button to unban the user
 func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
@@ -49,7 +55,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		}
 		return string([]rune(inp)[:max]) + "..."
 	}
-	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %s",
+	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName, update.Message.ForwardSenderName)
 
 	if update.Message.ForwardSenderName == "" && update.Message.ForwardFrom == nil {
@@ -104,7 +110,6 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	if err := a.bot.UpdateSpam(msgTxt); err != nil {
 		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
 	}
-	log.Printf("[INFO] spam updated with %q", shrink(update.Message.Text, 50))
 
 	// delete message
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: info.MsgID}); err != nil {
@@ -135,7 +140,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 	}
 
 	// if callback msgsData starts with "?", we should show a confirmation message
-	if strings.HasPrefix(callbackData, "?") {
+	if strings.HasPrefix(callbackData, confirmationPrefix) {
 		if err := a.callbackAskBanConfirmation(query); err != nil {
 			return fmt.Errorf("failed to make ban confirmation dialog: %w", err)
 		}
@@ -145,7 +150,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 	}
 
 	// if callback msgsData starts with "+", we should not unban the user, but rather clear the keyboard and add to spam samples
-	if strings.HasPrefix(callbackData, "+") {
+	if strings.HasPrefix(callbackData, banPrefix) {
 		if err := a.callbackBanConfirmed(query); err != nil {
 			return fmt.Errorf("failed confirmation ban: %w", err)
 		}
@@ -154,7 +159,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 	}
 
 	// if callback msgsData starts with "!", we should show a spam info details
-	if strings.HasPrefix(callbackData, "!") {
+	if strings.HasPrefix(callbackData, infoPrefix) {
 		if err := a.callbackShowInfo(query); err != nil {
 			return fmt.Errorf("failed to show spam info: %w", err)
 		}
@@ -162,12 +167,12 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		return nil
 	}
 
-	// callback msgsData here is userID, we should unban the user
+	// no prefix, callback msgsData here is userID, we should unban the user
 	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 	if err := a.callbackUnbanConfirmed(query); err != nil {
 		return fmt.Errorf("failed to unban user: %w", err)
 	}
-	log.Printf("[DEBUG] user unbanned, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+	log.Printf("[INFO] user unbanned, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
 
 	return nil
 }
@@ -185,8 +190,8 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 	// replace button with confirmation/rejection buttons
 	confirmationKeyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]), // remove "?" prefix
-			tbapi.NewInlineKeyboardButtonData(keepBanned, "+"+callbackData[1:]),   // add "+" prefix
+			tbapi.NewInlineKeyboardButtonData("Unban for real", callbackData[1:]),     // remove "?" prefix
+			tbapi.NewInlineKeyboardButtonData(keepBanned, banPrefix+callbackData[1:]), // set "+" prefix
 		),
 	)
 	editMsg := tbapi.NewEditMessageReplyMarkup(query.Message.Chat.ID, query.Message.MessageID, confirmationKeyboard)
@@ -401,8 +406,10 @@ func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, chatID i
 
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("?%d", user.ID)), // ?userID to request confirmation
-			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("!%d", user.ID)),    // !userID to request info
+			// ?userID to request confirmation
+			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("%s%d", confirmationPrefix, user.ID)),
+			// !userID to request info
+			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("%s%d", infoPrefix, user.ID)),
 		),
 	)
 

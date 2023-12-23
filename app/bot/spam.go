@@ -115,7 +115,7 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 // AddApprovedUsers adds users to the list of approved users
 func (s *SpamFilter) AddApprovedUsers(id int64, ids ...int64) {
 	combinedIDs := append([]int64{id}, ids...)
-	log.Printf("[DEBUG] add aproved users: %v", combinedIDs)
+	log.Printf("[INFO] add aproved users: %v", combinedIDs)
 	sids := make([]string, len(combinedIDs))
 	for i, id := range combinedIDs {
 		sids[i] = strconv.FormatInt(id, 10)
@@ -126,7 +126,7 @@ func (s *SpamFilter) AddApprovedUsers(id int64, ids ...int64) {
 // RemoveApprovedUsers removes users from the list of approved users
 func (s *SpamFilter) RemoveApprovedUsers(id int64, ids ...int64) {
 	combinedIDs := append([]int64{id}, ids...)
-	log.Printf("[DEBUG] remove aproved users: %v", combinedIDs)
+	log.Printf("[INFO] remove aproved users: %v", combinedIDs)
 	sids := make([]string, len(combinedIDs))
 	for i, id := range combinedIDs {
 		sids[i] = strconv.FormatInt(id, 10)

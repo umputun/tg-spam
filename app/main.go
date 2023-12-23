@@ -314,8 +314,7 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
 		text := strings.ReplaceAll(msg.Text, "\n", " ")
 		text = strings.TrimSpace(text)
-		log.Printf("[INFO] spam detected from %v, response: %s", msg.From, text)
-		log.Printf("[DEBUG] spam message: %s", text)
+		log.Printf("[DEBUG] spam detected from %v, text: %s", msg.From, text)
 		m := struct {
 			TimeStamp   string `json:"ts"`
 			DisplayName string `json:"display_name"`
