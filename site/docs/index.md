@@ -319,6 +319,20 @@ services:
     command: --super=name1 --super=name2 --super=name3
 ```
 
+## Getting spam samples from CAS
+
+CAS provide an API to get spam samples, which can be used to creata a set of spam samples for the bot. Provided [`cas-export.sh`](https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh) script automate the process and result (`messages.txt`) can be used as a base for `spam-samples.txt` file. The script requires `jq` and `curl` to be installed and running it will take a long time. 
+
+```bash
+curl -s https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh > cas-export.sh
+chmod +x cas-export.sh
+./cas-export.sh
+```
+
+Pls note: using results of this script directly as-is may not be such a good idea, because a particular chat group may have a different spam pattern. It is better to use it as a base by picking samples what seems appropriate for a given chat, and add more spam samples from the group itself.
+
+```bash
+
 ## Updating spam and ham samples from remote git repository
 
 A small utility and docker container provided to update spam and ham samples from a remote git repository. The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. For more details see [updater/README.md](https://github.com/umputun/tg-spam/tree/master/updater/README.md).
