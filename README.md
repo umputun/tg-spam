@@ -331,8 +331,6 @@ chmod +x cas-export.sh
 
 Pls note: using results of this script directly as-is may not be such a good idea, because a particular chat group may have a different spam pattern. It is better to use it as a base by picking samples what seems appropriate for a given chat, and add more spam samples from the group itself.
 
-```bash
-
 ## Updating spam and ham samples from remote git repository
 
 A small utility and docker container provided to update spam and ham samples from a remote git repository. The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. For more details see [updater/README.md](https://github.com/umputun/tg-spam/tree/master/updater/README.md).
