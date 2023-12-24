@@ -178,7 +178,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 }
 
 // callbackAskBanConfirmation sends a confirmation message to admin chat with two buttons: "unban" and "keep it banned"
-// callback data: +userID
+// callback data: ?userID
 func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
 
