@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -210,4 +211,34 @@ func Test_makeSpamBot(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})
+}
+
+func Test_activateServerOnly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var opts options
+	opts.Server.Enabled = true
+	opts.Server.ListenAddr = ":9988"
+	opts.Server.AuthPasswd = "auto"
+	opts.Files.SamplesDataPath = "webapi/testdata"
+	opts.Files.DynamicDataPath = "webapi/testdata"
+
+	done := make(chan struct{})
+	go func() {
+		err := execute(ctx, opts)
+		assert.NoError(t, err)
+		close(done)
+	}()
+	time.Sleep(time.Millisecond * 100)
+
+	resp, err := http.Get("http://localhost:9988/ping")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "pong", string(body))
+	cancel()
+	<-done
 }

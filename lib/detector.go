@@ -49,9 +49,9 @@ type Config struct {
 
 // CheckResult is a result of spam check.
 type CheckResult struct {
-	Name    string // name of the check
-	Spam    bool   // true if spam
-	Details string // details of the check
+	Name    string `json:"name"`    // name of the check
+	Spam    bool   `json:"spam"`    // true if spam
+	Details string `json:"details"` // details of the check
 }
 
 // LoadResult is a result of loading samples.

@@ -18,6 +18,9 @@ import (
 //			AddApprovedUsersFunc: func(ids ...string)  {
 //				panic("mock out the AddApprovedUsers method")
 //			},
+//			ApprovedUsersFunc: func() []string {
+//				panic("mock out the ApprovedUsers method")
+//			},
 //			CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
 //				panic("mock out the Check method")
 //			},
@@ -46,6 +49,9 @@ type DetectorMock struct {
 	// AddApprovedUsersFunc mocks the AddApprovedUsers method.
 	AddApprovedUsersFunc func(ids ...string)
 
+	// ApprovedUsersFunc mocks the ApprovedUsers method.
+	ApprovedUsersFunc func() []string
+
 	// CheckFunc mocks the Check method.
 	CheckFunc func(msg string, userID string) (bool, []lib.CheckResult)
 
@@ -70,6 +76,9 @@ type DetectorMock struct {
 		AddApprovedUsers []struct {
 			// Ids is the ids argument value.
 			Ids []string
+		}
+		// ApprovedUsers holds details about calls to the ApprovedUsers method.
+		ApprovedUsers []struct {
 		}
 		// Check holds details about calls to the Check method.
 		Check []struct {
@@ -109,6 +118,7 @@ type DetectorMock struct {
 		}
 	}
 	lockAddApprovedUsers    sync.RWMutex
+	lockApprovedUsers       sync.RWMutex
 	lockCheck               sync.RWMutex
 	lockLoadSamples         sync.RWMutex
 	lockLoadStopWords       sync.RWMutex
@@ -154,6 +164,40 @@ func (mock *DetectorMock) ResetAddApprovedUsersCalls() {
 	mock.lockAddApprovedUsers.Lock()
 	mock.calls.AddApprovedUsers = nil
 	mock.lockAddApprovedUsers.Unlock()
+}
+
+// ApprovedUsers calls ApprovedUsersFunc.
+func (mock *DetectorMock) ApprovedUsers() []string {
+	if mock.ApprovedUsersFunc == nil {
+		panic("DetectorMock.ApprovedUsersFunc: method is nil but Detector.ApprovedUsers was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockApprovedUsers.Lock()
+	mock.calls.ApprovedUsers = append(mock.calls.ApprovedUsers, callInfo)
+	mock.lockApprovedUsers.Unlock()
+	return mock.ApprovedUsersFunc()
+}
+
+// ApprovedUsersCalls gets all the calls that were made to ApprovedUsers.
+// Check the length with:
+//
+//	len(mockedDetector.ApprovedUsersCalls())
+func (mock *DetectorMock) ApprovedUsersCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockApprovedUsers.RLock()
+	calls = mock.calls.ApprovedUsers
+	mock.lockApprovedUsers.RUnlock()
+	return calls
+}
+
+// ResetApprovedUsersCalls reset all the calls that were made to ApprovedUsers.
+func (mock *DetectorMock) ResetApprovedUsersCalls() {
+	mock.lockApprovedUsers.Lock()
+	mock.calls.ApprovedUsers = nil
+	mock.lockApprovedUsers.Unlock()
 }
 
 // Check calls CheckFunc.
@@ -407,6 +451,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockAddApprovedUsers.Lock()
 	mock.calls.AddApprovedUsers = nil
 	mock.lockAddApprovedUsers.Unlock()
+
+	mock.lockApprovedUsers.Lock()
+	mock.calls.ApprovedUsers = nil
+	mock.lockApprovedUsers.Unlock()
 
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil

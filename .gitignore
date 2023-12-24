@@ -26,5 +26,5 @@ go.work
 data/spam-dynamic.txt
 data/ham-dynamic.txt
 data/approved-users.txt
-data/tg-spam.db
+tg-spam.db
 logs/
