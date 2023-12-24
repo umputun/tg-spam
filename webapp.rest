@@ -1,0 +1,47 @@
+# server runs with passwd: `passwd`
+
+### ping
+GET http://localhost:8080/ping
+
+
+### chech message, spam
+POST http://localhost:8080/check
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_id": "123456", "msg": "We're thrilled to announce a group art exhibition and your work could be featured!"}
+
+### chech message, ham
+POST http://localhost:8080/check
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_id": "9123456", "msg": "the message is not spam, it is pizza, very tasty pizza message for you to eat 🍕"}
+
+
+### get all approved users
+GET http://localhost:8080/users
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+### add new approved user
+POST http://localhost:8080/users
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_ids": ["123456", "789012"]}
+
+### delete approved user
+DELETE http://localhost:8080/users
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_ids": ["123456", "789012"]}
+
+
+### add spam sample
+POST http://localhost:8080/update/spam
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_id": "123456", "msg": "spam sample"}
+
+### add ham sample
+POST http://localhost:8080/update/ham
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"user_id": "123456", "msg": "ham sample"}

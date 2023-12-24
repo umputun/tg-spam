@@ -313,6 +313,16 @@ Note: it is truly a **bad idea** to run the server without basic auth protection
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
   - `user_ids` - array of user ids
 
+_for the real examples of http requests see [webapp.rest](https://github.com/umputun/tg-spam/blob/master/webapp.rest) file._
+
+**how it works**
+
+The server is using the same spam detection logic as the bot itself. It is using the same set of samples and the same set of parameters. The only difference is that the server is not banning users and deleting messages. It also doesn't assume any particular flow user should follow. For example, the `/check` api call doesn't update dynamic spam/ham samples automatically. 
+
+However, if users want to update spam/ham dynamic samples, they should call the corresponding endpoint `/update/<spam|ham>`. On the other hand, updating the approved users list is a part of the `/check` api call, so user doesn't need to call it separately. In case if the list of approved users should be managed by the client application, it is possible to call `/users` endpoints directly.
+
+Generally, this is a very basic server, but should be sufficient for most use cases. If a user needs more functionality, it is possible to run the bot [as a library](#using-tg-spam-as-a-library) and implement custom logic on top of it.
+
 ## Example of docker-compose.yml
 
 This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
