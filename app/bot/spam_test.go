@@ -342,7 +342,7 @@ func TestAddApprovedUsers(t *testing.T) {
 
 	t.Run("add single approved user", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.AddApprovedUsers(1)
 		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
 		assert.Equal(t, []string{"1"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
@@ -350,7 +350,7 @@ func TestAddApprovedUsers(t *testing.T) {
 
 	t.Run("add multiple approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.AddApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
@@ -358,7 +358,7 @@ func TestAddApprovedUsers(t *testing.T) {
 
 	t.Run("add empty list of approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.AddApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
@@ -370,7 +370,7 @@ func TestRemoveApprovedUsers(t *testing.T) {
 
 	t.Run("remove single approved user", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.RemoveApprovedUsers(1)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
@@ -378,7 +378,7 @@ func TestRemoveApprovedUsers(t *testing.T) {
 
 	t.Run("remove multiple approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.RemoveApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
@@ -386,7 +386,7 @@ func TestRemoveApprovedUsers(t *testing.T) {
 
 	t.Run("remove empty list of approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{director: mockDirector}
+		sf := SpamFilter{Detector: mockDirector}
 		sf.RemoveApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)

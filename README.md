@@ -241,6 +241,11 @@ message:
       --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
 
+server:
+      --server.enabled              enable web server [$SERVER_ENABLED]
+      --server.listen=              listen address (default: :8080) [$SERVER_LISTEN]
+      --server.auth=                basic auth password for user 'tg-spam' (default: auto-generated) [$SERVER_AUTH]
+
 Help Options:
   -h, --help                        Show this help message
 
@@ -282,6 +287,31 @@ In case if such an active training on a live system is not possible, the bot can
 In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly. 
 
 Pls note: Missed spam messages forwarded to the admin chat will be removed from the primary chat group and the user will be banned.
+
+### Running with webapi server
+
+The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
+
+By default, the server is protected by basic auth with user `tg-bot` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
+
+Note: it is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.
+
+**endpoints:**
+
+- `GET /ping` - returns `pong` if the server is running
+- `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - message text
+  - `user_id` - user id
+- `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - spam text
+- `POST /update/ham` - update ham samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - ham text
+- `POST /users` - add user to the list of approved users. The body should be a json object with the following fields:
+  - `user_ids` - array of user ids to add
+- `DELETE /users` - remove user from the list of approved users. The body should be a json object with the following fields:
+  - `user_ids` - array of user ids to remove
+- `GET /users` - get the list of approved users. The response is a json object with the following fields:
+  - `user_ids` - array of user ids
 
 ## Example of docker-compose.yml
 

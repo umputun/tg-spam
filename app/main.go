@@ -27,13 +27,14 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/webapi"
 	"github.com/umputun/tg-spam/lib"
 )
 
 type options struct {
 	Telegram struct {
-		Token            string        `long:"token" env:"TOKEN" description:"telegram bot token" required:"true"`
-		Group            string        `long:"group" env:"GROUP" description:"group name/id" required:"true"`
+		Token            string        `long:"token" env:"TOKEN" description:"telegram bot token"`
+		Group            string        `long:"group" env:"GROUP" description:"group name/id"`
 		Timeout          time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
 		IdleDuration     time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 		PreserveUnbanned bool          `long:"preserve-unbanned" env:"PRESERVE_UNBANNED" description:"preserve user after unban"`
@@ -89,6 +90,12 @@ type options struct {
 		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
 		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
+
+	Server struct {
+		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password for user 'tg-spam'"`
+	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	Dry      bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
@@ -146,6 +153,10 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
+	if !opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+		return errors.New("telegram token and group are required")
+	}
+
 	// make samples and dynamic data dirs
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make samples dir, %w", err)
@@ -153,13 +164,6 @@ func execute(ctx context.Context, opts options) error {
 	if err := os.MkdirAll(opts.Files.DynamicDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make dynamic dir, %w", err)
 	}
-
-	// make telegram bot
-	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
-	if err != nil {
-		return fmt.Errorf("can't make telegram bot, %w", err)
-	}
-	tbAPI.Debug = opts.TGDbg
 
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
@@ -171,7 +175,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 	log.Printf("[DEBUG] data db: %s", dataFile)
 
-	// load approved users and start auto-save
+	// load approved users
 	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
@@ -187,13 +191,35 @@ func execute(ctx context.Context, opts options) error {
 	} else {
 		log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
 	}
-	go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, detector)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
+
+	// activate web server if enabled
+	if opts.Server.Enabled {
+		// server starts in background goroutine
+		if srvErr := activateServer(ctx, opts, spamBot); srvErr != nil {
+			return fmt.Errorf("can't activate web server, %w", srvErr)
+		}
+		if opts.Telegram.Token == "" || opts.Telegram.Group == "" {
+			log.Printf("[WARN] no telegram token and group, web server only mode")
+			// if no telegram token and group set, just run the server
+			<-ctx.Done()
+			return nil
+		}
+	}
+
+	// make telegram bot
+	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
+	if err != nil {
+		return fmt.Errorf("can't make telegram bot, %w", err)
+	}
+	tbAPI.Debug = opts.TGDbg
+
+	go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 
 	// make spam logger
 	loggerWr, err := makeSpamLogWriter(opts)
@@ -236,6 +262,36 @@ func execute(ctx context.Context, opts options) error {
 	return nil
 }
 
+func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter) (err error) {
+	log.Printf("[INFO] start web server on %s", opts.Server.ListenAddr)
+	authPassswd := opts.Server.AuthPasswd
+	if opts.Server.AuthPasswd == "auto" {
+		authPassswd, err = webapi.GenerateRandomPassword(20)
+		if err != nil {
+			return fmt.Errorf("can't generate random password, %w", err)
+		}
+		log.Printf("[WARN] generated basic auth password for user tg-spam: %q", authPassswd)
+	}
+
+	srv := webapi.Server{Config: webapi.Config{
+		ListenAddr: opts.Server.ListenAddr,
+		SpamFilter: spamFilter.Detector,
+		AuthPasswd: authPassswd,
+		Version:    revision,
+		Dbg:        opts.Dbg,
+	}}
+
+	log.Printf("[DEBUG] web server config: %+v", srv.Config)
+	go func() {
+		if err := srv.Run(ctx); err != nil {
+			log.Printf("[ERROR] web server failed, %v", err)
+		}
+	}()
+	return nil
+}
+
+// makeDetector creates spam detector with all checkers and updaters
+// it loads samples and dynamic files
 func makeDetector(opts options) *lib.Detector {
 	detectorConfig := lib.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,

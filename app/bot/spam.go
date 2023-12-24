@@ -22,8 +22,8 @@ import (
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.
 type SpamFilter struct {
-	director Detector
-	params   SpamConfig
+	Detector
+	params SpamConfig
 }
 
 // SpamConfig is a full set of parameters for spam bot
@@ -54,11 +54,12 @@ type Detector interface {
 	UpdateHam(msg string) error
 	AddApprovedUsers(ids ...string)
 	RemoveApprovedUsers(ids ...string)
+	ApprovedUsers() (res []string)
 }
 
 // NewSpamFilter creates new spam filter
 func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *SpamFilter {
-	res := &SpamFilter{director: detector, params: params}
+	res := &SpamFilter{Detector: detector, params: params}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {
 			log.Printf("[WARN] samples file watcher failed: %v", err)
@@ -73,7 +74,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 	displayUsername := DisplayName(msg)
-	isSpam, checkResults := s.director.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
+	isSpam, checkResults := s.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
 	crs := []string{}
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
@@ -97,7 +98,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 // UpdateSpam appends a message to the spam samples file and updates the classifier
 func (s *SpamFilter) UpdateSpam(msg string) error {
 	log.Printf("[DEBUG] update spam samples with %q", msg)
-	if err := s.director.UpdateSpam(msg); err != nil {
+	if err := s.Detector.UpdateSpam(msg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
 	return nil
@@ -106,7 +107,7 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (s *SpamFilter) UpdateHam(msg string) error {
 	log.Printf("[DEBUG] update ham samples with %q", msg)
-	if err := s.director.UpdateHam(msg); err != nil {
+	if err := s.Detector.UpdateHam(msg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
 	return nil
@@ -120,7 +121,7 @@ func (s *SpamFilter) AddApprovedUsers(id int64, ids ...int64) {
 	for i, id := range combinedIDs {
 		sids[i] = strconv.FormatInt(id, 10)
 	}
-	s.director.AddApprovedUsers(sids...)
+	s.Detector.AddApprovedUsers(sids...)
 }
 
 // RemoveApprovedUsers removes users from the list of approved users
@@ -131,7 +132,7 @@ func (s *SpamFilter) RemoveApprovedUsers(id int64, ids ...int64) {
 	for i, id := range combinedIDs {
 		sids[i] = strconv.FormatInt(id, 10)
 	}
-	s.director.RemoveApprovedUsers(sids...)
+	s.Detector.RemoveApprovedUsers(sids...)
 }
 
 // watch watches for changes in samples files and reloads them
@@ -239,13 +240,13 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 	defer hamDynamicReader.Close()
 
 	// reload samples and stop-words. note: we don't need reset as LoadSamples and LoadStopWords clear the state first
-	lr, err := s.director.LoadSamples(exclReader, []io.Reader{spamReader, spamDynamicReader},
+	lr, err := s.LoadSamples(exclReader, []io.Reader{spamReader, spamDynamicReader},
 		[]io.Reader{hamReader, hamDynamicReader})
 	if err != nil {
 		return fmt.Errorf("failed to reload samples: %w", err)
 	}
 
-	ls, err := s.director.LoadStopWords(stopWordsReader)
+	ls, err := s.LoadStopWords(stopWordsReader)
 	if err != nil {
 		return fmt.Errorf("failed to reload stop words: %w", err)
 	}
