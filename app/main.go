@@ -142,6 +142,9 @@ func main() {
 		cancel()
 	}()
 
+	opts.Files.DynamicDataPath = expandPath(opts.Files.DynamicDataPath)
+	opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
+
 	if err := execute(ctx, opts); err != nil {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
@@ -472,6 +475,24 @@ func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *s
 			lastCount = len(ids)
 		}
 	}
+}
+
+func expandPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if path[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, path[1:])
+	}
+	ep, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return ep
 }
 
 type nopWriteCloser struct{ io.Writer }
