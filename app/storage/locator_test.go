@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -44,6 +46,22 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 	retrievedMsg, found := locator.Message(msg)
 	require.True(t, found)
 	assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsg)
+}
+
+func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
+	locator := newTestLocator(t)
+
+	// add 100 messages for 10 users
+	for i := 0; i < 100; i++ {
+		userID := int64(i%10 + 1)
+		locator.AddMessage(fmt.Sprintf("test message %d", i), 1234, userID, "name"+strconv.Itoa(int(userID)), i)
+	}
+
+	for i := 0; i < 100; i++ {
+		retrievedMsg, found := locator.Message(fmt.Sprintf("test message %d", i))
+		require.True(t, found)
+		assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsg)
+	}
 }
 
 func TestLocator_AddAndRetrieveSpam(t *testing.T) {
