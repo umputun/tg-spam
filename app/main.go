@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -276,22 +277,34 @@ func checkVolumeMount(opts options) (ok bool) {
 	log.Printf("[DEBUG] running in docker")
 	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart", opts.Files.DynamicDataPath)
 
-	// check if dynamic files dir noy present
-	info, err := os.Stat(opts.Files.DynamicDataPath)
+	// check if dynamic files dir not present. This means it is not mounted
+	_, err := os.Stat(opts.Files.DynamicDataPath)
 	if err != nil {
 		log.Printf("[WARN] %s", warnMsg)
 		// no dynamic files dir, no need to check further
 		return false
 	}
-	log.Printf("%+v", info)
 
-	// check if dynamic files dir is present but contains .not_mounted file
-	if _, err := os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err == nil {
-		log.Printf("[WARN] %s", warnMsg)
-		return false
+	// check if .not_mounted file missing, this means it is mounted
+	if _, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err != nil {
+		return true
 	}
 
-	return true
+	// if .not_mounted file present, it can be mounted anyway with docker named volumes
+	output, err := exec.Command("mount").Output()
+	if err != nil {
+		log.Printf("[WARN] %s, can't check mount, %v", warnMsg, err)
+		return true
+	}
+	// check if the output contains the specified directory
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.Contains(line, opts.Files.DynamicDataPath) {
+			return true
+		}
+	}
+
+	log.Printf("[WARN] %s", warnMsg)
+	return false
 }
 
 func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter) (err error) {

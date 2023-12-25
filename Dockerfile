@@ -30,5 +30,4 @@ RUN \
 USER app
 WORKDIR /srv
 EXPOSE 8080
-VOLUME ["/srv/data"]
 ENTRYPOINT ["/srv/tg-spam"]
