@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -317,6 +318,49 @@ func Test_checkVolumeMount(t *testing.T) {
 
 			ok := checkVolumeMount(opts)
 			assert.Equal(t, tt.expectedOk, ok)
+		})
+	}
+}
+
+func Test_expandPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"Empty Path", "", ""},
+		{"Home Directory", "~", home},
+		{"Relative Path", ".", ""},
+		{"Relative Path with directory", "data", filepath.Join(currentDir, "data")},
+		{"Absolute Path", "/tmp", "/tmp"},
+		{"Path with Tilde and Subdirectory", "~/Documents", filepath.Join(home, "Documents")},
+		{"Path with Multiple Relative Directories", "../parent/child", ""},
+		{"Path with Special Characters", "data/special @#$/file", ""},
+		{"Invalid Path", "/some/nonexistent/path", "/some/nonexistent/path"},
+		{"Home Directory with Trailing Slash", "~/", home},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := expandPath(tt.path)
+
+			switch {
+			case strings.Contains(tt.path, "~"):
+				assert.Equal(t, filepath.Join(home, tt.path[1:]), got)
+			case tt.path == ".", strings.HasPrefix(tt.path, ".."), strings.Contains(tt.path, "/"):
+				// For relative paths, paths starting with "..", and paths with special characters
+				expected, err := filepath.Abs(tt.path)
+				require.NoError(t, err)
+				assert.Equal(t, expected, got)
+			default:
+				// For absolute paths and invalid paths
+				assert.Equal(t, tt.want, got)
+			}
 		})
 	}
 }
