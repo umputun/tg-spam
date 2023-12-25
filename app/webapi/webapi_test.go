@@ -445,3 +445,17 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "handler returned wrong status code")
 	})
 }
+
+func TestGenerateRandomPassword(t *testing.T) {
+	res1, err := GenerateRandomPassword(32)
+	require.NoError(t, err)
+	t.Log(res1)
+	assert.Len(t, res1, 32)
+
+	res2, err := GenerateRandomPassword(32)
+	require.NoError(t, err)
+	t.Log(res2)
+	assert.Len(t, res2, 32)
+
+	assert.NotEqual(t, res1, res2)
+}

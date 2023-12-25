@@ -65,13 +65,13 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
 	if s.AuthPasswd != "" {
-		log.Printf("[INFO] basic auth enabled")
+		log.Printf("[INFO] basic auth enabled for webapi server")
 		router.Use(rest.BasicAuth(func(user, passwd string) bool {
 			return subtle.ConstantTimeCompare([]byte(user), []byte("tg-spam")) == 1 &&
 				subtle.ConstantTimeCompare([]byte(passwd), []byte(s.AuthPasswd)) == 1
 		}))
 	} else {
-		log.Printf("[WARN] basic auth disabled, access to web api is not protected")
+		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
 
 	router = s.routes(router) // setup routes
@@ -80,13 +80,13 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("[WARN] failed to shutdown server: %v", err)
+			log.Printf("[WARN] failed to shutdown webapi server: %v", err)
 		} else {
-			log.Printf("[INFO] server stopped")
+			log.Printf("[INFO] webapi server stopped")
 		}
 	}()
 
-	log.Printf("[INFO] start server on %s", s.ListenAddr)
+	log.Printf("[INFO] start webapi server on %s", s.ListenAddr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("failed to run server: %w", err)
 	}

@@ -295,7 +295,6 @@ func checkVolumeMount(opts options) (ok bool) {
 }
 
 func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter) (err error) {
-	log.Printf("[INFO] start web server on %s", opts.Server.ListenAddr)
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -313,7 +312,6 @@ func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilte
 		Dbg:        opts.Dbg,
 	}}
 
-	log.Printf("[DEBUG] web server config: %+v", srv.Config)
 	go func() {
 		if err := srv.Run(ctx); err != nil {
 			log.Printf("[ERROR] web server failed, %v", err)
