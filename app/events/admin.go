@@ -245,7 +245,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		// get details from locator about msg to delete and user to ban
 		msgData, found := a.locator.Message(cleanMsg)
 		if !found {
-			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator by hash %s", cleanMsg, a.locator.MsgHash(cleanMsg)))
+			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator by hash %q", cleanMsg, a.locator.MsgHash(cleanMsg)))
 		}
 
 		msgFromSuper := found && msgData.UserName != "" && a.superUsers.IsSuper(msgData.UserName)
