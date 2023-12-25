@@ -253,7 +253,7 @@ func Test_checkVolumeMount(t *testing.T) {
 		}
 
 		if notMountedExists {
-			os.WriteFile(filepath.Join(tempDir, dynamicDataPath, ".not_mounted"), []byte{}, 00644)
+			os.WriteFile(filepath.Join(tempDir, dynamicDataPath, ".not_mounted"), []byte{}, 0o644)
 		}
 
 		if dynamicDataPath == "" {
