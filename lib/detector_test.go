@@ -176,6 +176,12 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			expected:       false,
 		},
 		{
+			name:           "User is not a spammer, message case",
+			mockResp:       `{"ok": false, "description": "Not A spamMer."}`,
+			mockStatusCode: 200,
+			expected:       false,
+		},
+		{
 			name:           "User is a spammer",
 			mockResp:       `{"ok": true, "description": "Is a spammer"}`,
 			mockStatusCode: 200,
@@ -183,7 +189,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 		},
 		{
 			name:           "HTTP error",
-			mockResp:       "{}",
+			mockResp:       `{"ok": false, "description": "not found"}`,
 			mockStatusCode: 500,
 			expected:       false,
 		},
@@ -218,8 +224,13 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			}{}
 			err := json.Unmarshal([]byte(tt.mockResp), &respDetails)
 			require.NoError(t, err)
+			expResp := strings.ToLower(respDetails.Description)
+			expResp = strings.TrimSuffix(expResp, ".")
+			assert.Equal(t, expResp, cr[0].Details)
+
 			assert.Equal(t, respDetails.Description, respDetails.Description)
 			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
+
 		})
 	}
 }

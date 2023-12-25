@@ -471,6 +471,8 @@ func (d *Detector) isCasSpam(msgID string) CheckResult {
 	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
 		return CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to parse response from %s: %v", reqURL, err)}
 	}
+	respData.Description = strings.ToLower(respData.Description)
+	respData.Description = strings.TrimSuffix(respData.Description, ".")
 
 	if respData.OK {
 		return CheckResult{Name: "cas", Spam: true, Details: respData.Description}
