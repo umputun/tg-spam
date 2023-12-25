@@ -1,4 +1,4 @@
-FROM umputun/baseimage:buildgo-latest as build
+FROM ghcr.io/umputun/baseimage/buildgo:latest as build
 
 ARG GIT_BRANCH
 ARG GITHUB_SHA
@@ -17,19 +17,18 @@ RUN \
     cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
 
 
-FROM ghcr.io/umputun/baseimage/app:v1.11.0 as base
-
-FROM scratch
-
+FROM alpine:3.19
+ENV TGSPAM_IN_DOCKER=1
 COPY --from=build /build/tg-spam /srv/tg-spam
-COPY --from=base /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=base /etc/passwd /etc/passwd
-COPY --from=base /etc/group /etc/group
+COPY data /srv/data
+RUN \
+    adduser -s /bin/sh -D -u 1000 app && chown -R app:app /home/app && \
+    chown -R app:app /srv/data && \
+    chmod -R 775 /srv/data && \
+    ls -la /srv/data
 
 USER app
-COPY data/* /srv/data/
-VOLUME /srv/data
 WORKDIR /srv
 EXPOSE 8080
+VOLUME ["/srv/data"]
 ENTRYPOINT ["/srv/tg-spam"]

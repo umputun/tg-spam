@@ -157,6 +157,21 @@ func execute(ctx context.Context, opts options) error {
 		return errors.New("telegram token and group are required")
 	}
 
+	// check if dynamic files location mounted in docker
+	if os.Getenv("TGSPAM_IN_DOCKER") == "1" {
+		log.Printf("[DEBUG] running in docker")
+		if _, err := os.Stat(opts.Files.DynamicDataPath); err != nil { // check if dynamic files dir noy present
+			log.Printf("[WARN] dynamic files dir %q is not mounted, changes will be lost on container restart",
+				opts.Files.DynamicDataPath)
+		} else {
+			// check if dynamic files dir is present but contains .not_mounted file
+			if _, err := os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err == nil {
+				log.Printf("[WARN] dynamic files dir %q is not mounted, changes will be lost on container restart",
+					opts.Files.DynamicDataPath)
+			}
+		}
+	}
+
 	// make samples and dynamic data dirs
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make samples dir, %w", err)
@@ -171,7 +186,7 @@ func execute(ctx context.Context, opts options) error {
 	dataFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
 	dataDB, err := storage.NewSqliteDB(dataFile)
 	if err != nil {
-		return fmt.Errorf("can't make data db, %w", err)
+		return fmt.Errorf("can't make data db file %s, %w", dataFile, err)
 	}
 	log.Printf("[DEBUG] data db: %s", dataFile)
 
