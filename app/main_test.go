@@ -242,3 +242,81 @@ func Test_activateServerOnly(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func Test_checkVolumeMount(t *testing.T) {
+	prepEnvAndFileSystem := func(opts *options, envValue string, dynamicDataPath string, notMountedExists bool) func() {
+		os.Setenv("TGSPAM_IN_DOCKER", envValue)
+
+		tempDir, _ := os.MkdirTemp("", "test")
+		if dynamicDataPath != "" {
+			os.MkdirAll(filepath.Join(tempDir, dynamicDataPath), os.ModePerm)
+		}
+
+		if notMountedExists {
+			os.WriteFile(filepath.Join(tempDir, dynamicDataPath, ".not_mounted"), []byte{}, 00644)
+		}
+
+		if dynamicDataPath == "" {
+			dynamicDataPath = "dynamic"
+		}
+		opts.Files.DynamicDataPath = filepath.Join(tempDir, dynamicDataPath)
+
+		return func() {
+			os.RemoveAll(tempDir)
+		}
+	}
+
+	tests := []struct {
+		name             string
+		envValue         string
+		dynamicDataPath  string
+		notMountedExists bool
+		expectedOk       bool
+	}{
+		{
+			name:            "not in docker",
+			envValue:        "0",
+			dynamicDataPath: "",
+			expectedOk:      true,
+		},
+		{
+			name:             "in Docker, path mounted, no .not_mounted",
+			envValue:         "1",
+			dynamicDataPath:  "dynamic",
+			notMountedExists: false,
+			expectedOk:       true,
+		},
+		{
+			name:             "in docker, .not_mounted exists",
+			envValue:         "1",
+			dynamicDataPath:  "dynamic",
+			notMountedExists: true,
+			expectedOk:       false,
+		},
+		{
+			name:             "not in docker, .not_mounted exists",
+			envValue:         "0",
+			dynamicDataPath:  "dynamic",
+			notMountedExists: true,
+			expectedOk:       true,
+		},
+		{
+			name:             "in docker, path not mounted",
+			envValue:         "1",
+			dynamicDataPath:  "",
+			notMountedExists: false,
+			expectedOk:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := options{}
+			cleanup := prepEnvAndFileSystem(&opts, tt.envValue, tt.dynamicDataPath, tt.notMountedExists)
+			defer cleanup()
+
+			ok := checkVolumeMount(opts)
+			assert.Equal(t, tt.expectedOk, ok)
+		})
+	}
+}

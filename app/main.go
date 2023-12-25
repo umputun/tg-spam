@@ -160,20 +160,7 @@ func execute(ctx context.Context, opts options) error {
 		return errors.New("telegram token and group are required")
 	}
 
-	// check if dynamic files location mounted in docker
-	if os.Getenv("TGSPAM_IN_DOCKER") == "1" {
-		log.Printf("[DEBUG] running in docker")
-		if _, err := os.Stat(opts.Files.DynamicDataPath); err != nil { // check if dynamic files dir noy present
-			log.Printf("[WARN] dynamic files dir %q is not mounted, changes will be lost on container restart",
-				opts.Files.DynamicDataPath)
-		} else {
-			// check if dynamic files dir is present but contains .not_mounted file
-			if _, err := os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err == nil {
-				log.Printf("[WARN] dynamic files dir %q is not mounted, changes will be lost on container restart",
-					opts.Files.DynamicDataPath)
-			}
-		}
-	}
+	checkVolumeMount(opts)
 
 	// make samples and dynamic data dirs
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
@@ -278,6 +265,33 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
+}
+
+// checkVolumeMount checks if dynamic files location mounted in docker and shows warning if not
+// returns true if running not in docker or dynamic files dir mounted
+func checkVolumeMount(opts options) (ok bool) {
+	if os.Getenv("TGSPAM_IN_DOCKER") != "1" {
+		return true
+	}
+	log.Printf("[DEBUG] running in docker")
+	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart", opts.Files.DynamicDataPath)
+
+	// check if dynamic files dir noy present
+	info, err := os.Stat(opts.Files.DynamicDataPath)
+	if err != nil {
+		log.Printf("[WARN] %s", warnMsg)
+		// no dynamic files dir, no need to check further
+		return false
+	}
+	log.Printf("%+v", info)
+
+	// check if dynamic files dir is present but contains .not_mounted file
+	if _, err := os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err == nil {
+		log.Printf("[WARN] %s", warnMsg)
+		return false
+	}
+
+	return true
 }
 
 func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter) (err error) {
