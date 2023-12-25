@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -73,6 +74,9 @@ func (l *Locator) Close() error {
 
 // AddMessage adds messages to the locator and also cleans up old messages.
 func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, msgID int) error {
+	hash := l.MsgHash(msg)
+	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
+		msg, hash, userID, userName, chatID, msgID)
 	_, err := l.db.NamedExec(`INSERT OR REPLACE INTO messages (hash, time, chat_id, user_id, user_name, msg_id) 
         VALUES (:hash, :time, :chat_id, :user_id, :user_name, :msg_id)`,
 		struct {
@@ -86,7 +90,7 @@ func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, 
 				UserName: userName,
 				MsgID:    msgID,
 			},
-			Hash: l.MsgHash(msg),
+			Hash: hash,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to insert message: %w", err)
@@ -117,8 +121,10 @@ func (l *Locator) AddSpam(userID int64, checks []lib.CheckResult) error {
 // this allows to match messages from admin chat (only text available) to the original message
 func (l *Locator) Message(msg string) (MsgMeta, bool) {
 	var meta MsgMeta
-	err := l.db.Get(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, l.MsgHash(msg))
+	hash := l.MsgHash(msg)
+	err := l.db.Get(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, hash)
 	if err != nil {
+		log.Printf("[DEBUG] failed to find message by hash %q: %v", hash, err)
 		return MsgMeta{}, false
 	}
 	return meta, true
