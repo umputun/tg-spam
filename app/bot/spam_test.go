@@ -321,11 +321,29 @@ func TestSpamFilter_Update(t *testing.T) {
 	sf := NewSpamFilter(ctx, mockDetector, SpamConfig{})
 
 	t.Run("good update", func(t *testing.T) {
+		mockDetector.ResetCalls()
 		err := sf.UpdateSpam("spam")
 		assert.NoError(t, err)
+		assert.Equal(t, 1, len(mockDetector.UpdateSpamCalls()))
+		assert.Equal(t, "spam", mockDetector.UpdateSpamCalls()[0].Msg)
 
 		err = sf.UpdateHam("ham")
 		assert.NoError(t, err)
+		assert.Equal(t, 1, len(mockDetector.UpdateHamCalls()))
+		assert.Equal(t, "ham", mockDetector.UpdateHamCalls()[0].Msg)
+	})
+
+	t.Run("multi-line update", func(t *testing.T) {
+		mockDetector.ResetCalls()
+		err := sf.UpdateSpam("spam\nblah")
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(mockDetector.UpdateSpamCalls()))
+		assert.Equal(t, "spam blah", mockDetector.UpdateSpamCalls()[0].Msg)
+
+		err = sf.UpdateHam("ham\nblah")
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(mockDetector.UpdateHamCalls()))
+		assert.Equal(t, "ham blah", mockDetector.UpdateHamCalls()[0].Msg)
 	})
 
 	t.Run("bad update", func(t *testing.T) {

@@ -53,14 +53,26 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 	}{
 		{
 			name:     "with spam detection results",
-			input:    "Line 1\nLine 2\nspam detection results:\nLine 4",
-			expected: "Line 2",
+			input:    "Line 1\n\nLine 2\nLine3\n\nspam detection results:\nLine 4",
+			expected: "Line 2\nLine3",
 			err:      false,
 		},
 		{
 			name:     "without spam detection results",
-			input:    "Line 1\nLine 2\nLine 3",
-			expected: "Line 2 Line 3",
+			input:    "Line 1\n\nLine 2\nLine 3",
+			expected: "Line 2\nLine 3",
+			err:      false,
+		},
+		{
+			name:     "without spam detection results, single line",
+			input:    "Line 1\n\nLine 2",
+			expected: "Line 2",
+			err:      false,
+		},
+		{
+			name:     "with spam detection results, single line",
+			input:    "Line 1\n\nLine 2\n\nspam detection results:\nLine 4",
+			expected: "Line 2",
 			err:      false,
 		},
 		{
