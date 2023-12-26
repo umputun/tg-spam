@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,7 +99,7 @@ func TestServer_RunAuth(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
-	t.Run("check forbidden, wrong basic auth", func(t *testing.T) {
+	t.Run("wrong basic auth", func(t *testing.T) {
 		reqBody, err := json.Marshal(map[string]string{
 			"msg":     "spam example",
 			"user_id": "user123",
@@ -110,7 +112,7 @@ func TestServer_RunAuth(t *testing.T) {
 		assert.NoError(t, err)
 		t.Log(resp)
 		defer resp.Body.Close()
-		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 	cancel()
 	<-done
@@ -458,4 +460,53 @@ func TestGenerateRandomPassword(t *testing.T) {
 	assert.Len(t, res2, 32)
 
 	assert.NotEqual(t, res1, res2)
+}
+
+func TestServer_checkHandler_HTMX(t *testing.T) {
+	mockDetector := &mocks.DetectorMock{
+		CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
+			return msg == "spam example", []lib.CheckResult{{Spam: msg == "spam example", Name: "test", Details: "result details"}}
+		},
+	}
+
+	server := NewServer(Config{
+		SpamFilter: mockDetector,
+		Version:    "1.0",
+	})
+
+	t.Run("HTMX request", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("msg", "spam example")
+		form.Set("user_id", "user123")
+		req, err := http.NewRequest("POST", "/check", strings.NewReader(form.Encode()))
+		require.NoError(t, err)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.checkHandler)
+
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
+
+		// Check if the response contains expected HTML snippet
+		assert.Contains(t, rr.Body.String(), "strong>Result:</strong> Spam detected", "response should contain spam result")
+		assert.Contains(t, rr.Body.String(), "result details")
+	})
+}
+
+func TestServer_serveTemplateHandler(t *testing.T) {
+	server := NewServer(Config{Version: "1.0"})
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.serveTemplateHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+	body := rr.Body.String()
+	assert.Contains(t, body, "<title>TG-Spam Checker</title>", "template should contain the correct title")
+	assert.Contains(t, body, "Version: 1.0", "template should contain the correct version")
+	assert.Contains(t, body, "<form", "template should contain a form")
 }
