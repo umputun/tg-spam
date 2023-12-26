@@ -38,7 +38,7 @@ const (
 // ReportBan a ban message to admin chat with a button to unban the user
 func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
-	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
+	text := a.Normalize(msg.Text)
 	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
 	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", msg.From, a.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
@@ -245,7 +245,8 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		// get details from locator about msg to delete and user to ban
 		msgData, found := a.locator.Message(cleanMsg)
 		if !found {
-			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator by hash %q", cleanMsg, a.locator.MsgHash(cleanMsg)))
+			errs = multierror.Append(errs, fmt.Errorf("failed to find message %q in locator by hash %q",
+				cleanMsg, a.locator.MsgHash(cleanMsg)))
 		}
 
 		msgFromSuper := found && msgData.UserName != "" && a.superUsers.IsSuper(msgData.UserName)
@@ -373,7 +374,15 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 	return nil
 }
 
-// getCleanMessage returns the original message without spam info and buttons and without newlines
+// getCleanMessage returns the original message without spam info and buttons
+// the messages in admin chat look like this:
+//
+//	permanently banned {6762723796 VladimirSokolov24 Владимир Соколов}
+//
+//	the original message is here
+//	another line of the original message
+//
+// spam detection results
 func (a *admin) getCleanMessage(msg string) (string, error) {
 	// the original message is from the second line, remove newlines and spaces
 	msgLines := strings.Split(msg, "\n")
@@ -384,15 +393,19 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 	spamInfoLine := len(msgLines)
 	for i, line := range msgLines {
 		if strings.HasPrefix(line, "spam detection results") {
-			spamInfoLine = i
+			spamInfoLine = i - 1
 			break
 		}
 	}
 
 	// Adjust the slice to include the line before spamInfoLine
-	cleanMsg := strings.Join(msgLines[1:spamInfoLine], " ")
-	cleanMsg = strings.TrimSpace(cleanMsg)
+	cleanMsg := strings.Join(msgLines[2:spamInfoLine], "\n")
 	return cleanMsg, nil
+}
+
+// Normalize returns the original message without EOL and with escaped markdown
+func (a *admin) Normalize(msg string) string {
+	return strings.ReplaceAll(escapeMarkDownV1Text(msg), "\n", " ")
 }
 
 // sendWithUnbanMarkup sends message to admin chat and add buttons to ui.
