@@ -1,0 +1,62 @@
+# example of a compose file with server enabled, logging turned on and samples on named volume
+services:
+  tg-spam:
+    image: umputun/tg-spam:latest # use :master tag for latest (unstable) version
+    hostname: tg-spam
+    restart: always
+    container_name: tg-spam
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      - TELEGRAM_TOKEN
+      - TELEGRAM_GROUP
+      - TZ=America/Chicago      # set timezone, default is UTC
+      - ADMIN_GROUP=-1234567890 # admin group id
+      - LOGGER_ENABLED=true     # enable logging
+      - LOGGER_FILE=/srv/logs/tg-spam.log
+      - LOGGER_MAX_SIZE=5M      # max log file size in megabytes before rotation
+      - NO_SPAM_REPLY=true      # do not reply to spam messages in the public group
+      - SERVER_ENABLED=true     # enable server, default port is 8080
+    volumes:
+      - tg-data:/srv/data       # mount volume with samples and dynamic files
+      - ./logs:/srv/logs        # mount logs location to host's ./log directory
+    command: --super=user1 --super=user2 # list of super-users
+    labels:                     # labels for reproxy, runs on /tg-spam path
+        reproxy.port: "8080"    # port of the web server
+        reproxy.ping: '/ping'   # health check path
+        # uncomment to run on root path
+        # reproxy.route: '^/(.*)'
+        # reproxy.dest: '/$$1'
+
+  # reproxy is a reverse proxy to run multiple services on the same port, see https://reproxy.io for details
+  # setup with automatic SSL certificates from Let's Encrypt
+  reproxy:
+    image: umputun/reproxy:latest
+    hostname: reproxy
+    container_name: reproxy
+    restart: always
+    logging: *default_logging
+    ports:
+      - "80:8080"
+      - "443:8443"
+    environment:
+      - TZ=America/Chicago
+      - DOCKER_ENABLED=true
+      - SSL_TYPE=auto
+      - SSL_ACME_EMAIL=user@mail.com
+      - SSL_ACME_FQDN=example.com
+      - SSL_ACME_LOCATION=/srv/ssl
+      - LOGGER_ENABLED=true
+      - LOGGER_FILE=/srv/logs/access.log
+      - LOGGER_STDOUT=true
+      - DEBUG=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./var/ssl:/srv/ssl
+      - ./logs:/srv/logs
+
+volumes:
+  tg-data:

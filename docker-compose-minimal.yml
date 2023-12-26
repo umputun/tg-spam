@@ -1,4 +1,4 @@
-# example of minimal compose file to run tg-spam
+# example of a minimal compose file to run tg-spam
 services:
   tg-spam:
     image: umputun/tg-spam:master # use :latest tag for production
@@ -13,3 +13,6 @@ services:
     environment:
       - TELEGRAM_TOKEN
       - TELEGRAM_GROUP
+      - FILES_DYNAMIC=/srv/dynamic
+    volumes:
+      - var/tg-spam:/srv/dynamic # mount volume to store dynamic files
