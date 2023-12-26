@@ -130,7 +130,12 @@ func main() {
 		os.Exit(2)
 	}
 
-	setupLog(opts.Dbg, opts.Telegram.Token, opts.OpenAI.Token)
+	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
+	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" { // auto passwd should not be masked as we print it
+		masked = append(masked, opts.Server.AuthPasswd)
+	}
+	setupLog(opts.Dbg, masked...)
+
 	log.Printf("[DEBUG] options: %+v", opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
