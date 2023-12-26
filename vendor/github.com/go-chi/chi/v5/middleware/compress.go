@@ -45,7 +45,6 @@ func Compress(level int, types ...string) func(next http.Handler) http.Handler {
 
 // Compressor represents a set of encoding configurations.
 type Compressor struct {
-	level int // The compression level.
 	// The mapping of encoder names to encoder functions.
 	encoders map[string]EncoderFunc
 	// The mapping of pooled encoders to pools.
@@ -55,6 +54,7 @@ type Compressor struct {
 	allowedWildcards map[string]struct{}
 	// The list of encoders in order of decreasing precedence.
 	encodingPrecedence []string
+	level              int // The compression level.
 }
 
 // NewCompressor creates a new Compressor that will handle encoding responses.
@@ -115,7 +115,7 @@ func NewCompressor(level int, types ...string) *Compressor {
 	// https://web.archive.org/web/20120321182910/http://www.vervestudios.co/projects/compression-tests/results
 	//
 	// That's why we prefer gzip over deflate. It's just more reliable
-	// and not significantly slower than gzip.
+	// and not significantly slower than deflate.
 	c.SetEncoder("deflate", encoderDeflate)
 
 	// TODO: Exception for old MSIE browsers that can't handle non-HTML?
@@ -135,16 +135,16 @@ func NewCompressor(level int, types ...string) *Compressor {
 // The encoding should be a standardised identifier. See:
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding
 //
-// For example, add the Brotli algortithm:
+// For example, add the Brotli algorithm:
 //
-//  import brotli_enc "gopkg.in/kothar/brotli-go.v0/enc"
+//	import brotli_enc "gopkg.in/kothar/brotli-go.v0/enc"
 //
-//  compressor := middleware.NewCompressor(5, "text/html")
-//  compressor.SetEncoder("br", func(w http.ResponseWriter, level int) io.Writer {
-//    params := brotli_enc.NewBrotliParams()
-//    params.SetQuality(level)
-//    return brotli_enc.NewBrotliWriter(params, w)
-//  })
+//	compressor := middleware.NewCompressor(5, "text/html")
+//	compressor.SetEncoder("br", func(w io.Writer, level int) io.Writer {
+//		params := brotli_enc.NewBrotliParams()
+//		params.SetQuality(level)
+//		return brotli_enc.NewBrotliWriter(params, w)
+//	})
 func (c *Compressor) SetEncoder(encoding string, fn EncoderFunc) {
 	encoding = strings.ToLower(encoding)
 	if encoding == "" {
@@ -156,12 +156,8 @@ func (c *Compressor) SetEncoder(encoding string, fn EncoderFunc) {
 
 	// If we are adding a new encoder that is already registered, we have to
 	// clear that one out first.
-	if _, ok := c.pooledEncoders[encoding]; ok {
-		delete(c.pooledEncoders, encoding)
-	}
-	if _, ok := c.encoders[encoding]; ok {
-		delete(c.encoders, encoding)
-	}
+	delete(c.pooledEncoders, encoding)
+	delete(c.encoders, encoding)
 
 	// If the encoder supports Resetting (IoReseterWriter), then it can be pooled.
 	encoder := fn(ioutil.Discard, c.level)
@@ -201,7 +197,7 @@ func (c *Compressor) Handler(next http.Handler) http.Handler {
 			contentTypes:     c.allowedTypes,
 			contentWildcards: c.allowedWildcards,
 			encoding:         encoding,
-			compressable:     false, // determined in post-handler
+			compressible:     false, // determined in post-handler
 		}
 		if encoder != nil {
 			cw.w = encoder
@@ -271,21 +267,21 @@ type compressResponseWriter struct {
 	// The streaming encoder writer to be used if there is one. Otherwise,
 	// this is just the normal writer.
 	w                io.Writer
-	encoding         string
 	contentTypes     map[string]struct{}
 	contentWildcards map[string]struct{}
+	encoding         string
 	wroteHeader      bool
-	compressable     bool
+	compressible     bool
 }
 
-func (cw *compressResponseWriter) isCompressable() bool {
+func (cw *compressResponseWriter) isCompressible() bool {
 	// Parse the first part of the Content-Type response header.
 	contentType := cw.Header().Get("Content-Type")
 	if idx := strings.Index(contentType, ";"); idx >= 0 {
 		contentType = contentType[0:idx]
 	}
 
-	// Is the content type compressable?
+	// Is the content type compressible?
 	if _, ok := cw.contentTypes[contentType]; ok {
 		return true
 	}
@@ -310,15 +306,15 @@ func (cw *compressResponseWriter) WriteHeader(code int) {
 		return
 	}
 
-	if !cw.isCompressable() {
-		cw.compressable = false
+	if !cw.isCompressible() {
+		cw.compressible = false
 		return
 	}
 
 	if cw.encoding != "" {
-		cw.compressable = true
+		cw.compressible = true
 		cw.Header().Set("Content-Encoding", cw.encoding)
-		cw.Header().Set("Vary", "Accept-Encoding")
+		cw.Header().Add("Vary", "Accept-Encoding")
 
 		// The content-length after compression is unknown
 		cw.Header().Del("Content-Length")
@@ -334,11 +330,10 @@ func (cw *compressResponseWriter) Write(p []byte) (int, error) {
 }
 
 func (cw *compressResponseWriter) writer() io.Writer {
-	if cw.compressable {
+	if cw.compressible {
 		return cw.w
-	} else {
-		return cw.ResponseWriter
 	}
+	return cw.ResponseWriter
 }
 
 type compressFlusher interface {
@@ -380,6 +375,10 @@ func (cw *compressResponseWriter) Close() error {
 		return c.Close()
 	}
 	return errors.New("chi/middleware: io.WriteCloser is unavailable on the writer")
+}
+
+func (cw *compressResponseWriter) Unwrap() http.ResponseWriter {
+	return cw.ResponseWriter
 }
 
 func encoderGzip(w io.Writer, level int) io.Writer {

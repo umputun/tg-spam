@@ -24,10 +24,10 @@ github.com/fatih/color
 # github.com/fsnotify/fsnotify v1.7.0
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
-# github.com/go-chi/chi v1.5.5
-## explicit; go 1.16
-github.com/go-chi/chi
-github.com/go-chi/chi/middleware
+# github.com/go-chi/chi/v5 v5.0.11
+## explicit; go 1.14
+github.com/go-chi/chi/v5
+github.com/go-chi/chi/v5/middleware
 # github.com/go-pkgz/expirable-cache v1.0.0
 ## explicit; go 1.14
 github.com/go-pkgz/expirable-cache

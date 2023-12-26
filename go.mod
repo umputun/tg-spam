@@ -7,7 +7,7 @@ require (
 	github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
 	github.com/fatih/color v1.16.0
 	github.com/fsnotify/fsnotify v1.7.0
-	github.com/go-chi/chi v1.5.5
+	github.com/go-chi/chi/v5 v5.0.11
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.18.2
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
