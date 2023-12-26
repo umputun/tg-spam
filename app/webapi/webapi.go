@@ -157,7 +157,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
                 <strong>Result:</strong> {{if .Spam}}Spam detected{{else}}No spam detected{{end}}
             </div>
             {{range .Checks}}
-                <div class="mb-2">
+                <div class="mb-2 {{if .Spam}}text-danger{{else}}text-success{{end}}">
                     <strong>{{.Name}}:</strong> {{.Details}}
                 </div>
             {{end}}
