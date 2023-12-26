@@ -21,6 +21,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -143,6 +144,7 @@ func main() {
 		cancel()
 	}()
 
+	// expand, make absolute paths
 	opts.Files.DynamicDataPath = expandPath(opts.Files.DynamicDataPath)
 	opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
 
@@ -161,7 +163,7 @@ func execute(ctx context.Context, opts options) error {
 		return errors.New("telegram token and group are required")
 	}
 
-	checkVolumeMount(opts)
+	checkVolumeMount(opts) // show warning if dynamic files dir not mounted
 
 	// make samples and dynamic data dirs
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
@@ -181,22 +183,17 @@ func execute(ctx context.Context, opts options) error {
 	}
 	log.Printf("[DEBUG] data db: %s", dataFile)
 
-	// load approved users
-	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
+	// make store and load approved users
+	approvedUsersStore, auErr := loadApprovedUsers(dataDB, detector)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
 	defer func() {
+		// auto-save approved users on exit
 		if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
-			log.Printf("[WARN] can't save approved users, %v", serr)
+			log.Printf("[WARN] can't save approved users on exit: %v", serr)
 		}
 	}()
-	count, lerr := detector.LoadApprovedUsers(approvedUsersStore)
-	if lerr != nil {
-		log.Printf("[WARN] can't load approved users, %v", lerr)
-	} else {
-		log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
-	}
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, detector)
@@ -210,9 +207,9 @@ func execute(ctx context.Context, opts options) error {
 		if srvErr := activateServer(ctx, opts, spamBot); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
+		// if no telegram token and group set, just run the server
 		if opts.Telegram.Token == "" || opts.Telegram.Group == "" {
-			log.Printf("[WARN] no telegram token and group, web server only mode")
-			// if no telegram token and group set, just run the server
+			log.Printf("[WARN] no telegram token and group set, web server only mode")
 			<-ctx.Done()
 			return nil
 		}
@@ -293,7 +290,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	// if .not_mounted file present, it can be mounted anyway with docker named volumes
 	output, err := exec.Command("mount").Output()
 	if err != nil {
-		log.Printf("[WARN] %s, can't check mount, %v", warnMsg, err)
+		log.Printf("[WARN] %s, can't check mount: %v", warnMsg, err)
 		return true
 	}
 	// check if the output contains the specified directory
@@ -407,6 +404,69 @@ func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bo
 	return spamBot, nil
 }
 
+// loadApprovedUsers makes the store and loads approved users from db
+func loadApprovedUsers(dataDB *sqlx.DB, detector *lib.Detector) (*storage.ApprovedUsers, error) {
+	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
+	if auErr != nil {
+		return nil, fmt.Errorf("can't make approved users store, %w", auErr)
+	}
+	count, err := detector.LoadApprovedUsers(approvedUsersStore)
+	if err == nil {
+		log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
+		return approvedUsersStore, nil
+	}
+	return nil, fmt.Errorf("can't load approved users, %w", err)
+}
+
+// autoSaveApprovedUsers saves approved users to db every interval
+// those users collected by detector and kept in memory
+func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *storage.ApprovedUsers, interval time.Duration) {
+	log.Printf("[DEBUG] auto-save approved users every %v", interval)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	lastCount := 0
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[DEBUG] auto-save approved users stopped")
+			return
+		case <-ticker.C:
+			ids := detector.ApprovedUsers()
+			if len(ids) == lastCount {
+				continue
+			}
+			if err := store.Store(ids); err != nil {
+				log.Printf("[WARN] can't save approved users, %v", err)
+				continue
+			}
+			lastCount = len(ids)
+		}
+	}
+}
+
+// expandPath expands ~ to home dir and makes the absolute path
+func expandPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if path[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, path[1:])
+	}
+	ep, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return ep
+}
+
+type nopWriteCloser struct{ io.Writer }
+
+func (n nopWriteCloser) Close() error { return nil }
+
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
 func makeSpamLogger(wr io.Writer) events.SpamLogger {
@@ -477,52 +537,6 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 		LocalTime:  true,
 	}, nil
 }
-
-func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *storage.ApprovedUsers, interval time.Duration) {
-	log.Printf("[DEBUG] auto-save approved users every %v", interval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	lastCount := 0
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[DEBUG] auto-save approved users stopped")
-			return
-		case <-ticker.C:
-			ids := detector.ApprovedUsers()
-			if len(ids) == lastCount {
-				continue
-			}
-			if err := store.Store(ids); err != nil {
-				log.Printf("[WARN] can't save approved users, %v", err)
-				continue
-			}
-			lastCount = len(ids)
-		}
-	}
-}
-
-func expandPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	if path[0] == '~' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		return filepath.Join(home, path[1:])
-	}
-	ep, err := filepath.Abs(path)
-	if err != nil {
-		return path
-	}
-	return ep
-}
-
-type nopWriteCloser struct{ io.Writer }
-
-func (n nopWriteCloser) Close() error { return nil }
 
 func setupLog(dbg bool, secrets ...string) {
 	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
