@@ -51,6 +51,10 @@ func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
 		return nil, fmt.Errorf("failed to create messages table: %w", err)
 	}
 
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)`); err != nil {
+		return nil, fmt.Errorf("failed to create index on user_id: %w", err)
+	}
+
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS spam (
 		user_id INTEGER PRIMARY KEY,
 		time TIMESTAMP,
@@ -128,6 +132,17 @@ func (l *Locator) Message(msg string) (MsgMeta, bool) {
 		return MsgMeta{}, false
 	}
 	return meta, true
+}
+
+// UserNameByID returns username by user id
+func (l *Locator) UserNameByID(userID int64) string {
+	var userName string
+	err := l.db.Get(&userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
+	if err != nil {
+		log.Printf("[DEBUG] failed to find user name by id %d: %v", userID, err)
+		return ""
+	}
+	return userName
 }
 
 // Spam returns message SpamData for given msg

@@ -46,6 +46,12 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 	retrievedMsg, found := locator.Message(msg)
 	require.True(t, found)
 	assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsg)
+
+	res := locator.UserNameByID(userID)
+	assert.Equal(t, userName, res)
+
+	res = locator.UserNameByID(123456)
+	assert.Equal(t, "", res)
 }
 
 func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
