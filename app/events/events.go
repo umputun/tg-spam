@@ -47,6 +47,7 @@ type Locator interface {
 	Message(msg string) (storage.MsgMeta, bool)
 	Spam(userID int64) (storage.SpamData, bool)
 	MsgHash(msg string) string
+	UserNameByID(userID int64) string
 }
 
 // Bot is an interface for bot events.

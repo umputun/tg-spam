@@ -168,8 +168,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	normalizedMsg := l.adminHandler.Normalize(update.Message.Text) // without \n and markdown, same as ReportBan uses
-	if err := l.Locator.AddMessage(normalizedMsg, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+	if err := l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 	resp := l.Bot.OnMessage(*msg)

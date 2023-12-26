@@ -496,7 +496,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777",
+			Data: "777:999",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -570,7 +570,7 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777",
+			Data: "777:999",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -710,7 +710,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999", // + means unban declined
+			Data: "+999:987654", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -782,7 +782,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999", // + means unban declined
+			Data: "+999:987654", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -805,8 +805,11 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
 	assert.Equal(t, 0, len(kb), "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
-	assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+	require.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(999), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).UserID, "user banned")
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).ChatID, "chat id")
+	assert.Equal(t, 987654, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID, "message deleted")
+
 	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
 	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
@@ -849,7 +852,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "!999", // ! means we show info
+			Data: "!999:987654", // ! means we show info
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},

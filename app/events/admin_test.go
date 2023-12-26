@@ -95,3 +95,37 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmin_parseCallbackData(t *testing.T) {
+	var tests = []struct {
+		name       string
+		data       string
+		wantUserID int64
+		wantMsgID  int
+		wantErr    bool
+	}{
+		{"Valid data", "12345:678", 12345, 678, false},
+		{"Data too short", "12", 0, 0, true},
+		{"No colon separator", "12345678", 0, 0, true},
+		{"Invalid userID", "abc:678", 0, 0, true},
+		{"Invalid msgID", "12345:xyz", 0, 0, true},
+		{"wrong prefix with valid data", "c12345:678", 0, 0, true},
+		{"valid prefix+ with valid data", "+12345:678", 12345, 678, false},
+		{"valid prefix! with valid data", "!12345:678", 12345, 678, false},
+		{"valid prefix? with valid data", "?12345:678", 12345, 678, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := admin{}
+			gotUserID, gotMsgID, err := a.parseCallbackData(tt.data)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantUserID, gotUserID)
+				assert.Equal(t, tt.wantMsgID, gotMsgID)
+			}
+		})
+	}
+}
