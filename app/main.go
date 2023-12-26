@@ -321,7 +321,8 @@ func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilte
 
 	srv := webapi.Server{Config: webapi.Config{
 		ListenAddr: opts.Server.ListenAddr,
-		SpamFilter: spamFilter.Detector,
+		Detector:   spamFilter.Detector,
+		SpamFilter: spamFilter,
 		AuthPasswd: authPassswd,
 		Version:    revision,
 		Dbg:        opts.Dbg,

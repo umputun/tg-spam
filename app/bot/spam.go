@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -257,4 +258,37 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 		lr.SpamSamples, lr.HamSamples, lr.ExcludedTokens, ls.StopWords)
 
 	return nil
+}
+
+// DynamicSamples returns dynamic spam and ham samples. both are optional
+func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
+	errs := new(multierror.Error)
+
+	if spamDynamicReader, err := os.Open(s.params.SpamDynamicFile); err != nil {
+		spam = []string{}
+	} else {
+		defer spamDynamicReader.Close()
+		scanner := bufio.NewScanner(spamDynamicReader)
+		for scanner.Scan() {
+			spam = append(spam, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to read spam dynamic file: %w", err))
+		}
+	}
+
+	if hamDynamicReader, err := os.Open(s.params.HamDynamicFile); err != nil {
+		ham = []string{}
+	} else {
+		defer hamDynamicReader.Close()
+		scanner := bufio.NewScanner(hamDynamicReader)
+		for scanner.Scan() {
+			ham = append(ham, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to read ham dynamic file: %w", err))
+		}
+	}
+
+	return spam, ham, errs.ErrorOrNil()
 }

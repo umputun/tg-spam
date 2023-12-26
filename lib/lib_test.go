@@ -11,7 +11,7 @@ import (
 
 // ExampleNewDetector demonstrates how to initialize a new Detector and use it to check a message for spam.
 func ExampleNewDetector() {
-	// Initialize a new SpamFilter with a Config
+	// Initialize a new Detector with a Config
 	detector := lib.NewDetector(lib.Config{
 		MaxAllowedEmoji:  5,
 		MinMsgLen:        10,

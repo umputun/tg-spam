@@ -8,11 +8,11 @@ import (
 	"sync"
 )
 
-// DetectorMock is a mock implementation of webapi.SpamFilter.
+// DetectorMock is a mock implementation of webapi.Detector.
 //
 //	func TestSomethingThatUsesDetector(t *testing.T) {
 //
-//		// make and configure a mocked webapi.SpamFilter
+//		// make and configure a mocked webapi.Detector
 //		mockedDetector := &DetectorMock{
 //			AddApprovedUsersFunc: func(ids ...string)  {
 //				panic("mock out the AddApprovedUsers method")
@@ -34,7 +34,7 @@ import (
 //			},
 //		}
 //
-//		// use mockedDetector in code that requires webapi.SpamFilter
+//		// use mockedDetector in code that requires webapi.Detector
 //		// and then make assertions.
 //
 //	}
@@ -101,7 +101,7 @@ type DetectorMock struct {
 // AddApprovedUsers calls AddApprovedUsersFunc.
 func (mock *DetectorMock) AddApprovedUsers(ids ...string) {
 	if mock.AddApprovedUsersFunc == nil {
-		panic("DetectorMock.AddApprovedUsersFunc: method is nil but SpamFilter.AddApprovedUsers was just called")
+		panic("DetectorMock.AddApprovedUsersFunc: method is nil but Detector.AddApprovedUsers was just called")
 	}
 	callInfo := struct {
 		Ids []string
@@ -140,7 +140,7 @@ func (mock *DetectorMock) ResetAddApprovedUsersCalls() {
 // ApprovedUsers calls ApprovedUsersFunc.
 func (mock *DetectorMock) ApprovedUsers() []string {
 	if mock.ApprovedUsersFunc == nil {
-		panic("DetectorMock.ApprovedUsersFunc: method is nil but SpamFilter.ApprovedUsers was just called")
+		panic("DetectorMock.ApprovedUsersFunc: method is nil but Detector.ApprovedUsers was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -174,7 +174,7 @@ func (mock *DetectorMock) ResetApprovedUsersCalls() {
 // Check calls CheckFunc.
 func (mock *DetectorMock) Check(msg string, userID string) (bool, []lib.CheckResult) {
 	if mock.CheckFunc == nil {
-		panic("DetectorMock.CheckFunc: method is nil but SpamFilter.Check was just called")
+		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
 	}
 	callInfo := struct {
 		Msg    string
@@ -217,7 +217,7 @@ func (mock *DetectorMock) ResetCheckCalls() {
 // RemoveApprovedUsers calls RemoveApprovedUsersFunc.
 func (mock *DetectorMock) RemoveApprovedUsers(ids ...string) {
 	if mock.RemoveApprovedUsersFunc == nil {
-		panic("DetectorMock.RemoveApprovedUsersFunc: method is nil but SpamFilter.RemoveApprovedUsers was just called")
+		panic("DetectorMock.RemoveApprovedUsersFunc: method is nil but Detector.RemoveApprovedUsers was just called")
 	}
 	callInfo := struct {
 		Ids []string
@@ -256,7 +256,7 @@ func (mock *DetectorMock) ResetRemoveApprovedUsersCalls() {
 // UpdateHam calls UpdateHamFunc.
 func (mock *DetectorMock) UpdateHam(msg string) error {
 	if mock.UpdateHamFunc == nil {
-		panic("DetectorMock.UpdateHamFunc: method is nil but SpamFilter.UpdateHam was just called")
+		panic("DetectorMock.UpdateHamFunc: method is nil but Detector.UpdateHam was just called")
 	}
 	callInfo := struct {
 		Msg string
@@ -295,7 +295,7 @@ func (mock *DetectorMock) ResetUpdateHamCalls() {
 // UpdateSpam calls UpdateSpamFunc.
 func (mock *DetectorMock) UpdateSpam(msg string) error {
 	if mock.UpdateSpamFunc == nil {
-		panic("DetectorMock.UpdateSpamFunc: method is nil but SpamFilter.UpdateSpam was just called")
+		panic("DetectorMock.UpdateSpamFunc: method is nil but Detector.UpdateSpam was just called")
 	}
 	callInfo := struct {
 		Msg string

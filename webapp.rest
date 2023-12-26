@@ -45,3 +45,11 @@ POST http://localhost:8080/update/ham
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
 {"user_id": "123456", "msg": "ham sample"}
+
+### get all dynamic samples
+GET http://localhost:8080/samples
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+### reload dynamic samples
+PUT http://localhost:8080/samples
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=

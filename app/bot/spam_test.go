@@ -355,7 +355,7 @@ func TestSpamFilter_Update(t *testing.T) {
 	})
 }
 
-func TestAddApprovedUsers(t *testing.T) {
+func TestSpamFilter_AddApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{AddApprovedUsersFunc: func(ids ...string) {}}
 
 	t.Run("add single approved user", func(t *testing.T) {
@@ -383,7 +383,7 @@ func TestAddApprovedUsers(t *testing.T) {
 	})
 }
 
-func TestRemoveApprovedUsers(t *testing.T) {
+func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{RemoveApprovedUsersFunc: func(ids ...string) {}}
 
 	t.Run("remove single approved user", func(t *testing.T) {
@@ -408,5 +408,53 @@ func TestRemoveApprovedUsers(t *testing.T) {
 		sf.RemoveApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+	})
+}
+
+func TestSpamFilter_DynamicSamples(t *testing.T) {
+	// Setup temporary files for spam and ham dynamic samples
+	spamFile, err := os.CreateTemp("", "spam_dynamic")
+	require.NoError(t, err)
+	defer os.Remove(spamFile.Name())
+
+	hamFile, err := os.CreateTemp("", "ham_dynamic")
+	require.NoError(t, err)
+	defer os.Remove(hamFile.Name())
+
+	// Write sample data to the files
+	_, err = spamFile.WriteString("spam1\nspam2\n")
+	require.NoError(t, err)
+	_, err = hamFile.WriteString("ham1\nham2\n")
+	require.NoError(t, err)
+
+	// Ensure files are closed before reading in tests
+	spamFile.Close()
+	hamFile.Close()
+
+	// Initialize SpamFilter with file paths
+	sf := NewSpamFilter(context.Background(), &mocks.DetectorMock{}, SpamConfig{
+		SpamDynamicFile: spamFile.Name(),
+		HamDynamicFile:  hamFile.Name(),
+	})
+
+	t.Run("successful read", func(t *testing.T) {
+		spam, ham, err := sf.DynamicSamples()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"spam1", "spam2"}, spam)
+		assert.Equal(t, []string{"ham1", "ham2"}, ham)
+	})
+
+	t.Run("spam file not found", func(t *testing.T) {
+		sf.params.SpamDynamicFile = "nonexistent_spam_file"
+		spam, _, err := sf.DynamicSamples()
+		assert.NoError(t, err)
+		assert.Empty(t, spam, "Spam slice should be empty when file is not found")
+	})
+
+	t.Run("ham file not found", func(t *testing.T) {
+		sf.params.HamDynamicFile = "nonexistent_ham_file"
+		_, ham, err := sf.DynamicSamples()
+		assert.NoError(t, err)
+		assert.Empty(t, ham, "Ham slice should be empty when file is not found")
 	})
 }
