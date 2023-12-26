@@ -4,10 +4,11 @@ package webapi
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"math/big"
 	"net/http"
@@ -25,6 +26,9 @@ import (
 )
 
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
+
+//go:embed templates
+var templateFS embed.FS
 
 // Server is a web API server.
 type Server struct {
@@ -66,13 +70,10 @@ func (s *Server) Run(ctx context.Context) error {
 
 	if s.AuthPasswd != "" {
 		log.Printf("[INFO] basic auth enabled for webapi server")
-		router.Use(rest.BasicAuth(func(user, passwd string) bool {
-			return subtle.ConstantTimeCompare([]byte(user), []byte("tg-spam")) == 1 &&
-				subtle.ConstantTimeCompare([]byte(passwd), []byte(s.AuthPasswd)) == 1
-		}))
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
+	router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
 
 	router = s.routes(router) // setup routes
 
@@ -94,18 +95,25 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) routes(router *chi.Mux) *chi.Mux {
-	router.Post("/check", s.checkHandler) // check a message for spam
+	// auth api routes
+	router.Group(func(authApi chi.Router) {
+		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
+		authApi.Post("/check", s.checkHandler) // check a message for spam
 
-	router.Route("/update", func(r chi.Router) { // update spam/ham samples
-		r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
-		r.Post("/ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
+		authApi.Route("/update", func(r chi.Router) { // update spam/ham samples
+			r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
+			r.Post("/ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
+		})
+
+		authApi.Route("/users", func(r chi.Router) { // manage approved users
+			r.Post("/", s.updateApprovedUsersHandler(s.SpamFilter.AddApprovedUsers))      // add user to the approved list
+			r.Delete("/", s.updateApprovedUsersHandler(s.SpamFilter.RemoveApprovedUsers)) // remove user from approved list
+			r.Get("/", s.getApprovedUsersHandler)                                         // get approved users
+		})
 	})
 
-	router.Route("/users", func(r chi.Router) { // manage approved users
-		r.Post("/", s.updateApprovedUsersHandler(s.SpamFilter.AddApprovedUsers))      // add user to the approved list
-		r.Delete("/", s.updateApprovedUsersHandler(s.SpamFilter.RemoveApprovedUsers)) // remove user from approved list
-		r.Get("/", s.getApprovedUsersHandler)                                         // get approved users
-	})
+	router.With(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))).
+		Get("/", s.serveTemplateHandler) // serve template for web UI
 	return router
 }
 
@@ -117,14 +125,57 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		UserID string `json:"user_id"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
-		return
+	type CheckResultDisplay struct {
+		Spam   bool
+		Checks []lib.CheckResult
+	}
+
+	if r.Header.Get("HX-Request") == "true" { // for hx-request
+		req.UserID = r.FormValue("user_id")
+		req.Msg = r.FormValue("msg")
+	}
+
+	if r.Header.Get("HX-Request") == "" { // for direct api request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			log.Printf("[WARN] can't decode request: %v", err)
+			return
+		}
 	}
 
 	spam, cr := s.SpamFilter.Check(req.Msg, req.UserID)
-	rest.RenderJSON(w, rest.JSON{"spam": spam, "checks": cr})
+	if r.Header.Get("HX-Request") == "true" {
+		resultDisplay := CheckResultDisplay{
+			Spam:   spam,
+			Checks: cr,
+		}
+
+		// Render the result as a partial HTML snippet
+		tmpl, err := template.New("result").Parse(`
+            <div class="alert {{if .Spam}}alert-danger{{else}}alert-success{{end}}">
+                <strong>Result:</strong> {{if .Spam}}Spam detected{{else}}No spam detected{{end}}
+            </div>
+            {{range .Checks}}
+                <div class="mb-2">
+                    <strong>{{.Name}}:</strong> {{.Details}}
+                </div>
+            {{end}}
+        `)
+		if err != nil {
+			log.Printf("[WARN] can't parse result template: %v", err)
+			http.Error(w, "Error processing result", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tmpl.Execute(w, resultDisplay); err != nil {
+			log.Printf("[WARN] can't execute result template: %v", err)
+			http.Error(w, "Error rendering result", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		rest.RenderJSON(w, rest.JSON{"spam": spam, "checks": cr})
+	}
 }
 
 // updateSampleHandler handles POST /update/spam and /update/ham requests.
@@ -172,6 +223,37 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ids ...string)) func(w ht
 // getApprovedUsersHandler handles GET /users request. It returns list of approved users.
 func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request) {
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.SpamFilter.ApprovedUsers()})
+}
+
+// serveTemplateHandler serves template for web UI.
+func (s *Server) serveTemplateHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.ParseFS(templateFS, "templates/spam_check.html")
+	if err != nil {
+		log.Printf("[WARN] can't load template: %v", err)
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+	tmplData := struct {
+		Version string
+	}{
+		Version: s.Version,
+	}
+	if err := tmpl.Execute(w, &tmplData); err != nil {
+		log.Printf("[WARN] can't execute template: %v", err)
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) authMiddleware(mw func(next http.Handler) http.Handler) func(next http.Handler) http.Handler {
+	if s.AuthPasswd == "" {
+		return func(next http.Handler) http.Handler {
+			return next
+		}
+	}
+	return func(next http.Handler) http.Handler {
+		return mw(next)
+	}
 }
 
 // GenerateRandomPassword generates a random password of a given length
