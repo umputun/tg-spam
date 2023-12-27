@@ -296,24 +296,42 @@ The bot can be run with a webapi server. This is useful for integration with oth
 
 By default, the server is protected by basic auth with user `tg-bot` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
 
-Note: it is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.
+It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
 **endpoints:**
 
 - `GET /ping` - returns `pong` if the server is running
+
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
   - `msg` - message text
   - `user_id` - user id
+
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - spam text
+
 - `POST /update/ham` - update ham samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - ham text
+
+- `POST /delete/spam` - delete spam samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - spam text
+
+- `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - ham text
+
 - `POST /users` - add user to the list of approved users. The body should be a json object with the following fields:
   - `user_ids` - array of user ids to add
+
 - `DELETE /users` - remove user from the list of approved users. The body should be a json object with the following fields:
   - `user_ids` - array of user ids to remove
+
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
   - `user_ids` - array of user ids
+
+- `GET /samples` - get the list of spam and ham samples. The response is a json object with the following fields:
+  - `spam` - array of spam samples
+  - `ham` - array of ham samples
+ 
+- `PUT /samples` - reload dynamic samples
 
 _for the real examples of http requests see [webapp.rest](https://github.com/umputun/tg-spam/blob/master/webapp.rest) file._
 

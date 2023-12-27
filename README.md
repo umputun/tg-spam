@@ -301,19 +301,37 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 **endpoints:**
 
 - `GET /ping` - returns `pong` if the server is running
+
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
   - `msg` - message text
   - `user_id` - user id
+
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - spam text
+
 - `POST /update/ham` - update ham samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - ham text
+
+- `POST /delete/spam` - delete spam samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - spam text
+
+- `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
+  - `msg` - ham text
+
 - `POST /users` - add user to the list of approved users. The body should be a json object with the following fields:
   - `user_ids` - array of user ids to add
+
 - `DELETE /users` - remove user from the list of approved users. The body should be a json object with the following fields:
   - `user_ids` - array of user ids to remove
+
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
   - `user_ids` - array of user ids
+
+- `GET /samples` - get the list of spam and ham samples. The response is a json object with the following fields:
+  - `spam` - array of spam samples
+  - `ham` - array of ham samples
+ 
+- `PUT /samples` - reload dynamic samples
 
 _for the real examples of http requests see [webapp.rest](https://github.com/umputun/tg-spam/blob/master/webapp.rest) file._
 
