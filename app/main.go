@@ -35,11 +35,10 @@ import (
 
 type options struct {
 	Telegram struct {
-		Token            string        `long:"token" env:"TOKEN" description:"telegram bot token"`
-		Group            string        `long:"group" env:"GROUP" description:"group name/id"`
-		Timeout          time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
-		IdleDuration     time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
-		PreserveUnbanned bool          `long:"preserve-unbanned" env:"PRESERVE_UNBANNED" description:"preserve user after unban"`
+		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
+		Group        string        `long:"group" env:"GROUP" description:"group name/id"`
+		Timeout      time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
+		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
 	AdminGroup string  `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
@@ -257,12 +256,11 @@ func execute(ctx context.Context, opts options) error {
 		Locator:      locator,
 		TrainingMode: opts.Training,
 		Dry:          opts.Dry,
-		KeepUser:     opts.Telegram.PreserveUnbanned,
 	}
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" dry: %v, training: %v, preserve-unbanned: %v}",
+		" dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry, tgListener.TrainingMode, tgListener.KeepUser)
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry, tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil {

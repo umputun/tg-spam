@@ -25,7 +25,6 @@ type admin struct {
 	primChatID   int64
 	adminChatID  int64
 	trainingMode bool
-	keepUser     bool
 	dry          bool
 }
 
@@ -272,7 +271,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
 		// https://core.telegram.org/bots/api#unbanchatmember
 		_, err = a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
-			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}, OnlyIfBanned: a.keepUser})
+			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}})
 		if err != nil {
 			return fmt.Errorf("failed to unban user %d: %w", userID, err)
 		}
