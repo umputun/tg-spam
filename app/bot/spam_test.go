@@ -490,7 +490,7 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		require.NoError(t, err)
 
 		// Write sample data to the files
-		_, err = spamFile.WriteString("spam1\nspam2\n")
+		_, err = spamFile.WriteString("spam1\nspam2\nspam3\nspam3\n")
 		require.NoError(t, err)
 		_, err = hamFile.WriteString("ham1\nham2\n")
 		require.NoError(t, err)
@@ -513,11 +513,25 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		sf, teardown := prep()
 		defer teardown()
 
-		err := sf.RemoveDynamicSpamSample("spam1")
+		count, err := sf.RemoveDynamicSpamSample("spam1")
 		require.NoError(t, err)
+		assert.Equal(t, 1, count)
 		spam, ham, err := sf.DynamicSamples()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"spam2"}, spam)
+		assert.Equal(t, []string{"spam2", "spam3", "spam3"}, spam)
+		assert.Equal(t, []string{"ham1", "ham2"}, ham)
+	})
+
+	t.Run("remove multi from spam", func(t *testing.T) {
+		sf, teardown := prep()
+		defer teardown()
+
+		count, err := sf.RemoveDynamicSpamSample("spam3")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+		spam, ham, err := sf.DynamicSamples()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"spam1", "spam2"}, spam)
 		assert.Equal(t, []string{"ham1", "ham2"}, ham)
 	})
 
@@ -525,11 +539,12 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		sf, teardown := prep()
 		defer teardown()
 
-		err := sf.RemoveDynamicHamSample("ham2")
+		count, err := sf.RemoveDynamicHamSample("ham2")
 		require.NoError(t, err)
+		assert.Equal(t, 1, count)
 		spam, ham, err := sf.DynamicSamples()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"spam1", "spam2"}, spam)
+		assert.Equal(t, []string{"spam1", "spam2", "spam3", "spam3"}, spam)
 		assert.Equal(t, []string{"ham1"}, ham)
 	})
 
@@ -537,11 +552,12 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		sf, teardown := prep()
 		defer teardown()
 
-		err := sf.RemoveDynamicHamSample("ham2222")
+		count, err := sf.RemoveDynamicHamSample("ham2222")
 		assert.ErrorContains(t, err, "failed to remove dynamic ham sample: ")
+		assert.Equal(t, 0, count)
 		spam, ham, err := sf.DynamicSamples()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"spam1", "spam2"}, spam)
+		assert.Equal(t, []string{"spam1", "spam2", "spam3", "spam3"}, spam)
 		assert.Equal(t, []string{"ham1", "ham2"}, ham)
 	})
 
