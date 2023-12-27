@@ -16,13 +16,13 @@
     <!-- Forms for Adding New Samples -->
     <div class="row mb-4">
         <div class="col-md-6">
-            <form hx-post="/update/spam" hx-target="#samples-list" hx-swap="innerHTML">
+            <form hx-post="/update/spam" hx-target="#samples-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
                 <textarea name="msg" class="form-control mb-2" placeholder="Enter spam sample"></textarea>
                 <button type="submit" class="btn btn-danger">Add Spam</button>
             </form>
         </div>
         <div class="col-md-6">
-            <form hx-post="/update/ham" hx-target="#samples-list" hx-swap="innerHTML">
+            <form hx-post="/update/ham" hx-target="#samples-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
                 <textarea name="msg" class="form-control mb-2" placeholder="Enter ham sample"></textarea>
                 <button type="submit" class="btn btn-success">Add Ham</button>
             </form>
@@ -34,17 +34,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
-<script>
-    // JavaScript for resetting form fields after submission
-    htmx.on("htmx:afterOnLoad", function(e) {
-        if (e.detail.elt.tagName === "FORM") {
-            const textarea = e.detail.elt.querySelector("[name='msg']");
-            if (textarea) {
-                textarea.value = ""; // Reset the textarea value
-            }
-        }
-    });
-</script>
 
 </body>
 </html>

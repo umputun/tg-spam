@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+
 <head>
     <title>Manage Users - TG-Spam</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -16,7 +16,7 @@
     <!-- Form for Adding a New Approved User -->
     <div class="row mb-4">
         <div class="col-md-12">
-            <form hx-post="/users/add" hx-target="#users-list" hx-swap="outerHTML" hx-error="#error-message">
+            <form hx-post="/users/add" hx-target="#users-list" hx-swap="outerHTML" hx-error="#error-message" hx-on::after-request="this.reset()">
                 <div class="input-group mb-3">
                     <input type="text" name="user_id" class="form-control me-2" placeholder="User ID">
                     <input type="text" name="user_name" class="form-control me-3" placeholder="User Name">
@@ -33,14 +33,5 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
-<script>
-    // JavaScript for resetting form fields after submission
-    htmx.on("htmx:afterOnLoad", function(e) {
-        if (e.detail.elt.tagName === "FORM") {
-            e.detail.elt.reset(); // Reset the form fields
-        }
-    });
-</script>
-
 </body>
 </html>
