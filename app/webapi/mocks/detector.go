@@ -26,12 +26,6 @@ import (
 //			RemoveApprovedUsersFunc: func(ids ...string)  {
 //				panic("mock out the RemoveApprovedUsers method")
 //			},
-//			UpdateHamFunc: func(msg string) error {
-//				panic("mock out the UpdateHam method")
-//			},
-//			UpdateSpamFunc: func(msg string) error {
-//				panic("mock out the UpdateSpam method")
-//			},
 //		}
 //
 //		// use mockedDetector in code that requires webapi.Detector
@@ -50,12 +44,6 @@ type DetectorMock struct {
 
 	// RemoveApprovedUsersFunc mocks the RemoveApprovedUsers method.
 	RemoveApprovedUsersFunc func(ids ...string)
-
-	// UpdateHamFunc mocks the UpdateHam method.
-	UpdateHamFunc func(msg string) error
-
-	// UpdateSpamFunc mocks the UpdateSpam method.
-	UpdateSpamFunc func(msg string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -79,23 +67,11 @@ type DetectorMock struct {
 			// Ids is the ids argument value.
 			Ids []string
 		}
-		// UpdateHam holds details about calls to the UpdateHam method.
-		UpdateHam []struct {
-			// Msg is the msg argument value.
-			Msg string
-		}
-		// UpdateSpam holds details about calls to the UpdateSpam method.
-		UpdateSpam []struct {
-			// Msg is the msg argument value.
-			Msg string
-		}
 	}
 	lockAddApprovedUsers    sync.RWMutex
 	lockApprovedUsers       sync.RWMutex
 	lockCheck               sync.RWMutex
 	lockRemoveApprovedUsers sync.RWMutex
-	lockUpdateHam           sync.RWMutex
-	lockUpdateSpam          sync.RWMutex
 }
 
 // AddApprovedUsers calls AddApprovedUsersFunc.
@@ -253,84 +229,6 @@ func (mock *DetectorMock) ResetRemoveApprovedUsersCalls() {
 	mock.lockRemoveApprovedUsers.Unlock()
 }
 
-// UpdateHam calls UpdateHamFunc.
-func (mock *DetectorMock) UpdateHam(msg string) error {
-	if mock.UpdateHamFunc == nil {
-		panic("DetectorMock.UpdateHamFunc: method is nil but Detector.UpdateHam was just called")
-	}
-	callInfo := struct {
-		Msg string
-	}{
-		Msg: msg,
-	}
-	mock.lockUpdateHam.Lock()
-	mock.calls.UpdateHam = append(mock.calls.UpdateHam, callInfo)
-	mock.lockUpdateHam.Unlock()
-	return mock.UpdateHamFunc(msg)
-}
-
-// UpdateHamCalls gets all the calls that were made to UpdateHam.
-// Check the length with:
-//
-//	len(mockedDetector.UpdateHamCalls())
-func (mock *DetectorMock) UpdateHamCalls() []struct {
-	Msg string
-} {
-	var calls []struct {
-		Msg string
-	}
-	mock.lockUpdateHam.RLock()
-	calls = mock.calls.UpdateHam
-	mock.lockUpdateHam.RUnlock()
-	return calls
-}
-
-// ResetUpdateHamCalls reset all the calls that were made to UpdateHam.
-func (mock *DetectorMock) ResetUpdateHamCalls() {
-	mock.lockUpdateHam.Lock()
-	mock.calls.UpdateHam = nil
-	mock.lockUpdateHam.Unlock()
-}
-
-// UpdateSpam calls UpdateSpamFunc.
-func (mock *DetectorMock) UpdateSpam(msg string) error {
-	if mock.UpdateSpamFunc == nil {
-		panic("DetectorMock.UpdateSpamFunc: method is nil but Detector.UpdateSpam was just called")
-	}
-	callInfo := struct {
-		Msg string
-	}{
-		Msg: msg,
-	}
-	mock.lockUpdateSpam.Lock()
-	mock.calls.UpdateSpam = append(mock.calls.UpdateSpam, callInfo)
-	mock.lockUpdateSpam.Unlock()
-	return mock.UpdateSpamFunc(msg)
-}
-
-// UpdateSpamCalls gets all the calls that were made to UpdateSpam.
-// Check the length with:
-//
-//	len(mockedDetector.UpdateSpamCalls())
-func (mock *DetectorMock) UpdateSpamCalls() []struct {
-	Msg string
-} {
-	var calls []struct {
-		Msg string
-	}
-	mock.lockUpdateSpam.RLock()
-	calls = mock.calls.UpdateSpam
-	mock.lockUpdateSpam.RUnlock()
-	return calls
-}
-
-// ResetUpdateSpamCalls reset all the calls that were made to UpdateSpam.
-func (mock *DetectorMock) ResetUpdateSpamCalls() {
-	mock.lockUpdateSpam.Lock()
-	mock.calls.UpdateSpam = nil
-	mock.lockUpdateSpam.Unlock()
-}
-
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *DetectorMock) ResetCalls() {
 	mock.lockAddApprovedUsers.Lock()
@@ -348,12 +246,4 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockRemoveApprovedUsers.Lock()
 	mock.calls.RemoveApprovedUsers = nil
 	mock.lockRemoveApprovedUsers.Unlock()
-
-	mock.lockUpdateHam.Lock()
-	mock.calls.UpdateHam = nil
-	mock.lockUpdateHam.Unlock()
-
-	mock.lockUpdateSpam.Lock()
-	mock.calls.UpdateSpam = nil
-	mock.lockUpdateSpam.Unlock()
 }

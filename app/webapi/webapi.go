@@ -28,7 +28,7 @@ import (
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 
-//go:embed templates
+//go:embed assets/* assets/components/*
 var templateFS embed.FS
 
 // Server is a web API server.
@@ -49,8 +49,6 @@ type Config struct {
 // Detector is a spam detector interface.
 type Detector interface {
 	Check(msg string, userID string) (spam bool, cr []lib.CheckResult)
-	UpdateSpam(msg string) error
-	UpdateHam(msg string) error
 	AddApprovedUsers(ids ...string)
 	RemoveApprovedUsers(ids ...string)
 	ApprovedUsers() (res []string)
@@ -58,8 +56,12 @@ type Detector interface {
 
 // SpamFilter is a spam filter, bot interface.
 type SpamFilter interface {
+	UpdateSpam(msg string) error
+	UpdateHam(msg string) error
 	ReloadSamples() (err error)
 	DynamicSamples() (spam, ham []string, err error)
+	RemoveDynamicSpamSample(sample string) (int, error)
+	RemoveDynamicHamSample(sample string) (int, error)
 }
 
 // NewServer creates a new web API server.
@@ -109,8 +111,13 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		authApi.Post("/check", s.checkHandler) // check a message for spam
 
 		authApi.Route("/update", func(r chi.Router) { // update spam/ham samples
-			r.Post("/spam", s.updateSampleHandler(s.Detector.UpdateSpam)) // update spam samples
-			r.Post("/ham", s.updateSampleHandler(s.Detector.UpdateHam))   // update ham samples
+			r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
+			r.Post("/ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
+		})
+
+		authApi.Route("/delete", func(r chi.Router) { // delete spam/ham samples
+			r.Post("/spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
+			r.Post("/ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
 		})
 
 		authApi.Get("/samples", s.getDynamicSamplesHandler)    // get dynamic samples
@@ -125,11 +132,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 
 	router.Group(func(webUI chi.Router) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
-		webUI.Get("/", s.serveTemplateHandler)                    // serve template for webUI UI
-		webUI.Get("/manage_samples", s.serveManageSamplesHandler) // serve manage samples page
-		webUI.Get("/empty", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
+		webUI.Get("/", s.htmlSpamCheckHandler)                   // serve template for webUI UI
+		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
+		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
 	})
 
 	return router
@@ -148,51 +153,45 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		Checks []lib.CheckResult
 	}
 
-	if r.Header.Get("HX-Request") == "true" { // for hx-request
-		req.UserID = r.FormValue("user_id")
-		req.Msg = r.FormValue("msg")
-	}
+	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
-	if r.Header.Get("HX-Request") == "" { // for direct api request
+	if !isHtmxRequest {
+		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
 			log.Printf("[WARN] can't decode request: %v", err)
 			return
 		}
+	} else {
+		// for hx-request (HTMX) we need to get the values from the form
+		req.UserID = r.FormValue("user_id")
+		req.Msg = r.FormValue("msg")
 	}
 
 	spam, cr := s.Detector.Check(req.Msg, req.UserID)
-	if r.Header.Get("HX-Request") == "true" {
-		resultDisplay := CheckResultDisplay{
-			Spam:   spam,
-			Checks: cr,
-		}
-
-		// Render the result as a partial HTML snippet
-		tmpl, err := template.New("result").Parse(`
-            <div class="alert {{if .Spam}}alert-danger{{else}}alert-success{{end}}">
-                <strong>Result:</strong> {{if .Spam}}Spam detected{{else}}No spam detected{{end}}
-            </div>
-            {{range .Checks}}
-                <div class="mb-2 {{if .Spam}}text-danger{{else}}text-success{{end}}">
-                    <strong>{{.Name}}:</strong> {{.Details}}
-                </div>
-            {{end}}
-        `)
-		if err != nil {
-			log.Printf("[WARN] can't parse result template: %v", err)
-			http.Error(w, "Error processing result", http.StatusInternalServerError)
-			return
-		}
-
-		if err := tmpl.Execute(w, resultDisplay); err != nil {
-			log.Printf("[WARN] can't execute result template: %v", err)
-			http.Error(w, "Error rendering result", http.StatusInternalServerError)
-			return
-		}
-	} else {
+	if !isHtmxRequest {
+		// for API request return JSON
 		rest.RenderJSON(w, rest.JSON{"spam": spam, "checks": cr})
+		return
+	}
+
+	// render result for HTMX request
+	resultDisplay := CheckResultDisplay{
+		Spam:   spam,
+		Checks: cr,
+	}
+
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/components/check_results.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "check_results.html", resultDisplay); err != nil {
+		log.Printf("[WARN] can't execute result template: %v", err)
+		http.Error(w, "Error rendering result", http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -207,13 +206,16 @@ func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request
 	rest.RenderJSON(w, rest.JSON{"spam": spam, "ham": ham})
 }
 
+// updateSampleHandler handles POST /update/spam|ham request. It updates dynamic samples both for spam and ham.
 func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Msg string `json:"msg"`
 		}
 
-		if r.Header.Get("HX-Request") == "true" {
+		isHtmxRequest := r.Header.Get("HX-Request") == "true"
+
+		if isHtmxRequest {
 			req.Msg = r.FormValue("msg")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -230,46 +232,42 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 			return
 		}
 
-		if r.Header.Get("HX-Request") == "true" {
-			spam, ham, err := s.SpamFilter.DynamicSamples()
-			if err != nil {
-				log.Printf("[ERROR] Failed to fetch dynamic samples: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-			spam, ham = s.reverseSamples(spam, ham)
-
-			tmpl, err := template.New("").Parse(`
-				<div class="col-md-6">
-					<h4>Spam Samples</h4>
-					<ul class="list-group">{{range .SpamSamples}}<li class="list-group-item">{{.}}</li>{{end}}</ul>
-				</div>
-				<div class="col-md-6">
-					<h4>Ham Samples</h4>
-					<ul class="list-group">{{range .HamSamples}}<li class="list-group-item">{{.}}</li>{{end}}</ul>
-				</div>
-			`)
-			if err != nil {
-				log.Printf("[ERROR] failed to parse template: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-
-			tmplData := struct {
-				SpamSamples []string
-				HamSamples  []string
-			}{
-				SpamSamples: spam,
-				HamSamples:  ham,
-			}
-
-			if err := tmpl.Execute(w, tmplData); err != nil {
-				log.Printf("[ERROR] Failed to execute template: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
+		if isHtmxRequest {
+			s.renderSamples(w)
 		} else {
 			rest.RenderJSON(w, rest.JSON{"updated": true, "msg": req.Msg})
+		}
+	}
+}
+
+// deleteSampleHandler handles DELETE /samples request. It deletes dynamic samples both for spam and ham.
+func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Msg string `json:"msg"`
+		}
+		isHtmxRequest := r.Header.Get("HX-Request") == "true"
+		if isHtmxRequest {
+			req.Msg = r.FormValue("msg")
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				return
+			}
+		}
+
+		count, err := delFn(req.Msg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
+			return
+		}
+
+		if isHtmxRequest {
+			s.renderSamples(w)
+		} else {
+			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": count})
 		}
 	}
 }
@@ -307,9 +305,10 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.Detector.ApprovedUsers()})
 }
 
-func (s *Server) serveTemplateHandler(w http.ResponseWriter, _ *http.Request) {
-	// Parse the templates with the base template path
-	tmpl, err := template.New("").ParseFS(templateFS, "templates/navbar.html", "templates/spam_check.html")
+// htmlSpamCheckHandler handles GET / request.
+// It returns rendered spam_check.html template with all the components.
+func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/spam_check.html", "assets/components/navbar.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
@@ -322,7 +321,6 @@ func (s *Server) serveTemplateHandler(w http.ResponseWriter, _ *http.Request) {
 		Version: s.Version,
 	}
 
-	// Execute the specific template "spam_check.html" with the data
 	if err := tmpl.ExecuteTemplate(w, "spam_check.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
@@ -330,7 +328,9 @@ func (s *Server) serveTemplateHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func (s *Server) serveManageSamplesHandler(w http.ResponseWriter, _ *http.Request) {
+// htmlManageSamplesHandler handles GET /manage_samples request.
+// It returns rendered manage_samples.html template with all the components.
+func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch dynamic samples: %v", err)
@@ -347,18 +347,63 @@ func (s *Server) serveManageSamplesHandler(w http.ResponseWriter, _ *http.Reques
 		HamSamples:  ham,
 	}
 
-	// Corrected the file name to "manage_samples.html"
-	tmpl, err := template.New("").ParseFS(templateFS, "templates/navbar.html", "templates/manage_samples.html")
+	// Parse the navbar and manage_samples templates
+	tmpl, err := template.New("").ParseFS(templateFS,
+		"assets/manage_samples.html", "assets/components/navbar.html", "assets/components/samples_list.html")
 	if err != nil {
-		log.Printf("[ERROR] failed to parse templates: %v", err)
+		log.Printf("[WARN] failed to parse templates: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	// Execute the manage_samples template with the data
 	if err := tmpl.ExecuteTemplate(w, "manage_samples.html", tmplData); err != nil {
-		log.Printf("[ERROR] Failed to execute template: %v", err)
+		log.Printf("[WARN] failed to execute template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// stylesHandler handles GET /styles.css request. It returns styles.css file.
+func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
+	body, err := templateFS.ReadFile("assets/styles.css")
+	if err != nil {
+		log.Printf("[WARN] can't read styles.css: %v", err)
+		http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+func (s *Server) renderSamples(w http.ResponseWriter) {
+	spam, ham, err := s.SpamFilter.DynamicSamples()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
+		return
+	}
+
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/components/samples_list.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
+		return
+	}
+
+	spam, ham = s.reverseSamples(spam, ham)
+	tmplData := struct {
+		SpamSamples []string
+		HamSamples  []string
+	}{
+		SpamSamples: spam,
+		HamSamples:  ham,
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "samples_list.html", tmplData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
 	}
 }
