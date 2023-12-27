@@ -318,11 +318,13 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - ham text
 
-- `POST /users` - add user to the list of approved users. The body should be a json object with the following fields:
-  - `user_ids` - array of user ids to add
+- `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
-- `DELETE /users` - remove user from the list of approved users. The body should be a json object with the following fields:
-  - `user_ids` - array of user ids to remove
+- `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
   - `user_ids` - array of user ids

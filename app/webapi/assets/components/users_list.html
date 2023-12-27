@@ -1,0 +1,26 @@
+<div class="row" id="users-list">
+    <div class="col-md-12">
+        <h4>Approved Users</h4>
+        <ul class="list-group" id="approved-users-list">
+            {{range .ApprovedUsers}}
+            <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="fw-bold">ID:</span> {{.UserID}} |
+                        <span class="fw-bold">Name:</span> {{.UserName}}
+                    </div>
+                    <form method="POST" hx-post="/users/delete" hx-target="#users-list" hx-swap="outerHTML">
+                        <input type="hidden" name="user_id" value="{{.UserID}}">
+                        <input type="hidden" name="user_name" value="{{.UserName}}">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    </form>
+                </div>
+            </li>
+            {{else}}
+            <li class="list-group-item">No approved users found</li>
+            {{end}}
+        </ul>
+    </div>
+</div>

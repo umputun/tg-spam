@@ -206,10 +206,16 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
 
+	// make locator
+	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDB)
+	if err != nil {
+		return fmt.Errorf("can't make locator, %w", err)
+	}
+
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
@@ -235,11 +241,6 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make spam log writer, %w", err)
 	}
 	defer loggerWr.Close()
-
-	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDB)
-	if err != nil {
-		return fmt.Errorf("can't make locator, %w", err)
-	}
 
 	// make telegram listener
 	tgListener := events.TelegramListener{
@@ -309,7 +310,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter) (err error) {
+func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter, locator *storage.Locator) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -323,6 +324,7 @@ func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilte
 		ListenAddr: opts.Server.ListenAddr,
 		Detector:   spamFilter.Detector,
 		SpamFilter: spamFilter,
+		Locator:    locator,
 		AuthPasswd: authPassswd,
 		Version:    revision,
 		Dbg:        opts.Dbg,

@@ -51,8 +51,14 @@ func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
 		return nil, fmt.Errorf("failed to create messages table: %w", err)
 	}
 
+	// add index on user_id
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)`); err != nil {
 		return nil, fmt.Errorf("failed to create index on user_id: %w", err)
+	}
+
+	// add index on user_name
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name)`); err != nil {
+		return nil, fmt.Errorf("failed to create index on user_name: %w", err)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS spam (
@@ -134,7 +140,7 @@ func (l *Locator) Message(msg string) (MsgMeta, bool) {
 	return meta, true
 }
 
-// UserNameByID returns username by user id
+// UserNameByID returns username by user id. Returns empty string if not found
 func (l *Locator) UserNameByID(userID int64) string {
 	var userName string
 	err := l.db.Get(&userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
@@ -143,6 +149,17 @@ func (l *Locator) UserNameByID(userID int64) string {
 		return ""
 	}
 	return userName
+}
+
+// UserIDByName returns user id by username. Returns 0 if not found
+func (l *Locator) UserIDByName(userName string) int64 {
+	var userID int64
+	err := l.db.Get(&userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
+	if err != nil {
+		log.Printf("[DEBUG] failed to find user id by name %q: %v", userName, err)
+		return 0
+	}
+	return userID
 }
 
 // Spam returns message SpamData for given msg

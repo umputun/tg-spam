@@ -52,6 +52,12 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 
 	res = locator.UserNameByID(123456)
 	assert.Equal(t, "", res)
+
+	id := locator.UserIDByName(userName)
+	assert.Equal(t, userID, id)
+
+	id = locator.UserIDByName("user2")
+	assert.Equal(t, int64(0), id)
 }
 
 func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
