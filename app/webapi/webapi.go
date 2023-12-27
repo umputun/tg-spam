@@ -321,8 +321,8 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 
 		if req.UserID == "" || req.UserID == "0" {
 			if isHtmxRequest {
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprintln(w, "<div class='alert alert-danger'>User ID is required.</div>")
+				w.Header().Set("HX-Retarget", "#error-message")
+				fmt.Fprintln(w, "<div class='alert alert-danger'>Either userid or valid username required.</div>")
 				return
 			}
 			w.WriteHeader(http.StatusBadRequest)

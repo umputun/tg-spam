@@ -16,7 +16,6 @@
     <!-- Form for Adding a New Approved User -->
     <div class="row mb-4">
         <div class="col-md-12">
-            <div id="error-message"></div> <!-- Error message container -->
             <form hx-post="/users/add" hx-target="#users-list" hx-swap="outerHTML" hx-error="#error-message">
                 <div class="input-group mb-3">
                     <input type="text" name="user_id" class="form-control me-2" placeholder="User ID">
