@@ -12,6 +12,8 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
+//go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -42,6 +45,7 @@ type Config struct {
 	ListenAddr string     // listen address
 	Detector   Detector   // spam detector
 	SpamFilter SpamFilter // spam filter (bot)
+	Locator    Locator    // locator for user info
 	AuthPasswd string     // basic auth password for user "tg-spam"
 	Dbg        bool       // debug mode
 }
@@ -62,6 +66,12 @@ type SpamFilter interface {
 	DynamicSamples() (spam, ham []string, err error)
 	RemoveDynamicSpamSample(sample string) (int, error)
 	RemoveDynamicHamSample(sample string) (int, error)
+}
+
+// Locator is a storage interface used to get user id by name and vice versa.
+type Locator interface {
+	UserIDByName(userName string) int64
+	UserNameByID(userID int64) string
 }
 
 // NewServer creates a new web API server.
@@ -124,9 +134,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
 		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/", s.updateApprovedUsersHandler(s.Detector.AddApprovedUsers))      // add user to the approved list
-			r.Delete("/", s.updateApprovedUsersHandler(s.Detector.RemoveApprovedUsers)) // remove user from approved list
-			r.Get("/", s.getApprovedUsersHandler)                                       // get approved users
+			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUsers))       // add user to the approved list
+			r.Post("/delete", s.updateApprovedUsersHandler(s.Detector.RemoveApprovedUsers)) // remove user from approved list
+			r.Get("/", s.getApprovedUsersHandler)                                           // get approved users
 		})
 	})
 
@@ -134,6 +144,7 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
 		webUI.Get("/", s.htmlSpamCheckHandler)                   // serve template for webUI UI
 		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
+		webUI.Get("/manage_users", s.htmlManageUsersHandler)     // serve manage users page
 		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
 	})
 
@@ -282,21 +293,83 @@ func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Requ
 	rest.RenderJSON(w, rest.JSON{"reloaded": true})
 }
 
-// updateApprovedUsersHandler handles POST /users and DELETE /users requests, it adds or removes users from approved list.
-func (s *Server) updateApprovedUsersHandler(updFn func(ids ...string)) func(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserIDs []string `json:"user_ids"`
+// updateApprovedUsersHandler handles POST /users/add and /users/delete requests, it adds or removes users from approved list.
+func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w http.ResponseWriter, r *http.Request) {
+	type reqData struct {
+		UserID   string `json:"user_id"`
+		UserName string `json:"user_name"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req := reqData{}
+		isHtmxRequest := r.Header.Get("HX-Request") == "true"
+		if isHtmxRequest {
+			req.UserID = r.FormValue("user_id")
+			req.UserName = r.FormValue("user_name")
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				return
+			}
+		}
+
+		// try to get userID from request and fallback to userName lookup if it's empty
+		if req.UserID == "" {
+			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(req.UserName), 10)
+		}
+
+		if req.UserID == "" || req.UserID == "0" {
+			if isHtmxRequest {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintln(w, "<div class='alert alert-danger'>User ID is required.</div>")
+				return
+			}
 			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			rest.RenderJSON(w, rest.JSON{"error": "user ID is required"})
 			return
 		}
 
-		updFn(req.UserIDs...)
-		rest.RenderJSON(w, rest.JSON{"updated": true, "count": len(req.UserIDs)})
+		updFn(req.UserID)
+
+		if isHtmxRequest {
+			tmpl, err := template.New("").ParseFS(templateFS, "assets/components/users_list.html")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
+				return
+			}
+
+			type userInfo struct {
+				UserName string
+				UserID   string
+			}
+			tmplData := struct {
+				ApprovedUsers []userInfo
+			}{}
+
+			for _, userID := range s.Detector.ApprovedUsers() {
+				ui := userInfo{UserID: userID}
+				id, err := strconv.ParseInt(userID, 10, 64)
+				if err == nil { // we need numeric user id to get user name
+					ui.UserName = s.Locator.UserNameByID(id)
+				}
+				tmplData.ApprovedUsers = append(tmplData.ApprovedUsers, ui)
+			}
+			// ApprovedUsers() came for detectors map, random sorting
+			sort.Slice(tmplData.ApprovedUsers, func(i, j int) bool {
+				return tmplData.ApprovedUsers[i].UserID < tmplData.ApprovedUsers[j].UserID
+			})
+
+			if err := tmpl.ExecuteTemplate(w, "users_list.html", tmplData); err != nil {
+				log.Printf("[WARN] can't execute template: %v", err)
+				http.Error(w, "Error executing template", http.StatusInternalServerError)
+				return
+			}
+
+		} else {
+			rest.RenderJSON(w, rest.JSON{"updated": true, "user_id": req.UserID, "user_name": req.UserName})
+		}
 	}
 }
 
@@ -360,6 +433,44 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 	if err := tmpl.ExecuteTemplate(w, "manage_samples.html", tmplData); err != nil {
 		log.Printf("[WARN] failed to execute template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/manage_users.html",
+		"assets/components/navbar.html", "assets/components/users_list.html")
+	if err != nil {
+		log.Printf("[WARN] can't load template: %v", err)
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	type userInfo struct {
+		UserName string
+		UserID   string
+	}
+	tmplData := struct {
+		ApprovedUsers []userInfo
+	}{}
+
+	for _, userID := range s.Detector.ApprovedUsers() {
+		id, err := strconv.ParseInt(userID, 10, 64)
+		if err != nil {
+			continue
+		}
+		ui := userInfo{UserID: userID, UserName: s.Locator.UserNameByID(id)}
+		tmplData.ApprovedUsers = append(tmplData.ApprovedUsers, ui)
+	}
+
+	// ApprovedUsers() came for detectors map, random sorting
+	sort.Slice(tmplData.ApprovedUsers, func(i, j int) bool {
+		return tmplData.ApprovedUsers[i].UserID < tmplData.ApprovedUsers[j].UserID
+	})
+
+	if err := tmpl.ExecuteTemplate(w, "manage_users.html", tmplData); err != nil {
+		log.Printf("[WARN] can't execute template: %v", err)
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
 }

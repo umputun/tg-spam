@@ -26,7 +26,7 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
-TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools. For more details see [Running with webapi server](#running-with-webapi-server) section below.
+TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. 
 
 ## Installation
 
@@ -318,11 +318,13 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - ham text
 
-- `POST /users` - add user to the list of approved users. The body should be a json object with the following fields:
-  - `user_ids` - array of user ids to add
+- `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
-- `DELETE /users` - remove user from the list of approved users. The body should be a json object with the following fields:
-  - `user_ids` - array of user ids to remove
+- `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
   - `user_ids` - array of user ids
@@ -342,6 +344,11 @@ The server is using the same spam detection logic as the bot itself. It is using
 However, if users want to update spam/ham dynamic samples, they should call the corresponding endpoint `/update/<spam|ham>`. On the other hand, updating the approved users list is a part of the `/check` api call, so user doesn't need to call it separately. In case if the list of approved users should be managed by the client application, it is possible to call `/users` endpoints directly.
 
 Generally, this is a very basic server, but should be sufficient for most use cases. If a user needs more functionality, it is possible to run the bot [as a library](#using-tg-spam-as-a-library) and implement custom logic on top of it.
+
+
+### WEB UI for tg-spam
+
+If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.  
 
 ## Example of docker-compose.yml
 

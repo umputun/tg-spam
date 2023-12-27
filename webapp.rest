@@ -22,16 +22,16 @@ GET http://localhost:8080/users
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
 ### add new approved user
-POST http://localhost:8080/users
+POST http://localhost:8080/users/add
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
-{"user_ids": ["123456", "789012"]}
+{"user_id": "123456"}
 
 ### delete approved user
-DELETE http://localhost:8080/users
+POST http://localhost:8080/users/delete
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
-{"user_ids": ["123456", "789012"]}
+{"user_id": "123456"}
 
 
 ### add spam sample
