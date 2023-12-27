@@ -324,11 +324,10 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 				w.WriteHeader(http.StatusBadRequest)
 				fmt.Fprintln(w, "<div class='alert alert-danger'>User ID is required.</div>")
 				return
-			} else {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "user ID is required"})
-				return
 			}
+			w.WriteHeader(http.StatusBadRequest)
+			rest.RenderJSON(w, rest.JSON{"error": "user ID is required"})
+			return
 		}
 
 		updFn(req.UserID)
