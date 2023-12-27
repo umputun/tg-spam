@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Samples - TG-Spam Checker</title>
+    <title>Manage Samples - TG-Spam</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org"></script>
+    <link href="styles.css" rel="stylesheet">
 </head>
 <body>
 {{template "navbar.html"}}
@@ -28,39 +29,18 @@
         </div>
     </div>
 
-    <!-- Lists of Samples -->
-    <div id="samples-list" class="row">
-        <div class="col-md-6">
-            <h4>Spam Samples</h4>
-            <ul class="list-group" id="spam-samples-list">
-                {{range .SpamSamples}}
-                <li class="list-group-item">{{.}}</li>
-                {{else}}
-                <li class="list-group-item">No spam samples found</li>
-                {{end}}
-            </ul>
-        </div>
-        <div class="col-md-6">
-            <h4>Ham Samples</h4>
-            <ul class="list-group" id="ham-samples-list">
-                {{range .HamSamples}}
-                <li class="list-group-item">{{.}}</li>
-                {{else}}
-                <li class="list-group-item">No ham samples found</li>
-                {{end}}
-            </ul>
-        </div>
-    </div>
-
+    <!-- Include the samples list template -->
+    {{template "samples_list.html" .}}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
 <script>
+    // JavaScript for resetting form fields after submission
     htmx.on("htmx:afterOnLoad", function(e) {
         if (e.detail.elt.tagName === "FORM") {
             const textarea = e.detail.elt.querySelector("[name='msg']");
             if (textarea) {
-                textarea.value = ""; // reset the textarea value
+                textarea.value = ""; // Reset the textarea value
             }
         }
     });

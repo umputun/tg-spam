@@ -28,7 +28,7 @@ import (
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 
-//go:embed templates
+//go:embed assets/* assets/components/*
 var templateFS embed.FS
 
 // Server is a web API server.
@@ -60,6 +60,8 @@ type Detector interface {
 type SpamFilter interface {
 	ReloadSamples() (err error)
 	DynamicSamples() (spam, ham []string, err error)
+	RemoveDynamicSpamSample(sample string) error
+	RemoveDynamicHamSample(sample string) error
 }
 
 // NewServer creates a new web API server.
@@ -113,6 +115,11 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 			r.Post("/ham", s.updateSampleHandler(s.Detector.UpdateHam))   // update ham samples
 		})
 
+		authApi.Route("/delete", func(r chi.Router) { // delete spam/ham samples
+			r.Post("/spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
+			r.Post("/ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
+		})
+
 		authApi.Get("/samples", s.getDynamicSamplesHandler)    // get dynamic samples
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
@@ -125,10 +132,18 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 
 	router.Group(func(webUI chi.Router) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
-		webUI.Get("/", s.serveTemplateHandler)                    // serve template for webUI UI
+		webUI.Get("/", s.htmlSpamCheckTemplateHandler)            // serve template for webUI UI
 		webUI.Get("/manage_samples", s.serveManageSamplesHandler) // serve manage samples page
-		webUI.Get("/empty", func(w http.ResponseWriter, _ *http.Request) {
+		webUI.Get("/styles.css", func(w http.ResponseWriter, _ *http.Request) {
+			body, err := templateFS.ReadFile("assets/styles.css")
+			if err != nil {
+				log.Printf("[WARN] can't read styles.css: %v", err)
+				http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/css")
 			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
 		})
 	})
 
@@ -231,45 +246,42 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 		}
 
 		if r.Header.Get("HX-Request") == "true" {
-			spam, ham, err := s.SpamFilter.DynamicSamples()
-			if err != nil {
-				log.Printf("[ERROR] Failed to fetch dynamic samples: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-			spam, ham = s.reverseSamples(spam, ham)
-
-			tmpl, err := template.New("").Parse(`
-				<div class="col-md-6">
-					<h4>Spam Samples</h4>
-					<ul class="list-group">{{range .SpamSamples}}<li class="list-group-item">{{.}}</li>{{end}}</ul>
-				</div>
-				<div class="col-md-6">
-					<h4>Ham Samples</h4>
-					<ul class="list-group">{{range .HamSamples}}<li class="list-group-item">{{.}}</li>{{end}}</ul>
-				</div>
-			`)
-			if err != nil {
-				log.Printf("[ERROR] failed to parse template: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-
-			tmplData := struct {
-				SpamSamples []string
-				HamSamples  []string
-			}{
-				SpamSamples: spam,
-				HamSamples:  ham,
-			}
-
-			if err := tmpl.Execute(w, tmplData); err != nil {
-				log.Printf("[ERROR] Failed to execute template: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
+			s.renderSamples(w)
 		} else {
 			rest.RenderJSON(w, rest.JSON{"updated": true, "msg": req.Msg})
+		}
+	}
+}
+
+// deleteSampleHandler handles DELETE /samples request. It deletes dynamic samples both for spam and ham.
+func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Msg string `json:"msg"`
+		}
+
+		if r.Header.Get("HX-Request") == "true" {
+			req.Msg = r.FormValue("msg")
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				return
+			}
+		}
+
+		err := delFn(req.Msg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
+			return
+		}
+
+		// if it's an HTMX request, we need to render and return the updated lists of samples
+		if r.Header.Get("HX-Request") == "true" {
+			s.renderSamples(w)
+		} else {
+			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg})
 		}
 	}
 }
@@ -307,9 +319,9 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.Detector.ApprovedUsers()})
 }
 
-func (s *Server) serveTemplateHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) htmlSpamCheckTemplateHandler(w http.ResponseWriter, _ *http.Request) {
 	// Parse the templates with the base template path
-	tmpl, err := template.New("").ParseFS(templateFS, "templates/navbar.html", "templates/spam_check.html")
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/spam_check.html", "assets/components/navbar.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
@@ -347,8 +359,9 @@ func (s *Server) serveManageSamplesHandler(w http.ResponseWriter, _ *http.Reques
 		HamSamples:  ham,
 	}
 
-	// Corrected the file name to "manage_samples.html"
-	tmpl, err := template.New("").ParseFS(templateFS, "templates/navbar.html", "templates/manage_samples.html")
+	// Parse the navbar and manage_samples templates
+	tmpl, err := template.New("").ParseFS(templateFS,
+		"assets/manage_samples.html", "assets/components/navbar.html", "assets/components/samples_list.html")
 	if err != nil {
 		log.Printf("[ERROR] failed to parse templates: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -359,6 +372,37 @@ func (s *Server) serveManageSamplesHandler(w http.ResponseWriter, _ *http.Reques
 	if err := tmpl.ExecuteTemplate(w, "manage_samples.html", tmplData); err != nil {
 		log.Printf("[ERROR] Failed to execute template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) renderSamples(w http.ResponseWriter) {
+	spam, ham, err := s.SpamFilter.DynamicSamples()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
+		return
+	}
+
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/components/samples_list.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
+		return
+	}
+
+	spam, ham = s.reverseSamples(spam, ham)
+	tmplData := struct {
+		SpamSamples []string
+		HamSamples  []string
+	}{
+		SpamSamples: spam,
+		HamSamples:  ham,
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "samples_list.html", tmplData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
 	}
 }

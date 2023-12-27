@@ -25,7 +25,8 @@ func TestServer_Run(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	srv := NewServer(Config{ListenAddr: ":9876", Version: "dev", Detector: &mocks.DetectorMock{}})
+	srv := NewServer(Config{ListenAddr: ":9876", Version: "dev", Detector: &mocks.DetectorMock{},
+		SpamFilter: &mocks.SpamFilterMock{}, AuthPasswd: "test"})
 	done := make(chan struct{})
 	go func() {
 		err := srv.Run(ctx)
@@ -58,8 +59,9 @@ func TestServer_RunAuth(t *testing.T) {
 			return false, []lib.CheckResult{{Details: "not spam"}}
 		},
 	}
+	mockSpamFilter := &mocks.SpamFilterMock{}
 
-	srv := NewServer(Config{ListenAddr: ":9877", Version: "dev", Detector: mockDetector, AuthPasswd: "test"})
+	srv := NewServer(Config{ListenAddr: ":9877", Version: "dev", Detector: mockDetector, SpamFilter: mockSpamFilter, AuthPasswd: "test"})
 	done := make(chan struct{})
 	go func() {
 		err := srv.Run(ctx)
@@ -140,7 +142,9 @@ func TestServer_routes(t *testing.T) {
 			return []string{"user1", "user2"}
 		},
 	}
-	server := NewServer(Config{Detector: mockDetector})
+	spamFilterMock := &mocks.SpamFilterMock{}
+
+	server := NewServer(Config{Detector: mockDetector, SpamFilter: spamFilterMock})
 	ts := httptest.NewServer(server.routes(chi.NewRouter()))
 	defer ts.Close()
 
@@ -316,7 +320,7 @@ func TestServer_checkHandler(t *testing.T) {
 
 }
 
-func TestServer_updateHandler(t *testing.T) {
+func TestServer_updateSampleHandler(t *testing.T) {
 	mockDetector := &mocks.DetectorMock{
 		UpdateHamFunc: func(msg string) error {
 			if msg == "error" {
@@ -397,6 +401,40 @@ func TestServer_updateHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "handler returned wrong status code")
 	})
+}
+
+func TestServer_deleteSampleHandler(t *testing.T) {
+	spamFilterMock := &mocks.SpamFilterMock{
+		RemoveDynamicHamSampleFunc: func(sample string) error { return nil },
+	}
+	server := NewServer(Config{SpamFilter: spamFilterMock})
+
+	t.Run("successful delete ham sample", func(t *testing.T) {
+		spamFilterMock.ResetCalls()
+		reqBody, err := json.Marshal(map[string]string{
+			"msg": "test message",
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequest("DELETE", "/update/ham", bytes.NewBuffer(reqBody))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.deleteSampleHandler(spamFilterMock.RemoveDynamicHamSample))
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
+		var response struct {
+			Deleted bool   `json:"deleted"`
+			Msg     string `json:"msg"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &response)
+		assert.NoError(t, err)
+		assert.True(t, response.Deleted)
+		assert.Equal(t, "test message", response.Msg)
+		require.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
+	})
+
 }
 
 func TestServer_updateApprovedUsersHandler(t *testing.T) {
@@ -496,18 +534,18 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 	})
 }
 
-func TestServer_serveTemplateHandler(t *testing.T) {
+func TestServer_htmlSpamCheckTemplateHandler(t *testing.T) {
 	server := NewServer(Config{Version: "1.0"})
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/", http.NoBody)
 	require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.serveTemplateHandler)
+	handler := http.HandlerFunc(server.htmlSpamCheckTemplateHandler)
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
 	body := rr.Body.String()
-	assert.Contains(t, body, "<title>TG-Spam Checker</title>", "template should contain the correct title")
+	assert.Contains(t, body, "<title>Checker - TG-Spam</title>", "template should contain the correct title")
 	assert.Contains(t, body, "Version: 1.0", "template should contain the correct version")
 	assert.Contains(t, body, "<form", "template should contain a form")
 }

@@ -412,7 +412,6 @@ func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 }
 
 func TestSpamFilter_DynamicSamples(t *testing.T) {
-	// Setup temporary files for spam and ham dynamic samples
 	spamFile, err := os.CreateTemp("", "spam_dynamic")
 	require.NoError(t, err)
 	defer os.Remove(spamFile.Name())
@@ -421,17 +420,14 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(hamFile.Name())
 
-	// Write sample data to the files
 	_, err = spamFile.WriteString("spam1\nspam2\n")
 	require.NoError(t, err)
 	_, err = hamFile.WriteString("ham1\nham2\n")
 	require.NoError(t, err)
 
-	// Ensure files are closed before reading in tests
 	spamFile.Close()
 	hamFile.Close()
 
-	// Initialize SpamFilter with file paths
 	sf := NewSpamFilter(context.Background(), &mocks.DetectorMock{}, SpamConfig{
 		SpamDynamicFile: spamFile.Name(),
 		HamDynamicFile:  hamFile.Name(),
@@ -457,4 +453,96 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Empty(t, ham, "Ham slice should be empty when file is not found")
 	})
+}
+
+func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
+	mockDirector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+			return lib.LoadResult{}, nil
+		},
+	}
+
+	prep := func() (res *SpamFilter, teardown func()) {
+		tmpDir, err := os.MkdirTemp("", "spamfilter_test")
+		require.NoError(t, err)
+
+		spamFile, err := os.CreateTemp("", "spam_dynamic")
+		require.NoError(t, err)
+
+		hamFile, err := os.CreateTemp("", "ham_dynamic")
+		require.NoError(t, err)
+
+		excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
+		spamSamplesFile := filepath.Join(tmpDir, "spam_samples.txt")
+		hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
+		stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
+
+		_, err = os.Create(excludedTokensFile)
+		require.NoError(t, err)
+		_, err = os.Create(spamSamplesFile)
+		require.NoError(t, err)
+		_, err = os.Create(hamSamplesFile)
+		require.NoError(t, err)
+		_, err = os.Create(stopWordsFile)
+		require.NoError(t, err)
+
+		// Write sample data to the files
+		_, err = spamFile.WriteString("spam1\nspam2\n")
+		require.NoError(t, err)
+		_, err = hamFile.WriteString("ham1\nham2\n")
+		require.NoError(t, err)
+
+		return NewSpamFilter(context.Background(), mockDirector, SpamConfig{
+				SpamDynamicFile:    spamFile.Name(),
+				HamDynamicFile:     hamFile.Name(),
+				SpamSamplesFile:    spamSamplesFile,
+				HamSamplesFile:     hamSamplesFile,
+				StopWordsFile:      stopWordsFile,
+				ExcludedTokensFile: excludedTokensFile,
+			}), func() {
+				os.RemoveAll(tmpDir)
+				os.Remove(spamFile.Name())
+				os.Remove(hamFile.Name())
+			}
+	}
+
+	t.Run("remove from spam", func(t *testing.T) {
+		sf, teardown := prep()
+		defer teardown()
+
+		err := sf.RemoveDynamicSpamSample("spam1")
+		require.NoError(t, err)
+		spam, ham, err := sf.DynamicSamples()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"spam2"}, spam)
+		assert.Equal(t, []string{"ham1", "ham2"}, ham)
+	})
+
+	t.Run("remove from ham", func(t *testing.T) {
+		sf, teardown := prep()
+		defer teardown()
+
+		err := sf.RemoveDynamicHamSample("ham2")
+		require.NoError(t, err)
+		spam, ham, err := sf.DynamicSamples()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"spam1", "spam2"}, spam)
+		assert.Equal(t, []string{"ham1"}, ham)
+	})
+
+	t.Run("remove from ham, not found", func(t *testing.T) {
+		sf, teardown := prep()
+		defer teardown()
+
+		err := sf.RemoveDynamicHamSample("ham2222")
+		assert.ErrorContains(t, err, "failed to remove dynamic ham sample: ")
+		spam, ham, err := sf.DynamicSamples()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"spam1", "spam2"}, spam)
+		assert.Equal(t, []string{"ham1", "ham2"}, ham)
+	})
+
 }
