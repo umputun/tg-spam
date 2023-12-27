@@ -19,11 +19,17 @@ import (
 //			ReloadSamplesFunc: func() error {
 //				panic("mock out the ReloadSamples method")
 //			},
-//			RemoveDynamicHamSampleFunc: func(sample string) error {
+//			RemoveDynamicHamSampleFunc: func(sample string) (int, error) {
 //				panic("mock out the RemoveDynamicHamSample method")
 //			},
-//			RemoveDynamicSpamSampleFunc: func(sample string) error {
+//			RemoveDynamicSpamSampleFunc: func(sample string) (int, error) {
 //				panic("mock out the RemoveDynamicSpamSample method")
+//			},
+//			UpdateHamFunc: func(msg string) error {
+//				panic("mock out the UpdateHam method")
+//			},
+//			UpdateSpamFunc: func(msg string) error {
+//				panic("mock out the UpdateSpam method")
 //			},
 //		}
 //
@@ -39,10 +45,16 @@ type SpamFilterMock struct {
 	ReloadSamplesFunc func() error
 
 	// RemoveDynamicHamSampleFunc mocks the RemoveDynamicHamSample method.
-	RemoveDynamicHamSampleFunc func(sample string) error
+	RemoveDynamicHamSampleFunc func(sample string) (int, error)
 
 	// RemoveDynamicSpamSampleFunc mocks the RemoveDynamicSpamSample method.
-	RemoveDynamicSpamSampleFunc func(sample string) error
+	RemoveDynamicSpamSampleFunc func(sample string) (int, error)
+
+	// UpdateHamFunc mocks the UpdateHam method.
+	UpdateHamFunc func(msg string) error
+
+	// UpdateSpamFunc mocks the UpdateSpam method.
+	UpdateSpamFunc func(msg string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -62,11 +74,23 @@ type SpamFilterMock struct {
 			// Sample is the sample argument value.
 			Sample string
 		}
+		// UpdateHam holds details about calls to the UpdateHam method.
+		UpdateHam []struct {
+			// Msg is the msg argument value.
+			Msg string
+		}
+		// UpdateSpam holds details about calls to the UpdateSpam method.
+		UpdateSpam []struct {
+			// Msg is the msg argument value.
+			Msg string
+		}
 	}
 	lockDynamicSamples          sync.RWMutex
 	lockReloadSamples           sync.RWMutex
 	lockRemoveDynamicHamSample  sync.RWMutex
 	lockRemoveDynamicSpamSample sync.RWMutex
+	lockUpdateHam               sync.RWMutex
+	lockUpdateSpam              sync.RWMutex
 }
 
 // DynamicSamples calls DynamicSamplesFunc.
@@ -138,7 +162,7 @@ func (mock *SpamFilterMock) ResetReloadSamplesCalls() {
 }
 
 // RemoveDynamicHamSample calls RemoveDynamicHamSampleFunc.
-func (mock *SpamFilterMock) RemoveDynamicHamSample(sample string) error {
+func (mock *SpamFilterMock) RemoveDynamicHamSample(sample string) (int, error) {
 	if mock.RemoveDynamicHamSampleFunc == nil {
 		panic("SpamFilterMock.RemoveDynamicHamSampleFunc: method is nil but SpamFilter.RemoveDynamicHamSample was just called")
 	}
@@ -177,7 +201,7 @@ func (mock *SpamFilterMock) ResetRemoveDynamicHamSampleCalls() {
 }
 
 // RemoveDynamicSpamSample calls RemoveDynamicSpamSampleFunc.
-func (mock *SpamFilterMock) RemoveDynamicSpamSample(sample string) error {
+func (mock *SpamFilterMock) RemoveDynamicSpamSample(sample string) (int, error) {
 	if mock.RemoveDynamicSpamSampleFunc == nil {
 		panic("SpamFilterMock.RemoveDynamicSpamSampleFunc: method is nil but SpamFilter.RemoveDynamicSpamSample was just called")
 	}
@@ -215,6 +239,84 @@ func (mock *SpamFilterMock) ResetRemoveDynamicSpamSampleCalls() {
 	mock.lockRemoveDynamicSpamSample.Unlock()
 }
 
+// UpdateHam calls UpdateHamFunc.
+func (mock *SpamFilterMock) UpdateHam(msg string) error {
+	if mock.UpdateHamFunc == nil {
+		panic("SpamFilterMock.UpdateHamFunc: method is nil but SpamFilter.UpdateHam was just called")
+	}
+	callInfo := struct {
+		Msg string
+	}{
+		Msg: msg,
+	}
+	mock.lockUpdateHam.Lock()
+	mock.calls.UpdateHam = append(mock.calls.UpdateHam, callInfo)
+	mock.lockUpdateHam.Unlock()
+	return mock.UpdateHamFunc(msg)
+}
+
+// UpdateHamCalls gets all the calls that were made to UpdateHam.
+// Check the length with:
+//
+//	len(mockedSpamFilter.UpdateHamCalls())
+func (mock *SpamFilterMock) UpdateHamCalls() []struct {
+	Msg string
+} {
+	var calls []struct {
+		Msg string
+	}
+	mock.lockUpdateHam.RLock()
+	calls = mock.calls.UpdateHam
+	mock.lockUpdateHam.RUnlock()
+	return calls
+}
+
+// ResetUpdateHamCalls reset all the calls that were made to UpdateHam.
+func (mock *SpamFilterMock) ResetUpdateHamCalls() {
+	mock.lockUpdateHam.Lock()
+	mock.calls.UpdateHam = nil
+	mock.lockUpdateHam.Unlock()
+}
+
+// UpdateSpam calls UpdateSpamFunc.
+func (mock *SpamFilterMock) UpdateSpam(msg string) error {
+	if mock.UpdateSpamFunc == nil {
+		panic("SpamFilterMock.UpdateSpamFunc: method is nil but SpamFilter.UpdateSpam was just called")
+	}
+	callInfo := struct {
+		Msg string
+	}{
+		Msg: msg,
+	}
+	mock.lockUpdateSpam.Lock()
+	mock.calls.UpdateSpam = append(mock.calls.UpdateSpam, callInfo)
+	mock.lockUpdateSpam.Unlock()
+	return mock.UpdateSpamFunc(msg)
+}
+
+// UpdateSpamCalls gets all the calls that were made to UpdateSpam.
+// Check the length with:
+//
+//	len(mockedSpamFilter.UpdateSpamCalls())
+func (mock *SpamFilterMock) UpdateSpamCalls() []struct {
+	Msg string
+} {
+	var calls []struct {
+		Msg string
+	}
+	mock.lockUpdateSpam.RLock()
+	calls = mock.calls.UpdateSpam
+	mock.lockUpdateSpam.RUnlock()
+	return calls
+}
+
+// ResetUpdateSpamCalls reset all the calls that were made to UpdateSpam.
+func (mock *SpamFilterMock) ResetUpdateSpamCalls() {
+	mock.lockUpdateSpam.Lock()
+	mock.calls.UpdateSpam = nil
+	mock.lockUpdateSpam.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *SpamFilterMock) ResetCalls() {
 	mock.lockDynamicSamples.Lock()
@@ -232,4 +334,12 @@ func (mock *SpamFilterMock) ResetCalls() {
 	mock.lockRemoveDynamicSpamSample.Lock()
 	mock.calls.RemoveDynamicSpamSample = nil
 	mock.lockRemoveDynamicSpamSample.Unlock()
+
+	mock.lockUpdateHam.Lock()
+	mock.calls.UpdateHam = nil
+	mock.lockUpdateHam.Unlock()
+
+	mock.lockUpdateSpam.Lock()
+	mock.calls.UpdateSpam = nil
+	mock.lockUpdateSpam.Unlock()
 }

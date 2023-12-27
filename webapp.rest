@@ -38,13 +38,13 @@ Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 POST http://localhost:8080/update/spam
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
-{"user_id": "123456", "msg": "spam sample"}
+{"msg": "spam sample"}
 
 ### add ham sample
 POST http://localhost:8080/update/ham
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
-{"user_id": "123456", "msg": "ham sample"}
+{"msg": "ham sample"}
 
 ### get all dynamic samples
 GET http://localhost:8080/samples
@@ -53,3 +53,15 @@ Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 ### reload dynamic samples
 PUT http://localhost:8080/samples
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+### remove spam sample
+POST http://localhost:8080/delete/spam
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"msg": "spam sample"}
+
+### remove ham sample
+POST http://localhost:8080/delete/ham
+Authorization: Basic dGctc3BhbTpwYXNzd2Q=
+
+{"msg": "ham sample"}

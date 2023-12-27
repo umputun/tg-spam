@@ -126,8 +126,6 @@ func TestServer_routes(t *testing.T) {
 		CheckFunc: func(msg string, userID string) (bool, []lib.CheckResult) {
 			return false, []lib.CheckResult{{Details: "not spam"}}
 		},
-		UpdateSpamFunc: func(msg string) error { return nil },
-		UpdateHamFunc:  func(msg string) error { return nil },
 		AddApprovedUsersFunc: func(ids ...string) {
 			if len(ids) == 0 {
 				panic("no ids")
@@ -142,7 +140,10 @@ func TestServer_routes(t *testing.T) {
 			return []string{"user1", "user2"}
 		},
 	}
-	spamFilterMock := &mocks.SpamFilterMock{}
+	spamFilterMock := &mocks.SpamFilterMock{
+		UpdateHamFunc:  func(msg string) error { return nil },
+		UpdateSpamFunc: func(msg string) error { return nil },
+	}
 
 	server := NewServer(Config{Detector: mockDetector, SpamFilter: spamFilterMock})
 	ts := httptest.NewServer(server.routes(chi.NewRouter()))
@@ -174,8 +175,8 @@ func TestServer_routes(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(mockDetector.UpdateSpamCalls()))
-		assert.Equal(t, "test message", mockDetector.UpdateSpamCalls()[0].Msg)
+		assert.Equal(t, 1, len(spamFilterMock.UpdateSpamCalls()))
+		assert.Equal(t, "test message", spamFilterMock.UpdateSpamCalls()[0].Msg)
 	})
 
 	t.Run("update ham", func(t *testing.T) {
@@ -188,8 +189,8 @@ func TestServer_routes(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(mockDetector.UpdateHamCalls()))
-		assert.Equal(t, "test message", mockDetector.UpdateHamCalls()[0].Msg)
+		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Equal(t, "test message", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
 	t.Run("add user", func(t *testing.T) {
@@ -321,24 +322,25 @@ func TestServer_checkHandler(t *testing.T) {
 }
 
 func TestServer_updateSampleHandler(t *testing.T) {
-	mockDetector := &mocks.DetectorMock{
-		UpdateHamFunc: func(msg string) error {
-			if msg == "error" {
-				return assert.AnError
-			}
-			return nil
-		},
+	spamFilterMock := &mocks.SpamFilterMock{
 		UpdateSpamFunc: func(msg string) error {
 			if msg == "error" {
 				return assert.AnError
 			}
 			return nil
 		},
+		UpdateHamFunc: func(msg string) error {
+			if msg == "error" {
+				return assert.AnError
+			}
+			return nil
+		},
 	}
-	server := NewServer(Config{Detector: mockDetector})
+
+	server := NewServer(Config{SpamFilter: spamFilterMock})
 
 	t.Run("successful update ham", func(t *testing.T) {
-		mockDetector.ResetCalls()
+		spamFilterMock.ResetCalls()
 		reqBody, err := json.Marshal(map[string]string{
 			"msg": "test message",
 		})
@@ -347,7 +349,7 @@ func TestServer_updateSampleHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.updateSampleHandler(mockDetector.UpdateHam))
+		handler := http.HandlerFunc(server.updateSampleHandler(spamFilterMock.UpdateHam))
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
@@ -359,12 +361,12 @@ func TestServer_updateSampleHandler(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, response.Updated)
 		assert.Equal(t, "test message", response.Msg)
-		assert.Equal(t, 1, len(mockDetector.UpdateHamCalls()))
-		assert.Equal(t, "test message", mockDetector.UpdateHamCalls()[0].Msg)
+		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Equal(t, "test message", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
 	t.Run("update ham with error", func(t *testing.T) {
-		mockDetector.ResetCalls()
+		spamFilterMock.ResetCalls()
 		reqBody, err := json.Marshal(map[string]string{
 			"msg": "error",
 		})
@@ -373,7 +375,7 @@ func TestServer_updateSampleHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.updateSampleHandler(mockDetector.UpdateHam))
+		handler := http.HandlerFunc(server.updateSampleHandler(spamFilterMock.UpdateHam))
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code, "handler returned wrong status code")
@@ -385,18 +387,18 @@ func TestServer_updateSampleHandler(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "can't update samples", response.Err)
 		assert.Equal(t, "assert.AnError general error for testing", response.Details)
-		assert.Equal(t, 1, len(mockDetector.UpdateHamCalls()))
-		assert.Equal(t, "error", mockDetector.UpdateHamCalls()[0].Msg)
+		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Equal(t, "error", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
 	t.Run("bad request", func(t *testing.T) {
-		mockDetector.ResetCalls()
+		spamFilterMock.ResetCalls()
 		reqBody := []byte("bad request")
 		req, err := http.NewRequest("POST", "/update", bytes.NewBuffer(reqBody))
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.updateSampleHandler(mockDetector.UpdateHam))
+		handler := http.HandlerFunc(server.updateSampleHandler(spamFilterMock.UpdateHam))
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "handler returned wrong status code")
@@ -405,7 +407,10 @@ func TestServer_updateSampleHandler(t *testing.T) {
 
 func TestServer_deleteSampleHandler(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{
-		RemoveDynamicHamSampleFunc: func(sample string) error { return nil },
+		RemoveDynamicHamSampleFunc: func(sample string) (int, error) { return 1, nil },
+		DynamicSamplesFunc: func() ([]string, []string, error) {
+			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
+		},
 	}
 	server := NewServer(Config{SpamFilter: spamFilterMock})
 
@@ -415,7 +420,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 			"msg": "test message",
 		})
 		require.NoError(t, err)
-		req, err := http.NewRequest("DELETE", "/update/ham", bytes.NewBuffer(reqBody))
+		req, err := http.NewRequest("POST", "/delete/ham", bytes.NewBuffer(reqBody))
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
@@ -435,6 +440,45 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
 	})
 
+	t.Run("delete ham sample from htmx", func(t *testing.T) {
+		spamFilterMock.ResetCalls()
+		req, err := http.NewRequest("POST", "/delete/ham", http.NoBody)
+		require.NoError(t, err)
+		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+
+		// set form htmx request, msg in r.FormValue("msg")
+		req.Form = url.Values{}
+		req.Form.Set("msg", "test message")
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.deleteSampleHandler(spamFilterMock.RemoveDynamicHamSample))
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
+		body := rr.Body.String()
+		t.Log(body)
+		assert.Contains(t, body, "<h4>Spam Samples</h4>", "response should contain spam samples")
+		assert.Contains(t, body, "<h4>Ham Samples</h4>", "response should contain ham samples")
+		require.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
+	})
+
+	t.Run("delete ham sample with error", func(t *testing.T) {
+		spamFilterMock.RemoveDynamicHamSampleFunc = func(sample string) (int, error) { return 0, assert.AnError }
+		spamFilterMock.ResetCalls()
+		reqBody, err := json.Marshal(map[string]string{
+			"msg": "test message",
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequest("POST", "/delete/ham", bytes.NewBuffer(reqBody))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.deleteSampleHandler(spamFilterMock.RemoveDynamicHamSample))
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code, "handler returned wrong status code")
+	})
 }
 
 func TestServer_updateApprovedUsersHandler(t *testing.T) {
@@ -534,13 +578,13 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 	})
 }
 
-func TestServer_htmlSpamCheckTemplateHandler(t *testing.T) {
+func TestServer_htmlSpamCheckHandler(t *testing.T) {
 	server := NewServer(Config{Version: "1.0"})
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/", http.NoBody)
 	require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.htmlSpamCheckTemplateHandler)
+	handler := http.HandlerFunc(server.htmlSpamCheckHandler)
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
@@ -548,6 +592,42 @@ func TestServer_htmlSpamCheckTemplateHandler(t *testing.T) {
 	assert.Contains(t, body, "<title>Checker - TG-Spam</title>", "template should contain the correct title")
 	assert.Contains(t, body, "Version: 1.0", "template should contain the correct version")
 	assert.Contains(t, body, "<form", "template should contain a form")
+}
+
+func TestServer_htmlManageSamplesHandler(t *testing.T) {
+	spamFilterMock := &mocks.SpamFilterMock{
+		DynamicSamplesFunc: func() ([]string, []string, error) {
+			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
+		},
+	}
+
+	server := NewServer(Config{Version: "1.0", SpamFilter: spamFilterMock})
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/manage_samples", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.htmlManageSamplesHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+	body := rr.Body.String()
+	assert.Contains(t, body, "<title>Manage Samples - TG-Spam</title>", "template should contain the correct title")
+	assert.Contains(t, body, `<div class="row" id="samples-list">`, "template should contain a samples list")
+
+}
+
+func TestServer_stylesHandler(t *testing.T) {
+	server := NewServer(Config{Version: "1.0"})
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/style.css", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.stylesHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+	assert.Equal(t, "text/css; charset=utf-8", rr.Header().Get("Content-Type"), "handler should return CSS content type")
+	assert.Contains(t, rr.Body.String(), "body", "handler should return CSS content")
 }
 
 func TestServer_getDynamicSamplesHandler(t *testing.T) {
@@ -662,4 +742,68 @@ func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 		assert.Equal(t, "can't reload samples", response.Error)
 		assert.Equal(t, "test error", response.Details)
 	})
+}
+
+func TestServer_reverseSamples(t *testing.T) {
+	tests := []struct {
+		name    string
+		spam    []string
+		ham     []string
+		revSpam []string
+		revHam  []string
+	}{
+		{
+			name:    "Empty slices",
+			spam:    []string{},
+			ham:     []string{},
+			revSpam: []string{},
+			revHam:  []string{},
+		},
+		{
+			name:    "Single element slices",
+			spam:    []string{"a"},
+			ham:     []string{"1"},
+			revSpam: []string{"a"},
+			revHam:  []string{"1"},
+		},
+		{
+			name:    "Multiple elements",
+			spam:    []string{"a", "b", "c"},
+			ham:     []string{"1", "2", "3"},
+			revSpam: []string{"c", "b", "a"},
+			revHam:  []string{"3", "2", "1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{}
+			gotSpam, gotHam := s.reverseSamples(tt.spam, tt.ham)
+			assert.Equal(t, tt.revSpam, gotSpam)
+			assert.Equal(t, tt.revHam, gotHam)
+		})
+	}
+}
+
+func TestServer_renderSamples(t *testing.T) {
+	mockSpamFilter := &mocks.SpamFilterMock{
+		DynamicSamplesFunc: func() ([]string, []string, error) {
+			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
+		},
+	}
+
+	server := NewServer(Config{
+		SpamFilter: mockSpamFilter,
+	})
+	w := httptest.NewRecorder()
+	server.renderSamples(w)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+	t.Log(w.Body.String())
+	assert.Contains(t, w.Body.String(), "<h4>Spam Samples</h4>")
+	assert.Contains(t, w.Body.String(), "spam1")
+	assert.Contains(t, w.Body.String(), "spam2")
+	assert.Contains(t, w.Body.String(), "<h4>Ham Samples</h4>")
+	assert.Contains(t, w.Body.String(), "ham1")
+	assert.Contains(t, w.Body.String(), "ham2")
 }
