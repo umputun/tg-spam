@@ -37,7 +37,6 @@ type TelegramListener struct {
 	NoSpamReply  bool
 	TrainingMode bool
 	Dry          bool
-	KeepUser     bool
 	Locator      Locator
 
 	adminHandler *admin
@@ -91,7 +90,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, keepUser: l.KeepUser, dry: l.Dry}
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, dry: l.Dry}
 	log.Printf("[DEBUG] admin handler created. %+v", l.adminHandler)
 
 	u := tbapi.NewUpdate(0)
