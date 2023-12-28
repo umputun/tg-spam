@@ -359,7 +359,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
 		// https://core.telegram.org/bots/api#unbanchatmember
 		_, err = a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
-			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}})
+			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}, OnlyIfBanned: true})
 		if err != nil {
 			return fmt.Errorf("failed to unban user %d: %w", userID, err)
 		}
