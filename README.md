@@ -301,7 +301,7 @@ In this mode admin can ban users manually by clicking the "confirm ban" button o
 
 Pls note: Missed spam messages forwarded to the admin chat will be removed from the primary chat group and the user will be banned.
 
-### Running with webapi server
+## Running with webapi server
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
