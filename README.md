@@ -110,9 +110,20 @@ This is not a separate check, but rather a parameter to control the minimum mess
 
 ### Admin chat/group
 
-Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user by clicking the "unban" button on the message.
+Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
 
 To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts.
+
+<details markdown>
+  <summary>Screenshots</summary>
+
+![ban-report](https://github.com/umputun/tg-spam/raw/master/site/docs/ban-report.png)
+
+![change-ban](https://github.com/umputun/tg-spam/raw/master/site/docs/change-ban.png)
+
+![unban-confirmation](https://github.com/umputun/tg-spam/raw/master/site/docs/unban-confirmation.png)
+</details>
+
 
 ### Updating spam and ham samples dynamically
 
