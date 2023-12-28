@@ -86,6 +86,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 func TestApprovedUser_UpsertWithoutTimestampUpdate(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	defer db.Close()
 
 	au, err := NewApprovedUsers(db)
 	require.NoError(t, err)
@@ -106,4 +107,30 @@ func TestApprovedUser_UpsertWithoutTimestampUpdate(t *testing.T) {
 	err = db.Get(&afterUpsertTimestamp, "SELECT timestamp FROM approved_users WHERE id = ?", 123)
 	require.NoError(t, err)
 	assert.Equal(t, initialTimestamp, afterUpsertTimestamp, "Timestamp should not change on upsert")
+}
+
+func TestApprovedUsers_Timestamp(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	au, err := NewApprovedUsers(db)
+	require.NoError(t, err)
+
+	testID := "123"
+	_, err = db.Exec("INSERT INTO approved_users (id, timestamp) VALUES (?, ?)", testID, "2023-01-01T00:00:00")
+	require.NoError(t, err)
+	expectedTimestamp, err := time.Parse("2006-01-02T15:04:05", "2023-01-01T00:00:00")
+	require.NoError(t, err)
+
+	t.Run("existing ID", func(t *testing.T) {
+		actualTimestamp, err := au.Timestamp(testID)
+		require.NoError(t, err)
+		assert.Equal(t, expectedTimestamp, actualTimestamp, "The timestamps should match")
+	})
+
+	t.Run("non-existing ID", func(t *testing.T) {
+		_, err := au.Timestamp("456")
+		assert.Error(t, err, "Should return error for non-existing ID")
+	})
 }

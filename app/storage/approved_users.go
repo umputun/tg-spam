@@ -83,3 +83,18 @@ func (au *ApprovedUsers) Read(p []byte) (n int, err error) {
 	n = copy(p, idBytes)
 	return n, nil
 }
+
+// Timestamp returns timestamp of the approval for the given id
+func (au *ApprovedUsers) Timestamp(id string) (time.Time, error) {
+	idVal, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse id %s: %w", id, err)
+	}
+
+	var timestamp time.Time
+	err = au.db.Get(&timestamp, "SELECT timestamp FROM approved_users WHERE id = ?", idVal)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get timestamp for id %s: %w", id, err)
+	}
+	return timestamp, nil
+}

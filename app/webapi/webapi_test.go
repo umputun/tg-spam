@@ -154,8 +154,12 @@ func TestServer_routes(t *testing.T) {
 			return 0
 		},
 	}
+	approvedUsersMock := &mocks.ApprovedUsersStoreMock{
+		StoreFunc: func(ids []string) error { return nil },
+	}
 
-	server := NewServer(Config{Detector: detectorMock, SpamFilter: spamFilterMock, Locator: locatorMock})
+	server := NewServer(Config{Detector: detectorMock, SpamFilter: spamFilterMock,
+		Locator: locatorMock, ApprovedUsersStore: approvedUsersMock})
 	ts := httptest.NewServer(server.routes(chi.NewRouter()))
 	defer ts.Close()
 
@@ -239,6 +243,9 @@ func TestServer_routes(t *testing.T) {
 
 	t.Run("add user", func(t *testing.T) {
 		detectorMock.ResetCalls()
+		locatorMock.ResetCalls()
+		approvedUsersMock.ResetCalls()
+
 		req, err := http.NewRequest("POST", ts.URL+"/users/add", bytes.NewBuffer([]byte(`{"user_id" : "id1"}`)))
 		require.NoError(t, err)
 
@@ -248,6 +255,8 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 		assert.Equal(t, 1, len(detectorMock.AddApprovedUsersCalls()))
 		assert.Equal(t, []string{"id1"}, detectorMock.AddApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, 0, len(locatorMock.UserIDByNameCalls()))
+		assert.Equal(t, 1, len(approvedUsersMock.StoreCalls()))
 	})
 
 	t.Run("add user by name", func(t *testing.T) {
@@ -591,11 +600,18 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 			return 0
 		},
 	}
-	server := NewServer(Config{Detector: mockDetector, Locator: locatorMock})
+	aprUsersMock := &mocks.ApprovedUsersStoreMock{
+		TimestampFunc: func(id string) (time.Time, error) { return time.Now(), nil },
+		StoreFunc:     func(ids []string) error { return nil },
+	}
+
+	server := NewServer(Config{Detector: mockDetector, Locator: locatorMock, ApprovedUsersStore: aprUsersMock})
 
 	t.Run("successful update by name", func(t *testing.T) {
 		mockDetector.ResetCalls()
 		locatorMock.ResetCalls()
+		aprUsersMock.ResetCalls()
+
 		req, err := http.NewRequest("POST", "/users/add", bytes.NewBuffer([]byte(`{"user_name" : "user1"}`)))
 		require.NoError(t, err)
 
@@ -618,11 +634,14 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		assert.Equal(t, []string{"12345"}, mockDetector.AddApprovedUsersCalls()[0].Ids)
 		assert.Equal(t, 1, len(locatorMock.UserIDByNameCalls()))
 		assert.Equal(t, "user1", locatorMock.UserIDByNameCalls()[0].UserName)
+		assert.Equal(t, 0, len(aprUsersMock.TimestampCalls()))
+		assert.Equal(t, 1, len(aprUsersMock.StoreCalls()))
 	})
 
 	t.Run("successful update from htmx", func(t *testing.T) {
 		mockDetector.ResetCalls()
 		locatorMock.ResetCalls()
+		aprUsersMock.ResetCalls()
 
 		req, err := http.NewRequest("POST", "/users/add", http.NoBody)
 		require.NoError(t, err)
@@ -642,6 +661,12 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		assert.Contains(t, body, "user1")
 		assert.Contains(t, body, "user2")
 
+		assert.Equal(t, 1, len(mockDetector.AddApprovedUsersCalls()))
+		assert.Equal(t, []string{"id1"}, mockDetector.AddApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, 0, len(locatorMock.UserIDByNameCalls()))
+		assert.Equal(t, 2, len(aprUsersMock.TimestampCalls()))
+		assert.Equal(t, "user1", aprUsersMock.TimestampCalls()[0].ID)
+		assert.Equal(t, "user2", aprUsersMock.TimestampCalls()[1].ID)
 	})
 
 	t.Run("successful update by id", func(t *testing.T) {
@@ -774,8 +799,13 @@ func TestServer_htmlManageUsersHandler(t *testing.T) {
 			return []string{"user1", "user2"}
 		},
 	}
+	appUsersMock := &mocks.ApprovedUsersStoreMock{
+		TimestampFunc: func(id string) (time.Time, error) {
+			return time.Now(), nil
+		},
+	}
 
-	server := NewServer(Config{Version: "1.0", SpamFilter: spamFilterMock, Detector: detectorMock})
+	server := NewServer(Config{Version: "1.0", SpamFilter: spamFilterMock, Detector: detectorMock, ApprovedUsersStore: appUsersMock})
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/manage_users", http.NoBody)
 	require.NoError(t, err)

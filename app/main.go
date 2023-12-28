@@ -215,7 +215,7 @@ func execute(ctx context.Context, opts options) error {
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot, locator); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, approvedUsersStore); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
@@ -310,7 +310,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilter, locator *storage.Locator) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, astr *storage.ApprovedUsers) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -321,13 +321,14 @@ func activateServer(ctx context.Context, opts options, spamFilter *bot.SpamFilte
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr: opts.Server.ListenAddr,
-		Detector:   spamFilter.Detector,
-		SpamFilter: spamFilter,
-		Locator:    locator,
-		AuthPasswd: authPassswd,
-		Version:    revision,
-		Dbg:        opts.Dbg,
+		ListenAddr:         opts.Server.ListenAddr,
+		Detector:           sf.Detector,
+		SpamFilter:         sf,
+		ApprovedUsersStore: astr,
+		Locator:            loc,
+		AuthPasswd:         authPassswd,
+		Version:            revision,
+		Dbg:                opts.Dbg,
 	}}
 
 	go func() {

@@ -30,6 +30,7 @@ import (
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/approved_users.go --pkg mocks --with-resets --skip-ensure . ApprovedUsersStore
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -41,13 +42,14 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version    string     // version to show in /ping
-	ListenAddr string     // listen address
-	Detector   Detector   // spam detector
-	SpamFilter SpamFilter // spam filter (bot)
-	Locator    Locator    // locator for user info
-	AuthPasswd string     // basic auth password for user "tg-spam"
-	Dbg        bool       // debug mode
+	Version            string             // version to show in /ping
+	ListenAddr         string             // listen address
+	Detector           Detector           // spam detector
+	SpamFilter         SpamFilter         // spam filter (bot)
+	Locator            Locator            // locator for user info
+	ApprovedUsersStore ApprovedUsersStore // storage for approved users
+	AuthPasswd         string             // basic auth password for user "tg-spam"
+	Dbg                bool               // debug mode
 }
 
 // Detector is a spam detector interface.
@@ -72,6 +74,12 @@ type SpamFilter interface {
 type Locator interface {
 	UserIDByName(userName string) int64
 	UserNameByID(userID int64) string
+}
+
+// ApprovedUsersStore is a storage interface for approved users.
+type ApprovedUsersStore interface {
+	Store(ids []string) error
+	Timestamp(id string) (time.Time, error)
 }
 
 // NewServer creates a new web API server.
@@ -331,6 +339,10 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 		}
 
 		updFn(req.UserID)
+		// store approved users to the storage
+		if err := s.ApprovedUsersStore.Store(s.Detector.ApprovedUsers()); err != nil {
+			log.Printf("[WARN] failed to store approved users: %v", err)
+		}
 
 		if isHtmxRequest {
 			tmpl, err := template.New("").ParseFS(templateFS, "assets/components/users_list.html")
@@ -340,26 +352,11 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 				return
 			}
 
-			type userInfo struct {
-				UserName string
-				UserID   string
-			}
 			tmplData := struct {
 				ApprovedUsers []userInfo
-			}{}
-
-			for _, userID := range s.Detector.ApprovedUsers() {
-				ui := userInfo{UserID: userID}
-				id, err := strconv.ParseInt(userID, 10, 64)
-				if err == nil { // we need numeric user id to get user name
-					ui.UserName = s.Locator.UserNameByID(id)
-				}
-				tmplData.ApprovedUsers = append(tmplData.ApprovedUsers, ui)
+			}{
+				ApprovedUsers: s.approvedUsers(),
 			}
-			// ApprovedUsers() came for detectors map, random sorting
-			sort.Slice(tmplData.ApprovedUsers, func(i, j int) bool {
-				return tmplData.ApprovedUsers[i].UserID < tmplData.ApprovedUsers[j].UserID
-			})
 
 			if err := tmpl.ExecuteTemplate(w, "users_list.html", tmplData); err != nil {
 				log.Printf("[WARN] can't execute template: %v", err)
@@ -446,27 +443,11 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 		return
 	}
 
-	type userInfo struct {
-		UserName string
-		UserID   string
-	}
 	tmplData := struct {
 		ApprovedUsers []userInfo
-	}{}
-
-	for _, userID := range s.Detector.ApprovedUsers() {
-		id, err := strconv.ParseInt(userID, 10, 64)
-		if err != nil {
-			continue
-		}
-		ui := userInfo{UserID: userID, UserName: s.Locator.UserNameByID(id)}
-		tmplData.ApprovedUsers = append(tmplData.ApprovedUsers, ui)
+	}{
+		ApprovedUsers: s.approvedUsers(),
 	}
-
-	// ApprovedUsers() came for detectors map, random sorting
-	sort.Slice(tmplData.ApprovedUsers, func(i, j int) bool {
-		return tmplData.ApprovedUsers[i].UserID < tmplData.ApprovedUsers[j].UserID
-	})
 
 	if err := tmpl.ExecuteTemplate(w, "manage_users.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
@@ -542,6 +523,35 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 		revHam[i] = ham[j]
 	}
 	return revSpam, revHam
+}
+
+type userInfo struct {
+	UserName  string
+	UserID    string
+	Timestamp time.Time
+}
+
+// approvedUsers returns list of approved users expanded with usernames and timestamps
+func (s *Server) approvedUsers() (res []userInfo) {
+	for _, userID := range s.Detector.ApprovedUsers() {
+		ui := userInfo{UserID: userID}
+		id, err := strconv.ParseInt(userID, 10, 64)
+		if err == nil { // we need numeric user id to get user name
+			ui.UserName = s.Locator.UserNameByID(id)
+		}
+		if timestamp, err := s.ApprovedUsersStore.Timestamp(userID); err == nil {
+			ui.Timestamp = timestamp
+		}
+		res = append(res, ui)
+	}
+
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].Timestamp != res[j].Timestamp {
+			return res[i].Timestamp.After(res[j].Timestamp)
+		}
+		return res[i].UserID > res[j].UserID
+	})
+	return res
 }
 
 // GenerateRandomPassword generates a random password of a given length

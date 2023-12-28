@@ -2,26 +2,36 @@
     <div class="col-md-12">
         <div id="error-message"></div> <!-- Error message container -->
         <h4>Approved Users</h4>
-        <ul class="list-group" id="approved-users-list">
+        <table class="table table-striped">
+            <thead class="custom-table-header">
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Timestamp</th>
+                <th></th> <!-- Header for the action column -->
+            </tr>
+            </thead>
+            <tbody>
             {{range .ApprovedUsers}}
-            <li class="list-group-item">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <span class="fw-bold">ID:</span> {{.UserID}} |
-                        <span class="fw-bold">Name:</span> {{.UserName}}
-                    </div>
-                    <form method="POST" hx-post="/users/delete" hx-target="#users-list" hx-swap="outerHTML">
+            <tr>
+                <td>{{.UserID}}</td>
+                <td>{{.UserName}}</td>
+                <td>{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+                <td class="text-end">
+                    <form method="POST" hx-post="/users/delete" hx-target="#users-list" hx-swap="outerHTML" class="d-inline">
                         <input type="hidden" name="user_id" value="{{.UserID}}">
-                        <input type="hidden" name="user_name" value="{{.UserName}}">
-                        <button type="submit" class="btn btn-sm btn-danger">
-                            <i class="bi bi-trash"></i> Delete
+                        <button type="submit" class="btn btn-danger btn-sm" title="Delete User">
+                            <i class="bi bi-trash"></i>
                         </button>
                     </form>
-                </div>
-            </li>
+                </td>
+            </tr>
             {{else}}
-            <li class="list-group-item">No approved users found</li>
+            <tr>
+                <td colspan="4">No approved users found</td>
+            </tr>
             {{end}}
-        </ul>
+            </tbody>
+        </table>
     </div>
 </div>

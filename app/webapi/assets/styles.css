@@ -2,3 +2,8 @@ body, #result{
     background-color: #e8e8e8;
     color: #5a5d5d;
 }
+
+.custom-table-header {
+    background-color: #7c8994;
+    color: white;
+}
