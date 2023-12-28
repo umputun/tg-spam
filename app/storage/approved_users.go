@@ -55,7 +55,7 @@ func (au *ApprovedUsers) Store(ids []string) error {
 			return fmt.Errorf("failed to parse id %s: %w", id, err)
 		}
 
-		_, err = tx.Exec("INSERT OR REPLACE INTO approved_users (id, timestamp) VALUES (?, ?)", idVal, time.Now())
+		_, err = tx.Exec("INSERT INTO approved_users (id, timestamp) VALUES (?, ?) ON CONFLICT(id) DO NOTHING", idVal, time.Now())
 		if err != nil {
 			return fmt.Errorf("failed to insert id %s: %w", id, err)
 		}
