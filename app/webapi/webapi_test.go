@@ -141,8 +141,10 @@ func TestServer_routes(t *testing.T) {
 		},
 	}
 	spamFilterMock := &mocks.SpamFilterMock{
-		UpdateHamFunc:  func(msg string) error { return nil },
-		UpdateSpamFunc: func(msg string) error { return nil },
+		UpdateHamFunc:               func(msg string) error { return nil },
+		UpdateSpamFunc:              func(msg string) error { return nil },
+		RemoveDynamicSpamSampleFunc: func(sample string) (int, error) { return 1, nil },
+		RemoveDynamicHamSampleFunc:  func(sample string) (int, error) { return 1, nil },
 	}
 	locatorMock := &mocks.LocatorMock{
 		UserIDByNameFunc: func(userName string) int64 {
@@ -201,6 +203,40 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, "test message", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
+	t.Run("delete ham sample", func(t *testing.T) {
+		detectorMock.ResetCalls()
+		reqBody, err := json.Marshal(map[string]string{
+			"msg": "test message",
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequest("POST", ts.URL+"/delete/ham", bytes.NewBuffer(reqBody))
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
+	})
+
+	t.Run("delete spam sample", func(t *testing.T) {
+		detectorMock.ResetCalls()
+		reqBody, err := json.Marshal(map[string]string{
+			"msg": "test message",
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequest("POST", ts.URL+"/delete/spam", bytes.NewBuffer(reqBody))
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Equal(t, 1, len(spamFilterMock.RemoveDynamicSpamSampleCalls()))
+		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicSpamSampleCalls()[0].Sample)
+	})
+
 	t.Run("add user", func(t *testing.T) {
 		detectorMock.ResetCalls()
 		req, err := http.NewRequest("POST", ts.URL+"/users/add", bytes.NewBuffer([]byte(`{"user_id" : "id1"}`)))
@@ -243,7 +279,7 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, "user2", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
-	t.Run("remove user", func(t *testing.T) {
+	t.Run("remove user by id", func(t *testing.T) {
 		detectorMock.ResetCalls()
 		locatorMock.ResetCalls()
 
@@ -274,7 +310,7 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, "user1", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
-	t.Run("get users", func(t *testing.T) {
+	t.Run("get approved users", func(t *testing.T) {
 		detectorMock.ResetCalls()
 		resp, err := http.Get(ts.URL + "/users")
 		assert.NoError(t, err)
@@ -284,6 +320,15 @@ func TestServer_routes(t *testing.T) {
 		respBody, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, `{"user_ids":["user1","user2"]}`+"\n", string(respBody))
+	})
+
+	t.Run("delete all approved users", func(t *testing.T) {
+		detectorMock.ResetCalls()
+		resp, err := http.Post(ts.URL+"/users/delete", "application/json", bytes.NewBuffer([]byte(`{"user_id" : "id1"}`)))
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, 1, len(detectorMock.RemoveApprovedUsersCalls()))
+		assert.Equal(t, []string{"id1"}, detectorMock.RemoveApprovedUsersCalls()[0].Ids)
 	})
 }
 
@@ -638,7 +683,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 	})
 }
 
-func TestGenerateRandomPassword(t *testing.T) {
+func TestServer_GenerateRandomPassword(t *testing.T) {
 	res1, err := GenerateRandomPassword(32)
 	require.NoError(t, err)
 	t.Log(res1)
