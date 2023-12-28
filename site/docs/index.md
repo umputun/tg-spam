@@ -350,6 +350,17 @@ Generally, this is a very basic server, but should be sufficient for most use ca
 
 If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.  
 
+
+<details markdown>
+  <summary>Screenshots</summary>
+
+![msg-checker](https://github.com/umputun/tg-spam/raw/master/site/docs/msg-checker.png)
+
+![manage-samples](https://github.com/umputun/tg-spam/raw/master/site/docs/manage-samples.png)
+
+![manage-users](https://github.com/umputun/tg-spam/raw/master/site/docs/manage-users.png)
+</details>
+
 ## Example of docker-compose.yml
 
 This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
