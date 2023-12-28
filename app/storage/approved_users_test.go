@@ -34,6 +34,11 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			ids:      []string{"123", "456", "789"},
 			expected: []string{"123", "456", "789"},
 		},
+		{
+			name:     "multiple IDs, with one bad",
+			ids:      []string{"123", "456", "789xxx", ""},
+			expected: []string{"123", "456"},
+		},
 	}
 
 	for _, tt := range tests {

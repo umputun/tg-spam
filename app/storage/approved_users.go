@@ -52,7 +52,8 @@ func (au *ApprovedUsers) Store(ids []string) error {
 	for _, id := range ids {
 		idVal, err := strconv.ParseInt(id, 10, 64)
 		if err != nil {
-			return fmt.Errorf("failed to parse id %s: %w", id, err)
+			log.Printf("[DEBUG] failed to parse id %s: %v", id, err)
+			continue
 		}
 
 		_, err = tx.Exec("INSERT INTO approved_users (id, timestamp) VALUES (?, ?) ON CONFLICT(id) DO NOTHING", idVal, time.Now())
