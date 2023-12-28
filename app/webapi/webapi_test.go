@@ -155,7 +155,8 @@ func TestServer_routes(t *testing.T) {
 		},
 	}
 	approvedUsersMock := &mocks.ApprovedUsersStoreMock{
-		StoreFunc: func(ids []string) error { return nil },
+		StoreFunc:  func(ids []string) error { return nil },
+		DeleteFunc: func(id string) error { return nil },
 	}
 
 	server := NewServer(Config{Detector: detectorMock, SpamFilter: spamFilterMock,
@@ -291,6 +292,7 @@ func TestServer_routes(t *testing.T) {
 	t.Run("remove user by id", func(t *testing.T) {
 		detectorMock.ResetCalls()
 		locatorMock.ResetCalls()
+		approvedUsersMock.ResetCalls()
 
 		req, err := http.NewRequest("POST", ts.URL+"/users/delete", bytes.NewBuffer([]byte(`{"user_id" : "id1"}`)))
 		require.NoError(t, err)
@@ -301,6 +303,8 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 		assert.Equal(t, 1, len(detectorMock.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"id1"}, detectorMock.RemoveApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, 1, len(approvedUsersMock.DeleteCalls()))
+		assert.Equal(t, "id1", approvedUsersMock.DeleteCalls()[0].ID)
 	})
 
 	t.Run("remove user by name", func(t *testing.T) {

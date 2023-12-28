@@ -31,7 +31,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	}
 
 	t.Run("spam detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, nil, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true,
@@ -40,7 +40,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	})
 
 	t.Run("spam detected, dry", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
+		s := NewSpamFilter(ctx, det, nil, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
 		assert.True(t, resp.Send)
@@ -48,7 +48,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	})
 
 	t.Run("ham detected", func(t *testing.T) {
-		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+		s := NewSpamFilter(ctx, det, nil, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "good", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{CheckResults: []lib.CheckResult{{Name: "already approved", Spam: false, Details: "some ham"}}}, resp)
 	})
@@ -151,7 +151,7 @@ func TestSpamFilter_reloadSamples(t *testing.T) {
 				HamDynamicFile:     "optional",
 			}
 			tc.modify(&params)
-			s := NewSpamFilter(ctx, mockDirector, params)
+			s := NewSpamFilter(ctx, mockDirector, nil, params)
 
 			err = s.ReloadSamples()
 
@@ -201,7 +201,7 @@ func TestSpamFilter_watch(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, SpamConfig{
+	NewSpamFilter(ctx, mockDetector, nil, SpamConfig{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -270,7 +270,7 @@ func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
 	_, err = os.Create(stopWordsFile)
 	require.NoError(t, err)
 
-	NewSpamFilter(ctx, mockDetector, SpamConfig{
+	NewSpamFilter(ctx, mockDetector, nil, SpamConfig{
 		ExcludedTokensFile: excludedTokensFile,
 		SpamSamplesFile:    spamSamplesFile,
 		HamSamplesFile:     hamSamplesFile,
@@ -318,7 +318,7 @@ func TestSpamFilter_Update(t *testing.T) {
 		},
 	}
 
-	sf := NewSpamFilter(ctx, mockDetector, SpamConfig{})
+	sf := NewSpamFilter(ctx, mockDetector, nil, SpamConfig{})
 
 	t.Run("good update", func(t *testing.T) {
 		mockDetector.ResetCalls()
@@ -385,10 +385,11 @@ func TestSpamFilter_AddApprovedUsers(t *testing.T) {
 
 func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{RemoveApprovedUsersFunc: func(ids ...string) {}}
+	mockApprovedStore := &mocks.ApprovedUsersStoreMock{DeleteFunc: func(id string) error { return nil }}
 
 	t.Run("remove single approved user", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
+		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
 		sf.RemoveApprovedUsers(1)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
@@ -396,7 +397,7 @@ func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 
 	t.Run("remove multiple approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
+		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
 		sf.RemoveApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
@@ -404,7 +405,7 @@ func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 
 	t.Run("remove empty list of approved users", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
+		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
 		sf.RemoveApprovedUsers(1, 2, 3)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
@@ -428,7 +429,7 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 	spamFile.Close()
 	hamFile.Close()
 
-	sf := NewSpamFilter(context.Background(), &mocks.DetectorMock{}, SpamConfig{
+	sf := NewSpamFilter(context.Background(), &mocks.DetectorMock{}, nil, SpamConfig{
 		SpamDynamicFile: spamFile.Name(),
 		HamDynamicFile:  hamFile.Name(),
 	})
@@ -495,7 +496,7 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		_, err = hamFile.WriteString("ham1\nham2\n")
 		require.NoError(t, err)
 
-		return NewSpamFilter(context.Background(), mockDirector, SpamConfig{
+		return NewSpamFilter(context.Background(), mockDirector, nil, SpamConfig{
 				SpamDynamicFile:    spamFile.Name(),
 				HamDynamicFile:     hamFile.Name(),
 				SpamSamplesFile:    spamSamplesFile,

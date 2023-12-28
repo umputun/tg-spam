@@ -80,6 +80,7 @@ type Locator interface {
 type ApprovedUsersStore interface {
 	Store(ids []string) error
 	Timestamp(id string) (time.Time, error)
+	Delete(id string) error
 }
 
 // NewServer creates a new web API server.
@@ -142,9 +143,17 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
 		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUsers))       // add user to the approved list
-			r.Post("/delete", s.updateApprovedUsersHandler(s.Detector.RemoveApprovedUsers)) // remove user from approved list
-			r.Get("/", s.getApprovedUsersHandler)                                           // get approved users
+			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUsers)) // add user to the approved list
+			r.Post("/delete", s.updateApprovedUsersHandler(func(id ...string) {       // remove user from approved list
+				s.Detector.RemoveApprovedUsers(id...) // remove user from the approved list
+				for _, userID := range id {
+					// remove user from the storage
+					if err := s.ApprovedUsersStore.Delete(userID); err != nil {
+						log.Printf("[WARN] failed to delete user %s: %v", userID, err)
+					}
+				}
+			}))
+			r.Get("/", s.getApprovedUsersHandler) // get approved users
 		})
 	})
 

@@ -201,7 +201,7 @@ func execute(ctx context.Context, opts options) error {
 	}()
 
 	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, detector)
+	spamBot, err := makeSpamBot(ctx, opts, detector, approvedUsersStore)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
@@ -391,7 +391,7 @@ func makeDetector(opts options) *lib.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector, aStore *storage.ApprovedUsers) (*bot.SpamFilter, error) {
 	spamBotParams := bot.SpamConfig{
 		SpamSamplesFile:    filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
 		HamSamplesFile:     filepath.Join(opts.Files.SamplesDataPath, samplesHamFile),
@@ -404,7 +404,7 @@ func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector) (*bo
 		SpamDryMsg:         opts.Message.Dry,
 		Dry:                opts.Dry,
 	}
-	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
+	spamBot := bot.NewSpamFilter(ctx, detector, aStore, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {

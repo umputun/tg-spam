@@ -19,11 +19,13 @@ import (
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
+//go:generate moq --out mocks/approved_store.go --pkg mocks --skip-ensure --with-resets . ApprovedUsersStore
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.
 type SpamFilter struct {
 	Detector
+	ApprovedUsersStore
 	params SpamConfig
 }
 
@@ -58,9 +60,14 @@ type Detector interface {
 	ApprovedUsers() (res []string)
 }
 
+// ApprovedUsersStore is a storage interface for approved users.
+type ApprovedUsersStore interface {
+	Delete(id string) error
+}
+
 // NewSpamFilter creates new spam filter
-func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *SpamFilter {
-	res := &SpamFilter{Detector: detector, params: params}
+func NewSpamFilter(ctx context.Context, detector Detector, aStore ApprovedUsersStore, params SpamConfig) *SpamFilter {
+	res := &SpamFilter{Detector: detector, params: params, ApprovedUsersStore: aStore}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {
 			log.Printf("[WARN] samples file watcher failed: %v", err)
@@ -134,6 +141,9 @@ func (s *SpamFilter) RemoveApprovedUsers(id int64, ids ...int64) {
 	sids := make([]string, len(combinedIDs))
 	for i, id := range combinedIDs {
 		sids[i] = strconv.FormatInt(id, 10)
+		if err := s.ApprovedUsersStore.Delete(sids[i]); err != nil {
+			log.Printf("[WARN] failed to delete approved user from storage %q: %v", sids[i], err)
+		}
 	}
 	s.Detector.RemoveApprovedUsers(sids...)
 }

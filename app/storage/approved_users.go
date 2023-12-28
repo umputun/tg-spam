@@ -98,3 +98,17 @@ func (au *ApprovedUsers) Timestamp(id string) (time.Time, error) {
 	}
 	return timestamp, nil
 }
+
+// Delete deletes the given id from the storage
+func (au *ApprovedUsers) Delete(id string) error {
+	idVal, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse id %s: %w", id, err)
+	}
+
+	_, err = au.db.Exec("DELETE FROM approved_users WHERE id = ?", idVal)
+	if err != nil {
+		return fmt.Errorf("failed to delete id %s: %w", id, err)
+	}
+	return nil
+}

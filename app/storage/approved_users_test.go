@@ -134,3 +134,57 @@ func TestApprovedUsers_Timestamp(t *testing.T) {
 		assert.Error(t, err, "Should return error for non-existing ID")
 	})
 }
+
+func TestApprovedUsers_Delete(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	au, err := NewApprovedUsers(db)
+	require.NoError(t, err)
+
+	t.Run("existing ID", func(t *testing.T) {
+		err = au.Store([]string{"123"})
+		require.NoError(t, err)
+		err = au.Store([]string{"456"})
+		require.NoError(t, err)
+
+		err = au.Delete("123")
+		require.NoError(t, err)
+
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "There should be only one record left")
+	})
+
+	t.Run("non-existing ID", func(t *testing.T) {
+		err = au.Store([]string{"123"})
+		require.NoError(t, err)
+		err = au.Store([]string{"456"})
+		require.NoError(t, err)
+
+		err = au.Delete("789")
+		require.NoError(t, err)
+
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count, "There should be two records left")
+	})
+
+	t.Run("invalid ID", func(t *testing.T) {
+		err = au.Store([]string{"123"})
+		require.NoError(t, err)
+		err = au.Store([]string{"456"})
+		require.NoError(t, err)
+
+		err = au.Delete("aaa789")
+		require.Error(t, err)
+
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count, "There should be two records left")
+	})
+}

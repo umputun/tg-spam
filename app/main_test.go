@@ -189,7 +189,7 @@ func Test_makeSpamBot(t *testing.T) {
 
 	t.Run("no options", func(t *testing.T) {
 		var opts options
-		_, err := makeSpamBot(ctx, opts, nil)
+		_, err := makeSpamBot(ctx, opts, nil, nil)
 		assert.Error(t, err)
 	})
 
@@ -207,8 +207,12 @@ func Test_makeSpamBot(t *testing.T) {
 		require.NoError(t, err)
 
 		opts.Files.SamplesDataPath = tmpDir
-
-		res, err := makeSpamBot(ctx, opts, makeDetector(opts))
+		detector := makeDetector(opts)
+		db, err := storage.NewSqliteDB(":memory:")
+		require.NoError(t, err)
+		store, err := loadApprovedUsers(db, detector)
+		require.NoError(t, err)
+		res, err := makeSpamBot(ctx, opts, detector, store)
 		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})

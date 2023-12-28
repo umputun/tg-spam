@@ -14,6 +14,9 @@ import (
 //
 //		// make and configure a mocked webapi.ApprovedUsersStore
 //		mockedApprovedUsersStore := &ApprovedUsersStoreMock{
+//			DeleteFunc: func(id string) error {
+//				panic("mock out the Delete method")
+//			},
 //			StoreFunc: func(ids []string) error {
 //				panic("mock out the Store method")
 //			},
@@ -27,6 +30,9 @@ import (
 //
 //	}
 type ApprovedUsersStoreMock struct {
+	// DeleteFunc mocks the Delete method.
+	DeleteFunc func(id string) error
+
 	// StoreFunc mocks the Store method.
 	StoreFunc func(ids []string) error
 
@@ -35,6 +41,11 @@ type ApprovedUsersStoreMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Delete holds details about calls to the Delete method.
+		Delete []struct {
+			// ID is the id argument value.
+			ID string
+		}
 		// Store holds details about calls to the Store method.
 		Store []struct {
 			// Ids is the ids argument value.
@@ -46,8 +57,48 @@ type ApprovedUsersStoreMock struct {
 			ID string
 		}
 	}
+	lockDelete    sync.RWMutex
 	lockStore     sync.RWMutex
 	lockTimestamp sync.RWMutex
+}
+
+// Delete calls DeleteFunc.
+func (mock *ApprovedUsersStoreMock) Delete(id string) error {
+	if mock.DeleteFunc == nil {
+		panic("ApprovedUsersStoreMock.DeleteFunc: method is nil but ApprovedUsersStore.Delete was just called")
+	}
+	callInfo := struct {
+		ID string
+	}{
+		ID: id,
+	}
+	mock.lockDelete.Lock()
+	mock.calls.Delete = append(mock.calls.Delete, callInfo)
+	mock.lockDelete.Unlock()
+	return mock.DeleteFunc(id)
+}
+
+// DeleteCalls gets all the calls that were made to Delete.
+// Check the length with:
+//
+//	len(mockedApprovedUsersStore.DeleteCalls())
+func (mock *ApprovedUsersStoreMock) DeleteCalls() []struct {
+	ID string
+} {
+	var calls []struct {
+		ID string
+	}
+	mock.lockDelete.RLock()
+	calls = mock.calls.Delete
+	mock.lockDelete.RUnlock()
+	return calls
+}
+
+// ResetDeleteCalls reset all the calls that were made to Delete.
+func (mock *ApprovedUsersStoreMock) ResetDeleteCalls() {
+	mock.lockDelete.Lock()
+	mock.calls.Delete = nil
+	mock.lockDelete.Unlock()
 }
 
 // Store calls StoreFunc.
@@ -130,6 +181,10 @@ func (mock *ApprovedUsersStoreMock) ResetTimestampCalls() {
 
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *ApprovedUsersStoreMock) ResetCalls() {
+	mock.lockDelete.Lock()
+	mock.calls.Delete = nil
+	mock.lockDelete.Unlock()
+
 	mock.lockStore.Lock()
 	mock.calls.Store = nil
 	mock.lockStore.Unlock()
