@@ -837,6 +837,19 @@ func TestServer_stylesHandler(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "body", "handler should return CSS content")
 }
 
+func TestServer_logoHandler(t *testing.T) {
+	server := NewServer(Config{Version: "1.0"})
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/logo.png", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.logoHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"), "handler should return CSS content type")
+}
+
 func TestServer_getDynamicSamplesHandler(t *testing.T) {
 	mockSpamFilter := &mocks.SpamFilterMock{
 		DynamicSamplesFunc: func() ([]string, []string, error) {

@@ -163,6 +163,8 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
 		webUI.Get("/manage_users", s.htmlManageUsersHandler)     // serve manage users page
 		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
+		webUI.Get("/logo.png", s.logoHandler)                    // serve logo.png
+
 	})
 
 	return router
@@ -484,6 +486,18 @@ func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// logoHandler handles GET /logo.png request. It returns assets/logo.png file.
+func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
+	img, err := templateFS.ReadFile("assets/logo.png")
+	if err != nil {
+		http.Error(w, "Logo not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(img)
 }
 
 func (s *Server) renderSamples(w http.ResponseWriter) {
