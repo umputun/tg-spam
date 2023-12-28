@@ -12,11 +12,11 @@
 {{template "navbar.html"}}
 
 <div class="container mt-4">
-    <h1 class="text-center mb-4">Message Checker</h1>
-    <p class="text-center">Version: {{.Version}}</p>
+    <h2 class="text-center mb-4">Message Checker</h2>
+    <p class="text-center mb-4">Version: {{.Version}}</p>
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <form hx-post="/check" hx-target="#result" hx-encoding="json" hx-swap="innerHTML" class="mb-4">
+        <div class="col-12 col-md-6">
+            <form hx-post="/check" hx-target="#result" hx-encoding="json" hx-swap="outerHTML" class="mb-4">
                 <div class="mb-3">
                     <label for="userId" class="form-label">User ID</label>
                     <input type="text" class="form-control" id="userId" name="user_id" placeholder="Enter User ID">
@@ -27,7 +27,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Check</button>
             </form>
-            <div id="result" class="alert alert-light" role="alert"></div>
+            <div id="result" class="alert alert-light" role="alert" style="display: none;"></div>
         </div>
     </div>
 </div>

@@ -15,7 +15,7 @@
 
     <!-- Forms for Adding New Samples -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-6 mb-3">
             <form hx-post="/update/spam" hx-target="#samples-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
                 <textarea name="msg" class="form-control mb-2" placeholder="Enter spam sample"></textarea>
                 <button type="submit" class="btn btn-danger">Add Spam</button>
