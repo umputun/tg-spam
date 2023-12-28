@@ -19,6 +19,7 @@ RUN \
 
 FROM alpine:3.19
 ENV TGSPAM_IN_DOCKER=1
+RUN apk add --no-cache tzdata
 COPY --from=build /build/tg-spam /srv/tg-spam
 COPY data /srv/data
 RUN \
