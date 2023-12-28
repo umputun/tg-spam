@@ -314,35 +314,35 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `GET /ping` - returns `pong` if the server is running
 
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
-  - `msg` - message text
-  - `user_id` - user id
+    - `msg` - message text
+    - `user_id` - user id
 
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
-  - `msg` - spam text
+    - `msg` - spam text
 
 - `POST /update/ham` - update ham samples with the message passed in the body. The body should be a json object with the following fields:
-  - `msg` - ham text
+    - `msg` - ham text
 
 - `POST /delete/spam` - delete spam samples with the message passed in the body. The body should be a json object with the following fields:
-  - `msg` - spam text
+    - `msg` - spam text
 
 - `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
-  - `msg` - ham text
+    - `msg` - ham text
 
 - `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
-  - `user_id` -  user id to add
-  - `user_name` - username, used for user_id lookup if user_id is not set
+    - `user_id` -  user id to add
+    - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
-  - `user_id` -  user id to add
-  - `user_name` - username, used for user_id lookup if user_id is not set
+    - `user_id` -  user id to add
+    - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
-  - `user_ids` - array of user ids
+    - `user_ids` - array of user ids
 
 - `GET /samples` - get the list of spam and ham samples. The response is a json object with the following fields:
-  - `spam` - array of spam samples
-  - `ham` - array of ham samples
+    - `spam` - array of spam samples
+    - `ham` - array of ham samples
  
 - `PUT /samples` - reload dynamic samples
 

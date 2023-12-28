@@ -35,5 +35,10 @@ test:
 	go tool cover -func=coverage_no_mocks.out
 	rm coverage.out coverage_no_mocks.out
 
+build_site: prep_site
+	cd site &&\
+	pip3 install -r requirements.txt &&\
+	mkdocs build -d public
+
 
 .PHONY: docker race_test prep_site release build test

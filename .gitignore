@@ -28,3 +28,4 @@ data/ham-dynamic.txt
 data/approved-users.txt
 tg-spam.db
 logs/
+site/public/
