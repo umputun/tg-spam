@@ -353,10 +353,12 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 			}
 
 			tmplData := struct {
-				ApprovedUsers []userInfo
+				ApprovedUsers      []userInfo
+				TotalApprovedUsers int
 			}{
 				ApprovedUsers: s.approvedUsers(),
 			}
+			tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
 			if err := tmpl.ExecuteTemplate(w, "users_list.html", tmplData); err != nil {
 				log.Printf("[WARN] can't execute template: %v", err)
@@ -410,11 +412,15 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 	spam, ham = s.reverseSamples(spam, ham)
 
 	tmplData := struct {
-		SpamSamples []string
-		HamSamples  []string
+		SpamSamples      []string
+		HamSamples       []string
+		TotalSpamSamples int
+		TotalHamSamples  int
 	}{
-		SpamSamples: spam,
-		HamSamples:  ham,
+		SpamSamples:      spam,
+		HamSamples:       ham,
+		TotalSpamSamples: len(spam),
+		TotalHamSamples:  len(ham),
 	}
 
 	// Parse the navbar and manage_samples templates
@@ -444,10 +450,12 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 
 	tmplData := struct {
-		ApprovedUsers []userInfo
+		ApprovedUsers      []userInfo
+		TotalApprovedUsers int
 	}{
 		ApprovedUsers: s.approvedUsers(),
 	}
+	tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
 	if err := tmpl.ExecuteTemplate(w, "manage_users.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
@@ -486,11 +494,15 @@ func (s *Server) renderSamples(w http.ResponseWriter) {
 
 	spam, ham = s.reverseSamples(spam, ham)
 	tmplData := struct {
-		SpamSamples []string
-		HamSamples  []string
+		SpamSamples      []string
+		HamSamples       []string
+		TotalHamSamples  int
+		TotalSpamSamples int
 	}{
-		SpamSamples: spam,
-		HamSamples:  ham,
+		SpamSamples:      spam,
+		HamSamples:       ham,
+		TotalHamSamples:  len(ham),
+		TotalSpamSamples: len(spam),
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "samples_list.html", tmplData); err != nil {
