@@ -2,8 +2,8 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"io"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,48 +13,160 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
+	t.Run("create new table", func(t *testing.T) {
+		db, err := sqlx.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer db.Close()
+
+		_, err = NewApprovedUsers(db)
+		require.NoError(t, err)
+
+		// check if the table and columns exist
+		var exists int
+		err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
+		require.NoError(t, err)
+		assert.Equal(t, 1, exists)
+
+		err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('approved_users') WHERE name='name'")
+		require.NoError(t, err)
+		assert.Equal(t, 1, exists)
+	})
+
+	t.Run("add name column to existing table", func(t *testing.T) {
+		db, err := sqlx.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// create table without 'name' column
+		_, err = db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+		require.NoError(t, err)
+
+		_, err = NewApprovedUsers(db)
+		require.NoError(t, err)
+
+		// check if the 'name' column was added
+		var exists int
+		err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('approved_users') WHERE name='name'")
+		require.NoError(t, err)
+		assert.Equal(t, 1, exists)
+	})
+
+	t.Run("table and name column already exist", func(t *testing.T) {
+		db, err := sqlx.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// create table with 'name' column
+		_, err = db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+		require.NoError(t, err)
+
+		_, err = NewApprovedUsers(db)
+		require.NoError(t, err)
+
+		// verify that the existing structure has not changed
+		var columnCount int
+		err = db.Get(&columnCount, "SELECT COUNT(*) FROM pragma_table_info('approved_users')")
+		require.NoError(t, err)
+		assert.Equal(t, 3, columnCount)
+	})
+}
+
+func TestApprovedUsers_Write(t *testing.T) {
+	db, e := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, e)
+	defer db.Close()
+	au, e := NewApprovedUsers(db)
+	require.NoError(t, e)
+
+	t.Run("write new user without timestamp", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe"})
+		require.NoError(t, err)
+
+		var user ApprovedUsersInfo
+		err = db.Get(&user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", 123)
+		require.NoError(t, err)
+		assert.Equal(t, "John Doe", user.UserName)
+		assert.True(t, time.Since(user.Timestamp) < time.Second, "Timestamp should be recent %v", user.Timestamp)
+	})
+
+	t.Run("write new user with timestamp", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		require.NoError(t, err)
+
+		var user ApprovedUsersInfo
+		err = db.Get(&user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", 123)
+		require.NoError(t, err)
+		assert.Equal(t, "John Doe", user.UserName)
+		assert.Equal(t, time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC), user.Timestamp)
+	})
+
+	t.Run("update existing user", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		require.NoError(t, err)
+
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe Updated"})
+		require.NoError(t, err)
+
+		var user ApprovedUsersInfo
+		err = db.Get(&user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", 123)
+		require.NoError(t, err)
+		assert.Equal(t, "John Doe", user.UserName)
+		assert.Equal(t, time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC), user.Timestamp)
+	})
+}
+
 func TestApprovedUsers_StoreAndRead(t *testing.T) {
 	tests := []struct {
 		name     string
-		ids      []string
+		ids      []int64
 		expected []string
 	}{
 		{
 			name:     "empty",
-			ids:      []string{},
+			ids:      []int64{},
 			expected: []string{},
 		},
 		{
 			name:     "single ID",
-			ids:      []string{"12345"},
+			ids:      []int64{12345},
 			expected: []string{"12345"},
 		},
 		{
 			name:     "multiple IDs",
-			ids:      []string{"123", "456", "789"},
+			ids:      []int64{123, 456, 789},
 			expected: []string{"123", "456", "789"},
 		},
 		{
 			name:     "multiple IDs, with one bad",
-			ids:      []string{"123", "456", "789xxx", ""},
+			ids:      []int64{123, 456},
 			expected: []string{"123", "456"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpDir, err := os.MkdirTemp("", "test_approved_users")
-			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir) // Clean up
-
-			filePath := tmpDir + "/testfile.bin"
-			db, err := NewSqliteDB(filePath)
+			db, err := NewSqliteDB(":memory:")
 			require.NoError(t, err)
 			au, err := NewApprovedUsers(db)
 			require.NoError(t, err)
 
-			err = au.Store(tt.ids)
-			require.NoError(t, err)
+			for _, id := range tt.ids {
+				err := au.Write(ApprovedUsersInfo{UserID: id, UserName: fmt.Sprintf("name_%d", id)})
+				require.NoError(t, err)
+			}
 
 			var readBuffer bytes.Buffer
 			buf := make([]byte, 1024) // buffer for reading
@@ -88,108 +200,86 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 	}
 }
 
-func TestApprovedUser_UpsertWithoutTimestampUpdate(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func TestApprovedUsers_GetAll(t *testing.T) {
+	db, e := NewSqliteDB(":memory:")
+	require.NoError(t, e)
+	au, e := NewApprovedUsers(db)
+	require.NoError(t, e)
 
-	au, err := NewApprovedUsers(db)
-	require.NoError(t, err)
-
-	err = au.Store([]string{"123"})
-	require.NoError(t, err)
-
-	var initialTimestamp time.Time
-	err = db.Get(&initialTimestamp, "SELECT timestamp FROM approved_users WHERE id = ?", 123)
-	require.NoError(t, err)
-
-	time.Sleep(2 * time.Second)
-
-	err = au.Store([]string{"123"})
-	require.NoError(t, err)
-
-	var afterUpsertTimestamp time.Time
-	err = db.Get(&afterUpsertTimestamp, "SELECT timestamp FROM approved_users WHERE id = ?", 123)
-	require.NoError(t, err)
-	assert.Equal(t, initialTimestamp, afterUpsertTimestamp, "Timestamp should not change on upsert")
-}
-
-func TestApprovedUsers_Timestamp(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
-
-	au, err := NewApprovedUsers(db)
-	require.NoError(t, err)
-
-	testID := "123"
-	_, err = db.Exec("INSERT INTO approved_users (id, timestamp) VALUES (?, ?)", testID, "2023-01-01T00:00:00")
-	require.NoError(t, err)
-	expectedTimestamp, err := time.Parse("2006-01-02T15:04:05", "2023-01-01T00:00:00")
-	require.NoError(t, err)
-
-	t.Run("existing ID", func(t *testing.T) {
-		actualTimestamp, err := au.Timestamp(testID)
+	t.Run("empty", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
-		assert.Equal(t, expectedTimestamp, actualTimestamp, "The timestamps should match")
+		users, err := au.GetAll()
+		require.NoError(t, err)
+		assert.Equal(t, []ApprovedUsersInfo{}, users)
 	})
 
-	t.Run("non-existing ID", func(t *testing.T) {
-		_, err := au.Timestamp("456")
-		assert.Error(t, err, "Should return error for non-existing ID")
+	t.Run("direct writes", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+
+		_, err = db.Exec("INSERT INTO approved_users (id, name, timestamp) VALUES (?, ?, ?)", 123, "John Doe", time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC))
+		require.NoError(t, err)
+
+		_, err = db.Exec("INSERT INTO approved_users (id, name, timestamp) VALUES (?, ?, ?)", 456, "Jane Doe", time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC))
+		require.NoError(t, err)
+
+		users, err := au.GetAll()
+		require.NoError(t, err)
+		assert.Equal(t, []ApprovedUsersInfo{
+			{UserID: 456, UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
+			{UserID: 123, UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)},
+		}, users)
+	})
+
+	t.Run("write via ApprovedUsers", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		require.NoError(t, err)
+
+		err = au.Write(ApprovedUsersInfo{UserID: 456, UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)})
+		require.NoError(t, err)
+
+		users, err := au.GetAll()
+		require.NoError(t, err)
+		assert.Equal(t, []ApprovedUsersInfo{
+			{UserID: 456, UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
+			{UserID: 123, UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)},
+		}, users)
 	})
 }
 
 func TestApprovedUsers_Delete(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, e := NewSqliteDB(":memory:")
+	require.NoError(t, e)
+	au, e := NewApprovedUsers(db)
+	require.NoError(t, e)
 
-	au, err := NewApprovedUsers(db)
-	require.NoError(t, err)
-
-	t.Run("existing ID", func(t *testing.T) {
-		err = au.Store([]string{"123"})
-		require.NoError(t, err)
-		err = au.Store([]string{"456"})
+	t.Run("delete existing user", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
 
-		err = au.Delete("123")
+		require.NoError(t, err)
+		err = au.Write(ApprovedUsersInfo{UserID: 123, UserName: "John Doe"})
 		require.NoError(t, err)
 
-		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
-		require.NoError(t, err)
-		assert.Equal(t, 1, count, "There should be only one record left")
-	})
-
-	t.Run("non-existing ID", func(t *testing.T) {
-		err = au.Store([]string{"123"})
-		require.NoError(t, err)
-		err = au.Store([]string{"456"})
+		err = au.Delete(123)
 		require.NoError(t, err)
 
-		err = au.Delete("789")
-		require.NoError(t, err)
-
-		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
-		require.NoError(t, err)
-		assert.Equal(t, 2, count, "There should be two records left")
-	})
-
-	t.Run("invalid ID", func(t *testing.T) {
-		err = au.Store([]string{"123"})
-		require.NoError(t, err)
-		err = au.Store([]string{"456"})
-		require.NoError(t, err)
-
-		err = au.Delete("aaa789")
+		var user ApprovedUsersInfo
+		err = db.Get(&user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", 123)
 		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "no rows in result set"))
+	})
 
-		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
+	t.Run("delete non-existing user", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
-		assert.Equal(t, 2, count, "There should be two records left")
+
+		err = au.Delete(123)
+		require.NoError(t, err)
 	})
 }

@@ -4,6 +4,7 @@
 package mocks
 
 import (
+	"github.com/umputun/tg-spam/app/storage"
 	"sync"
 )
 
@@ -13,8 +14,11 @@ import (
 //
 //		// make and configure a mocked bot.ApprovedUsersStore
 //		mockedApprovedUsersStore := &ApprovedUsersStoreMock{
-//			DeleteFunc: func(id string) error {
+//			DeleteFunc: func(id int64) error {
 //				panic("mock out the Delete method")
+//			},
+//			WriteFunc: func(user storage.ApprovedUsersInfo) error {
+//				panic("mock out the Write method")
 //			},
 //		}
 //
@@ -24,26 +28,35 @@ import (
 //	}
 type ApprovedUsersStoreMock struct {
 	// DeleteFunc mocks the Delete method.
-	DeleteFunc func(id string) error
+	DeleteFunc func(id int64) error
+
+	// WriteFunc mocks the Write method.
+	WriteFunc func(user storage.ApprovedUsersInfo) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Delete holds details about calls to the Delete method.
 		Delete []struct {
 			// ID is the id argument value.
-			ID string
+			ID int64
+		}
+		// Write holds details about calls to the Write method.
+		Write []struct {
+			// User is the user argument value.
+			User storage.ApprovedUsersInfo
 		}
 	}
 	lockDelete sync.RWMutex
+	lockWrite  sync.RWMutex
 }
 
 // Delete calls DeleteFunc.
-func (mock *ApprovedUsersStoreMock) Delete(id string) error {
+func (mock *ApprovedUsersStoreMock) Delete(id int64) error {
 	if mock.DeleteFunc == nil {
 		panic("ApprovedUsersStoreMock.DeleteFunc: method is nil but ApprovedUsersStore.Delete was just called")
 	}
 	callInfo := struct {
-		ID string
+		ID int64
 	}{
 		ID: id,
 	}
@@ -58,10 +71,10 @@ func (mock *ApprovedUsersStoreMock) Delete(id string) error {
 //
 //	len(mockedApprovedUsersStore.DeleteCalls())
 func (mock *ApprovedUsersStoreMock) DeleteCalls() []struct {
-	ID string
+	ID int64
 } {
 	var calls []struct {
-		ID string
+		ID int64
 	}
 	mock.lockDelete.RLock()
 	calls = mock.calls.Delete
@@ -76,9 +89,52 @@ func (mock *ApprovedUsersStoreMock) ResetDeleteCalls() {
 	mock.lockDelete.Unlock()
 }
 
+// Write calls WriteFunc.
+func (mock *ApprovedUsersStoreMock) Write(user storage.ApprovedUsersInfo) error {
+	if mock.WriteFunc == nil {
+		panic("ApprovedUsersStoreMock.WriteFunc: method is nil but ApprovedUsersStore.Write was just called")
+	}
+	callInfo := struct {
+		User storage.ApprovedUsersInfo
+	}{
+		User: user,
+	}
+	mock.lockWrite.Lock()
+	mock.calls.Write = append(mock.calls.Write, callInfo)
+	mock.lockWrite.Unlock()
+	return mock.WriteFunc(user)
+}
+
+// WriteCalls gets all the calls that were made to Write.
+// Check the length with:
+//
+//	len(mockedApprovedUsersStore.WriteCalls())
+func (mock *ApprovedUsersStoreMock) WriteCalls() []struct {
+	User storage.ApprovedUsersInfo
+} {
+	var calls []struct {
+		User storage.ApprovedUsersInfo
+	}
+	mock.lockWrite.RLock()
+	calls = mock.calls.Write
+	mock.lockWrite.RUnlock()
+	return calls
+}
+
+// ResetWriteCalls reset all the calls that were made to Write.
+func (mock *ApprovedUsersStoreMock) ResetWriteCalls() {
+	mock.lockWrite.Lock()
+	mock.calls.Write = nil
+	mock.lockWrite.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *ApprovedUsersStoreMock) ResetCalls() {
 	mock.lockDelete.Lock()
 	mock.calls.Delete = nil
 	mock.lockDelete.Unlock()
+
+	mock.lockWrite.Lock()
+	mock.calls.Write = nil
+	mock.lockWrite.Unlock()
 }

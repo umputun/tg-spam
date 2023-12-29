@@ -212,6 +212,14 @@ func (d *Detector) RemoveApprovedUsers(ids ...string) {
 	}
 }
 
+// IsApprovedUser checks if a given user ID is in the list of approved users.
+func (d *Detector) IsApprovedUser(id string) bool {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	_, ok := d.approvedUsers[id]
+	return ok
+}
+
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
 func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {

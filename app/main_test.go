@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -18,7 +17,6 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
-	"github.com/umputun/tg-spam/lib"
 )
 
 func TestMakeSpamLogger(t *testing.T) {
@@ -116,38 +114,6 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		assert.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
 	})
-}
-
-func Test_autoSaveApprovedUsers(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	director := lib.NewDetector(lib.Config{FirstMessageOnly: true})
-	count, err := director.LoadApprovedUsers(bytes.NewBufferString("123\n456"))
-	require.NoError(t, err)
-	assert.Equal(t, 2, count)
-
-	tmpFile, err := os.CreateTemp("", "approved_users")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	db, err := storage.NewSqliteDB(tmpFile.Name())
-	require.NoError(t, err)
-	wr, err := storage.NewApprovedUsers(db)
-	require.NoError(t, err)
-	go autoSaveApprovedUsers(ctx, director, wr, time.Millisecond*100)
-
-	spam, _ := director.Check("some message to check, should be fine", "999")
-	assert.False(t, spam)
-	time.Sleep(time.Millisecond * 300) // let it tick
-
-	fi, err := os.Stat(tmpFile.Name())
-	require.NoError(t, err)
-	assert.True(t, fi.Size() > 0)
-
-	count, err = director.LoadApprovedUsers(wr)
-	require.NoError(t, err)
-	assert.Equal(t, 3, count)
 }
 
 func Test_makeDetector(t *testing.T) {

@@ -82,8 +82,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID)
 	}
 
-	// remove user from the approved list
-	a.bot.RemoveApprovedUsers(info.UserID)
+	// remove user from the approved list and from storage
+	if err := a.bot.RemoveApprovedUser(info.UserID); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", info.UserID, err))
+	}
 
 	// make a message with spam info and send to admin chat
 	spamInfo := []string{}
@@ -278,7 +280,9 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// add user to the approved list
-	a.bot.AddApprovedUsers(userID)
+	if err := a.bot.AddApprovedUser(userID, ""); err != nil { // name is not available here
+		return fmt.Errorf("failed to add user %d to approved list: %w", userID, err)
+	}
 
 	// Create the original forwarded message with new indication of "unbanned" and an empty keyboard
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_",

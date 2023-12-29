@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot/mocks"
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
@@ -357,58 +358,71 @@ func TestSpamFilter_Update(t *testing.T) {
 
 func TestSpamFilter_AddApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{AddApprovedUsersFunc: func(ids ...string) {}}
+	mockStorage := &mocks.ApprovedUsersStoreMock{
+		WriteFunc: func(user storage.ApprovedUsersInfo) error {
+			if user.UserID == -1 {
+				return errors.New("error")
+			}
+			return nil
+		},
+	}
+	sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockStorage}
 
-	t.Run("add single approved user", func(t *testing.T) {
+	t.Run("add single approved user, success", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
-		sf.AddApprovedUsers(1)
+		mockStorage.ResetCalls()
+		err := sf.AddApprovedUser(1, "user1")
+		assert.NoError(t, err)
 		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
 		assert.Equal(t, []string{"1"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
+		require.Equal(t, 1, len(mockStorage.WriteCalls()))
+		assert.Equal(t, int64(1), mockStorage.WriteCalls()[0].User.UserID)
+		assert.Equal(t, "user1", mockStorage.WriteCalls()[0].User.UserName)
 	})
 
-	t.Run("add multiple approved users", func(t *testing.T) {
+	t.Run("add approved users, failed", func(t *testing.T) {
 		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
-		sf.AddApprovedUsers(1, 2, 3)
+		mockStorage.ResetCalls()
+		err := sf.AddApprovedUser(-1, "user1")
+		assert.Error(t, err)
 		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
-		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
-	})
-
-	t.Run("add empty list of approved users", func(t *testing.T) {
-		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector}
-		sf.AddApprovedUsers(1, 2, 3)
-		require.Equal(t, 1, len(mockDirector.AddApprovedUsersCalls()))
-		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.AddApprovedUsersCalls()[0].Ids)
+		require.Equal(t, 1, len(mockStorage.WriteCalls()))
 	})
 }
 
 func TestSpamFilter_RemoveApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{RemoveApprovedUsersFunc: func(ids ...string) {}}
-	mockApprovedStore := &mocks.ApprovedUsersStoreMock{DeleteFunc: func(id string) error { return nil }}
+	mockApprovedStore := &mocks.ApprovedUsersStoreMock{
+		DeleteFunc: func(id int64) error {
+			if id == -1 {
+				return errors.New("error")
+			}
+			return nil
+		},
+	}
 
-	t.Run("remove single approved user", func(t *testing.T) {
+	t.Run("remove approved user, success", func(t *testing.T) {
 		mockDirector.ResetCalls()
+		mockApprovedStore.ResetCalls()
 		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
-		sf.RemoveApprovedUsers(1)
+		err := sf.RemoveApprovedUser(1)
+		assert.NoError(t, err)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
 		assert.Equal(t, []string{"1"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, 1, len(mockApprovedStore.DeleteCalls()))
+		assert.Equal(t, int64(1), mockApprovedStore.DeleteCalls()[0].ID)
 	})
 
-	t.Run("remove multiple approved users", func(t *testing.T) {
+	t.Run("remove approved user, failed", func(t *testing.T) {
 		mockDirector.ResetCalls()
+		mockApprovedStore.ResetCalls()
 		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
-		sf.RemoveApprovedUsers(1, 2, 3)
+		err := sf.RemoveApprovedUser(-1)
+		assert.Error(t, err)
 		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
-		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
-	})
-
-	t.Run("remove empty list of approved users", func(t *testing.T) {
-		mockDirector.ResetCalls()
-		sf := SpamFilter{Detector: mockDirector, ApprovedUsersStore: mockApprovedStore}
-		sf.RemoveApprovedUsers(1, 2, 3)
-		require.Equal(t, 1, len(mockDirector.RemoveApprovedUsersCalls()))
-		assert.Equal(t, []string{"1", "2", "3"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, []string{"-1"}, mockDirector.RemoveApprovedUsersCalls()[0].Ids)
+		assert.Equal(t, 1, len(mockApprovedStore.DeleteCalls()))
+		assert.Equal(t, int64(-1), mockApprovedStore.DeleteCalls()[0].ID)
 	})
 }
 

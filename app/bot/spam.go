@@ -15,6 +15,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-multierror"
 
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
@@ -58,11 +59,13 @@ type Detector interface {
 	AddApprovedUsers(ids ...string)
 	RemoveApprovedUsers(ids ...string)
 	ApprovedUsers() (res []string)
+	IsApprovedUser(userID string) bool
 }
 
 // ApprovedUsersStore is a storage interface for approved users.
 type ApprovedUsersStore interface {
-	Delete(id string) error
+	Write(user storage.ApprovedUsersInfo) error
+	Delete(id int64) error
 }
 
 // NewSpamFilter creates new spam filter
@@ -123,29 +126,29 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 	return nil
 }
 
-// AddApprovedUsers adds users to the list of approved users
-func (s *SpamFilter) AddApprovedUsers(id int64, ids ...int64) {
-	combinedIDs := append([]int64{id}, ids...)
-	log.Printf("[INFO] add aproved users: %v", combinedIDs)
-	sids := make([]string, len(combinedIDs))
-	for i, id := range combinedIDs {
-		sids[i] = strconv.FormatInt(id, 10)
-	}
-	s.Detector.AddApprovedUsers(sids...)
+// IsApprovedUser checks if user is in the list of approved users
+func (s *SpamFilter) IsApprovedUser(userID int64) bool {
+	return s.Detector.IsApprovedUser(fmt.Sprintf("%d", userID))
 }
 
-// RemoveApprovedUsers removes users from the list of approved users
-func (s *SpamFilter) RemoveApprovedUsers(id int64, ids ...int64) {
-	combinedIDs := append([]int64{id}, ids...)
-	log.Printf("[INFO] remove aproved users: %v", combinedIDs)
-	sids := make([]string, len(combinedIDs))
-	for i, id := range combinedIDs {
-		sids[i] = strconv.FormatInt(id, 10)
-		if err := s.ApprovedUsersStore.Delete(sids[i]); err != nil {
-			log.Printf("[WARN] failed to delete approved user from storage %q: %v", sids[i], err)
-		}
+// AddApprovedUser adds users to the list of approved users, to both the detector and the storage
+func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
+	log.Printf("[INFO] add aproved user: id:%d, name:%q", id, name)
+	s.Detector.AddApprovedUsers([]string{fmt.Sprintf("%d", id)}...)
+	if err := s.ApprovedUsersStore.Write(storage.ApprovedUsersInfo{UserID: id, UserName: name}); err != nil {
+		return fmt.Errorf("failed to write approved user to storage: %w", err)
 	}
-	s.Detector.RemoveApprovedUsers(sids...)
+	return nil
+}
+
+// RemoveApprovedUser removes users from the list of approved users in both the detector and the storage
+func (s *SpamFilter) RemoveApprovedUser(id int64) error {
+	log.Printf("[INFO] remove aproved user: %d", id)
+	s.Detector.RemoveApprovedUsers([]string{fmt.Sprintf("%d", id)}...)
+	if err := s.ApprovedUsersStore.Delete(id); err != nil {
+		return fmt.Errorf("failed to delete approved user from storage: %w", err)
+	}
+	return nil
 }
 
 // watch watches for changes in samples files and reloads them
