@@ -15,18 +15,15 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
-//go:generate moq --out mocks/approved_store.go --pkg mocks --skip-ensure --with-resets . ApprovedUsersStore
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.
 type SpamFilter struct {
 	Detector
-	ApprovedUsersStore
 	params SpamConfig
 }
 
@@ -51,26 +48,20 @@ type SpamConfig struct {
 
 // Detector is a spam detector interface
 type Detector interface {
-	Check(msg string, userID string) (spam bool, cr []lib.CheckResult)
+	Check(request lib.CheckRequest) (spam bool, cr []lib.CheckResult)
 	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (lib.LoadResult, error)
 	LoadStopWords(readers ...io.Reader) (lib.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
-	AddApprovedUsers(ids ...string)
-	RemoveApprovedUsers(ids ...string)
-	ApprovedUsers() (res []string)
+	AddApprovedUser(user lib.UserInfo) error
+	RemoveApprovedUser(id string) error
+	ApprovedUsers() (res []lib.UserInfo)
 	IsApprovedUser(userID string) bool
 }
 
-// ApprovedUsersStore is a storage interface for approved users.
-type ApprovedUsersStore interface {
-	Write(user storage.ApprovedUsersInfo) error
-	Delete(id int64) error
-}
-
 // NewSpamFilter creates new spam filter
-func NewSpamFilter(ctx context.Context, detector Detector, aStore ApprovedUsersStore, params SpamConfig) *SpamFilter {
-	res := &SpamFilter{Detector: detector, params: params, ApprovedUsersStore: aStore}
+func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *SpamFilter {
+	res := &SpamFilter{Detector: detector, params: params}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {
 			log.Printf("[WARN] samples file watcher failed: %v", err)
@@ -85,7 +76,8 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 	displayUsername := DisplayName(msg)
-	isSpam, checkResults := s.Check(msg.Text, strconv.FormatInt(msg.From.ID, 10))
+	isSpam, checkResults := s.Check(lib.CheckRequest{
+		Msg: msg.Text, UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username})
 	crs := []string{}
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
@@ -134,8 +126,7 @@ func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage
 func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
 	log.Printf("[INFO] add aproved user: id:%d, name:%q", id, name)
-	s.Detector.AddApprovedUsers([]string{fmt.Sprintf("%d", id)}...)
-	if err := s.ApprovedUsersStore.Write(storage.ApprovedUsersInfo{UserID: id, UserName: name}); err != nil {
+	if err := s.Detector.AddApprovedUser(lib.UserInfo{UserID: fmt.Sprintf("%d", id), UserName: name}); err != nil {
 		return fmt.Errorf("failed to write approved user to storage: %w", err)
 	}
 	return nil
@@ -144,8 +135,7 @@ func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
 // RemoveApprovedUser removes users from the list of approved users in both the detector and the storage
 func (s *SpamFilter) RemoveApprovedUser(id int64) error {
 	log.Printf("[INFO] remove aproved user: %d", id)
-	s.Detector.RemoveApprovedUsers([]string{fmt.Sprintf("%d", id)}...)
-	if err := s.ApprovedUsersStore.Delete(id); err != nil {
+	if err := s.Detector.RemoveApprovedUser(fmt.Sprintf("%d", id)); err != nil {
 		return fmt.Errorf("failed to delete approved user from storage: %w", err)
 	}
 	return nil

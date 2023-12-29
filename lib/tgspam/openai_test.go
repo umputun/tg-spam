@@ -1,4 +1,4 @@
-package lib
+package tgspam
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/umputun/tg-spam/lib/mocks"
+	"github.com/umputun/tg-spam/lib/tgspam/mocks"
 )
 
 func TestOpenAIChecker_Check(t *testing.T) {

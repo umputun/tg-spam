@@ -8,18 +8,18 @@ import (
 	"sync"
 )
 
-// HTTPClientMock is a mock implementation of lib.HTTPClient.
+// HTTPClientMock is a mock implementation of tgspam.HTTPClient.
 //
 //	func TestSomethingThatUsesHTTPClient(t *testing.T) {
 //
-//		// make and configure a mocked lib.HTTPClient
+//		// make and configure a mocked tgspam.HTTPClient
 //		mockedHTTPClient := &HTTPClientMock{
 //			DoFunc: func(req *http.Request) (*http.Response, error) {
 //				panic("mock out the Do method")
 //			},
 //		}
 //
-//		// use mockedHTTPClient in code that requires lib.HTTPClient
+//		// use mockedHTTPClient in code that requires tgspam.HTTPClient
 //		// and then make assertions.
 //
 //	}
@@ -55,7 +55,7 @@ func (mock *HTTPClientMock) Do(req *http.Request) (*http.Response, error) {
 }
 
 // DoCalls gets all the calls that were made to Do.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedHTTPClient.DoCalls())
 func (mock *HTTPClientMock) DoCalls() []struct {
@@ -68,4 +68,18 @@ func (mock *HTTPClientMock) DoCalls() []struct {
 	calls = mock.calls.Do
 	mock.lockDo.RUnlock()
 	return calls
+}
+
+// ResetDoCalls reset all the calls that were made to Do.
+func (mock *HTTPClientMock) ResetDoCalls() {
+	mock.lockDo.Lock()
+	mock.calls.Do = nil
+	mock.lockDo.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *HTTPClientMock) ResetCalls() {
+	mock.lockDo.Lock()
+	mock.calls.Do = nil
+	mock.lockDo.Unlock()
 }
