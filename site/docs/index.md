@@ -223,7 +223,6 @@ telegram:
       --telegram.group=             group name/id [$TELEGRAM_GROUP]
       --telegram.timeout=           http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
       --telegram.idle=              idle duration (default: 30s) [$TELEGRAM_IDLE]
-      --telegram.preserve-unbanned  preserve user after unban [$TELEGRAM_PRESERVE_UNBANNED]
 
 logger:
       --logger.enabled              enable spam rotated logs [$LOGGER_ENABLED]
@@ -271,7 +270,6 @@ Help Options:
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
-- `--telegram.preserve-unbanned` - if set to `true`, the bot **will not remove** unbanned user from the group, which is default behaviour of [telegram API unbanChatMember](https://core.telegram.org/bots/api#unbanchatmember) method.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
@@ -316,6 +314,7 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
     - `msg` - message text
     - `user_id` - user id
+    - `user_name` - username
 
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
     - `msg` - spam text
@@ -332,6 +331,7 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
     - `user_id` -  user id to add
     - `user_name` - username, used for user_id lookup if user_id is not set
+
 
 - `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
     - `user_id` -  user id to add
@@ -440,7 +440,8 @@ package main
 import (
 	"io"
     "net/http"
-	tgspam "github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 func main() {
@@ -460,6 +461,9 @@ func main() {
 	// load samples
 	detector.LoadSamples(excludeTokens, []io.Reader{spamSample}, []io.Reader{hamSample})
 
-	isSpam, details := detector.Check("this is spam", "123456")
+	isSpam, details := detector.Check(lib.CheckRequest{
+        Msg:    "this is spam",
+        UserID: "123456789",
+    })
 }
 ```

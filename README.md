@@ -314,6 +314,7 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
     - `msg` - message text
     - `user_id` - user id
+    - `user_name` - username
 
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
     - `msg` - spam text
@@ -330,6 +331,7 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
     - `user_id` -  user id to add
     - `user_name` - username, used for user_id lookup if user_id is not set
+
 
 - `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
     - `user_id` -  user id to add
