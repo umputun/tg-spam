@@ -32,23 +32,42 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		assert.Equal(t, 1, exists)
 	})
 
-	t.Run("table already exist", func(t *testing.T) {
+	t.Run("table already exists", func(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 
-		// create table with 'name' column
+		// Create table with 'name' column
 		_, err = db.Exec(`CREATE TABLE approved_users (id TEXT PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
 		require.NoError(t, err)
 
 		_, err = NewApprovedUsers(db)
 		require.NoError(t, err)
 
-		// verify that the existing structure has not changed
+		// Verify that the existing structure has not changed
 		var columnCount int
 		err = db.Get(&columnCount, "SELECT COUNT(*) FROM pragma_table_info('approved_users')")
 		require.NoError(t, err)
 		assert.Equal(t, 3, columnCount)
+	})
+
+	t.Run("table exists with INTEGER id", func(t *testing.T) {
+		db, err := sqlx.Open("sqlite", ":memory:")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// Create table with INTEGER id
+		_, err = db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+		require.NoError(t, err)
+
+		_, err = NewApprovedUsers(db)
+		require.NoError(t, err)
+
+		// Verify that the new table is created with TEXT id
+		var idType string
+		err = db.Get(&idType, "SELECT type FROM pragma_table_info('approved_users') WHERE name='id'")
+		require.NoError(t, err)
+		assert.Equal(t, "TEXT", idType)
 	})
 }
 
