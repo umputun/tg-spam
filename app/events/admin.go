@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -280,7 +281,12 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// add user to the approved list
-	if err := a.bot.AddApprovedUser(userID, ""); err != nil { // name is not available here
+	name, err := a.extractUsername(query.Message.Text) // try to extract username from the message
+	if err != nil {
+		log.Printf("[DEBUG] failed to extract username from %q: %v", query.Message.Text, err)
+		name = ""
+	}
+	if err := a.bot.AddApprovedUser(userID, name); err != nil { // name is not available here
 		return fmt.Errorf("failed to add user %d to approved list: %w", userID, err)
 	}
 
@@ -454,4 +460,23 @@ func (a *admin) parseCallbackData(data string) (userID int64, msgID int, err err
 	}
 
 	return userID, msgID, nil
+}
+
+// extractUsername tries to extract the username from a ban message
+func (a *admin) extractUsername(text string) (string, error) {
+	// regex for markdown format: [username](tg://user?id=123456)
+	markdownRegex := regexp.MustCompile(`\[(.*?)\]\(tg://user\?id=\d+\)`)
+	matches := markdownRegex.FindStringSubmatch(text)
+	if len(matches) > 1 {
+		return matches[1], nil
+	}
+
+	// regex for plain format: {200312168 umputun Umputun U}
+	plainRegex := regexp.MustCompile(`\{\d+ (\S+) .+?\}`)
+	matches = plainRegex.FindStringSubmatch(text)
+	if len(matches) > 1 {
+		return matches[1], nil
+	}
+
+	return "", errors.New("username not found")
 }

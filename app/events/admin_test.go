@@ -129,3 +129,43 @@ func TestAdmin_parseCallbackData(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmin_extractUsername(t *testing.T) {
+	tests := []struct {
+		name           string
+		banMessage     string
+		expectedResult string
+		expectError    bool
+	}{
+		{
+			name:           "Markdown Format",
+			banMessage:     `**permanently banned [John_Doe](tg://user?id=123456)** some message text`,
+			expectedResult: "John_Doe",
+			expectError:    false,
+		},
+		{
+			name:           "Plain Format",
+			banMessage:     `permanently banned {200312168 umputun Umputun U} some message text`,
+			expectedResult: "umputun",
+			expectError:    false,
+		},
+		{
+			name:        "Invalid Format",
+			banMessage:  `permanently banned John_Doe some message text`,
+			expectError: true,
+		},
+	}
+
+	a := admin{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			username, err := a.extractUsername(test.banMessage)
+			if test.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedResult, username)
+			}
+		})
+	}
+}
