@@ -394,7 +394,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 			t.Logf("update-spam: %s", msg)
 			return nil
 		},
-		RemoveApprovedUsersFunc: func(id int64, ids ...int64) {},
+		RemoveApprovedUserFunc: func(id int64) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -414,7 +414,8 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
 	defer cancel()
 
-	l.Locator.AddMessage("text 123", 123, 88, "user", 999999) // add message to locator
+	err := l.Locator.AddMessage("text 123", 123, 88, "user", 999999) // add message to locator
+	assert.NoError(t, err)
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
@@ -432,7 +433,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	close(updChan)
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
-	err := l.Do(ctx)
+	err = l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
 
@@ -450,8 +451,8 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).ChatID)
 	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
 
-	assert.Equal(t, 1, len(b.RemoveApprovedUsersCalls()))
-	assert.Equal(t, int64(88), b.RemoveApprovedUsersCalls()[0].ID)
+	assert.Equal(t, 1, len(b.RemoveApprovedUserCalls()))
+	assert.Equal(t, int64(88), b.RemoveApprovedUserCalls()[0].ID)
 }
 
 func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
@@ -475,7 +476,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		UpdateHamFunc: func(msg string) error {
 			return nil
 		},
-		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -523,8 +524,8 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.UnbanChatMemberConfig).UserID)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
-	require.Equal(t, 1, len(b.AddApprovedUsersCalls()))
-	assert.Equal(t, int64(777), b.AddApprovedUsersCalls()[0].ID)
+	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
 func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
@@ -548,7 +549,7 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 		UpdateHamFunc: func(msg string) error {
 			return nil
 		},
-		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -595,8 +596,8 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
-	require.Equal(t, 1, len(b.AddApprovedUsersCalls()))
-	assert.Equal(t, int64(777), b.AddApprovedUsersCalls()[0].ID)
+	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
 func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
@@ -620,7 +621,7 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 		UpdateHamFunc: func(msg string) error {
 			return nil
 		},
-		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -665,7 +666,7 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 	assert.Equal(t, 2, len(kb[0]), " tow yes/no buttons")
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
 }
 
 func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
@@ -689,7 +690,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 		UpdateSpamFunc: func(msg string) error {
 			return nil
 		},
-		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -736,7 +737,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
 }
 
 func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
@@ -760,7 +761,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 		UpdateSpamFunc: func(msg string) error {
 			return nil
 		},
-		AddApprovedUsersFunc: func(id int64, ids ...int64) {},
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
 	}
 
 	locator, teardown := prepTestLocator(t)
@@ -812,7 +813,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 
 	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
 }
 
 func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
@@ -868,9 +869,11 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	close(updChan)
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
-	l.Locator.AddSpam(999, []lib.CheckResult{{Name: "rule1", Spam: true, Details: "details1"}, {Name: "rule2", Spam: true, Details: "details2"}})
+	err := l.Locator.AddSpam(999, []lib.CheckResult{{Name: "rule1", Spam: true, Details: "details1"},
+		{Name: "rule2", Spam: true, Details: "details2"}})
+	assert.NoError(t, err)
 
-	err := l.Do(ctx)
+	err = l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
@@ -880,7 +883,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 	assert.Equal(t, 0, len(b.UpdateSpamCalls()))
 	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUsersCalls()))
+	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
 }
 
 func TestTelegramListener_transformTextMessage(t *testing.T) {
@@ -1229,6 +1232,6 @@ func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
 	loc, err = storage.NewLocator(10*time.Minute, 100, db)
 	require.NoError(t, err)
 	return loc, func() {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name())
 	}
 }

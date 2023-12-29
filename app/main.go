@@ -192,12 +192,6 @@ func execute(ctx context.Context, opts options) error {
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
-	defer func() {
-		// auto-save approved users on exit
-		if serr := approvedUsersStore.Store(detector.ApprovedUsers()); serr != nil {
-			log.Printf("[WARN] can't save approved users on exit: %v", serr)
-		}
-	}()
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, detector, approvedUsersStore)
@@ -231,8 +225,6 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
 	tbAPI.Debug = opts.TGDbg
-
-	go autoSaveApprovedUsers(ctx, detector, approvedUsersStore, time.Minute*5)
 
 	// make spam logger
 	loggerWr, err := makeSpamLogWriter(opts)
@@ -411,7 +403,7 @@ func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector, aSto
 	return spamBot, nil
 }
 
-// loadApprovedUsers makes the store and loads approved users from db
+// loadApprovedUsers makes the store and loads approved users from db into detector
 func loadApprovedUsers(dataDB *sqlx.DB, detector *lib.Detector) (*storage.ApprovedUsers, error) {
 	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
 	if auErr != nil {
@@ -423,32 +415,6 @@ func loadApprovedUsers(dataDB *sqlx.DB, detector *lib.Detector) (*storage.Approv
 		return approvedUsersStore, nil
 	}
 	return nil, fmt.Errorf("can't load approved users, %w", err)
-}
-
-// autoSaveApprovedUsers saves approved users to db every interval
-// those users collected by detector and kept in memory
-func autoSaveApprovedUsers(ctx context.Context, detector *lib.Detector, store *storage.ApprovedUsers, interval time.Duration) {
-	log.Printf("[DEBUG] auto-save approved users every %v", interval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	lastCount := 0
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[DEBUG] auto-save approved users stopped")
-			return
-		case <-ticker.C:
-			ids := detector.ApprovedUsers()
-			if len(ids) == lastCount {
-				continue
-			}
-			if err := store.Store(ids); err != nil {
-				log.Printf("[WARN] can't save approved users, %v", err)
-				continue
-			}
-			lastCount = len(ids)
-		}
-	}
 }
 
 // expandPath expands ~ to home dir and makes the absolute path

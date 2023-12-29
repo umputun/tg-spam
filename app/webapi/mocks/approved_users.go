@@ -4,8 +4,8 @@
 package mocks
 
 import (
+	"github.com/umputun/tg-spam/app/storage"
 	"sync"
-	"time"
 )
 
 // ApprovedUsersStoreMock is a mock implementation of webapi.ApprovedUsersStore.
@@ -14,14 +14,14 @@ import (
 //
 //		// make and configure a mocked webapi.ApprovedUsersStore
 //		mockedApprovedUsersStore := &ApprovedUsersStoreMock{
-//			DeleteFunc: func(id string) error {
+//			DeleteFunc: func(id int64) error {
 //				panic("mock out the Delete method")
 //			},
-//			StoreFunc: func(ids []string) error {
-//				panic("mock out the Store method")
+//			GetAllFunc: func() ([]storage.ApprovedUsersInfo, error) {
+//				panic("mock out the GetAll method")
 //			},
-//			TimestampFunc: func(id string) (time.Time, error) {
-//				panic("mock out the Timestamp method")
+//			WriteFunc: func(user storage.ApprovedUsersInfo) error {
+//				panic("mock out the Write method")
 //			},
 //		}
 //
@@ -31,44 +31,42 @@ import (
 //	}
 type ApprovedUsersStoreMock struct {
 	// DeleteFunc mocks the Delete method.
-	DeleteFunc func(id string) error
+	DeleteFunc func(id int64) error
 
-	// StoreFunc mocks the Store method.
-	StoreFunc func(ids []string) error
+	// GetAllFunc mocks the GetAll method.
+	GetAllFunc func() ([]storage.ApprovedUsersInfo, error)
 
-	// TimestampFunc mocks the Timestamp method.
-	TimestampFunc func(id string) (time.Time, error)
+	// WriteFunc mocks the Write method.
+	WriteFunc func(user storage.ApprovedUsersInfo) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Delete holds details about calls to the Delete method.
 		Delete []struct {
 			// ID is the id argument value.
-			ID string
+			ID int64
 		}
-		// Store holds details about calls to the Store method.
-		Store []struct {
-			// Ids is the ids argument value.
-			Ids []string
+		// GetAll holds details about calls to the GetAll method.
+		GetAll []struct {
 		}
-		// Timestamp holds details about calls to the Timestamp method.
-		Timestamp []struct {
-			// ID is the id argument value.
-			ID string
+		// Write holds details about calls to the Write method.
+		Write []struct {
+			// User is the user argument value.
+			User storage.ApprovedUsersInfo
 		}
 	}
-	lockDelete    sync.RWMutex
-	lockStore     sync.RWMutex
-	lockTimestamp sync.RWMutex
+	lockDelete sync.RWMutex
+	lockGetAll sync.RWMutex
+	lockWrite  sync.RWMutex
 }
 
 // Delete calls DeleteFunc.
-func (mock *ApprovedUsersStoreMock) Delete(id string) error {
+func (mock *ApprovedUsersStoreMock) Delete(id int64) error {
 	if mock.DeleteFunc == nil {
 		panic("ApprovedUsersStoreMock.DeleteFunc: method is nil but ApprovedUsersStore.Delete was just called")
 	}
 	callInfo := struct {
-		ID string
+		ID int64
 	}{
 		ID: id,
 	}
@@ -83,10 +81,10 @@ func (mock *ApprovedUsersStoreMock) Delete(id string) error {
 //
 //	len(mockedApprovedUsersStore.DeleteCalls())
 func (mock *ApprovedUsersStoreMock) DeleteCalls() []struct {
-	ID string
+	ID int64
 } {
 	var calls []struct {
-		ID string
+		ID int64
 	}
 	mock.lockDelete.RLock()
 	calls = mock.calls.Delete
@@ -101,82 +99,77 @@ func (mock *ApprovedUsersStoreMock) ResetDeleteCalls() {
 	mock.lockDelete.Unlock()
 }
 
-// Store calls StoreFunc.
-func (mock *ApprovedUsersStoreMock) Store(ids []string) error {
-	if mock.StoreFunc == nil {
-		panic("ApprovedUsersStoreMock.StoreFunc: method is nil but ApprovedUsersStore.Store was just called")
+// GetAll calls GetAllFunc.
+func (mock *ApprovedUsersStoreMock) GetAll() ([]storage.ApprovedUsersInfo, error) {
+	if mock.GetAllFunc == nil {
+		panic("ApprovedUsersStoreMock.GetAllFunc: method is nil but ApprovedUsersStore.GetAll was just called")
 	}
 	callInfo := struct {
-		Ids []string
-	}{
-		Ids: ids,
-	}
-	mock.lockStore.Lock()
-	mock.calls.Store = append(mock.calls.Store, callInfo)
-	mock.lockStore.Unlock()
-	return mock.StoreFunc(ids)
+	}{}
+	mock.lockGetAll.Lock()
+	mock.calls.GetAll = append(mock.calls.GetAll, callInfo)
+	mock.lockGetAll.Unlock()
+	return mock.GetAllFunc()
 }
 
-// StoreCalls gets all the calls that were made to Store.
+// GetAllCalls gets all the calls that were made to GetAll.
 // Check the length with:
 //
-//	len(mockedApprovedUsersStore.StoreCalls())
-func (mock *ApprovedUsersStoreMock) StoreCalls() []struct {
-	Ids []string
+//	len(mockedApprovedUsersStore.GetAllCalls())
+func (mock *ApprovedUsersStoreMock) GetAllCalls() []struct {
 } {
 	var calls []struct {
-		Ids []string
 	}
-	mock.lockStore.RLock()
-	calls = mock.calls.Store
-	mock.lockStore.RUnlock()
+	mock.lockGetAll.RLock()
+	calls = mock.calls.GetAll
+	mock.lockGetAll.RUnlock()
 	return calls
 }
 
-// ResetStoreCalls reset all the calls that were made to Store.
-func (mock *ApprovedUsersStoreMock) ResetStoreCalls() {
-	mock.lockStore.Lock()
-	mock.calls.Store = nil
-	mock.lockStore.Unlock()
+// ResetGetAllCalls reset all the calls that were made to GetAll.
+func (mock *ApprovedUsersStoreMock) ResetGetAllCalls() {
+	mock.lockGetAll.Lock()
+	mock.calls.GetAll = nil
+	mock.lockGetAll.Unlock()
 }
 
-// Timestamp calls TimestampFunc.
-func (mock *ApprovedUsersStoreMock) Timestamp(id string) (time.Time, error) {
-	if mock.TimestampFunc == nil {
-		panic("ApprovedUsersStoreMock.TimestampFunc: method is nil but ApprovedUsersStore.Timestamp was just called")
+// Write calls WriteFunc.
+func (mock *ApprovedUsersStoreMock) Write(user storage.ApprovedUsersInfo) error {
+	if mock.WriteFunc == nil {
+		panic("ApprovedUsersStoreMock.WriteFunc: method is nil but ApprovedUsersStore.Write was just called")
 	}
 	callInfo := struct {
-		ID string
+		User storage.ApprovedUsersInfo
 	}{
-		ID: id,
+		User: user,
 	}
-	mock.lockTimestamp.Lock()
-	mock.calls.Timestamp = append(mock.calls.Timestamp, callInfo)
-	mock.lockTimestamp.Unlock()
-	return mock.TimestampFunc(id)
+	mock.lockWrite.Lock()
+	mock.calls.Write = append(mock.calls.Write, callInfo)
+	mock.lockWrite.Unlock()
+	return mock.WriteFunc(user)
 }
 
-// TimestampCalls gets all the calls that were made to Timestamp.
+// WriteCalls gets all the calls that were made to Write.
 // Check the length with:
 //
-//	len(mockedApprovedUsersStore.TimestampCalls())
-func (mock *ApprovedUsersStoreMock) TimestampCalls() []struct {
-	ID string
+//	len(mockedApprovedUsersStore.WriteCalls())
+func (mock *ApprovedUsersStoreMock) WriteCalls() []struct {
+	User storage.ApprovedUsersInfo
 } {
 	var calls []struct {
-		ID string
+		User storage.ApprovedUsersInfo
 	}
-	mock.lockTimestamp.RLock()
-	calls = mock.calls.Timestamp
-	mock.lockTimestamp.RUnlock()
+	mock.lockWrite.RLock()
+	calls = mock.calls.Write
+	mock.lockWrite.RUnlock()
 	return calls
 }
 
-// ResetTimestampCalls reset all the calls that were made to Timestamp.
-func (mock *ApprovedUsersStoreMock) ResetTimestampCalls() {
-	mock.lockTimestamp.Lock()
-	mock.calls.Timestamp = nil
-	mock.lockTimestamp.Unlock()
+// ResetWriteCalls reset all the calls that were made to Write.
+func (mock *ApprovedUsersStoreMock) ResetWriteCalls() {
+	mock.lockWrite.Lock()
+	mock.calls.Write = nil
+	mock.lockWrite.Unlock()
 }
 
 // ResetCalls reset all the calls that were made to all mocked methods.
@@ -185,11 +178,11 @@ func (mock *ApprovedUsersStoreMock) ResetCalls() {
 	mock.calls.Delete = nil
 	mock.lockDelete.Unlock()
 
-	mock.lockStore.Lock()
-	mock.calls.Store = nil
-	mock.lockStore.Unlock()
+	mock.lockGetAll.Lock()
+	mock.calls.GetAll = nil
+	mock.lockGetAll.Unlock()
 
-	mock.lockTimestamp.Lock()
-	mock.calls.Timestamp = nil
-	mock.lockTimestamp.Unlock()
+	mock.lockWrite.Lock()
+	mock.calls.Write = nil
+	mock.lockWrite.Unlock()
 }

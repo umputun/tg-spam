@@ -172,6 +172,22 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 	resp := l.Bot.OnMessage(*msg)
 
+	if !resp.Send { // not spam
+		// if a message is pre-approved, nothing to do
+		if len(resp.CheckResults) == 1 && resp.CheckResults[0].Name == "pre-approved" {
+			return nil
+		}
+
+		// not spam, just approved by detector. add to approved users persistent storage
+		if l.Bot.IsApprovedUser(msg.From.ID) {
+			if err := l.Bot.AddApprovedUser(msg.From.ID, msg.From.Username); err != nil {
+				return fmt.Errorf("failed to add approved user: %w", err)
+			}
+		}
+		// not spam but not approved by detector yet. nothing to do
+		return nil
+	}
+
 	// send response to the channel if allowed
 	if resp.Send && !l.NoSpamReply && !l.TrainingMode {
 		if err := l.sendBotResponse(resp, fromChat); err != nil {

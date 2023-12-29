@@ -12,7 +12,6 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
@@ -57,7 +57,7 @@ type Detector interface {
 	Check(msg string, userID string) (spam bool, cr []lib.CheckResult)
 	AddApprovedUsers(ids ...string)
 	RemoveApprovedUsers(ids ...string)
-	ApprovedUsers() (res []string)
+	ApprovedUsers() []string
 }
 
 // SpamFilter is a spam filter, bot interface.
@@ -78,9 +78,9 @@ type Locator interface {
 
 // ApprovedUsersStore is a storage interface for approved users.
 type ApprovedUsersStore interface {
-	Store(ids []string) error
-	Timestamp(id string) (time.Time, error)
-	Delete(id string) error
+	Write(user storage.ApprovedUsersInfo) error
+	GetAll() ([]storage.ApprovedUsersInfo, error)
+	Delete(id int64) error
 }
 
 // NewServer creates a new web API server.
@@ -143,17 +143,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
 		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUsers)) // add user to the approved list
-			r.Post("/delete", s.updateApprovedUsersHandler(func(id ...string) {       // remove user from approved list
-				s.Detector.RemoveApprovedUsers(id...) // remove user from the approved list
-				for _, userID := range id {
-					// remove user from the storage
-					if err := s.ApprovedUsersStore.Delete(userID); err != nil {
-						log.Printf("[WARN] failed to delete user %s: %v", userID, err)
-					}
-				}
-			}))
-			r.Get("/", s.getApprovedUsersHandler) // get approved users
+			r.Post("/add", s.updateApprovedUsersHandler(s.addApprovedUser))       // add user to the approved list and storage
+			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser)) // remove user from approved list and storage
+			r.Get("/", s.getApprovedUsersHandler)                                 // get approved users
 		})
 	})
 
@@ -313,7 +305,7 @@ func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Requ
 }
 
 // updateApprovedUsersHandler handles POST /users/add and /users/delete requests, it adds or removes users from approved list.
-func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) updateApprovedUsersHandler(updFn func(ui storage.ApprovedUsersInfo)) func(w http.ResponseWriter, r *http.Request) {
 	type reqData struct {
 		UserID   string `json:"user_id"`
 		UserName string `json:"user_name"`
@@ -349,11 +341,14 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 			return
 		}
 
-		updFn(req.UserID)
-		// store approved users to the storage
-		if err := s.ApprovedUsersStore.Store(s.Detector.ApprovedUsers()); err != nil {
-			log.Printf("[WARN] failed to store approved users: %v", err)
+		userID, err := strconv.ParseInt(req.UserID, 10, 64)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			rest.RenderJSON(w, rest.JSON{"error": "user ID must be numeric"})
+			return
 		}
+
+		updFn(storage.ApprovedUsersInfo{UserID: userID, UserName: req.UserName}) // add or remove user from the approved list of detector
 
 		if isHtmxRequest {
 			tmpl, err := template.New("").ParseFS(templateFS, "assets/components/users_list.html")
@@ -362,14 +357,19 @@ func (s *Server) updateApprovedUsersHandler(updFn func(id ...string)) func(w htt
 				rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
 				return
 			}
-
+			users, err := s.ApprovedUsersStore.GetAll()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				rest.RenderJSON(w, rest.JSON{"error": "can't get approved users", "details": err.Error()})
+				return
+			}
 			tmplData := struct {
-				ApprovedUsers      []userInfo
+				ApprovedUsers      []storage.ApprovedUsersInfo
 				TotalApprovedUsers int
 			}{
-				ApprovedUsers: s.approvedUsers(),
+				ApprovedUsers:      users,
+				TotalApprovedUsers: len(users),
 			}
-			tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
 			if err := tmpl.ExecuteTemplate(w, "users_list.html", tmplData); err != nil {
 				log.Printf("[WARN] can't execute template: %v", err)
@@ -460,11 +460,19 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 		return
 	}
 
+	users, err := s.ApprovedUsersStore.GetAll()
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch approved users: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	tmplData := struct {
-		ApprovedUsers      []userInfo
+		ApprovedUsers      []storage.ApprovedUsersInfo
 		TotalApprovedUsers int
 	}{
-		ApprovedUsers: s.approvedUsers(),
+		ApprovedUsers:      users,
+		TotalApprovedUsers: len(users),
 	}
 	tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
@@ -560,33 +568,19 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 	return revSpam, revHam
 }
 
-type userInfo struct {
-	UserName  string
-	UserID    string
-	Timestamp time.Time
+func (s *Server) removeApprovedUser(ui storage.ApprovedUsersInfo) {
+	s.Detector.RemoveApprovedUsers([]string{fmt.Sprintf("%d", ui.UserID)}...) // remove user from the approved list of director
+	// remove user from the storage
+	if err := s.ApprovedUsersStore.Delete(ui.UserID); err != nil {
+		log.Printf("[WARN] failed to delete user_id %d: %v", ui.UserID, err)
+	}
 }
 
-// approvedUsers returns list of approved users expanded with usernames and timestamps
-func (s *Server) approvedUsers() (res []userInfo) {
-	for _, userID := range s.Detector.ApprovedUsers() {
-		ui := userInfo{UserID: userID}
-		id, err := strconv.ParseInt(userID, 10, 64)
-		if err == nil { // we need numeric user id to get user name
-			ui.UserName = s.Locator.UserNameByID(id)
-		}
-		if timestamp, err := s.ApprovedUsersStore.Timestamp(userID); err == nil {
-			ui.Timestamp = timestamp
-		}
-		res = append(res, ui)
+func (s *Server) addApprovedUser(ui storage.ApprovedUsersInfo) {
+	s.Detector.AddApprovedUsers([]string{fmt.Sprintf("%d", ui.UserID)}...) // add user to the approved list of director
+	if err := s.ApprovedUsersStore.Write(ui); err != nil {
+		log.Printf("[WARN] failed to delete user_id %d: %v", ui.UserID, err)
 	}
-
-	sort.Slice(res, func(i, j int) bool {
-		if res[i].Timestamp != res[j].Timestamp {
-			return res[i].Timestamp.After(res[j].Timestamp)
-		}
-		return res[i].UserID > res[j].UserID
-	})
-	return res
 }
 
 // GenerateRandomPassword generates a random password of a given length

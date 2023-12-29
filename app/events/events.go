@@ -16,7 +16,6 @@ import (
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
-//go:generate moq --out mocks/spam_web.go --pkg mocks --with-resets --skip-ensure . SpamWeb
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -55,8 +54,9 @@ type Bot interface {
 	OnMessage(msg bot.Message) (response bot.Response)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
-	AddApprovedUsers(id int64, ids ...int64)
-	RemoveApprovedUsers(id int64, ids ...int64)
+	AddApprovedUser(id int64, name string) error
+	RemoveApprovedUser(id int64) error
+	IsApprovedUser(userID int64) bool
 }
 
 func escapeMarkDownV1Text(text string) string {

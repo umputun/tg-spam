@@ -708,6 +708,7 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.Equal(t, true, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
+		assert.False(t, d.IsApprovedUser("123"))
 	})
 
 	t.Run("user pre-approved, spam check avoided", func(t *testing.T) {
@@ -720,6 +721,7 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("123"))
 	})
 
 	t.Run("user pre-approved with count, spam check avoided", func(t *testing.T) {
@@ -732,6 +734,7 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("123"))
 	})
 
 	t.Run("remove user", func(t *testing.T) {
@@ -744,6 +747,7 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("123"))
 
 		d.RemoveApprovedUsers("123")
 		isSpam, info = d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
@@ -751,6 +755,7 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.Equal(t, true, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
+		assert.False(t, d.IsApprovedUser("123"))
 	})
 
 }
