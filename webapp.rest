@@ -25,7 +25,7 @@ Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 POST http://localhost:8080/users/add
 Authorization: Basic dGctc3BhbTpwYXNzd2Q=
 
-{"user_id": "123456"}
+{"user_id": "123456", "user_name": "test user", "timestamp": "2021-01-01T00:00:00Z"}
 
 ### delete approved user
 POST http://localhost:8080/users/delete
