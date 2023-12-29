@@ -23,7 +23,8 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
@@ -51,9 +52,9 @@ type Config struct {
 
 // Detector is a spam detector interface.
 type Detector interface {
-	Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult)
-	ApprovedUsers() []lib.UserInfo
-	AddApprovedUser(user lib.UserInfo) error
+	Check(req spamcheck.Request) (spam bool, cr []spamcheck.Response)
+	ApprovedUsers() []approved.UserInfo
+	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
 }
 
@@ -158,12 +159,12 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 
 	type CheckResultDisplay struct {
 		Spam   bool
-		Checks []lib.CheckResult
+		Checks []spamcheck.Response
 	}
 
 	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
-	req := lib.CheckRequest{}
+	req := spamcheck.Request{}
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -293,9 +294,9 @@ func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Requ
 }
 
 // updateApprovedUsersHandler handles POST /users/add and /users/delete requests, it adds or removes users from approved list.
-func (s *Server) updateApprovedUsersHandler(updFn func(ui lib.UserInfo) error) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		req := lib.UserInfo{}
+		req := approved.UserInfo{}
 		isHtmxRequest := r.Header.Get("HX-Request") == "true"
 		if isHtmxRequest {
 			req.UserID = r.FormValue("user_id")
@@ -340,7 +341,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui lib.UserInfo) error) f
 			}
 			users := s.Detector.ApprovedUsers()
 			tmplData := struct {
-				ApprovedUsers      []lib.UserInfo
+				ApprovedUsers      []approved.UserInfo
 				TotalApprovedUsers int
 			}{
 				ApprovedUsers:      users,
@@ -360,7 +361,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui lib.UserInfo) error) f
 }
 
 // removeApprovedUser is adopter for updateApprovedUsersHandler updFn
-func (s *Server) removeApprovedUser(req lib.UserInfo) error {
+func (s *Server) removeApprovedUser(req approved.UserInfo) error {
 	return s.Detector.RemoveApprovedUser(req.UserID)
 }
 
@@ -443,7 +444,7 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 
 	users := s.Detector.ApprovedUsers()
 	tmplData := struct {
-		ApprovedUsers      []lib.UserInfo
+		ApprovedUsers      []approved.UserInfo
 		TotalApprovedUsers int
 	}{
 		ApprovedUsers:      users,

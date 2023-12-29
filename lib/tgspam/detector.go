@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure --with-resets . SampleUpdater
@@ -29,7 +30,7 @@ type Detector struct {
 	classifier     classifier
 	openaiChecker  *openAIChecker
 	tokenizedSpam  []map[string]int
-	approvedUsers  map[string]lib.UserInfo
+	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
 	excludedTokens []string
 
@@ -62,9 +63,9 @@ type SampleUpdater interface {
 
 // UserStorage is an interface for approved users storage.
 type UserStorage interface {
-	Read() ([]lib.UserInfo, error) // read approved users from storage
-	Write(au lib.UserInfo) error   // write approved user to storage
-	Delete(id string) error        // delete approved user from storage
+	Read() ([]approved.UserInfo, error) // read approved users from storage
+	Write(au approved.UserInfo) error   // write approved user to storage
+	Delete(id string) error             // delete approved user from storage
 }
 
 // HTTPClient is an interface for http client, satisfied by http.Client.
@@ -72,12 +73,20 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// LoadResult is a result of loading samples.
+type LoadResult struct {
+	ExcludedTokens int // number of excluded tokens
+	SpamSamples    int // number of spam samples
+	HamSamples     int // number of ham samples
+	StopWords      int // number of stop words (phrases)
+}
+
 // NewDetector makes a new Detector with the given config.
 func NewDetector(p Config) *Detector {
 	res := &Detector{
 		Config:        p,
 		classifier:    newClassifier(),
-		approvedUsers: make(map[string]lib.UserInfo),
+		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
 	}
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
@@ -98,7 +107,7 @@ func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	d.approvedUsers = make(map[string]lib.UserInfo) // reset approved users
+	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
 	d.userStorage = storage
 	users, err := d.userStorage.Read()
 	if err != nil {
@@ -112,9 +121,9 @@ func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 }
 
 // Check checks if a given message is spam. Returns true if spam and also returns a list of check results.
-func (d *Detector) Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult) {
+func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Response) {
 
-	isSpamDetected := func(cr []lib.CheckResult) bool {
+	isSpamDetected := func(cr []spamcheck.Response) bool {
 		for _, r := range cr {
 			if r.Spam {
 				return true
@@ -128,7 +137,7 @@ func (d *Detector) Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult)
 
 	// approved user don't need to be checked
 	if d.FirstMessageOnly && d.approvedUsers[req.UserID].Count > d.FirstMessagesCount {
-		return false, []lib.CheckResult{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
+		return false, []spamcheck.Response{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
 	}
 
 	// all the checks are performed sequentially, so we can collect all the results
@@ -146,7 +155,7 @@ func (d *Detector) Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult)
 	// check for message length exceed the minimum size, if min message length is set.
 	// the check is done after first simple checks, because stop words and emojis can be triggered by short messages as well.
 	if len([]rune(req.Msg)) < d.MinMsgLen {
-		cr = append(cr, lib.CheckResult{Name: "message length", Spam: false, Details: "too short"})
+		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		if isSpamDetected(cr) {
 			return true, cr // spam from checks above
 		}
@@ -187,7 +196,7 @@ func (d *Detector) Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult)
 	}
 
 	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
-		au := lib.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
+		au := approved.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
 			UserName: req.UserName, Timestamp: time.Now()}
 		d.approvedUsers[req.UserID] = au
 		if d.userStorage != nil {
@@ -205,7 +214,7 @@ func (d *Detector) Reset() {
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = []string{}
 	d.classifier.reset()
-	d.approvedUsers = make(map[string]lib.UserInfo)
+	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
 }
 
@@ -216,10 +225,10 @@ func (d *Detector) WithSpamUpdater(s SampleUpdater) { d.spamSamplesUpd = s }
 func (d *Detector) WithHamUpdater(s SampleUpdater) { d.hamSamplesUpd = s }
 
 // ApprovedUsers returns a list of approved users.
-func (d *Detector) ApprovedUsers() (res []lib.UserInfo) {
+func (d *Detector) ApprovedUsers() (res []approved.UserInfo) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
-	res = make([]lib.UserInfo, 0, len(d.approvedUsers))
+	res = make([]approved.UserInfo, 0, len(d.approvedUsers))
 	for _, info := range d.approvedUsers {
 		res = append(res, info)
 	}
@@ -242,14 +251,14 @@ func (d *Detector) IsApprovedUser(userID string) bool {
 }
 
 // AddApprovedUser adds user IDs to the list of approved users.
-func (d *Detector) AddApprovedUser(user lib.UserInfo) error {
+func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	ts := user.Timestamp
 	if ts.IsZero() {
 		ts = time.Now()
 	}
-	d.approvedUsers[user.UserID] = lib.UserInfo{
+	d.approvedUsers[user.UserID] = approved.UserInfo{
 		UserID:    user.UserID,
 		UserName:  user.UserName,
 		Count:     d.FirstMessagesCount + 1, // +1 to skip first message check if count is 0
@@ -279,7 +288,7 @@ func (d *Detector) RemoveApprovedUser(id string) error {
 
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
-func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (lib.LoadResult, error) {
+func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -291,7 +300,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	for t := range d.tokenChan(exclReader) {
 		d.excludedTokens = append(d.excludedTokens, strings.ToLower(t))
 	}
-	lr := lib.LoadResult{ExcludedTokens: len(d.excludedTokens)}
+	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
 	docs := []document{}
@@ -322,7 +331,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 }
 
 // LoadStopWords loads stop words from a reader. Reset stop words list before loading.
-func (d *Detector) LoadStopWords(readers ...io.Reader) (lib.LoadResult, error) {
+func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -331,7 +340,7 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) (lib.LoadResult, error) {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
 	log.Printf("[INFO] loaded %d stop words", len(d.stopWords))
-	return lib.LoadResult{StopWords: len(d.stopWords)}, nil
+	return LoadResult{StopWords: len(d.stopWords)}, nil
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
@@ -439,7 +448,7 @@ func (d *Detector) tokenize(inp string) map[string]int {
 }
 
 // isSpam checks if a given message is similar to any of the known bad messages
-func (d *Detector) isSpamSimilarityHigh(msg string) lib.CheckResult {
+func (d *Detector) isSpamSimilarityHigh(msg string) spamcheck.Response {
 	// check for spam similarity
 	tokenizedMessage := d.tokenize(msg)
 	maxSimilarity := 0.0
@@ -449,11 +458,11 @@ func (d *Detector) isSpamSimilarityHigh(msg string) lib.CheckResult {
 			maxSimilarity = similarity
 		}
 		if similarity >= d.SimilarityThreshold {
-			return lib.CheckResult{Spam: true, Name: "similarity",
+			return spamcheck.Response{Spam: true, Name: "similarity",
 				Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
 		}
 	}
-	return lib.CheckResult{Spam: false, Name: "similarity", Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
+	return spamcheck.Response{Spam: false, Name: "similarity", Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
 }
 
 // cosineSimilarity calculates the cosine similarity between two token frequency maps.
@@ -482,19 +491,19 @@ func (d *Detector) cosineSimilarity(a, b map[string]int) float64 {
 }
 
 // isCasSpam checks if a given user ID is a spammer with CAS API.
-func (d *Detector) isCasSpam(msgID string) lib.CheckResult {
+func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 	if _, err := strconv.ParseInt(msgID, 10, 64); err != nil {
-		return lib.CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("invalid user id %q", msgID)}
+		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("invalid user id %q", msgID)}
 	}
 	reqURL := fmt.Sprintf("%s/check?user_id=%s", d.CasAPI, msgID)
 	req, err := http.NewRequest("GET", reqURL, http.NoBody)
 	if err != nil {
-		return lib.CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to make request %s: %v", reqURL, err)}
+		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to make request %s: %v", reqURL, err)}
 	}
 
 	resp, err := d.HTTPClient.Do(req)
 	if err != nil {
-		return lib.CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("ffailed to send request %s: %v", reqURL, err)}
+		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("ffailed to send request %s: %v", reqURL, err)}
 	}
 	defer resp.Body.Close()
 
@@ -504,23 +513,23 @@ func (d *Detector) isCasSpam(msgID string) lib.CheckResult {
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
-		return lib.CheckResult{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to parse response from %s: %v", reqURL, err)}
+		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to parse response from %s: %v", reqURL, err)}
 	}
 	respData.Description = strings.ToLower(respData.Description)
 	respData.Description = strings.TrimSuffix(respData.Description, ".")
 
 	if respData.OK {
-		return lib.CheckResult{Name: "cas", Spam: true, Details: respData.Description}
+		return spamcheck.Response{Name: "cas", Spam: true, Details: respData.Description}
 	}
 	details := respData.Description
 	if details == "" {
 		details = "not found"
 	}
-	return lib.CheckResult{Name: "cas", Spam: false, Details: details}
+	return spamcheck.Response{Name: "cas", Spam: false, Details: details}
 }
 
 // isSpamClassified classify tokens from a document
-func (d *Detector) isSpamClassified(msg string) lib.CheckResult {
+func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 	tm := d.tokenize(msg)
 	tokens := make([]string, 0, len(tm))
 	for token := range tm {
@@ -528,23 +537,23 @@ func (d *Detector) isSpamClassified(msg string) lib.CheckResult {
 	}
 	class, prob, certain := d.classifier.classify(tokens...)
 	isSpam := class == "spam" && certain && (d.MinSpamProbability == 0 || prob >= d.MinSpamProbability)
-	return lib.CheckResult{Name: "classifier", Spam: isSpam,
+	return spamcheck.Response{Name: "classifier", Spam: isSpam,
 		Details: fmt.Sprintf("probability of %s: %.2f%%", class, prob)}
 }
 
 // isStopWord checks if a given message contains any of the stop words.
-func (d *Detector) isStopWord(msg string) lib.CheckResult {
+func (d *Detector) isStopWord(msg string) spamcheck.Response {
 	cleanMsg := cleanEmoji(strings.ToLower(msg))
 	for _, word := range d.stopWords { // stop words are already lowercased
 		if strings.Contains(cleanMsg, strings.ToLower(word)) {
-			return lib.CheckResult{Name: "stopword", Spam: true, Details: word}
+			return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
 		}
 	}
-	return lib.CheckResult{Name: "stopword", Spam: false, Details: "not found"}
+	return spamcheck.Response{Name: "stopword", Spam: false, Details: "not found"}
 }
 
 // isManyEmojis checks if a given message contains more than MaxAllowedEmoji emojis.
-func (d *Detector) isManyEmojis(msg string) lib.CheckResult {
+func (d *Detector) isManyEmojis(msg string) spamcheck.Response {
 	count := countEmoji(msg)
-	return lib.CheckResult{Name: "emoji", Spam: count > d.MaxAllowedEmoji, Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
+	return spamcheck.Response{Name: "emoji", Spam: count > d.MaxAllowedEmoji, Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
 }

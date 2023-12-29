@@ -9,7 +9,7 @@ import (
 	tokenizer "github.com/sandwich-go/gpt3-encoder"
 	"github.com/sashabaranov/go-openai"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 //go:generate moq --out mocks/openai_client.go --pkg mocks --skip-ensure . openAIClient:OpenAIClientMock
@@ -64,16 +64,16 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 }
 
 // check checks if a text is spam
-func (o *openAIChecker) check(msg string) (spam bool, cr lib.CheckResult) {
+func (o *openAIChecker) check(msg string) (spam bool, cr spamcheck.Response) {
 	if o.client == nil {
-		return false, lib.CheckResult{}
+		return false, spamcheck.Response{}
 	}
 
 	resp, err := o.sendRequest(msg)
 	if err != nil {
-		return false, lib.CheckResult{Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err)}
+		return false, spamcheck.Response{Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err)}
 	}
-	return resp.IsSpam, lib.CheckResult{Spam: resp.IsSpam, Name: "openai",
+	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "openai",
 		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
 }
 

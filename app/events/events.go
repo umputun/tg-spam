@@ -10,7 +10,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
@@ -42,7 +42,7 @@ func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
 // Locator is an interface for message locator
 type Locator interface {
 	AddMessage(msg string, chatID, userID int64, userName string, msgID int) error
-	AddSpam(userID int64, checks []lib.CheckResult) error
+	AddSpam(userID int64, checks []spamcheck.Response) error
 	Message(msg string) (storage.MsgMeta, bool)
 	Spam(userID int64) (storage.SpamData, bool)
 	MsgHash(msg string) string

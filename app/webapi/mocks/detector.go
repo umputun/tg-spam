@@ -4,7 +4,8 @@
 package mocks
 
 import (
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 	"sync"
 )
 
@@ -14,13 +15,13 @@ import (
 //
 //		// make and configure a mocked webapi.Detector
 //		mockedDetector := &DetectorMock{
-//			AddApprovedUserFunc: func(user lib.UserInfo) error {
+//			AddApprovedUserFunc: func(user approved.UserInfo) error {
 //				panic("mock out the AddApprovedUser method")
 //			},
-//			ApprovedUsersFunc: func() []lib.UserInfo {
+//			ApprovedUsersFunc: func() []approved.UserInfo {
 //				panic("mock out the ApprovedUsers method")
 //			},
-//			CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
+//			CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
 //			RemoveApprovedUserFunc: func(id string) error {
@@ -34,13 +35,13 @@ import (
 //	}
 type DetectorMock struct {
 	// AddApprovedUserFunc mocks the AddApprovedUser method.
-	AddApprovedUserFunc func(user lib.UserInfo) error
+	AddApprovedUserFunc func(user approved.UserInfo) error
 
 	// ApprovedUsersFunc mocks the ApprovedUsers method.
-	ApprovedUsersFunc func() []lib.UserInfo
+	ApprovedUsersFunc func() []approved.UserInfo
 
 	// CheckFunc mocks the Check method.
-	CheckFunc func(req lib.CheckRequest) (bool, []lib.CheckResult)
+	CheckFunc func(req spamcheck.Request) (bool, []spamcheck.Response)
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id string) error
@@ -50,7 +51,7 @@ type DetectorMock struct {
 		// AddApprovedUser holds details about calls to the AddApprovedUser method.
 		AddApprovedUser []struct {
 			// User is the user argument value.
-			User lib.UserInfo
+			User approved.UserInfo
 		}
 		// ApprovedUsers holds details about calls to the ApprovedUsers method.
 		ApprovedUsers []struct {
@@ -58,7 +59,7 @@ type DetectorMock struct {
 		// Check holds details about calls to the Check method.
 		Check []struct {
 			// Req is the req argument value.
-			Req lib.CheckRequest
+			Req spamcheck.Request
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
 		RemoveApprovedUser []struct {
@@ -73,12 +74,12 @@ type DetectorMock struct {
 }
 
 // AddApprovedUser calls AddApprovedUserFunc.
-func (mock *DetectorMock) AddApprovedUser(user lib.UserInfo) error {
+func (mock *DetectorMock) AddApprovedUser(user approved.UserInfo) error {
 	if mock.AddApprovedUserFunc == nil {
 		panic("DetectorMock.AddApprovedUserFunc: method is nil but Detector.AddApprovedUser was just called")
 	}
 	callInfo := struct {
-		User lib.UserInfo
+		User approved.UserInfo
 	}{
 		User: user,
 	}
@@ -93,10 +94,10 @@ func (mock *DetectorMock) AddApprovedUser(user lib.UserInfo) error {
 //
 //	len(mockedDetector.AddApprovedUserCalls())
 func (mock *DetectorMock) AddApprovedUserCalls() []struct {
-	User lib.UserInfo
+	User approved.UserInfo
 } {
 	var calls []struct {
-		User lib.UserInfo
+		User approved.UserInfo
 	}
 	mock.lockAddApprovedUser.RLock()
 	calls = mock.calls.AddApprovedUser
@@ -112,7 +113,7 @@ func (mock *DetectorMock) ResetAddApprovedUserCalls() {
 }
 
 // ApprovedUsers calls ApprovedUsersFunc.
-func (mock *DetectorMock) ApprovedUsers() []lib.UserInfo {
+func (mock *DetectorMock) ApprovedUsers() []approved.UserInfo {
 	if mock.ApprovedUsersFunc == nil {
 		panic("DetectorMock.ApprovedUsersFunc: method is nil but Detector.ApprovedUsers was just called")
 	}
@@ -146,12 +147,12 @@ func (mock *DetectorMock) ResetApprovedUsersCalls() {
 }
 
 // Check calls CheckFunc.
-func (mock *DetectorMock) Check(req lib.CheckRequest) (bool, []lib.CheckResult) {
+func (mock *DetectorMock) Check(req spamcheck.Request) (bool, []spamcheck.Response) {
 	if mock.CheckFunc == nil {
 		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
 	}
 	callInfo := struct {
-		Req lib.CheckRequest
+		Req spamcheck.Request
 	}{
 		Req: req,
 	}
@@ -166,10 +167,10 @@ func (mock *DetectorMock) Check(req lib.CheckRequest) (bool, []lib.CheckResult) 
 //
 //	len(mockedDetector.CheckCalls())
 func (mock *DetectorMock) CheckCalls() []struct {
-	Req lib.CheckRequest
+	Req spamcheck.Request
 } {
 	var calls []struct {
-		Req lib.CheckRequest
+		Req spamcheck.Request
 	}
 	mock.lockCheck.RLock()
 	calls = mock.calls.Check

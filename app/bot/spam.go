@@ -15,7 +15,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
@@ -48,14 +50,14 @@ type SpamConfig struct {
 
 // Detector is a spam detector interface
 type Detector interface {
-	Check(request lib.CheckRequest) (spam bool, cr []lib.CheckResult)
-	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (lib.LoadResult, error)
-	LoadStopWords(readers ...io.Reader) (lib.LoadResult, error)
+	Check(request spamcheck.Request) (spam bool, cr []spamcheck.Response)
+	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (tgspam.LoadResult, error)
+	LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
-	AddApprovedUser(user lib.UserInfo) error
+	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
-	ApprovedUsers() (res []lib.UserInfo)
+	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
 }
 
@@ -76,7 +78,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 	displayUsername := DisplayName(msg)
-	isSpam, checkResults := s.Check(lib.CheckRequest{
+	isSpam, checkResults := s.Check(spamcheck.Request{
 		Msg: msg.Text, UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username})
 	crs := []string{}
 	for _, cr := range checkResults {
@@ -126,7 +128,7 @@ func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage
 func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
 	log.Printf("[INFO] add aproved user: id:%d, name:%q", id, name)
-	if err := s.Detector.AddApprovedUser(lib.UserInfo{UserID: fmt.Sprintf("%d", id), UserName: name}); err != nil {
+	if err := s.Detector.AddApprovedUser(approved.UserInfo{UserID: fmt.Sprintf("%d", id), UserName: name}); err != nil {
 		return fmt.Errorf("failed to write approved user to storage: %w", err)
 	}
 	return nil

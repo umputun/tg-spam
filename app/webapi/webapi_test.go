@@ -18,7 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/webapi/mocks"
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 func TestServer_Run(t *testing.T) {
@@ -55,8 +56,8 @@ func TestServer_RunAuth(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mockDetector := &mocks.DetectorMock{
-		CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
-			return false, []lib.CheckResult{{Details: "not spam"}}
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
 	}
 	mockSpamFilter := &mocks.SpamFilterMock{}
@@ -123,13 +124,13 @@ func TestServer_RunAuth(t *testing.T) {
 
 func TestServer_routes(t *testing.T) {
 	detectorMock := &mocks.DetectorMock{
-		CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
-			return false, []lib.CheckResult{{Details: "not spam"}}
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
-		ApprovedUsersFunc: func() []lib.UserInfo {
-			return []lib.UserInfo{{UserID: "user1", UserName: "name1"}, {UserID: "user2", UserName: "name2"}}
+		ApprovedUsersFunc: func() []approved.UserInfo {
+			return []approved.UserInfo{{UserID: "user1", UserName: "name1"}, {UserID: "user2", UserName: "name2"}}
 		},
-		AddApprovedUserFunc: func(user lib.UserInfo) error {
+		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			return nil
 		},
 		RemoveApprovedUserFunc: func(id string) error {
@@ -324,11 +325,11 @@ func TestServer_routes(t *testing.T) {
 
 func TestServer_checkHandler(t *testing.T) {
 	mockDetector := &mocks.DetectorMock{
-		CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 			if req.Msg == "spam example" {
-				return true, []lib.CheckResult{{Spam: true, Name: "test", Details: "this was spam"}}
+				return true, []spamcheck.Response{{Spam: true, Name: "test", Details: "this was spam"}}
 			}
-			return false, []lib.CheckResult{{Details: "not spam"}}
+			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
 	}
 	server := NewServer(Config{
@@ -352,8 +353,8 @@ func TestServer_checkHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
 
 		var response struct {
-			Spam   bool              `json:"spam"`
-			Checks []lib.CheckResult `json:"checks"`
+			Spam   bool                 `json:"spam"`
+			Checks []spamcheck.Response `json:"checks"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
 		assert.NoError(t, err, "error unmarshalling response")
@@ -378,8 +379,8 @@ func TestServer_checkHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
 
 		var response struct {
-			Spam   bool              `json:"spam"`
-			Checks []lib.CheckResult `json:"checks"`
+			Spam   bool                 `json:"spam"`
+			Checks []spamcheck.Response `json:"checks"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
 		assert.NoError(t, err, "error unmarshalling response")
@@ -564,14 +565,14 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 
 func TestServer_updateApprovedUsersHandler(t *testing.T) {
 	mockDetector := &mocks.DetectorMock{
-		AddApprovedUserFunc: func(user lib.UserInfo) error {
+		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			if user.UserID == "error" {
 				return assert.AnError
 			}
 			return nil
 		},
-		ApprovedUsersFunc: func() []lib.UserInfo {
-			return []lib.UserInfo{{UserID: "12345", UserName: "user1"}, {UserID: "67890", UserName: "user2"}}
+		ApprovedUsersFunc: func() []approved.UserInfo {
+			return []approved.UserInfo{{UserID: "12345", UserName: "user1"}, {UserID: "67890", UserName: "user2"}}
 		},
 	}
 	locatorMock := &mocks.LocatorMock{
@@ -696,8 +697,8 @@ func TestServer_GenerateRandomPassword(t *testing.T) {
 
 func TestServer_checkHandler_HTMX(t *testing.T) {
 	mockDetector := &mocks.DetectorMock{
-		CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
-			return req.Msg == "spam example", []lib.CheckResult{{Spam: req.Msg == "spam example", Name: "test", Details: "result details"}}
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			return req.Msg == "spam example", []spamcheck.Response{{Spam: req.Msg == "spam example", Name: "test", Details: "result details"}}
 		},
 	}
 
@@ -767,8 +768,8 @@ func TestServer_htmlManageSamplesHandler(t *testing.T) {
 func TestServer_htmlManageUsersHandler(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{}
 	detectorMock := &mocks.DetectorMock{
-		ApprovedUsersFunc: func() []lib.UserInfo {
-			return []lib.UserInfo{{UserID: "user1"}, {UserID: "user2"}}
+		ApprovedUsersFunc: func() []approved.UserInfo {
+			return []approved.UserInfo{{UserID: "user1"}, {UserID: "user2"}}
 		},
 	}
 

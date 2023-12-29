@@ -4,7 +4,9 @@
 package mocks
 
 import (
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
+	"github.com/umputun/tg-spam/lib/tgspam"
 	"io"
 	"sync"
 )
@@ -15,22 +17,22 @@ import (
 //
 //		// make and configure a mocked bot.Detector
 //		mockedDetector := &DetectorMock{
-//			AddApprovedUserFunc: func(user lib.UserInfo) error {
+//			AddApprovedUserFunc: func(user approved.UserInfo) error {
 //				panic("mock out the AddApprovedUser method")
 //			},
-//			ApprovedUsersFunc: func() []lib.UserInfo {
+//			ApprovedUsersFunc: func() []approved.UserInfo {
 //				panic("mock out the ApprovedUsers method")
 //			},
-//			CheckFunc: func(request lib.CheckRequest) (bool, []lib.CheckResult) {
+//			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
 //			IsApprovedUserFunc: func(userID string) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
-//			LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+//			LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
 //				panic("mock out the LoadSamples method")
 //			},
-//			LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
+//			LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
 //				panic("mock out the LoadStopWords method")
 //			},
 //			RemoveApprovedUserFunc: func(id string) error {
@@ -50,22 +52,22 @@ import (
 //	}
 type DetectorMock struct {
 	// AddApprovedUserFunc mocks the AddApprovedUser method.
-	AddApprovedUserFunc func(user lib.UserInfo) error
+	AddApprovedUserFunc func(user approved.UserInfo) error
 
 	// ApprovedUsersFunc mocks the ApprovedUsers method.
-	ApprovedUsersFunc func() []lib.UserInfo
+	ApprovedUsersFunc func() []approved.UserInfo
 
 	// CheckFunc mocks the Check method.
-	CheckFunc func(request lib.CheckRequest) (bool, []lib.CheckResult)
+	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
 	// IsApprovedUserFunc mocks the IsApprovedUser method.
 	IsApprovedUserFunc func(userID string) bool
 
 	// LoadSamplesFunc mocks the LoadSamples method.
-	LoadSamplesFunc func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error)
+	LoadSamplesFunc func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error)
 
 	// LoadStopWordsFunc mocks the LoadStopWords method.
-	LoadStopWordsFunc func(readers ...io.Reader) (lib.LoadResult, error)
+	LoadStopWordsFunc func(readers ...io.Reader) (tgspam.LoadResult, error)
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id string) error
@@ -81,7 +83,7 @@ type DetectorMock struct {
 		// AddApprovedUser holds details about calls to the AddApprovedUser method.
 		AddApprovedUser []struct {
 			// User is the user argument value.
-			User lib.UserInfo
+			User approved.UserInfo
 		}
 		// ApprovedUsers holds details about calls to the ApprovedUsers method.
 		ApprovedUsers []struct {
@@ -89,7 +91,7 @@ type DetectorMock struct {
 		// Check holds details about calls to the Check method.
 		Check []struct {
 			// Request is the request argument value.
-			Request lib.CheckRequest
+			Request spamcheck.Request
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
 		IsApprovedUser []struct {
@@ -138,12 +140,12 @@ type DetectorMock struct {
 }
 
 // AddApprovedUser calls AddApprovedUserFunc.
-func (mock *DetectorMock) AddApprovedUser(user lib.UserInfo) error {
+func (mock *DetectorMock) AddApprovedUser(user approved.UserInfo) error {
 	if mock.AddApprovedUserFunc == nil {
 		panic("DetectorMock.AddApprovedUserFunc: method is nil but Detector.AddApprovedUser was just called")
 	}
 	callInfo := struct {
-		User lib.UserInfo
+		User approved.UserInfo
 	}{
 		User: user,
 	}
@@ -158,10 +160,10 @@ func (mock *DetectorMock) AddApprovedUser(user lib.UserInfo) error {
 //
 //	len(mockedDetector.AddApprovedUserCalls())
 func (mock *DetectorMock) AddApprovedUserCalls() []struct {
-	User lib.UserInfo
+	User approved.UserInfo
 } {
 	var calls []struct {
-		User lib.UserInfo
+		User approved.UserInfo
 	}
 	mock.lockAddApprovedUser.RLock()
 	calls = mock.calls.AddApprovedUser
@@ -177,7 +179,7 @@ func (mock *DetectorMock) ResetAddApprovedUserCalls() {
 }
 
 // ApprovedUsers calls ApprovedUsersFunc.
-func (mock *DetectorMock) ApprovedUsers() []lib.UserInfo {
+func (mock *DetectorMock) ApprovedUsers() []approved.UserInfo {
 	if mock.ApprovedUsersFunc == nil {
 		panic("DetectorMock.ApprovedUsersFunc: method is nil but Detector.ApprovedUsers was just called")
 	}
@@ -211,12 +213,12 @@ func (mock *DetectorMock) ResetApprovedUsersCalls() {
 }
 
 // Check calls CheckFunc.
-func (mock *DetectorMock) Check(request lib.CheckRequest) (bool, []lib.CheckResult) {
+func (mock *DetectorMock) Check(request spamcheck.Request) (bool, []spamcheck.Response) {
 	if mock.CheckFunc == nil {
 		panic("DetectorMock.CheckFunc: method is nil but Detector.Check was just called")
 	}
 	callInfo := struct {
-		Request lib.CheckRequest
+		Request spamcheck.Request
 	}{
 		Request: request,
 	}
@@ -231,10 +233,10 @@ func (mock *DetectorMock) Check(request lib.CheckRequest) (bool, []lib.CheckResu
 //
 //	len(mockedDetector.CheckCalls())
 func (mock *DetectorMock) CheckCalls() []struct {
-	Request lib.CheckRequest
+	Request spamcheck.Request
 } {
 	var calls []struct {
-		Request lib.CheckRequest
+		Request spamcheck.Request
 	}
 	mock.lockCheck.RLock()
 	calls = mock.calls.Check
@@ -289,7 +291,7 @@ func (mock *DetectorMock) ResetIsApprovedUserCalls() {
 }
 
 // LoadSamples calls LoadSamplesFunc.
-func (mock *DetectorMock) LoadSamples(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+func (mock *DetectorMock) LoadSamples(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
 	if mock.LoadSamplesFunc == nil {
 		panic("DetectorMock.LoadSamplesFunc: method is nil but Detector.LoadSamples was just called")
 	}
@@ -336,7 +338,7 @@ func (mock *DetectorMock) ResetLoadSamplesCalls() {
 }
 
 // LoadStopWords calls LoadStopWordsFunc.
-func (mock *DetectorMock) LoadStopWords(readers ...io.Reader) (lib.LoadResult, error) {
+func (mock *DetectorMock) LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error) {
 	if mock.LoadStopWordsFunc == nil {
 		panic("DetectorMock.LoadStopWordsFunc: method is nil but Detector.LoadStopWords was just called")
 	}

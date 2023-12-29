@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
@@ -42,7 +42,7 @@ func ExampleNewDetector() {
 	fmt.Println("Loaded", res.SpamSamples, "spam samples and", res.HamSamples, "ham samples")
 
 	// check a message for spam
-	isSpam, info := detector.Check(lib.CheckRequest{Msg: "This is a test message", UserID: "user1", UserName: "John Doe"})
+	isSpam, info := detector.Check(spamcheck.Request{Msg: "This is a test message", UserID: "user1", UserName: "John Doe"})
 	if isSpam {
 		fmt.Println("The message is spam, info:", info)
 	} else {

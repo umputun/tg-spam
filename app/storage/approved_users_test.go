@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
 )
 
 func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
@@ -83,7 +83,7 @@ func TestApprovedUsers_Write(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe"})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe"})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -98,7 +98,7 @@ func TestApprovedUsers_Write(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -113,10 +113,10 @@ func TestApprovedUsers_Write(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe Updated"})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe Updated"})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -163,7 +163,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, id := range tt.ids {
-				err = au.Write(lib.UserInfo{UserID: id, UserName: "name_" + id})
+				err = au.Write(approved.UserInfo{UserID: id, UserName: "name_" + id})
 				require.NoError(t, err)
 			}
 
@@ -185,7 +185,7 @@ func TestApprovedUsers_Read(t *testing.T) {
 		require.NoError(t, err)
 		users, err := au.Read()
 		require.NoError(t, err)
-		assert.Equal(t, []lib.UserInfo{}, users)
+		assert.Equal(t, []approved.UserInfo{}, users)
 	})
 
 	t.Run("direct writes", func(t *testing.T) {
@@ -202,7 +202,7 @@ func TestApprovedUsers_Read(t *testing.T) {
 
 		users, err := au.Read()
 		require.NoError(t, err)
-		assert.Equal(t, []lib.UserInfo{
+		assert.Equal(t, []approved.UserInfo{
 			{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
 			{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)},
 		}, users)
@@ -213,15 +213,15 @@ func TestApprovedUsers_Read(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
-		err = au.Write(lib.UserInfo{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(approved.UserInfo{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
 		users, err := au.Read()
 		require.NoError(t, err)
-		assert.Equal(t, []lib.UserInfo{
+		assert.Equal(t, []approved.UserInfo{
 			{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
 			{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)},
 		}, users)
@@ -239,7 +239,7 @@ func TestApprovedUsers_Delete(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(lib.UserInfo{UserID: "123", UserName: "John Doe"})
+		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe"})
 		require.NoError(t, err)
 
 		err = au.Delete("123")

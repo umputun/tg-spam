@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot/mocks"
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 func TestSpamFilter_OnMessage(t *testing.T) {
@@ -22,11 +24,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	defer cancel()
 
 	det := &mocks.DetectorMock{
-		CheckFunc: func(req lib.CheckRequest) (bool, []lib.CheckResult) {
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 			if req.Msg == "spam" {
-				return true, []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}
+				return true, []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}
 			}
-			return false, []lib.CheckResult{{Name: "already approved", Spam: false, Details: "some ham"}}
+			return false, []spamcheck.Response{{Name: "already approved", Spam: false, Details: "some ham"}}
 		},
 	}
 
@@ -35,7 +37,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true,
-			CheckResults: []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}}, resp)
+			CheckResults: []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}}, resp)
 		t.Logf("resp: %+v", resp)
 	})
 
@@ -44,24 +46,24 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
 		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
 		assert.True(t, resp.Send)
-		assert.Equal(t, []lib.CheckResult{{Name: "something", Spam: true, Details: "some spam"}}, resp.CheckResults)
+		assert.Equal(t, []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}, resp.CheckResults)
 	})
 
 	t.Run("ham detected", func(t *testing.T) {
 		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "good", From: User{ID: 1, Username: "john"}})
-		assert.Equal(t, Response{CheckResults: []lib.CheckResult{{Name: "already approved", Spam: false, Details: "some ham"}}}, resp)
+		assert.Equal(t, Response{CheckResults: []spamcheck.Response{{Name: "already approved", Spam: false, Details: "some ham"}}}, resp)
 	})
 
 }
 
 func TestSpamFilter_reloadSamples(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{
-		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
-		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
 	}
 
@@ -171,15 +173,15 @@ func TestSpamFilter_watch(t *testing.T) {
 
 	count := 0
 	mockDetector := &mocks.DetectorMock{
-		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
 			count++
 			if count == 1 { // only first call should succeed
-				return lib.LoadResult{}, nil
+				return tgspam.LoadResult{}, nil
 			}
-			return lib.LoadResult{}, errors.New("error")
+			return tgspam.LoadResult{}, errors.New("error")
 		},
-		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
 	}
 
@@ -244,11 +246,11 @@ func TestSpamFilter_WatchMultipleUpdates(t *testing.T) {
 	defer cancel()
 
 	mockDetector := &mocks.DetectorMock{
-		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
-		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
 	}
 
@@ -357,7 +359,7 @@ func TestSpamFilter_Update(t *testing.T) {
 
 func TestSpamFilter_AddApprovedUsers(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{
-		AddApprovedUserFunc: func(user lib.UserInfo) error {
+		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			if user.UserID == "-1" {
 				return errors.New("error")
 			}
@@ -457,11 +459,11 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 
 func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{
-		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
-		LoadStopWordsFunc: func(readers ...io.Reader) (lib.LoadResult, error) {
-			return lib.LoadResult{}, nil
+		LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
 		},
 	}
 

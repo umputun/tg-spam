@@ -14,7 +14,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
 	"github.com/umputun/tg-spam/app/storage"
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 func TestTelegramListener_Do(t *testing.T) {
@@ -869,7 +869,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	close(updChan)
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
-	err := l.Locator.AddSpam(999, []lib.CheckResult{{Name: "rule1", Spam: true, Details: "details1"},
+	err := l.Locator.AddSpam(999, []spamcheck.Response{{Name: "rule1", Spam: true, Details: "details1"},
 		{Name: "rule2", Spam: true, Details: "details2"}})
 	assert.NoError(t, err)
 
