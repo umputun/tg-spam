@@ -4,7 +4,7 @@
 package mocks
 
 import (
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
 	"sync"
 )
 
@@ -17,10 +17,10 @@ import (
 //			DeleteFunc: func(id string) error {
 //				panic("mock out the Delete method")
 //			},
-//			ReadFunc: func() ([]lib.UserInfo, error) {
+//			ReadFunc: func() ([]approved.UserInfo, error) {
 //				panic("mock out the Read method")
 //			},
-//			WriteFunc: func(au lib.UserInfo) error {
+//			WriteFunc: func(au approved.UserInfo) error {
 //				panic("mock out the Write method")
 //			},
 //		}
@@ -34,10 +34,10 @@ type UserStorageMock struct {
 	DeleteFunc func(id string) error
 
 	// ReadFunc mocks the Read method.
-	ReadFunc func() ([]lib.UserInfo, error)
+	ReadFunc func() ([]approved.UserInfo, error)
 
 	// WriteFunc mocks the Write method.
-	WriteFunc func(au lib.UserInfo) error
+	WriteFunc func(au approved.UserInfo) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -52,7 +52,7 @@ type UserStorageMock struct {
 		// Write holds details about calls to the Write method.
 		Write []struct {
 			// Au is the au argument value.
-			Au lib.UserInfo
+			Au approved.UserInfo
 		}
 	}
 	lockDelete sync.RWMutex
@@ -100,7 +100,7 @@ func (mock *UserStorageMock) ResetDeleteCalls() {
 }
 
 // Read calls ReadFunc.
-func (mock *UserStorageMock) Read() ([]lib.UserInfo, error) {
+func (mock *UserStorageMock) Read() ([]approved.UserInfo, error) {
 	if mock.ReadFunc == nil {
 		panic("UserStorageMock.ReadFunc: method is nil but UserStorage.Read was just called")
 	}
@@ -134,12 +134,12 @@ func (mock *UserStorageMock) ResetReadCalls() {
 }
 
 // Write calls WriteFunc.
-func (mock *UserStorageMock) Write(au lib.UserInfo) error {
+func (mock *UserStorageMock) Write(au approved.UserInfo) error {
 	if mock.WriteFunc == nil {
 		panic("UserStorageMock.WriteFunc: method is nil but UserStorage.Write was just called")
 	}
 	callInfo := struct {
-		Au lib.UserInfo
+		Au approved.UserInfo
 	}{
 		Au: au,
 	}
@@ -154,10 +154,10 @@ func (mock *UserStorageMock) Write(au lib.UserInfo) error {
 //
 //	len(mockedUserStorage.WriteCalls())
 func (mock *UserStorageMock) WriteCalls() []struct {
-	Au lib.UserInfo
+	Au approved.UserInfo
 } {
 	var calls []struct {
-		Au lib.UserInfo
+		Au approved.UserInfo
 	}
 	mock.lockWrite.RLock()
 	calls = mock.calls.Write

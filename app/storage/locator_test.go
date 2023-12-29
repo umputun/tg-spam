@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 func TestNewLocator(t *testing.T) {
@@ -80,7 +80,7 @@ func TestLocator_AddAndRetrieveSpam(t *testing.T) {
 	locator := newTestLocator(t)
 
 	userID := int64(456)
-	checks := []lib.CheckResult{{Name: "test", Spam: true, Details: "test spam"}}
+	checks := []spamcheck.Response{{Name: "test", Spam: true, Details: "test spam"}}
 
 	require.NoError(t, locator.AddSpam(userID, checks))
 

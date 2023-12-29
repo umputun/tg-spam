@@ -9,18 +9,18 @@ import (
 	"sync"
 )
 
-// OpenAIClientMock is a mock implementation of lib.openAIClient.
+// OpenAIClientMock is a mock implementation of tgspam.openAIClient.
 //
 //	func TestSomethingThatUsesopenAIClient(t *testing.T) {
 //
-//		// make and configure a mocked lib.openAIClient
+//		// make and configure a mocked tgspam.openAIClient
 //		mockedopenAIClient := &OpenAIClientMock{
 //			CreateChatCompletionFunc: func(contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 //				panic("mock out the CreateChatCompletion method")
 //			},
 //		}
 //
-//		// use mockedopenAIClient in code that requires lib.openAIClient
+//		// use mockedopenAIClient in code that requires tgspam.openAIClient
 //		// and then make assertions.
 //
 //	}
@@ -60,7 +60,7 @@ func (mock *OpenAIClientMock) CreateChatCompletion(contextMoqParam context.Conte
 }
 
 // CreateChatCompletionCalls gets all the calls that were made to CreateChatCompletion.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedopenAIClient.CreateChatCompletionCalls())
 func (mock *OpenAIClientMock) CreateChatCompletionCalls() []struct {

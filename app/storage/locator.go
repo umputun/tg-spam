@@ -10,7 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 // Locator stores messages metadata and spam results for a given ttl period.
@@ -34,7 +34,7 @@ type MsgMeta struct {
 // SpamData stores spam data for a given user
 type SpamData struct {
 	Time   time.Time `db:"time"`
-	Checks []lib.CheckResult
+	Checks []spamcheck.Response
 }
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
@@ -109,7 +109,7 @@ func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, 
 }
 
 // AddSpam adds spam data to the locator and also cleans up old spam data.
-func (l *Locator) AddSpam(userID int64, checks []lib.CheckResult) error {
+func (l *Locator) AddSpam(userID int64, checks []spamcheck.Response) error {
 	checksStr, err := json.Marshal(checks)
 	if err != nil {
 		return fmt.Errorf("failed to marshal checks: %w", err)

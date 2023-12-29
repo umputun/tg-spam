@@ -8,7 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/approved"
 )
 
 // ApprovedUsers is a storage for approved users ids
@@ -45,15 +45,15 @@ func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
 }
 
 // Read returns all approved users.
-func (au *ApprovedUsers) Read() ([]lib.UserInfo, error) {
+func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
 	users := []approvedUsersInfo{}
 	err := au.db.Select(&users, "SELECT id, name, timestamp FROM approved_users ORDER BY timestamp DESC")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approved users: %w", err)
 	}
-	res := make([]lib.UserInfo, len(users))
+	res := make([]approved.UserInfo, len(users))
 	for i, u := range users {
-		res[i] = lib.UserInfo{
+		res[i] = approved.UserInfo{
 			UserID:    u.UserID,
 			UserName:  u.UserName,
 			Timestamp: u.Timestamp,
@@ -64,7 +64,7 @@ func (au *ApprovedUsers) Read() ([]lib.UserInfo, error) {
 }
 
 // Write writes new user info to the storage
-func (au *ApprovedUsers) Write(user lib.UserInfo) error {
+func (au *ApprovedUsers) Write(user approved.UserInfo) error {
 	if user.Timestamp.IsZero() {
 		user.Timestamp = time.Now()
 	}

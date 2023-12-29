@@ -438,7 +438,8 @@ package main
 import (
 	"io"
     "net/http"
-	tgspam "github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 func main() {
@@ -458,6 +459,9 @@ func main() {
 	// load samples
 	detector.LoadSamples(excludeTokens, []io.Reader{spamSample}, []io.Reader{hamSample})
 
-	isSpam, details := detector.Check("this is spam", "123456")
+	isSpam, details := detector.Check(lib.CheckRequest{
+        Msg:    "this is spam",
+        UserID: "123456789",
+    })
 }
 ```
