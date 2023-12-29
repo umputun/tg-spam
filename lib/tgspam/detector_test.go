@@ -1,4 +1,4 @@
-package lib
+package tgspam
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,17 +15,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umputun/tg-spam/lib/mocks"
+	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/tgspam/mocks"
 )
 
 func TestDetector_CheckWithShort(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 150})
 	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсем привет"))
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{StopWords: 2}, lr)
+	assert.Equal(t, lib.LoadResult{StopWords: 2}, lr)
 
 	t.Run("short message without spam", func(t *testing.T) {
-		spam, cr := d.Check("good message", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "good message"})
 		assert.False(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -39,7 +41,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 	})
 
 	t.Run("short message with stopwords", func(t *testing.T) {
-		spam, cr := d.Check("Hello, please send me a message в личку", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "Hello, please send me a message в личку"})
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -54,7 +56,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 	})
 
 	t.Run("short message with emojis", func(t *testing.T) {
-		spam, cr := d.Check("Hello 😁🐶🍕", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "Hello 😁🐶🍕"})
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -69,7 +71,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 	})
 
 	t.Run("short message with emojis and stop words", func(t *testing.T) {
-		spam, cr := d.Check("Hello 😁🐶🍕в личку", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "Hello 😁🐶🍕в личку"})
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -88,7 +90,7 @@ func TestDetector_CheckStopWords(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсеМ прИвет"))
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{StopWords: 2}, lr)
+	assert.Equal(t, lib.LoadResult{StopWords: 2}, lr)
 
 	tests := []struct {
 		name     string
@@ -119,7 +121,7 @@ func TestDetector_CheckStopWords(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spam, cr := d.Check(test.message, "")
+			spam, cr := d.Check(lib.CheckRequest{Msg: test.message})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "stopword", cr[0].Name)
@@ -152,7 +154,7 @@ func TestDetector_CheckEmojis(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spam, cr := d.Check(tt.input, "")
+			spam, cr := d.Check(lib.CheckRequest{Msg: tt.input})
 			assert.Equal(t, tt.spam, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "emoji", cr[0].Name)
@@ -212,7 +214,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 				MaxAllowedEmoji:  -1,
 				FirstMessageOnly: true,
 			})
-			spam, cr := d.Check("", "123")
+			spam, cr := d.Check(lib.CheckRequest{UserID: "123"})
 			assert.Equal(t, tt.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "cas", cr[0].Name)
@@ -240,7 +242,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2}, lr)
+	assert.Equal(t, lib.LoadResult{ExcludedTokens: 1, SpamSamples: 2}, lr)
 	d.classifier.reset() // we don't need a classifier for this test
 	assert.Len(t, d.tokenizedSpam, 2)
 	t.Logf("%+v", d.tokenizedSpam)
@@ -264,7 +266,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			d.Config.SimilarityThreshold = test.threshold // Update threshold for each test case
-			spam, cr := d.Check(test.message, "")
+			spam, cr := d.Check(lib.CheckRequest{Msg: test.message})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "similarity", cr[0].Name)
@@ -278,7 +280,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
+	assert.Equal(t, lib.LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.nAllDocument)
 	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -302,7 +304,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spam, cr := d.Check(test.message, "")
+			spam, cr := d.Check(lib.CheckRequest{Msg: test.message})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "classifier", cr[0].Name)
@@ -314,7 +316,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 
 	t.Run("without minSpamProbability", func(t *testing.T) {
 		d.MinSpamProbability = 0
-		spam, cr := d.Check("You won a free lottery iphone have a good day", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "You won a free lottery iphone have a good day"})
 		assert.True(t, spam)
 		assert.Equal(t, "probability of spam: 53.36%", cr[0].Details)
 
@@ -334,7 +336,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "openai", cr[0].Name)
@@ -355,7 +357,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 0)
 		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
@@ -363,7 +365,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 	t.Run("without openai", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1})
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 0)
 	})
@@ -382,7 +384,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		d.LoadStopWords(strings.NewReader("some message"))
 
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -405,7 +407,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		d.LoadStopWords(strings.NewReader("some message"))
 
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -433,7 +435,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		d.LoadStopWords(strings.NewReader("some message"))
 
-		spam, cr := d.Check("some message 1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "some message 1234"})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
@@ -461,7 +463,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		d.LoadStopWords(strings.NewReader("some message"))
 
-		spam, cr := d.Check("1234", "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: "1234"})
 		assert.Equal(t, true, spam)
 		assert.Equal(t, "stopword", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
@@ -489,7 +491,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
+	assert.Equal(t, lib.LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.nAllDocument)
 	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -499,7 +501,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 
 	msg := "another good world one iphone user writes good things day"
 	t.Run("initially a little bit ham", func(t *testing.T) {
-		spam, cr := d.Check(msg, "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: msg})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -513,7 +515,7 @@ func TestDetector_UpdateSpam(t *testing.T) {
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly spam", func(t *testing.T) {
-		spam, cr := d.Check(msg, "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: msg})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -536,7 +538,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
+	assert.Equal(t, lib.LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
 	assert.Equal(t, 5, d.classifier.nAllDocument)
 	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1}, "lottery": {"spam": 1},
@@ -546,7 +548,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 
 	msg := "another free good world one iphone user writes good things day"
 	t.Run("initially a little bit spam", func(t *testing.T) {
-		spam, cr := d.Check(msg, "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: msg})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -560,7 +562,7 @@ func TestDetector_UpdateHam(t *testing.T) {
 	assert.Equal(t, 1, len(upd.AppendCalls()))
 
 	t.Run("after update mostly ham", func(t *testing.T) {
-		spam, cr := d.Check(msg, "")
+		spam, cr := d.Check(lib.CheckRequest{Msg: msg})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
@@ -575,10 +577,10 @@ func TestDetector_Reset(t *testing.T) {
 	hamSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamSamples})
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
+	assert.Equal(t, lib.LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 3}, lr)
 	sr, err := d.LoadStopWords(strings.NewReader("в личку\nвсем привет"))
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{StopWords: 2}, sr)
+	assert.Equal(t, lib.LoadResult{StopWords: 2}, sr)
 
 	assert.Equal(t, 5, d.classifier.nAllDocument)
 	assert.Equal(t, 2, len(d.tokenizedSpam))
@@ -592,131 +594,167 @@ func TestDetector_Reset(t *testing.T) {
 	assert.Equal(t, 0, len(d.stopWords))
 }
 
-func TestDetector(t *testing.T) {
-	tests := []struct {
-		name          string
-		loadInput     string
-		wantLoadCount int
-		wantLoadErr   bool
-		wantApproved  []string
-	}{
-		{
-			name:          "empty",
-			loadInput:     "",
-			wantLoadCount: 0,
-			wantLoadErr:   false,
-			wantApproved:  []string{},
-		},
-		{
-			name:          "single user",
-			loadInput:     "12345\n",
-			wantLoadCount: 1,
-			wantLoadErr:   false,
-			wantApproved:  []string{"12345"},
-		},
-		{
-			name:          "multiple users",
-			loadInput:     "123\n456\n789\n",
-			wantLoadCount: 3,
-			wantLoadErr:   false,
-			wantApproved:  []string{"123", "456", "789"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d := &Detector{}
-			r := bytes.NewBufferString(tt.loadInput)
-			count, err := d.LoadApprovedUsers(r)
-
-			assert.Equal(t, tt.wantLoadCount, count)
-			if tt.wantLoadErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-			assert.ElementsMatch(t, tt.wantApproved, d.ApprovedUsers())
-		})
-	}
-}
+// func TestDetector(t *testing.T) {
+// 	tests := []struct {
+// 		name          string
+// 		loadInput     string
+// 		wantLoadCount int
+// 		wantLoadErr   bool
+// 		wantApproved  []string
+// 	}{
+// 		{
+// 			name:          "empty",
+// 			loadInput:     "",
+// 			wantLoadCount: 0,
+// 			wantLoadErr:   false,
+// 			wantApproved:  []string{},
+// 		},
+// 		{
+// 			name:          "single user",
+// 			loadInput:     "12345\n",
+// 			wantLoadCount: 1,
+// 			wantLoadErr:   false,
+// 			wantApproved:  []string{"12345"},
+// 		},
+// 		{
+// 			name:          "multiple users",
+// 			loadInput:     "123\n456\n789\n",
+// 			wantLoadCount: 3,
+// 			wantLoadErr:   false,
+// 			wantApproved:  []string{"123", "456", "789"},
+// 		},
+// 	}
+//
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			d := &Detector{}
+// 			r := bytes.NewBufferString(tt.loadInput)
+// 			count, err := d.LoadApprovedUser(r)
+//
+// 			assert.Equal(t, tt.wantLoadCount, count)
+// 			if tt.wantLoadErr {
+// 				assert.Error(t, err)
+// 			} else {
+// 				assert.NoError(t, err)
+// 			}
+// 			assert.ElementsMatch(t, tt.wantApproved, d.ApprovedUsers())
+// 		})
+// 	}
+// }
 
 func TestDetector_FirstMessagesCount(t *testing.T) {
 	t.Run("first message is spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
-		spam, _ := d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		spam, _ := d.Check(lib.CheckRequest{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
 		assert.Equal(t, true, spam)
 	})
 	t.Run("first messages are ham, third is spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
 
 		// first ham
-		spam, _ := d.Check("ham, no emojis", "123")
+		spam, _ := d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
 		// second ham
-		spam, _ = d.Check("ham, no emojis", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
-		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
 		assert.Equal(t, true, spam)
 	})
 	t.Run("first messages are ham, spam after approved", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
 
 		// first ham
-		spam, _ := d.Check("ham, no emojis", "123")
+		spam, _ := d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
 		// second ham
-		spam, _ = d.Check("ham, no emojis", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
 		// third ham
-		spam, _ = d.Check("ham, no emojis", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
-		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
 		assert.Equal(t, false, spam, "spam is not detected because user is approved")
 	})
 	t.Run("first messages are ham, spam after approved, FirstMessageOnly were false", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: false})
 
 		// first ham
-		spam, _ := d.Check("ham, no emojis", "123")
+		spam, _ := d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
 		// second ham
-		spam, _ = d.Check("ham, no emojis", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
 		// third ham
-		spam, _ = d.Check("ham, no emojis", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
-		spam, _ = d.Check("spam, too many emojis 🤣🤣🤣", "123")
+		spam, _ = d.Check(lib.CheckRequest{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
 		assert.Equal(t, false, spam)
 	})
 }
 
-func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
-	t.Run("user not approved, sent spam", func(t *testing.T) {
+func TestDetector_ApprovedUsers(t *testing.T) {
+	mockUserStore := &mocks.UserStorageMock{
+		ReadFunc:   func() ([]lib.UserInfo, error) { return []lib.UserInfo{{UserID: "123"}, {UserID: "456"}}, nil },
+		WriteFunc:  func(au lib.UserInfo) error { return nil },
+		DeleteFunc: func(id string) error { return nil },
+	}
+
+	t.Run("load with storage", func(t *testing.T) {
+		mockUserStore.ResetCalls()
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
-		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		count, err := d.WithUserStorage(mockUserStore)
 		require.NoError(t, err)
-		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		assert.Equal(t, 2, count)
+		err = d.AddApprovedUser(lib.UserInfo{UserID: "999", UserName: "test"})
+		assert.NoError(t, err)
+		res := d.ApprovedUsers()
+		ids := make([]string, len(res))
+		for i, u := range res {
+			ids[i] = u.UserID
+		}
+		sort.Strings(ids)
+		assert.Equal(t, []string{"123", "456", "999"}, ids)
+		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Equal(t, "999", mockUserStore.WriteCalls()[0].Au.UserID)
+		assert.Equal(t, "test", mockUserStore.WriteCalls()[0].Au.UserName)
+	})
+
+	t.Run("user not approved, spam detected", func(t *testing.T) {
+		mockUserStore.ResetCalls()
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
+		count, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+		_, err = d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "999"})
 		t.Logf("%+v", info)
 		assert.Equal(t, true, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
-		assert.False(t, d.IsApprovedUser("123"))
+		assert.False(t, d.IsApprovedUser("999"))
+		assert.Equal(t, 1, len(mockUserStore.ReadCalls()))
+		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
+		assert.Equal(t, 0, len(mockUserStore.DeleteCalls()))
 	})
 
 	t.Run("user pre-approved, spam check avoided", func(t *testing.T) {
+		mockUserStore.ResetCalls()
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
-		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		count, err := d.WithUserStorage(mockUserStore)
 		require.NoError(t, err)
-		d.AddApprovedUsers("123")
-		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		assert.Equal(t, 2, count)
+		_, err = d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
@@ -725,11 +763,14 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 	})
 
 	t.Run("user pre-approved with count, spam check avoided", func(t *testing.T) {
+		mockUserStore.ResetCalls()
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessagesCount: 10})
 		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
 		require.NoError(t, err)
-		d.AddApprovedUsers("123")
-		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		count, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
@@ -737,25 +778,96 @@ func TestDetector_AddAndRemoveApprovedUsers(t *testing.T) {
 		assert.True(t, d.IsApprovedUser("123"))
 	})
 
-	t.Run("remove user", func(t *testing.T) {
+	t.Run("remove user with store", func(t *testing.T) {
+		mockUserStore.ResetCalls()
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
 		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
 		require.NoError(t, err)
-		d.AddApprovedUsers("123")
-		isSpam, info := d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		count, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+
+		err = d.AddApprovedUser(lib.UserInfo{UserID: "999"})
+		assert.NoError(t, err)
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "999"})
+		t.Logf("%+v", info)
+		assert.Equal(t, false, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("999"))
+		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Equal(t, "999", mockUserStore.WriteCalls()[0].Au.UserID)
+
+		d.RemoveApprovedUser("123")
+		isSpam, info = d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
+		t.Logf("%+v", info)
+		assert.Equal(t, true, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "stopword", info[0].Name)
+		assert.False(t, d.IsApprovedUser("123"))
+		assert.Equal(t, 1, len(mockUserStore.DeleteCalls()))
+		assert.Equal(t, "123", mockUserStore.DeleteCalls()[0].ID)
+	})
+
+	t.Run("remove user no store", func(t *testing.T) {
+		mockUserStore.ResetCalls()
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
+		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+
+		d.AddApprovedUser(lib.UserInfo{UserID: "123"})
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
 		assert.Equal(t, false, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("123"))
 
-		d.RemoveApprovedUsers("123")
-		isSpam, info = d.Check("Hello, how are you my friend? buy cryptocurrency now!", "123")
+		d.RemoveApprovedUser("123")
+		isSpam, info = d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
 		assert.Equal(t, true, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
 		assert.False(t, d.IsApprovedUser("123"))
+		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
+		assert.Equal(t, 0, len(mockUserStore.DeleteCalls()))
+	})
+
+	t.Run("add user", func(t *testing.T) {
+		mockUserStore.ResetCalls()
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
+		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+		count, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+
+		d.AddApprovedUser(lib.UserInfo{UserID: "777"})
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "777"})
+		t.Logf("%+v", info)
+		assert.Equal(t, false, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("777"))
+		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Equal(t, "777", mockUserStore.WriteCalls()[0].Au.UserID)
+	})
+
+	t.Run("add user, no store", func(t *testing.T) {
+		mockUserStore.ResetCalls()
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 5, FirstMessageOnly: true})
+		_, err := d.LoadStopWords(strings.NewReader("spam\nbuy cryptocurrency"))
+		require.NoError(t, err)
+
+		d.AddApprovedUser(lib.UserInfo{UserID: "777"})
+		isSpam, info := d.Check(lib.CheckRequest{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "777"})
+		t.Logf("%+v", info)
+		assert.Equal(t, false, isSpam)
+		require.Len(t, info, 1)
+		assert.Equal(t, "pre-approved", info[0].Name)
+		assert.True(t, d.IsApprovedUser("777"))
+		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
 	})
 
 }
@@ -824,12 +936,12 @@ func TestDetector_tokenChanMultipleReaders(t *testing.T) {
 func TestCheckResult_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *CheckResult
+		input    *lib.CheckResult
 		expected string
 	}{
 		{
 			name: "test spam",
-			input: &CheckResult{
+			input: &lib.CheckResult{
 				Name:    "name1",
 				Spam:    true,
 				Details: "details",
@@ -838,7 +950,7 @@ func TestCheckResult_String(t *testing.T) {
 		},
 		{
 			name: "test ham",
-			input: &CheckResult{
+			input: &lib.CheckResult{
 				Name:    "name2",
 				Spam:    false,
 				Details: "details",

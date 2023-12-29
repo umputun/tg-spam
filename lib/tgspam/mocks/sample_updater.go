@@ -8,11 +8,11 @@ import (
 	"sync"
 )
 
-// SampleUpdaterMock is a mock implementation of lib.SampleUpdater.
+// SampleUpdaterMock is a mock implementation of tgspam.SampleUpdater.
 //
 //	func TestSomethingThatUsesSampleUpdater(t *testing.T) {
 //
-//		// make and configure a mocked lib.SampleUpdater
+//		// make and configure a mocked tgspam.SampleUpdater
 //		mockedSampleUpdater := &SampleUpdaterMock{
 //			AppendFunc: func(msg string) error {
 //				panic("mock out the Append method")
@@ -22,7 +22,7 @@ import (
 //			},
 //		}
 //
-//		// use mockedSampleUpdater in code that requires lib.SampleUpdater
+//		// use mockedSampleUpdater in code that requires tgspam.SampleUpdater
 //		// and then make assertions.
 //
 //	}
@@ -65,7 +65,7 @@ func (mock *SampleUpdaterMock) Append(msg string) error {
 }
 
 // AppendCalls gets all the calls that were made to Append.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedSampleUpdater.AppendCalls())
 func (mock *SampleUpdaterMock) AppendCalls() []struct {
@@ -78,6 +78,13 @@ func (mock *SampleUpdaterMock) AppendCalls() []struct {
 	calls = mock.calls.Append
 	mock.lockAppend.RUnlock()
 	return calls
+}
+
+// ResetAppendCalls reset all the calls that were made to Append.
+func (mock *SampleUpdaterMock) ResetAppendCalls() {
+	mock.lockAppend.Lock()
+	mock.calls.Append = nil
+	mock.lockAppend.Unlock()
 }
 
 // Reader calls ReaderFunc.
@@ -94,7 +101,7 @@ func (mock *SampleUpdaterMock) Reader() (io.ReadCloser, error) {
 }
 
 // ReaderCalls gets all the calls that were made to Reader.
-// check the length with:
+// Check the length with:
 //
 //	len(mockedSampleUpdater.ReaderCalls())
 func (mock *SampleUpdaterMock) ReaderCalls() []struct {
@@ -105,4 +112,22 @@ func (mock *SampleUpdaterMock) ReaderCalls() []struct {
 	calls = mock.calls.Reader
 	mock.lockReader.RUnlock()
 	return calls
+}
+
+// ResetReaderCalls reset all the calls that were made to Reader.
+func (mock *SampleUpdaterMock) ResetReaderCalls() {
+	mock.lockReader.Lock()
+	mock.calls.Reader = nil
+	mock.lockReader.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *SampleUpdaterMock) ResetCalls() {
+	mock.lockAppend.Lock()
+	mock.calls.Append = nil
+	mock.lockAppend.Unlock()
+
+	mock.lockReader.Lock()
+	mock.calls.Reader = nil
+	mock.lockReader.Unlock()
 }

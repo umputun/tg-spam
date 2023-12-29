@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
-	"github.com/umputun/tg-spam/app/storage"
 )
 
 func TestMakeSpamLogger(t *testing.T) {
@@ -155,7 +154,7 @@ func Test_makeSpamBot(t *testing.T) {
 
 	t.Run("no options", func(t *testing.T) {
 		var opts options
-		_, err := makeSpamBot(ctx, opts, nil, nil)
+		_, err := makeSpamBot(ctx, opts, nil)
 		assert.Error(t, err)
 	})
 
@@ -174,11 +173,7 @@ func Test_makeSpamBot(t *testing.T) {
 
 		opts.Files.SamplesDataPath = tmpDir
 		detector := makeDetector(opts)
-		db, err := storage.NewSqliteDB(":memory:")
-		require.NoError(t, err)
-		store, err := loadApprovedUsers(db, detector)
-		require.NoError(t, err)
-		res, err := makeSpamBot(ctx, opts, detector, store)
+		res, err := makeSpamBot(ctx, opts, detector)
 		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})

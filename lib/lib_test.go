@@ -7,12 +7,13 @@ import (
 	"strings"
 
 	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 // ExampleNewDetector demonstrates how to initialize a new Detector and use it to check a message for spam.
 func ExampleNewDetector() {
 	// Initialize a new Detector with a Config
-	detector := lib.NewDetector(lib.Config{
+	detector := tgspam.NewDetector(tgspam.Config{
 		MaxAllowedEmoji:  5,
 		MinMsgLen:        10,
 		FirstMessageOnly: true,
@@ -41,7 +42,7 @@ func ExampleNewDetector() {
 	fmt.Println("Loaded", res.SpamSamples, "spam samples and", res.HamSamples, "ham samples")
 
 	// check a message for spam
-	isSpam, info := detector.Check("This is a test message", "user1")
+	isSpam, info := detector.Check(lib.CheckRequest{Msg: "This is a test message", UserID: "user1", UserName: "John Doe"})
 	if isSpam {
 		fmt.Println("The message is spam, info:", info)
 	} else {

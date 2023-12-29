@@ -23,14 +23,12 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 
-	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib"
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
-//go:generate moq --out mocks/approved_users.go --pkg mocks --with-resets --skip-ensure . ApprovedUsersStore
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -42,22 +40,21 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version            string             // version to show in /ping
-	ListenAddr         string             // listen address
-	Detector           Detector           // spam detector
-	SpamFilter         SpamFilter         // spam filter (bot)
-	Locator            Locator            // locator for user info
-	ApprovedUsersStore ApprovedUsersStore // storage for approved users
-	AuthPasswd         string             // basic auth password for user "tg-spam"
-	Dbg                bool               // debug mode
+	Version    string     // version to show in /ping
+	ListenAddr string     // listen address
+	Detector   Detector   // spam detector
+	SpamFilter SpamFilter // spam filter (bot)
+	Locator    Locator    // locator for user info
+	AuthPasswd string     // basic auth password for user "tg-spam"
+	Dbg        bool       // debug mode
 }
 
 // Detector is a spam detector interface.
 type Detector interface {
-	Check(msg string, userID string) (spam bool, cr []lib.CheckResult)
-	AddApprovedUsers(ids ...string)
-	RemoveApprovedUsers(ids ...string)
-	ApprovedUsers() []string
+	Check(req lib.CheckRequest) (spam bool, cr []lib.CheckResult)
+	ApprovedUsers() []lib.UserInfo
+	AddApprovedUser(user lib.UserInfo) error
+	RemoveApprovedUser(id string) error
 }
 
 // SpamFilter is a spam filter, bot interface.
@@ -74,13 +71,6 @@ type SpamFilter interface {
 type Locator interface {
 	UserIDByName(userName string) int64
 	UserNameByID(userID int64) string
-}
-
-// ApprovedUsersStore is a storage interface for approved users.
-type ApprovedUsersStore interface {
-	Write(user storage.ApprovedUsersInfo) error
-	GetAll() ([]storage.ApprovedUsersInfo, error)
-	Delete(id int64) error
 }
 
 // NewServer creates a new web API server.
@@ -143,9 +133,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
 		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/add", s.updateApprovedUsersHandler(s.addApprovedUser))       // add user to the approved list and storage
-			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser)) // remove user from approved list and storage
-			r.Get("/", s.getApprovedUsersHandler)                                 // get approved users
+			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUser)) // add user to the approved list and storage
+			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser))    // remove user from approved list and storage
+			r.Get("/", s.getApprovedUsersHandler)                                    // get approved users
 		})
 	})
 
@@ -165,10 +155,6 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 // checkHandler handles POST /check request.
 // it gets message text and user id from request body and returns spam status and check results.
 func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Msg    string `json:"msg"`
-		UserID string `json:"user_id"`
-	}
 
 	type CheckResultDisplay struct {
 		Spam   bool
@@ -177,6 +163,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 
 	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
+	req := lib.CheckRequest{}
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -188,10 +175,11 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// for hx-request (HTMX) we need to get the values from the form
 		req.UserID = r.FormValue("user_id")
+		req.UserName = r.FormValue("user_name")
 		req.Msg = r.FormValue("msg")
 	}
 
-	spam, cr := s.Detector.Check(req.Msg, req.UserID)
+	spam, cr := s.Detector.Check(req)
 	if !isHtmxRequest {
 		// for API request return JSON
 		rest.RenderJSON(w, rest.JSON{"spam": spam, "checks": cr})
@@ -305,14 +293,9 @@ func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Requ
 }
 
 // updateApprovedUsersHandler handles POST /users/add and /users/delete requests, it adds or removes users from approved list.
-func (s *Server) updateApprovedUsersHandler(updFn func(ui storage.ApprovedUsersInfo)) func(w http.ResponseWriter, r *http.Request) {
-	type reqData struct {
-		UserID   string `json:"user_id"`
-		UserName string `json:"user_name"`
-	}
-
+func (s *Server) updateApprovedUsersHandler(updFn func(ui lib.UserInfo) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		req := reqData{}
+		req := lib.UserInfo{}
 		isHtmxRequest := r.Header.Get("HX-Request") == "true"
 		if isHtmxRequest {
 			req.UserID = r.FormValue("user_id")
@@ -341,14 +324,12 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui storage.ApprovedUsersI
 			return
 		}
 
-		userID, err := strconv.ParseInt(req.UserID, 10, 64)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "user ID must be numeric"})
+		// add or remove user from the approved list of detector
+		if err := updFn(req); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "can't update approved users", "details": err.Error()})
 			return
 		}
-
-		updFn(storage.ApprovedUsersInfo{UserID: userID, UserName: req.UserName}) // add or remove user from the approved list of detector
 
 		if isHtmxRequest {
 			tmpl, err := template.New("").ParseFS(templateFS, "assets/components/users_list.html")
@@ -357,14 +338,9 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui storage.ApprovedUsersI
 				rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
 				return
 			}
-			users, err := s.ApprovedUsersStore.GetAll()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				rest.RenderJSON(w, rest.JSON{"error": "can't get approved users", "details": err.Error()})
-				return
-			}
+			users := s.Detector.ApprovedUsers()
 			tmplData := struct {
-				ApprovedUsers      []storage.ApprovedUsersInfo
+				ApprovedUsers      []lib.UserInfo
 				TotalApprovedUsers int
 			}{
 				ApprovedUsers:      users,
@@ -381,6 +357,11 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui storage.ApprovedUsersI
 			rest.RenderJSON(w, rest.JSON{"updated": true, "user_id": req.UserID, "user_name": req.UserName})
 		}
 	}
+}
+
+// removeApprovedUser is adopter for updateApprovedUsersHandler updFn
+func (s *Server) removeApprovedUser(req lib.UserInfo) error {
+	return s.Detector.RemoveApprovedUser(req.UserID)
 }
 
 // getApprovedUsersHandler handles GET /users request. It returns list of approved users.
@@ -460,15 +441,9 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 		return
 	}
 
-	users, err := s.ApprovedUsersStore.GetAll()
-	if err != nil {
-		log.Printf("[ERROR] Failed to fetch approved users: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
+	users := s.Detector.ApprovedUsers()
 	tmplData := struct {
-		ApprovedUsers      []storage.ApprovedUsersInfo
+		ApprovedUsers      []lib.UserInfo
 		TotalApprovedUsers int
 	}{
 		ApprovedUsers:      users,
@@ -566,21 +541,6 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 		revHam[i] = ham[j]
 	}
 	return revSpam, revHam
-}
-
-func (s *Server) removeApprovedUser(ui storage.ApprovedUsersInfo) {
-	s.Detector.RemoveApprovedUsers([]string{fmt.Sprintf("%d", ui.UserID)}...) // remove user from the approved list of director
-	// remove user from the storage
-	if err := s.ApprovedUsersStore.Delete(ui.UserID); err != nil {
-		log.Printf("[WARN] failed to delete user_id %d: %v", ui.UserID, err)
-	}
-}
-
-func (s *Server) addApprovedUser(ui storage.ApprovedUsersInfo) {
-	s.Detector.AddApprovedUsers([]string{fmt.Sprintf("%d", ui.UserID)}...) // add user to the approved list of director
-	if err := s.ApprovedUsersStore.Write(ui); err != nil {
-		log.Printf("[WARN] failed to delete user_id %d: %v", ui.UserID, err)
-	}
 }
 
 // GenerateRandomPassword generates a random password of a given length

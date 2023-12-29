@@ -21,7 +21,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -30,7 +29,7 @@ import (
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/webapi"
-	"github.com/umputun/tg-spam/lib"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 type options struct {
@@ -188,13 +187,19 @@ func execute(ctx context.Context, opts options) error {
 	log.Printf("[DEBUG] data db: %s", dataFile)
 
 	// make store and load approved users
-	approvedUsersStore, auErr := loadApprovedUsers(dataDB, detector)
+	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
 
+	count, err := detector.WithUserStorage(approvedUsersStore)
+	if err != nil {
+		return fmt.Errorf("can't load approved users, %w", err)
+	}
+	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
+
 	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, detector, approvedUsersStore)
+	spamBot, err := makeSpamBot(ctx, opts, detector)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
@@ -208,7 +213,7 @@ func execute(ctx context.Context, opts options) error {
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot, locator, approvedUsersStore); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
@@ -300,7 +305,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, astr *storage.ApprovedUsers) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -311,14 +316,13 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:         opts.Server.ListenAddr,
-		Detector:           sf.Detector,
-		SpamFilter:         sf,
-		ApprovedUsersStore: astr,
-		Locator:            loc,
-		AuthPasswd:         authPassswd,
-		Version:            revision,
-		Dbg:                opts.Dbg,
+		ListenAddr: opts.Server.ListenAddr,
+		Detector:   sf.Detector,
+		SpamFilter: sf,
+		Locator:    loc,
+		AuthPasswd: authPassswd,
+		Version:    revision,
+		Dbg:        opts.Dbg,
 	}}
 
 	go func() {
@@ -331,8 +335,8 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
-func makeDetector(opts options) *lib.Detector {
-	detectorConfig := lib.Config{
+func makeDetector(opts options) *tgspam.Detector {
+	detectorConfig := tgspam.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
 		SimilarityThreshold: opts.SimilarityThreshold,
@@ -354,12 +358,12 @@ func makeDetector(opts options) *lib.Detector {
 		detectorConfig.FirstMessagesCount = 0
 	}
 
-	detector := lib.NewDetector(detectorConfig)
+	detector := tgspam.NewDetector(detectorConfig)
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 
 	if opts.OpenAI.Token != "" {
 		log.Printf("[WARN] openai enabled")
-		openAIConfig := lib.OpenAIConfig{
+		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:      opts.OpenAI.Prompt,
 			Model:             opts.OpenAI.Model,
 			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
@@ -381,7 +385,7 @@ func makeDetector(opts options) *lib.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector, aStore *storage.ApprovedUsers) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, opts options, detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	spamBotParams := bot.SpamConfig{
 		SpamSamplesFile:    filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
 		HamSamplesFile:     filepath.Join(opts.Files.SamplesDataPath, samplesHamFile),
@@ -394,27 +398,13 @@ func makeSpamBot(ctx context.Context, opts options, detector *lib.Detector, aSto
 		SpamDryMsg:         opts.Message.Dry,
 		Dry:                opts.Dry,
 	}
-	spamBot := bot.NewSpamFilter(ctx, detector, aStore, spamBotParams)
+	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {
 		return nil, fmt.Errorf("can't relaod samples, %w", err)
 	}
 	return spamBot, nil
-}
-
-// loadApprovedUsers makes the store and loads approved users from db into detector
-func loadApprovedUsers(dataDB *sqlx.DB, detector *lib.Detector) (*storage.ApprovedUsers, error) {
-	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
-	if auErr != nil {
-		return nil, fmt.Errorf("can't make approved users store, %w", auErr)
-	}
-	count, err := detector.LoadApprovedUsers(approvedUsersStore)
-	if err == nil {
-		log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
-		return approvedUsersStore, nil
-	}
-	return nil, fmt.Errorf("can't load approved users, %w", err)
 }
 
 // expandPath expands ~ to home dir and makes the absolute path
