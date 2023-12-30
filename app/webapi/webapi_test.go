@@ -700,6 +700,9 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 			return req.Msg == "spam example", []spamcheck.Response{{Spam: req.Msg == "spam example", Name: "test", Details: "result details"}}
 		},
+		RemoveApprovedUserFunc: func(id string) error {
+			return nil
+		},
 	}
 
 	server := NewServer(Config{
@@ -722,9 +725,17 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
 
-		// Check if the response contains expected HTML snippet
+		// check if the response contains expected HTML snippet
 		assert.Contains(t, rr.Body.String(), "strong>Result:</strong> Spam detected", "response should contain spam result")
 		assert.Contains(t, rr.Body.String(), "result details")
+
+		assert.Equal(t, 1, len(mockDetector.CheckCalls()))
+		assert.Equal(t, "spam example", mockDetector.CheckCalls()[0].Req.Msg)
+		assert.Equal(t, "user123", mockDetector.CheckCalls()[0].Req.UserID)
+
+		// check if id cleaned
+		assert.Equal(t, 1, len(mockDetector.RemoveApprovedUserCalls()))
+		assert.Equal(t, "user123", mockDetector.RemoveApprovedUserCalls()[0].ID)
 	})
 }
 
