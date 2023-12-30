@@ -357,7 +357,7 @@ However, if users want to update spam/ham dynamic samples, they should call the 
 Generally, this is a very basic server, but should be sufficient for most use cases. If a user needs more functionality, it is possible to run the bot [as a library](#using-tg-spam-as-a-library) and implement custom logic on top of it.
 
 
-### WEB UI for tg-spam
+### WEB UI
 
 If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.  
 
@@ -438,32 +438,52 @@ Example:
 package main
 
 import (
-	"io"
-    "net/http"
-	"github.com/umputun/tg-spam/lib"
-	"github.com/umputun/tg-spam/lib/tgspam"
+  "fmt"
+  "io"
+  "net/http"
+  "strings"
+
+  "github.com/umputun/tg-spam/lib/spamcheck"
+  "github.com/umputun/tg-spam/lib/tgspam"
 )
 
 func main() {
-	detector := tgspam.NewDetector(tgspam.Config{
-		SimilarityThreshold: 0.5,
-		MinMsgLen:           50,
-		MaxEmoji:            2,
-		FirstMessageOnly:    false,
-		HTTPClient:          &http.Client{Timeout: 30 * time.Second},
-	})
+  // Initialize a new Detector with a Config
+  detector := tgspam.NewDetector(tgspam.Config{
+    MaxAllowedEmoji:  5,
+    MinMsgLen:        10,
+    FirstMessageOnly: true,
+    CasAPI:           "https://cas.example.com",
+    HTTPClient:       &http.Client{},
+  })
 
-	// prepare samples and exclude tokens
-	spamSample := bytes.NewBufferString("this is spam\nwin a prize\n") // need io.Reader, in real life it will be a file
-	hamSample := bytes.NewBufferString("this is ham\n")
-	excludeTokens := bytes.NewBufferString(`"a", "the"`)
+  // Load stop words
+  stopWords := strings.NewReader("\"word1\"\n\"word2\"\n\"hello world\"\n\"some phrase\", \"another phrase\"")
+  res, err := detector.LoadStopWords(stopWords)
+  if err != nil {
+    fmt.Println("Error loading stop words:", err)
+    return
+  }
+  fmt.Println("Loaded", res.StopWords, "stop words")
 
-	// load samples
-	detector.LoadSamples(excludeTokens, []io.Reader{spamSample}, []io.Reader{hamSample})
+  // Load spam and ham samples
+  spamSamples := strings.NewReader("spam sample 1\nspam sample 2\nspam sample 3")
+  hamSamples := strings.NewReader("ham sample 1\nham sample 2\nham sample 3")
+  excludedTokens := strings.NewReader("\"the\", \"a\", \"an\"")
+  res, err = detector.LoadSamples(excludedTokens, []io.Reader{spamSamples}, []io.Reader{hamSamples})
+  if err != nil {
+    fmt.Println("Error loading samples:", err)
+    return
+  }
+  fmt.Println("Loaded", res.SpamSamples, "spam samples and", res.HamSamples, "ham samples")
 
-	isSpam, details := detector.Check(lib.CheckRequest{
-        Msg:    "this is spam",
-        UserID: "123456789",
-    })
+  // check a message for spam
+  isSpam, info := detector.Check(spamcheck.Request{Msg: "This is a test message", UserID: "user1", UserName: "John Doe"})
+  if isSpam {
+    fmt.Println("The message is spam, info:", info)
+  } else {
+    fmt.Println("The message is not spam, info:", info)
+  }
+
 }
 ```
