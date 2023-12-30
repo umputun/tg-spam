@@ -187,6 +187,12 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Msg == "" || req.UserID == "" || req.UserID == "0" {
+		w.Header().Set("HX-Retarget", "#error-message")
+		fmt.Fprintln(w, "<div class='alert alert-danger'>userid and valid message required.</div>")
+		return
+	}
+
 	// render result for HTMX request
 	resultDisplay := CheckResultDisplay{
 		Spam:   spam,
