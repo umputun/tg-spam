@@ -339,7 +339,6 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	for t := range d.tokenChan(readers...) {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
-	log.Printf("[INFO] loaded %d stop words", len(d.stopWords))
 	return LoadResult{StopWords: len(d.stopWords)}, nil
 }
 

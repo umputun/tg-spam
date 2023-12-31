@@ -1,0 +1,18 @@
+<div id="messages">
+    <div id="message-list" hx-get="/fetch-messages?message-count={{len .}}" hx-trigger="every 5s" hx-swap="outerHTML" hx-target="#messages-content">
+        <input type="hidden" name="message-count" value="{{len .}}" />
+        <div id="messages-content">
+            {{range .}}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between">
+                    <span class="">{{.Username}}</span>
+                    <span class="message-timestamp">{{.Timestamp}}</span>
+                </div>
+                <div class="card-body message-content">
+                    <p class="card-text">{{.Content}}</p>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,17 @@
+<div id="spam-report" class="alert alert-danger">
+    <button type="button" class="btn-close" hx-post="/dismiss-spam-report" hx-target="#spam-report" hx-swap="outerHTML"  aria-label="Close"></button>
+    <strong>Spam detected in your message!</strong>
+    <p>{{.Content}}</p>
+    <hr>
+    <ul>
+        {{range .Checks}}
+        <li>
+            <span class="fw-bold">{{.Name}}:</span>
+            <span class="{{if .Spam}}text-danger{{else}}text-success{{end}}">
+                {{if .Spam}}Spam Detected{{else}}No Spam{{end}}
+            </span>
+            - {{.Details}}
+        </li>
+        {{end}}
+    </ul>
+</div>
