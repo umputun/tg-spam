@@ -29,3 +29,4 @@ data/approved-users.txt
 tg-spam.db
 logs/
 site/public/
+_examples/simplechat/messages.db
