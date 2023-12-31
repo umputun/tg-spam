@@ -356,6 +356,7 @@ However, if users want to update spam/ham dynamic samples, they should call the 
 
 Generally, this is a very basic server, but should be sufficient for most use cases. If a user needs more functionality, it is possible to run the bot [as a library](#using-tg-spam-as-a-library) and implement custom logic on top of it.
 
+See also [examples](https://github.com/umputun/tg-spam/tree/master/_examples/) for small but complete applications using the bot as a library.
 
 ### WEB UI
 
