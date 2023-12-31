@@ -2,7 +2,6 @@ package storage
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -15,12 +14,7 @@ import (
 )
 
 func TestNewLocator(t *testing.T) {
-	file, err := os.CreateTemp("", "test_locator")
-	require.NoError(t, err)
-	validFile := file.Name()
-	defer os.Remove(validFile)
-
-	db, err := sqlx.Connect("sqlite", validFile)
+	db, err := sqlx.Connect("sqlite", ":memory:")
 	require.NoError(t, err)
 
 	const ttl = 10 * time.Minute
@@ -147,10 +141,7 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 }
 
 func newTestLocator(t *testing.T) *Locator {
-	file, err := os.CreateTemp("", "test_locator")
-	require.NoError(t, err)
-
-	db, err := NewSqliteDB(file.Name())
+	db, err := NewSqliteDB(":memory:")
 	require.NoError(t, err)
 
 	const ttl = 10 * time.Minute
@@ -161,7 +152,6 @@ func newTestLocator(t *testing.T) *Locator {
 
 	t.Cleanup(func() {
 		locator.Close()
-		os.Remove(file.Name())
 	})
 
 	return locator
