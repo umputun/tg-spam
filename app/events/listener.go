@@ -153,7 +153,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		return fmt.Errorf("failed to marshal update.Message to json: %w", errJSON)
 	}
 	log.Printf("[DEBUG] %s", string(msgJSON))
-	msg := l.transform(update.Message)
+	msg := transform(update.Message)
 	fromChat := update.Message.Chat.ID
 
 	// ignore messages from other chats except the one we are monitor and ones from the test list
@@ -167,7 +167,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	if err := l.Locator.AddMessage(update.Message.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+	if err := l.Locator.AddMessage(msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 	resp := l.Bot.OnMessage(*msg)
@@ -327,102 +327,6 @@ func (l *TelegramListener) updateSupers() error {
 
 	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
 	return err
-}
-
-func (l *TelegramListener) transform(msg *tbapi.Message) *bot.Message {
-	message := bot.Message{
-		ID:   msg.MessageID,
-		Sent: msg.Time(),
-		Text: msg.Text,
-	}
-
-	if msg.Chat != nil {
-		message.ChatID = msg.Chat.ID
-	}
-
-	if msg.From != nil {
-		message.From = bot.User{
-			ID:       msg.From.ID,
-			Username: msg.From.UserName,
-		}
-	}
-
-	if msg.From != nil && strings.TrimSpace(msg.From.FirstName) != "" {
-		message.From.DisplayName = msg.From.FirstName
-	}
-	if msg.From != nil && strings.TrimSpace(msg.From.LastName) != "" {
-		message.From.DisplayName += " " + msg.From.LastName
-	}
-
-	if msg.SenderChat != nil {
-		message.SenderChat = bot.SenderChat{
-			ID:       msg.SenderChat.ID,
-			UserName: msg.SenderChat.UserName,
-		}
-	}
-
-	switch {
-	case msg.Entities != nil && len(msg.Entities) > 0:
-		message.Entities = l.transformEntities(msg.Entities)
-
-	case msg.Photo != nil && len(msg.Photo) > 0:
-		sizes := msg.Photo
-		lastSize := sizes[len(sizes)-1]
-		message.Image = &bot.Image{
-			FileID:   lastSize.FileID,
-			Width:    lastSize.Width,
-			Height:   lastSize.Height,
-			Caption:  msg.Caption,
-			Entities: l.transformEntities(msg.CaptionEntities),
-		}
-	}
-
-	// fill in the message's reply-to message
-	if msg.ReplyToMessage != nil {
-		message.ReplyTo.Text = msg.ReplyToMessage.Text
-		message.ReplyTo.Sent = msg.ReplyToMessage.Time()
-		if msg.ReplyToMessage.From != nil {
-			message.ReplyTo.From = bot.User{
-				ID:          msg.ReplyToMessage.From.ID,
-				Username:    msg.ReplyToMessage.From.UserName,
-				DisplayName: msg.ReplyToMessage.From.FirstName + " " + msg.ReplyToMessage.From.LastName,
-			}
-		}
-		if msg.ReplyToMessage.SenderChat != nil {
-			message.ReplyTo.SenderChat = bot.SenderChat{
-				ID:       msg.ReplyToMessage.SenderChat.ID,
-				UserName: msg.ReplyToMessage.SenderChat.UserName,
-			}
-		}
-	}
-
-	return &message
-}
-
-func (l *TelegramListener) transformEntities(entities []tbapi.MessageEntity) *[]bot.Entity {
-	if len(entities) == 0 {
-		return nil
-	}
-
-	result := make([]bot.Entity, 0, len(entities))
-	for _, entity := range entities {
-		e := bot.Entity{
-			Type:   entity.Type,
-			Offset: entity.Offset,
-			Length: entity.Length,
-			URL:    entity.URL,
-		}
-		if entity.User != nil {
-			e.User = &bot.User{
-				ID:          entity.User.ID,
-				Username:    entity.User.UserName,
-				DisplayName: entity.User.FirstName + " " + entity.User.LastName,
-			}
-		}
-		result = append(result, e)
-	}
-
-	return &result
 }
 
 // SuperUsers for moderators

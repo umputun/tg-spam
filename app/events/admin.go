@@ -66,6 +66,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	// this is a forwarded message from super to admin chat, it is an example of missed spam
 	// we need to update spam filter with this message
 	msgTxt := update.Message.Text
+	if msgTxt == "" { // if no text, try to get it from the transformed message
+		m := transform(update.Message)
+		msgTxt = m.Text
+	}
 	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q", update.Message.From.UserName, a.adminChatID, msgTxt)
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
