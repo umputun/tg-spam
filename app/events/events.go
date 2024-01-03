@@ -171,3 +171,100 @@ func banUserOrChannel(r banRequest) error {
 
 	return nil
 }
+
+func transform(msg *tbapi.Message) *bot.Message {
+	transformEntities := func(entities []tbapi.MessageEntity) *[]bot.Entity {
+		if len(entities) == 0 {
+			return nil
+		}
+
+		result := make([]bot.Entity, 0, len(entities))
+		for _, entity := range entities {
+			e := bot.Entity{
+				Type:   entity.Type,
+				Offset: entity.Offset,
+				Length: entity.Length,
+				URL:    entity.URL,
+			}
+			if entity.User != nil {
+				e.User = &bot.User{
+					ID:          entity.User.ID,
+					Username:    entity.User.UserName,
+					DisplayName: entity.User.FirstName + " " + entity.User.LastName,
+				}
+			}
+			result = append(result, e)
+		}
+
+		return &result
+	}
+
+	message := bot.Message{
+		ID:   msg.MessageID,
+		Sent: msg.Time(),
+		Text: msg.Text,
+	}
+
+	if msg.Chat != nil {
+		message.ChatID = msg.Chat.ID
+	}
+
+	if msg.From != nil {
+		message.From = bot.User{
+			ID:       msg.From.ID,
+			Username: msg.From.UserName,
+		}
+	}
+
+	if msg.From != nil && strings.TrimSpace(msg.From.FirstName) != "" {
+		message.From.DisplayName = msg.From.FirstName
+	}
+	if msg.From != nil && strings.TrimSpace(msg.From.LastName) != "" {
+		message.From.DisplayName += " " + msg.From.LastName
+	}
+
+	if msg.SenderChat != nil {
+		message.SenderChat = bot.SenderChat{
+			ID:       msg.SenderChat.ID,
+			UserName: msg.SenderChat.UserName,
+		}
+	}
+
+	switch {
+	case msg.Entities != nil && len(msg.Entities) > 0:
+		message.Entities = transformEntities(msg.Entities)
+
+	case msg.Photo != nil && len(msg.Photo) > 0:
+		sizes := msg.Photo
+		lastSize := sizes[len(sizes)-1]
+		message.Image = &bot.Image{
+			FileID:   lastSize.FileID,
+			Width:    lastSize.Width,
+			Height:   lastSize.Height,
+			Caption:  msg.Caption,
+			Entities: transformEntities(msg.CaptionEntities),
+		}
+		message.Text = msg.Caption
+	}
+
+	// fill in the message's reply-to message
+	if msg.ReplyToMessage != nil {
+		message.ReplyTo.Text = msg.ReplyToMessage.Text
+		message.ReplyTo.Sent = msg.ReplyToMessage.Time()
+		if msg.ReplyToMessage.From != nil {
+			message.ReplyTo.From = bot.User{
+				ID:          msg.ReplyToMessage.From.ID,
+				Username:    msg.ReplyToMessage.From.UserName,
+				DisplayName: msg.ReplyToMessage.From.FirstName + " " + msg.ReplyToMessage.From.LastName,
+			}
+		}
+		if msg.ReplyToMessage.SenderChat != nil {
+			message.ReplyTo.SenderChat = bot.SenderChat{
+				ID:       msg.ReplyToMessage.SenderChat.ID,
+				UserName: msg.ReplyToMessage.SenderChat.UserName,
+			}
+		}
+	}
+
+	return &message
+}
