@@ -149,18 +149,12 @@ func banUserOrChannel(r banRequest) error {
 		return nil
 	}
 
-	resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
+	resp, err := r.tbAPI.Request(tbapi.BanChatMemberConfig{
 		ChatMemberConfig: tbapi.ChatMemberConfig{
 			ChatID: r.chatID,
 			UserID: r.userID,
 		},
 		UntilDate: time.Now().Add(r.duration).Unix(),
-		Permissions: &tbapi.ChatPermissions{
-			CanSendMessages:       false,
-			CanSendMediaMessages:  false,
-			CanSendOtherMessages:  false,
-			CanAddWebPagePreviews: false,
-		},
 	})
 	if err != nil {
 		return err

@@ -158,7 +158,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, 1, len(mockAPI.SendCalls()))
 		assert.Equal(t, "bot's answer", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
-		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).ChatID)
+		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID)
 	})
 
 	t.Run("test ban of the channel", func(t *testing.T) {
@@ -448,8 +448,8 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	assert.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
-	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).ChatID)
-	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.BanChatMemberConfig).ChatID)
+	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.BanChatMemberConfig).UserID)
 
 	assert.Equal(t, 1, len(b.RemoveApprovedUserCalls()))
 	assert.Equal(t, int64(88), b.RemoveApprovedUserCalls()[0].ID)
@@ -807,8 +807,8 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 	assert.Equal(t, 0, len(kb), "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
 	require.Equal(t, 2, len(mockAPI.RequestCalls()))
-	assert.Equal(t, int64(999), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).UserID, "user banned")
-	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).ChatID, "chat id")
+	assert.Equal(t, int64(999), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID, "user banned")
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID, "chat id")
 	assert.Equal(t, 987654, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID, "message deleted")
 
 	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
