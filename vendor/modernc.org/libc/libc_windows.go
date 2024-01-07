@@ -36,6 +36,7 @@ var X__imp__environ = EnvironP()
 var X__imp__wenviron = uintptr(unsafe.Pointer(&wenviron))
 var X_imp___environ = EnvironP()
 var X_iob [stdio.X_IOB_ENTRIES]stdio.FILE
+var Xin6addr_any [16]byte
 
 var Xtimezone long // extern long timezone;
 
@@ -50,6 +51,13 @@ func init() {
 	for i := range X_iob {
 		iobMap[uintptr(unsafe.Pointer(&X_iob[i]))] = int32(i)
 	}
+}
+
+func X__p__wenviron(t *TLS) uintptr {
+	if !wenvValid {
+		bootWinEnviron(t)
+	}
+	return uintptr(unsafe.Pointer(&wenviron))
 }
 
 func winGetObject(stream uintptr) interface{} {
@@ -692,6 +700,13 @@ func Xread(t *TLS, fd int32, buf uintptr, count uint32) int32 {
 	return int32(n)
 }
 
+func X_read(t *TLS, fd int32, buf uintptr, count uint32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v buf=%v count=%v, (%v:)", t, fd, buf, count, origin(2))
+	}
+	return Xread(t, fd, buf, count)
+}
+
 // int _write( // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/write?view=msvc-160
 //
 //	int fd,
@@ -724,6 +739,13 @@ func Xwrite(t *TLS, fd int32, buf uintptr, count uint32) int32 {
 		dmesg("%v: %d %#x: %#x", origin(1), fd, count, n)
 	}
 	return int32(n)
+}
+
+func X_write(t *TLS, fd int32, buf uintptr, count uint32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v buf=%v count=%v, (%v:)", t, fd, buf, count, origin(2))
+	}
+	return Xwrite(t, fd, buf, count)
 }
 
 // int fchmod(int fd, mode_t mode);
