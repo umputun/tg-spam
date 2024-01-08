@@ -33,11 +33,15 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	}
 
 	t.Run("spam detected", func(t *testing.T) {
+		det.ResetCalls()
 		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
-		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
+		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}, Image: &Image{FileID: "123"}})
 		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true,
 			CheckResults: []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}}, resp)
+		assert.Equal(t, 1, len(det.CheckCalls()))
+		assert.Equal(t, spamcheck.Request{Msg: "spam", UserID: "1", UserName: "john", Meta: spamcheck.MetaData{Images: 1, Links: 0}},
+			det.CheckCalls()[0].Request)
 		t.Logf("resp: %+v", resp)
 	})
 

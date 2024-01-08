@@ -36,6 +36,8 @@ type TelegramListener struct {
 	StartupMsg   string
 	NoSpamReply  bool
 	TrainingMode bool
+	LinksLimit   int
+	ImageOnly    bool
 	Dry          bool
 	Locator      Locator
 

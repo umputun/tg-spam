@@ -108,6 +108,14 @@ If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJ
 
 This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. This check is needed to avoid false positives on short messages.
 
+**Maximum links in message**
+
+This option is disabled by default. If set to a positive number, the bot will check the message for the number of links. If the number of links is greater than `--meta.links-limit=, [$META_LINKS_LIMIT]` (default is -1), the message will be marked as spam. Setting the limit to -1 will effectively disable this check.
+
+**Image only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -234,6 +242,10 @@ cas:
       --cas.api=                    CAS API (default: https://api.cas.chat) [$CAS_API]
       --cas.timeout=                CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
+meta:
+      --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
+      --meta.image-only             enable image only check [$META_IMAGE_ONLY]
+
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
@@ -256,7 +268,7 @@ message:
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]
       --server.listen=              listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                basic auth password for user 'tg-spam' (default: auto-generated) [$SERVER_AUTH]
+      --server.auth=                basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
 
 Help Options:
   -h, --help                        Show this help message
