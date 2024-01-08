@@ -78,8 +78,13 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		return Response{}
 	}
 	displayUsername := DisplayName(msg)
-	isSpam, checkResults := s.Check(spamcheck.Request{
-		Msg: msg.Text, UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username})
+
+	spamReq := spamcheck.Request{Msg: msg.Text, UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+	if msg.Image != nil {
+		spamReq.Meta.Images = 1
+	}
+	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
+	isSpam, checkResults := s.Check(spamReq)
 	crs := []string{}
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))

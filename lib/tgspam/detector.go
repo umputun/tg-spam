@@ -29,6 +29,7 @@ type Detector struct {
 	Config
 	classifier     classifier
 	openaiChecker  *openAIChecker
+	metaChecks     []MetaCheck
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
@@ -98,28 +99,6 @@ func NewDetector(p Config) *Detector {
 	return res
 }
 
-// WithOpenAIChecker sets an openAIChecker for spam checking.
-func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
-	d.openaiChecker = newOpenAIChecker(client, config)
-}
-
-// WithUserStorage sets a UserStorage for approved users and loads approved users from it.
-func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
-	d.userStorage = storage
-	users, err := d.userStorage.Read()
-	if err != nil {
-		return 0, fmt.Errorf("failed to read approved users from storage: %w", err)
-	}
-	for _, user := range users {
-		user.Count = d.FirstMessagesCount + 1 // +1 to skip first message check if count is 0
-		d.approvedUsers[user.UserID] = user
-	}
-	return len(users), nil
-}
-
 // Check checks if a given message is spam. Returns true if spam and also returns a list of check results.
 func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Response) {
 
@@ -177,6 +156,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, d.isCasSpam(req.UserID))
 	}
 
+	// check for spam with meta-checks
+	for _, mc := range d.metaChecks {
+		cr = append(cr, mc(req))
+	}
+
 	spamDetected := isSpamDetected(cr)
 
 	// we hit openai in two cases:
@@ -216,6 +200,33 @@ func (d *Detector) Reset() {
 	d.classifier.reset()
 	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
+}
+
+// WithOpenAIChecker sets an openAIChecker for spam checking.
+func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
+	d.openaiChecker = newOpenAIChecker(client, config)
+}
+
+// WithUserStorage sets a UserStorage for approved users and loads approved users from it.
+func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
+	d.userStorage = storage
+	users, err := d.userStorage.Read()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read approved users from storage: %w", err)
+	}
+	for _, user := range users {
+		user.Count = d.FirstMessagesCount + 1 // +1 to skip first message check if count is 0
+		d.approvedUsers[user.UserID] = user
+	}
+	return len(users), nil
+}
+
+// WithMetaChecks sets a list of meta-checkers.
+func (d *Detector) WithMetaChecks(mc ...MetaCheck) {
+	d.metaChecks = append(d.metaChecks, mc...)
 }
 
 // WithSpamUpdater sets a SampleUpdater for spam samples.
