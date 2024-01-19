@@ -31,6 +31,7 @@ import (
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpamReader
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
