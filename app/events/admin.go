@@ -136,6 +136,85 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	return errs.ErrorOrNil()
 }
 
+// DirectSpamReport handles messages replayed with /spam or spam by admin
+func (a *admin) DirectSpamReport(update tbapi.Update) error {
+	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q",
+		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
+
+	origMsg := update.Message.ReplyToMessage
+
+	// this is a replayed message, it is an example of missed spam
+	// we need to update spam filter with this message
+	msgTxt := origMsg.Text
+	if msgTxt == "" { // if no text, try to get it from the transformed message
+		m := transform(origMsg)
+		msgTxt = m.Text
+	}
+	log.Printf("[DEBUG] reported spam message from superuser %q: %q", update.Message.From.UserName, msgTxt)
+
+	// check if the reply message will ban a super-user and ignore it
+	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName) {
+		return fmt.Errorf("banned message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
+	}
+
+	errs := new(multierror.Error)
+	// remove user from the approved list and from storage
+	if err := a.bot.RemoveApprovedUser(origMsg.From.ID); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", origMsg.From.ID, err))
+	}
+
+	// make a message with spam info and send to admin chat
+	spamInfo := []string{}
+	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: origMsg.From.ID}})
+	spamInfoText := "**can't get spam info**"
+	for _, check := range resp.CheckResults {
+		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+	}
+	if len(spamInfo) > 0 {
+		spamInfoText = strings.Join(spamInfo, "\n")
+	}
+	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
+		origMsg.From.UserName, origMsg.From.ID, spamInfoText)
+	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+	}
+
+	if a.dry {
+		return errs.ErrorOrNil()
+	}
+
+	// update spam samples
+	if err := a.bot.UpdateSpam(msgTxt); err != nil {
+		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+	}
+
+	// delete original message
+	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: origMsg.MessageID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
+	} else {
+		log.Printf("[INFO] spam message %d deleted", origMsg.MessageID)
+	}
+
+	// delete reply message
+	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: update.Message.MessageID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
+	} else {
+		log.Printf("[INFO] admin spam reprot message %d deleted", update.Message.MessageID)
+
+	}
+
+	// ban user
+	banReq := banRequest{duration: bot.PermanentBanDuration, userID: origMsg.From.ID, chatID: a.primChatID,
+		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode}
+
+	if err := banUserOrChannel(banReq); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, err))
+	}
+
+	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, origMsg.From.ID)
+	return errs.ErrorOrNil()
+}
+
 // InlineCallbackHandler handles a callback from Telegram, which is a response to a message with inline keyboard.
 // The callback contains user info, which is used to unban the user.
 func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
