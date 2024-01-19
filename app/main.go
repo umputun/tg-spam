@@ -214,7 +214,7 @@ func execute(ctx context.Context, opts options) error {
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot, locator); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
@@ -312,7 +312,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, dataDB *sqlx.DB) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -322,14 +322,21 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		log.Printf("[WARN] generated basic auth password for user tg-spam: %q", authPassswd)
 	}
 
+	// make store and load approved users
+	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	if auErr != nil {
+		return fmt.Errorf("can't make approved users store, %w", auErr)
+	}
+
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr: opts.Server.ListenAddr,
-		Detector:   sf.Detector,
-		SpamFilter: sf,
-		Locator:    loc,
-		AuthPasswd: authPassswd,
-		Version:    revision,
-		Dbg:        opts.Dbg,
+		ListenAddr:         opts.Server.ListenAddr,
+		Detector:           sf.Detector,
+		SpamFilter:         sf,
+		Locator:            loc,
+		DetectedSpamReader: detectedSpamStore,
+		AuthPasswd:         authPassswd,
+		Version:            revision,
+		Dbg:                opts.Dbg,
 	}}
 
 	go func() {
@@ -478,7 +485,7 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 			Text:      text,
 			UserID:    msg.From.ID,
 			UserName:  msg.From.Username,
-			Timestamp: time.Now(),
+			Timestamp: time.Now().In(time.Local),
 		}
 		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
 			log.Printf("[WARN] can't write to db, %v", err)

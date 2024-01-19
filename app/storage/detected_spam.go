@@ -71,7 +71,8 @@ func (ds *DetectedSpam) Read() ([]DetectedSpamInfo, error) {
 		if err := json.Unmarshal([]byte(entry.ChecksJSON), &checks); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal checks for entry %d: %w", i, err)
 		}
-		entry.Checks = checks
+		entries[i].Checks = checks
+		entries[i].Timestamp = entry.Timestamp.Local()
 	}
 	return entries, nil
 }

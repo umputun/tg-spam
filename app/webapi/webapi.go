@@ -23,6 +23,7 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -41,13 +42,14 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version    string     // version to show in /ping
-	ListenAddr string     // listen address
-	Detector   Detector   // spam detector
-	SpamFilter SpamFilter // spam filter (bot)
-	Locator    Locator    // locator for user info
-	AuthPasswd string     // basic auth password for user "tg-spam"
-	Dbg        bool       // debug mode
+	Version            string             // version to show in /ping
+	ListenAddr         string             // listen address
+	Detector           Detector           // spam detector
+	SpamFilter         SpamFilter         // spam filter (bot)
+	DetectedSpamReader DetectedSpamReader // detected spam reader from storage
+	Locator            Locator            // locator for user info
+	AuthPasswd         string             // basic auth password for user "tg-spam"
+	Dbg                bool               // debug mode
 }
 
 // Detector is a spam detector interface.
@@ -72,6 +74,11 @@ type SpamFilter interface {
 type Locator interface {
 	UserIDByName(userName string) int64
 	UserNameByID(userID int64) string
+}
+
+// DetectedSpamReader is a storage interface used to get detected spam messages.
+type DetectedSpamReader interface {
+	Read() ([]storage.DetectedSpamInfo, error)
 }
 
 // NewServer creates a new web API server.
@@ -145,6 +152,7 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		webUI.Get("/", s.htmlSpamCheckHandler)                   // serve template for webUI UI
 		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
 		webUI.Get("/manage_users", s.htmlManageUsersHandler)     // serve manage users page
+		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)   // serve detected spam page
 		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
 		webUI.Get("/logo.png", s.logoHandler)                    // serve logo.png
 
@@ -464,6 +472,36 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
 	if err := tmpl.ExecuteTemplate(w, "manage_users.html", tmplData); err != nil {
+		log.Printf("[WARN] can't execute template: %v", err)
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/detected_spam.html", "assets/components/navbar.html")
+	if err != nil {
+		log.Printf("[WARN] can't load template: %v", err)
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	ds, err := s.DetectedSpamReader.Read()
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	tmplData := struct {
+		DetectedSpamEntries []storage.DetectedSpamInfo
+		TotalDetectedSpam   int
+	}{
+		DetectedSpamEntries: ds,
+		TotalDetectedSpam:   len(ds),
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "detected_spam.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
