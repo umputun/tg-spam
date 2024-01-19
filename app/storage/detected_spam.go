@@ -11,6 +11,8 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
+const maxDetectedSpamEntries = 500
+
 // DetectedSpam is a storage for detected spam entries
 type DetectedSpam struct {
 	db *sqlx.DB
@@ -61,7 +63,7 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 // Read returns all detected spam entries
 func (ds *DetectedSpam) Read() ([]DetectedSpamInfo, error) {
 	var entries []DetectedSpamInfo
-	err := ds.db.Select(&entries, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam ORDER BY timestamp DESC")
+	err := ds.db.Select(&entries, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get detected spam entries: %w", err)
 	}
