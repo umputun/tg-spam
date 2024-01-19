@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/webapi/mocks"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -678,6 +679,58 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "handler returned wrong status code")
+	})
+}
+
+func TestServer_htmlDetectedSpamHandler(t *testing.T) {
+	calls := 0
+	ds := &mocks.DetectedSpamReaderMock{
+		ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
+			calls++
+			if calls > 1 {
+				return nil, errors.New("test error")
+			}
+			return []storage.DetectedSpamInfo{
+				{
+					Text:      "spam1",
+					UserID:    12345,
+					UserName:  "user1",
+					Timestamp: time.Now(),
+				},
+				{
+					Text:      "spam2",
+					UserID:    67890,
+					UserName:  "user2",
+					Timestamp: time.Now(),
+				},
+			}, nil
+		},
+	}
+	server := NewServer(Config{DetectedSpamReader: ds})
+
+	t.Run("successful rendering", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlDetectedSpamHandler)
+
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "<h4>Detected Spam (2)</h4>")
+	})
+
+	t.Run("detected spam reading failure", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlDetectedSpamHandler)
+
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
 }
 

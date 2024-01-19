@@ -21,6 +21,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -213,7 +214,7 @@ func execute(ctx context.Context, opts options) error {
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot, locator); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
@@ -231,12 +232,18 @@ func execute(ctx context.Context, opts options) error {
 	}
 	tbAPI.Debug = opts.TGDbg
 
-	// make spam logger
+	// make spam logger writer
 	loggerWr, err := makeSpamLogWriter(opts)
 	if err != nil {
 		return fmt.Errorf("can't make spam log writer, %w", err)
 	}
 	defer loggerWr.Close()
+
+	// make spam logger
+	spamLogger, err := makeSpamLogger(loggerWr, dataDB)
+	if err != nil {
+		return fmt.Errorf("can't make spam logger, %w", err)
+	}
 
 	// make telegram listener
 	tgListener := events.TelegramListener{
@@ -247,7 +254,7 @@ func execute(ctx context.Context, opts options) error {
 		Bot:          spamBot,
 		StartupMsg:   opts.Message.Startup,
 		NoSpamReply:  opts.NoSpamReply,
-		SpamLogger:   makeSpamLogger(loggerWr),
+		SpamLogger:   spamLogger,
 		AdminGroup:   opts.AdminGroup,
 		TestingIDs:   opts.TestingIDs,
 		Locator:      locator,
@@ -305,7 +312,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, dataDB *sqlx.DB) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -315,14 +322,21 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		log.Printf("[WARN] generated basic auth password for user tg-spam: %q", authPassswd)
 	}
 
+	// make store and load approved users
+	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	if auErr != nil {
+		return fmt.Errorf("can't make approved users store, %w", auErr)
+	}
+
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr: opts.Server.ListenAddr,
-		Detector:   sf.Detector,
-		SpamFilter: sf,
-		Locator:    loc,
-		AuthPasswd: authPassswd,
-		Version:    revision,
-		Dbg:        opts.Dbg,
+		ListenAddr:         opts.Server.ListenAddr,
+		Detector:           sf.Detector,
+		SpamFilter:         sf,
+		Locator:            loc,
+		DetectedSpamReader: detectedSpamStore,
+		AuthPasswd:         authPassswd,
+		Version:            revision,
+		Dbg:                opts.Dbg,
 	}}
 
 	go func() {
@@ -432,8 +446,15 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(wr io.Writer) events.SpamLogger {
-	return events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
+func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
+	// make store and load approved users
+	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	if auErr != nil {
+		return nil, fmt.Errorf("can't make approved users store, %w", auErr)
+	}
+
+	logWr := events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
+		// write to log file
 		text := strings.ReplaceAll(msg.Text, "\n", " ")
 		text = strings.TrimSpace(text)
 		log.Printf("[DEBUG] spam detected from %v, text: %s", msg.From, text)
@@ -458,7 +479,20 @@ func makeSpamLogger(wr io.Writer) events.SpamLogger {
 		if _, err := wr.Write(append(line, '\n')); err != nil {
 			log.Printf("[WARN] can't write to log, %v", err)
 		}
+
+		// write to db store
+		rec := storage.DetectedSpamInfo{
+			Text:      text,
+			UserID:    msg.From.ID,
+			UserName:  msg.From.Username,
+			Timestamp: time.Now().In(time.Local),
+		}
+		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
+			log.Printf("[WARN] can't write to db, %v", err)
+		}
 	})
+
+	return logWr, nil
 }
 
 // makeSpamLogWriter creates spam log writer to keep reports about spam messages

@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 func TestMakeSpamLogger(t *testing.T) {
@@ -23,7 +26,12 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
-	logger := makeSpamLogger(file)
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	logger, err := makeSpamLogger(file, db)
+	require.NoError(t, err)
 
 	msg := &bot.Message{
 		From: bot.User{
@@ -36,14 +44,18 @@ func TestMakeSpamLogger(t *testing.T) {
 
 	response := &bot.Response{
 		Text: "spam detected",
+		CheckResults: []spamcheck.Response{
+			{Name: "Check1", Spam: true, Details: "Details 1"},
+			{Name: "Check2", Spam: false, Details: "Details 2"},
+		},
 	}
 
 	logger.Save(msg, response)
 	file.Close()
 
+	// check that the message is saved to the log file
 	file, err = os.Open(file.Name())
 	require.NoError(t, err)
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -58,8 +70,19 @@ func TestMakeSpamLogger(t *testing.T) {
 		assert.Equal(t, float64(123), logEntry["user_id"]) // json.Unmarshal converts numbers to float64
 		assert.Equal(t, "Test message blah blah", logEntry["text"])
 	}
-
 	assert.NoError(t, scanner.Err())
+
+	// check that the message is saved to the database
+	savedMsgs := []storage.DetectedSpamInfo{}
+	err = db.Select(&savedMsgs, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam")
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(savedMsgs))
+	assert.Equal(t, "Test message blah blah", savedMsgs[0].Text)
+	assert.Equal(t, "testuser", savedMsgs[0].UserName)
+	assert.Equal(t, int64(123), savedMsgs[0].UserID)
+	assert.Equal(t, `[{"name":"Check1","spam":true,"details":"Details 1"},{"name":"Check2","spam":false,"details":"Details 2"}]`,
+		savedMsgs[0].ChecksJSON)
+
 }
 
 func TestMakeSpamLogWriter(t *testing.T) {
