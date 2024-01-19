@@ -108,7 +108,9 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
-			return bot.Response{Send: true, Text: "bot's answer", BanInterval: 2 * time.Minute, User: bot.User{Username: "user", ID: 1}}
+			return bot.Response{Send: true, Text: "bot's answer", BanInterval: 2 * time.Minute,
+				User: bot.User{Username: "user", ID: 1}, CheckResults: []spamcheck.Response{
+					{Name: "Check1", Spam: true, Details: "Details 1"}}}
 		}
 		if msg.From.Username == "ChannelBot" {
 			return bot.Response{Send: true, Text: "bot's answer for channel", BanInterval: 2 * time.Minute, User: bot.User{Username: "user", ID: 1}, ChannelID: msg.SenderChat.ID}
