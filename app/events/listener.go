@@ -25,19 +25,20 @@ import (
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
 type TelegramListener struct {
-	TbAPI        TbAPI
-	SpamLogger   SpamLogger
-	Bot          Bot
-	Group        string // can be int64 or public group username (without "@" prefix)
-	AdminGroup   string // can be int64 or public group username (without "@" prefix)
-	IdleDuration time.Duration
-	SuperUsers   SuperUsers
-	TestingIDs   []int64
-	StartupMsg   string
-	NoSpamReply  bool
-	TrainingMode bool
-	Dry          bool
-	Locator      Locator
+	TbAPI                   TbAPI
+	SpamLogger              SpamLogger
+	Bot                     Bot
+	Group                   string // can be int64 or public group username (without "@" prefix)
+	AdminGroup              string // can be int64 or public group username (without "@" prefix)
+	IdleDuration            time.Duration
+	SuperUsers              SuperUsers
+	TestingIDs              []int64
+	StartupMsg              string
+	NoSpamReply             bool
+	TrainingMode            bool
+	Dry                     bool
+	Locator                 Locator
+	DisableAdminSpamForward bool
 
 	adminHandler *admin
 	chatID       int64
@@ -91,7 +92,11 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
 		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, dry: l.Dry}
-	log.Printf("[DEBUG] admin handler created. %+v", l.adminHandler)
+	adminForwardStatus := "enabled"
+	if l.DisableAdminSpamForward {
+		adminForwardStatus = "disabled"
+	}
+	log.Printf("[DEBUG] admin handler created, spam forvarding %s, %+v", adminForwardStatus, l.adminHandler)
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
@@ -109,7 +114,11 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				return fmt.Errorf("telegram update chan closed")
 			}
 
+			// handle admin chat messages
 			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName) {
+				if l.DisableAdminSpamForward {
+					continue
+				}
 				if err := l.adminHandler.MsgHandler(update); err != nil {
 					log.Printf("[WARN] failed to process admin chat message: %v", err)
 					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
@@ -117,6 +126,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// handle admin chat inline buttons
 			if update.CallbackQuery != nil {
 				if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
 					log.Printf("[WARN] failed to process callback: %v", err)
@@ -131,6 +141,17 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.Message.Chat == nil {
 				log.Print("[DEBUG] ignoring message not from chat")
 				continue
+			}
+
+			// handle spam reports from superusers
+			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName) {
+				if update.Message.Text == "/spam" || update.Message.Text == "spam" {
+					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
+					if err := l.adminHandler.DirectSpamReport(update); err != nil {
+						log.Printf("[WARN] failed to process direct spam report: %v", err)
+					}
+					continue
+				}
 			}
 
 			if err := l.procEvents(update); err != nil {

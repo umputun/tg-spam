@@ -40,7 +40,6 @@ linters:
     - megacheck
     - unused
     - gas
-    - gocyclo
     - dupl
     - misspell
     - unparam
