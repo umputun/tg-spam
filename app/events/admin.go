@@ -103,7 +103,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
 	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
-		info.UserName, info.UserID, spamInfoText)
+		escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText)
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
 	}
@@ -136,7 +136,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	return errs.ErrorOrNil()
 }
 
-// DirectSpamReport handles messages replayed with /spam or spam by admin
+// DirectSpamReport handles messages replayed with "/spam" or "spam" by admin
 func (a *admin) DirectSpamReport(update tbapi.Update) error {
 	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q",
 		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
@@ -160,7 +160,9 @@ func (a *admin) DirectSpamReport(update tbapi.Update) error {
 	errs := new(multierror.Error)
 	// remove user from the approved list and from storage
 	if err := a.bot.RemoveApprovedUser(origMsg.From.ID); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", origMsg.From.ID, err))
+		// error here is not critical, user may not be in the approved list if we run in paranoid mode or
+		// if not reached the threshold for approval yet
+		log.Printf("[DEBUG] can't remove user %d from approved list: %v", origMsg.From.ID, err)
 	}
 
 	// make a message with spam info and send to admin chat
@@ -173,8 +175,8 @@ func (a *admin) DirectSpamReport(update tbapi.Update) error {
 	if len(spamInfo) > 0 {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
-		origMsg.From.UserName, origMsg.From.ID, spamInfoText)
+	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*the user banned and message deleted*",
+		escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID, msgTxt, escapeMarkDownV1Text(spamInfoText))
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
 	}
