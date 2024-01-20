@@ -518,6 +518,10 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 	respData.Description = strings.TrimSuffix(respData.Description, ".")
 
 	if respData.OK {
+		// may return empty description on detected spam
+		if respData.Description == "" {
+			respData.Description = "spam detected"
+		}
 		return spamcheck.Response{Name: "cas", Spam: true, Details: respData.Description}
 	}
 	details := respData.Description

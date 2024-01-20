@@ -191,6 +191,12 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			expected:       true,
 		},
 		{
+			name:           "User is a spammer",
+			mockResp:       `{"ok": true, "description": ""}`,
+			mockStatusCode: 200,
+			expected:       true,
+		},
+		{
 			name:           "HTTP error",
 			mockResp:       `{"ok": false, "description": "not found"}`,
 			mockStatusCode: 500,
@@ -228,12 +234,14 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			err := json.Unmarshal([]byte(tt.mockResp), &respDetails)
 			require.NoError(t, err)
 			expResp := strings.ToLower(respDetails.Description)
+			if expResp == "" {
+				expResp = "spam detected"
+			}
 			expResp = strings.TrimSuffix(expResp, ".")
 			assert.Equal(t, expResp, cr[0].Details)
 
 			assert.Equal(t, respDetails.Description, respDetails.Description)
 			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
-
 		})
 	}
 }
@@ -594,54 +602,6 @@ func TestDetector_Reset(t *testing.T) {
 	assert.Equal(t, 0, len(d.excludedTokens))
 	assert.Equal(t, 0, len(d.stopWords))
 }
-
-// func TestDetector(t *testing.T) {
-// 	tests := []struct {
-// 		name          string
-// 		loadInput     string
-// 		wantLoadCount int
-// 		wantLoadErr   bool
-// 		wantApproved  []string
-// 	}{
-// 		{
-// 			name:          "empty",
-// 			loadInput:     "",
-// 			wantLoadCount: 0,
-// 			wantLoadErr:   false,
-// 			wantApproved:  []string{},
-// 		},
-// 		{
-// 			name:          "single user",
-// 			loadInput:     "12345\n",
-// 			wantLoadCount: 1,
-// 			wantLoadErr:   false,
-// 			wantApproved:  []string{"12345"},
-// 		},
-// 		{
-// 			name:          "multiple users",
-// 			loadInput:     "123\n456\n789\n",
-// 			wantLoadCount: 3,
-// 			wantLoadErr:   false,
-// 			wantApproved:  []string{"123", "456", "789"},
-// 		},
-// 	}
-//
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			d := &Detector{}
-// 			r := bytes.NewBufferString(tt.loadInput)
-// 			count, err := d.LoadApprovedUser(r)
-//
-// 			assert.Equal(t, tt.wantLoadCount, count)
-// 			if tt.wantLoadErr {
-// 				assert.Error(t, err)
-// 			} else {
-// 				assert.NoError(t, err)
-// 			}
-// 			assert.ElementsMatch(t, tt.wantApproved, d.ApprovedUsers())
-// 		})
-// 	}
-// }
 
 func TestDetector_FirstMessagesCount(t *testing.T) {
 	t.Run("first message is spam", func(t *testing.T) {
