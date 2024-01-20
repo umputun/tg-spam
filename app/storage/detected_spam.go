@@ -41,6 +41,12 @@ func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create detected_spam table: %w", err)
 	}
+
+	// add index on timestamp
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
+		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
+	}
+
 	return &DetectedSpam{db: db}, nil
 }
 
