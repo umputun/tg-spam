@@ -138,6 +138,15 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 			r.Post("/ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
 		})
 
+		authApi.Route("/download", func(r chi.Router) {
+			r.Get("/spam", s.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+				return spam, "spam.txt"
+			}))
+			r.Get("/ham", s.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+				return ham, "ham.txt"
+			}))
+		})
+
 		authApi.Get("/samples", s.getDynamicSamplesHandler)    // get dynamic samples
 		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
 
@@ -235,6 +244,25 @@ func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request
 		return
 	}
 	rest.RenderJSON(w, rest.JSON{"spam": spam, "ham": ham})
+}
+
+// downloadSampleHandler handles GET /download/spam|ham request. It returns dynamic samples both for spam and ham.
+func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		spam, ham, err := s.SpamFilter.DynamicSamples()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
+			return
+		}
+		samples, name := pickFn(spam, ham)
+		body := strings.Join(samples, "\n")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}
 }
 
 // updateSampleHandler handles POST /update/spam|ham request. It updates dynamic samples both for spam and ham.

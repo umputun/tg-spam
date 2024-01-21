@@ -540,8 +540,8 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
 		body := rr.Body.String()
 		t.Log(body)
-		assert.Contains(t, body, "<h4>Spam Samples (2)</h4>", "response should contain spam samples")
-		assert.Contains(t, body, "<h4>Ham Samples (2)</h4>", "response should contain ham samples")
+		assert.Contains(t, body, "Spam Samples (2)", "response should contain spam samples")
+		assert.Contains(t, body, "Ham Samples (2)", "response should contain ham samples")
 		require.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
 	})
@@ -878,7 +878,7 @@ func TestServer_logoHandler(t *testing.T) {
 	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"), "handler should return CSS content type")
 }
 
-func TestServer_getDynamicSamplesHandler(t *testing.T) {
+func Test_downloadSampleHandler(t *testing.T) {
 	mockSpamFilter := &mocks.SpamFilterMock{
 		DynamicSamplesFunc: func() ([]string, []string, error) {
 			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
@@ -889,25 +889,34 @@ func TestServer_getDynamicSamplesHandler(t *testing.T) {
 		SpamFilter: mockSpamFilter,
 	})
 
-	t.Run("successful response", func(t *testing.T) {
-		req, err := http.NewRequest("GET", "/samples", http.NoBody)
+	t.Run("successful spam response", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/download/spam", http.NoBody)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.getDynamicSamplesHandler)
+		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+			return spam, "spam.txt"
+		}))
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Header().Get("Content-Disposition"), "attachment; filename=\"spam.txt\"")
+	})
 
-		var response struct {
-			Spam []string `json:"spam"`
-			Ham  []string `json:"ham"`
-		}
-		err = json.Unmarshal(rr.Body.Bytes(), &response)
+	t.Run("successful ham response", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/download/ham", http.NoBody)
 		require.NoError(t, err)
 
-		assert.Equal(t, []string{"spam1", "spam2"}, response.Spam)
-		assert.Equal(t, []string{"ham1", "ham2"}, response.Ham)
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+			return spam, "ham.txt"
+		}))
+
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Header().Get("Content-Disposition"), "attachment; filename=\"ham.txt\"")
 	})
 
 	t.Run("error handling", func(t *testing.T) {
@@ -915,11 +924,13 @@ func TestServer_getDynamicSamplesHandler(t *testing.T) {
 			return nil, nil, errors.New("test error")
 		}
 
-		req, err := http.NewRequest("GET", "/samples", http.NoBody)
+		req, err := http.NewRequest("GET", "/download/ham", http.NoBody)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.getDynamicSamplesHandler)
+		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+			return spam, "ham.txt"
+		}))
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -1048,10 +1059,10 @@ func TestServer_renderSamples(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
 	t.Log(w.Body.String())
-	assert.Contains(t, w.Body.String(), "<h4>Spam Samples (2)</h4>")
+	assert.Contains(t, w.Body.String(), "Spam Samples (2)")
 	assert.Contains(t, w.Body.String(), "spam1")
 	assert.Contains(t, w.Body.String(), "spam2")
-	assert.Contains(t, w.Body.String(), "<h4>Ham Samples (2)</h4>")
+	assert.Contains(t, w.Body.String(), "Ham Samples (2)")
 	assert.Contains(t, w.Body.String(), "ham1")
 	assert.Contains(t, w.Body.String(), "ham2")
 }

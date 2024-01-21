@@ -30,3 +30,15 @@ body, #result{
     max-width: 500px;
     overflow: hidden;
 }
+
+.btn-custom-blue {
+    color: #eee;
+    background-color: #286ea7;
+    border-color: #3d86e5;
+}
+
+.btn-custom-blue:hover {
+    color: #fff;
+    background-color: #3286cb;
+    border-color: #3d86e5;
+}
