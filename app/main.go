@@ -267,8 +267,6 @@ func execute(ctx context.Context, opts options) error {
 		Locator:                 locator,
 		TrainingMode:            opts.Training,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
-		LinksLimit:   opts.Meta.LinksLimit,
-		ImageOnly:    opts.Meta.ImageOnly,
 		Dry:                     opts.Dry,
 	}
 
