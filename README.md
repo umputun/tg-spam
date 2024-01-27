@@ -135,7 +135,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat or reply to the message with `/spam` or `spam` text, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
 --history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
@@ -210,6 +210,7 @@ Success! The new status is: DISABLED. /help
 
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
+      --disable-admin-spam-forward  disable forwarding spam messages to admin group [$DISABLE_ADMIN_SPAM_FORWARD]      
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -286,6 +287,7 @@ Help Options:
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
 - `--training` - if set to `true`, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
+- `--disable-admin-spam-forward` - if set to `true`, the bot will not treat messages forwarded to the admin chat as spam.
 - `--dry` - if set to `true`, the bot will not ban users and delete messages. This is useful for testing purposes.
 - `--dbg` - if set to `true`, the bot will print debug information to the console.
 - `--tg-dbg` - if set to `true`, the bot will print debug information from the telegram library to the console.
@@ -305,7 +307,7 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 ### Training the bot on a live system safely
 
-In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot.
+In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/soam` to mark it as spam.
 
 In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly. 
 

@@ -100,3 +100,49 @@ func TestDetectedSpam_Read(t *testing.T) {
 	assert.Equal(t, checks, retrievedChecks)
 	t.Logf("retrieved checks: %+v", retrievedChecks)
 }
+
+func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	ds, err := NewDetectedSpam(db)
+	require.NoError(t, err)
+
+	for i := 0; i < maxDetectedSpamEntries+10; i++ {
+		spamEntry := DetectedSpamInfo{
+			Text:      "spam message",
+			UserID:    int64(i),
+			UserName:  "Spammer",
+			Timestamp: time.Now(),
+		}
+
+		checks := []spamcheck.Response{
+			{
+				Name:    "Check1",
+				Spam:    true,
+				Details: "Details 1",
+			},
+		}
+
+		err = ds.Write(spamEntry, checks)
+		require.NoError(t, err)
+	}
+
+	entries, err := ds.Read()
+	require.NoError(t, err)
+	assert.Len(t, entries, maxDetectedSpamEntries, "expected to retrieve only the maximum number of entries")
+}
+
+func TestDetectedSpam_Read_EmptyDB(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	ds, err := NewDetectedSpam(db)
+	require.NoError(t, err)
+
+	entries, err := ds.Read()
+	require.NoError(t, err)
+	assert.Empty(t, entries, "Expected no entries in an empty database")
+}

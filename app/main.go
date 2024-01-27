@@ -41,7 +41,9 @@ type options struct {
 		IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
-	AdminGroup string  `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
+	AdminGroup              string `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
+	DisableAdminSpamForward bool   `long:"disable-admin-spam-forward" env:"DISABLE_ADMIN_SPAM_FORWARD" description:"disable forwarding spam messages to admin group"`
+
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
@@ -252,21 +254,22 @@ func execute(ctx context.Context, opts options) error {
 
 	// make telegram listener
 	tgListener := events.TelegramListener{
-		TbAPI:        tbAPI,
-		Group:        opts.Telegram.Group,
-		IdleDuration: opts.Telegram.IdleDuration,
-		SuperUsers:   opts.SuperUsers,
-		Bot:          spamBot,
-		StartupMsg:   opts.Message.Startup,
-		NoSpamReply:  opts.NoSpamReply,
-		SpamLogger:   spamLogger,
-		AdminGroup:   opts.AdminGroup,
-		TestingIDs:   opts.TestingIDs,
-		Locator:      locator,
-		TrainingMode: opts.Training,
+		TbAPI:                   tbAPI,
+		Group:                   opts.Telegram.Group,
+		IdleDuration:            opts.Telegram.IdleDuration,
+		SuperUsers:              opts.SuperUsers,
+		Bot:                     spamBot,
+		StartupMsg:              opts.Message.Startup,
+		NoSpamReply:             opts.NoSpamReply,
+		SpamLogger:              spamLogger,
+		AdminGroup:              opts.AdminGroup,
+		TestingIDs:              opts.TestingIDs,
+		Locator:                 locator,
+		TrainingMode:            opts.Training,
+		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		LinksLimit:   opts.Meta.LinksLimit,
 		ImageOnly:    opts.Meta.ImageOnly,
-		Dry:          opts.Dry,
+		Dry:                     opts.Dry,
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+

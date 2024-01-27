@@ -1,6 +1,9 @@
 <div class="row" id="samples-list">
     <div class="col-md-6">
-        <h4>Spam Samples ({{.TotalSpamSamples}})</h4>
+        <h4>
+            Spam Samples ({{.TotalSpamSamples}})
+            <a href="/download/spam" class="btn btn-custom-blue btn-sm">Download</a>
+        </h4>
         <ul class="list-group" id="spam-samples-list">
             {{range .SpamSamples}}
             <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -19,7 +22,10 @@
     </div>
 
     <div class="col-md-6">
-        <h4>Ham Samples ({{.TotalHamSamples}})</h4>
+        <h4>
+            Ham Samples ({{.TotalHamSamples}})
+            <a href="/download/ham" class="btn btn-custom-blue btn-sm">Download</a>
+        </h4>
         <ul class="list-group" id="ham-samples-list">
             {{range .HamSamples}}
             <li class="list-group-item d-flex justify-content-between align-items-center">
