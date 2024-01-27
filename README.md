@@ -24,9 +24,10 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
+- **Meta checks**: TG-Spam can optionalsly check the message for the number of links and the presence of images. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
-TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. 
+TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
 
 ## Installation
 
@@ -47,7 +48,7 @@ There are some mandatory parameters what has to be set:
 
 As long as theses two parameters are set, the bot will work. Don't forget to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 
-There are some customizations available.
+There are some important customizations available:
 
 First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
 
