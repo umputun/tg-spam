@@ -25,20 +25,20 @@ import (
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
 type TelegramListener struct {
-	TbAPI                   TbAPI
-	SpamLogger              SpamLogger
-	Bot                     Bot
-	Group                   string // can be int64 or public group username (without "@" prefix)
-	AdminGroup              string // can be int64 or public group username (without "@" prefix)
-	IdleDuration            time.Duration
-	SuperUsers              SuperUsers
-	TestingIDs              []int64
-	StartupMsg              string
-	NoSpamReply             bool
-	TrainingMode            bool
-	Dry                     bool
-	Locator                 Locator
-	DisableAdminSpamForward bool
+	TbAPI                   TbAPI         // telegram bot API
+	SpamLogger              SpamLogger    // logger to save spam to files and db
+	Bot                     Bot           // bot to handle messages
+	Group                   string        // can be int64 or public group username (without "@" prefix)
+	AdminGroup              string        // can be int64 or public group username (without "@" prefix)
+	IdleDuration            time.Duration // idle timeout to send "idle" message to bots
+	SuperUsers              SuperUsers    // list of superusers, can ban and report spam, can't be banned
+	TestingIDs              []int64       // list of chat IDs to test the bot
+	StartupMsg              string        // message to send on startup to the primary chat
+	NoSpamReply             bool          // do not reply on spam messages in the primary chat
+	TrainingMode            bool          // do not ban users, just report and train spam detector
+	Locator                 Locator       // message locator to get info about messages
+	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
+	Dry                     bool          // dry run, do not ban or send messages
 
 	adminHandler *admin
 	chatID       int64
@@ -183,7 +183,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// ignore empty messages
-	if strings.TrimSpace(msg.Text) == "" {
+	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil {
 		return nil
 	}
 

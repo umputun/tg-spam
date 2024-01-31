@@ -64,6 +64,11 @@ type options struct {
 		Timeout time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
+	Meta struct {
+		LinksLimit int  `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
+		ImageOnly  bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
+	} `group:"meta" namespace:"meta" env-namespace:"META"`
+
 	OpenAI struct {
 		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
 		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
@@ -110,8 +115,8 @@ type options struct {
 const (
 	samplesSpamFile   = "spam-samples.txt"
 	samplesHamFile    = "ham-samples.txt"
-	excludeTokensFile = "exclude-tokens.txt"
-	stopWordsFile     = "stop-words.txt" //nolint:gosec // false positive
+	excludeTokensFile = "exclude-tokens.txt" //nolint:gosec // false positive
+	stopWordsFile     = "stop-words.txt"     //nolint:gosec // false positive
 	dynamicSpamFile   = "spam-dynamic.txt"
 	dynamicHamFile    = "ham-dynamic.txt"
 	dataFile          = "tg-spam.db"
@@ -264,6 +269,7 @@ func execute(ctx context.Context, opts options) error {
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		Dry:                     opts.Dry,
 	}
+
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
 		" dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
@@ -390,6 +396,17 @@ func makeDetector(opts options) *tgspam.Detector {
 		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
 		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)
 	}
+
+	metaChecks := []tgspam.MetaCheck{}
+	if opts.Meta.ImageOnly {
+		log.Printf("[INFO] image only check enabled")
+		metaChecks = append(metaChecks, tgspam.ImagesCheck())
+	}
+	if opts.Meta.LinksLimit >= 0 {
+		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
+		metaChecks = append(metaChecks, tgspam.LinksCheck(opts.Meta.LinksLimit))
+	}
+	detector.WithMetaChecks(metaChecks...)
 
 	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
 	detector.WithSpamUpdater(bot.NewSampleUpdater(dynSpamFile))

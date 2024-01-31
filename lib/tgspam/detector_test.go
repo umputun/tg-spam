@@ -486,6 +486,71 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckWithMeta(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.WithMetaChecks(LinksCheck(1), ImagesCheck())
+
+	t.Run("no links, no images", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you?"})
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "links", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "links 0/1", cr[0].Details)
+		assert.Equal(t, "images", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "no images without text", cr[1].Details)
+	})
+
+	t.Run("one link, no images", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com"})
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "links", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "links 1/1", cr[0].Details)
+		assert.Equal(t, "images", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "no images without text", cr[1].Details)
+	})
+
+	t.Run("one link, one image", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com", Meta: spamcheck.MetaData{Images: 1}})
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "links", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "links 1/1", cr[0].Details)
+		assert.Equal(t, "images", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "no images without text", cr[1].Details)
+	})
+
+	t.Run("two links, one image with text", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com https://google.com", Meta: spamcheck.MetaData{Images: 1}})
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "links", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "too many links 2/1", cr[0].Details)
+		assert.Equal(t, "images", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "no images without text", cr[1].Details)
+	})
+
+	t.Run("no links, two images, no text", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{Images: 2}})
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "links", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "links 0/1", cr[0].Details)
+		assert.Equal(t, "images", cr[1].Name)
+		assert.Equal(t, true, cr[1].Spam)
+		assert.Equal(t, "images without text", cr[1].Details)
+	})
+}
+
 func TestDetector_UpdateSpam(t *testing.T) {
 	upd := &mocks.SampleUpdaterMock{
 		AppendFunc: func(msg string) error {

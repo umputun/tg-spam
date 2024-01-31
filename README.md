@@ -24,9 +24,10 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
+- **Meta checks**: TG-Spam can optionalsly check the message for the number of links and the presence of images. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
-TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. 
+TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
 
 ## Installation
 
@@ -47,7 +48,7 @@ There are some mandatory parameters what has to be set:
 
 As long as theses two parameters are set, the bot will work. Don't forget to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 
-There are some customizations available.
+There are some important customizations available:
 
 First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
 
@@ -107,6 +108,14 @@ If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJ
 **Minimum message length**
 
 This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. This check is needed to avoid false positives on short messages.
+
+**Maximum links in message**
+
+This option is disabled by default. If set to a positive number, the bot will check the message for the number of links. If the number of links is greater than `--meta.links-limit=, [$META_LINKS_LIMIT]` (default is -1), the message will be marked as spam. Setting the limit to -1 will effectively disable this check.
+
+**Image only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
 
 ### Admin chat/group
 
@@ -235,6 +244,10 @@ cas:
       --cas.api=                    CAS API (default: https://api.cas.chat) [$CAS_API]
       --cas.timeout=                CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
+meta:
+      --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
+      --meta.image-only             enable image only check [$META_IMAGE_ONLY]
+
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
@@ -257,7 +270,7 @@ message:
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]
       --server.listen=              listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                basic auth password for user 'tg-spam' (default: auto-generated) [$SERVER_AUTH]
+      --server.auth=                basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
 
 Help Options:
   -h, --help                        Show this help message
