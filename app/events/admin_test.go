@@ -96,6 +96,26 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 	}
 }
 
+func TestAdmin_getCleanMessage2(t *testing.T) {
+	msg := `permanently banned {157419590 new_Nikita Νικήτας}
+
+и да, этим надо заниматься каждый день по несколько часов. За месяц увидишь ощутимый результат
+
+**spam detection results**
+- stopword: ham, not found
+- emoji: ham, 0/2
+- similarity: ham, 0.15/0.50
+- classifier: spam, probability of spam: 71.70%
+- cas: ham, record not found
+
+_unbanned by umputun in 1m5s_`
+
+	a := &admin{}
+	result, err := a.getCleanMessage(msg)
+	assert.NoError(t, err)
+	assert.Equal(t, "и да, этим надо заниматься каждый день по несколько часов. За месяц увидишь ощутимый результат", result)
+}
+
 func TestAdmin_parseCallbackData(t *testing.T) {
 	var tests = []struct {
 		name       string
