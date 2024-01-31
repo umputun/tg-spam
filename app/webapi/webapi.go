@@ -51,6 +51,33 @@ type Config struct {
 	Locator            Locator            // locator for user info
 	AuthPasswd         string             // basic auth password for user "tg-spam"
 	Dbg                bool               // debug mode
+	Settings           Settings           // application settings
+}
+
+// Settings contains all application settings
+type Settings struct {
+	PrimaryGroup            string   `json:"primary_group"`
+	AdminGroup              string   `json:"admin_group"`
+	DisableAdminSpamForward bool     `json:"disable_admin_spam_forward"`
+	LoggerEnabled           bool     `json:"logger_enabled"`
+	SuperUsers              []string `json:"super_users"`
+	NoSpamReply             bool     `json:"no_spam_reply"`
+	CasEnabled              bool     `json:"cas_enabled"`
+	MetaEnabled             bool     `json:"meta_enabled"`
+	MetaLinksLimit          int      `json:"meta_links_limit"`
+	MetaImageOnly           bool     `json:"meta_image_only"`
+	OpenAIEnabled           bool     `json:"openai_enabled"`
+	SamplesDataPath         string   `json:"samples_data_path"`
+	DynamicDataPath         string   `json:"dynamic_data_path"`
+	WatchIntervalSecs       int      `json:"watch_interval_secs"`
+	SimilarityThreshold     float64  `json:"similarity_threshold"`
+	MinMsgLen               int      `json:"min_msg_len"`
+	MaxEmoji                int      `json:"max_emoji"`
+	MinSpamProbability      float64  `json:"min_spam_probability"`
+	ParanoidMode            bool     `json:"paranoid_mode"`
+	FirstMessagesCount      int      `json:"first_messages_count"`
+	StartupMessageEnabled   bool     `json:"startup_message_enabled"`
+	TrainingEnabled         bool     `json:"training_enabled"`
 }
 
 // Detector is a spam detector interface.
@@ -155,6 +182,10 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser))    // remove user from approved list and storage
 			r.Get("/", s.getApprovedUsersHandler)                                    // get approved users
 		})
+
+		authApi.Get("/settings", func(w http.ResponseWriter, _ *http.Request) {
+			rest.RenderJSON(w, s.Settings)
+		})
 	})
 
 	router.Group(func(webUI chi.Router) {
@@ -163,9 +194,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
 		webUI.Get("/manage_users", s.htmlManageUsersHandler)     // serve manage users page
 		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)   // serve detected spam page
+		webUI.Get("/list_settings", s.htmlSettingsHandler)       // serve settings
 		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
-		webUI.Get("/logo.png", s.logoHandler)                    // serve logo.png
-
+		webUI.Get("/logo.png", s.logoutHandler)                  // serve logo.png
 	})
 
 	return router
@@ -537,6 +568,29 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 	}
 }
 
+func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.New("").ParseFS(templateFS, "assets/settings.html", "assets/components/navbar.html")
+	if err != nil {
+		log.Printf("[WARN] can't load template: %v", err)
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Settings
+		Version string
+	}{
+		Settings: s.Settings,
+		Version:  s.Version,
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
+		log.Printf("[WARN] can't execute template: %v", err)
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
+		return
+	}
+}
+
 // stylesHandler handles GET /styles.css request. It returns styles.css file.
 func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
 	body, err := templateFS.ReadFile("assets/styles.css")
@@ -550,8 +604,8 @@ func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// logoHandler handles GET /logo.png request. It returns assets/logo.png file.
-func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
+// logoutHandler handles GET /logo.png request. It returns assets/logo.png file.
+func (s *Server) logoutHandler(w http.ResponseWriter, _ *http.Request) {
 	img, err := templateFS.ReadFile("assets/logo.png")
 	if err != nil {
 		http.Error(w, "Logo not found", http.StatusNotFound)

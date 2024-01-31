@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Settings - TG-Spam</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+
+{{template "navbar.html"}}
+
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Application Settings</h2>
+    <div class="row">
+        <div class="col-12">
+            <table class="table table-striped">
+                <tbody>
+                <tr><th>Version</th><td>{{.Version}}</td></tr>
+                <tr><th>Primary Group</th><td>{{.PrimaryGroup}}</td></tr>
+                <tr><th>Admin Group</th><td>{{.AdminGroup}}</td></tr>
+                <tr><th>Disable Admin Spam Forward</th><td>{{.DisableAdminSpamForward}}</td></tr>
+                <tr><th>Logger Enabled</th><td>{{.LoggerEnabled}}</td></tr>
+                <tr><th>Super Users</th><td>{{range .SuperUsers}}{{.}}<br>{{end}}</td></tr>
+                <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
+                <tr><th>CAS Enabled</th><td>{{.CasEnabled}}</td></tr>
+                <tr><th>Meta Enabled</th><td>{{.MetaEnabled}}</td></tr>
+                <tr><th>Meta Links Limit</th><td>{{.MetaLinksLimit}}</td></tr>
+                <tr><th>Meta Image Only</th><td>{{.MetaImageOnly}}</td></tr>
+                <tr><th>OpenAI Enabled</th><td>{{.OpenAIEnabled}}</td></tr>
+                <tr><th>Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
+                <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
+                <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
+                <tr><th>Similarity Threshold</th><td>{{.SimilarityThreshold}}</td></tr>
+                <tr><th>Min Message Length</th><td>{{.MinMsgLen}}</td></tr>
+                <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
+                <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}</td></tr>
+                <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
+                <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
+                <tr><th>Startup Message Enabled</th><td>{{.StartupMessageEnabled}}</td></tr>
+                <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
