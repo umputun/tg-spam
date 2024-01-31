@@ -131,6 +131,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, d.isManyEmojis(req.Msg))
 	}
 
+	// check for spam with meta-checks
+	for _, mc := range d.metaChecks {
+		cr = append(cr, mc(req))
+	}
+
 	// check for message length exceed the minimum size, if min message length is set.
 	// the check is done after first simple checks, because stop words and emojis can be triggered by short messages as well.
 	if len([]rune(req.Msg)) < d.MinMsgLen {
@@ -154,11 +159,6 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for spam with CAS API if CAS API URL is set
 	if d.CasAPI != "" {
 		cr = append(cr, d.isCasSpam(req.UserID))
-	}
-
-	// check for spam with meta-checks
-	for _, mc := range d.metaChecks {
-		cr = append(cr, mc(req))
 	}
 
 	spamDetected := isSpamDetected(cr)

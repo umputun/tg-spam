@@ -183,7 +183,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// ignore empty messages
-	if strings.TrimSpace(msg.Text) == "" {
+	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil {
 		return nil
 	}
 
