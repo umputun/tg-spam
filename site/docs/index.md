@@ -361,6 +361,8 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
  
 - `PUT /samples` - reload dynamic samples
 
+- `GET /settings` - return the current settings of the bot
+
 _for the real examples of http requests see [webapp.rest](https://github.com/umputun/tg-spam/blob/master/webapp.rest) file._
 
 **how it works**
