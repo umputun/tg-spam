@@ -322,6 +322,19 @@ func TestServer_routes(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, `{"user_ids":[{"user_id":"user1","user_name":"name1","timestamp":"0001-01-01T00:00:00Z"},{"user_id":"user2","user_name":"name2","timestamp":"0001-01-01T00:00:00Z"}]}`+"\n", string(respBody))
 	})
+
+	t.Run("get settings", func(t *testing.T) {
+		server.Settings.MinMsgLen = 10
+		resp, err := http.Get(ts.URL + "/settings")
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		res := Settings{}
+		err = json.NewDecoder(resp.Body).Decode(&res)
+		assert.NoError(t, err)
+		assert.Equal(t, server.Settings, res)
+	})
 }
 
 func TestServer_checkHandler(t *testing.T) {
@@ -851,6 +864,22 @@ func TestServer_htmlManageUsersHandler(t *testing.T) {
 	assert.Contains(t, body, "<h4>Approved Users (2)</h4>", "template should contain users list")
 }
 
+func TestServer_htmlSettingsHandler(t *testing.T) {
+	server := NewServer(Config{Version: "1.0", Settings: Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150}})
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.htmlSettingsHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+	body := rr.Body.String()
+	assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
+	assert.Contains(t, body, "<tr><th>Super Users</th><td>user1<br>user2<br></td></tr>", "template should contain supers list")
+	assert.Contains(t, body, "<tr><th>Min Message Length</th><td>150</td></tr>")
+}
+
 func TestServer_stylesHandler(t *testing.T) {
 	server := NewServer(Config{Version: "1.0"})
 	rr := httptest.NewRecorder()
@@ -871,7 +900,7 @@ func TestServer_logoHandler(t *testing.T) {
 	req, err := http.NewRequest("GET", "/logo.png", http.NoBody)
 	require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.logoHandler)
+	handler := http.HandlerFunc(server.logoutHandler)
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")

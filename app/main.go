@@ -337,6 +337,31 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
 
+	settings := webapi.Settings{
+		PrimaryGroup:            opts.Telegram.Group,
+		AdminGroup:              opts.AdminGroup,
+		DisableAdminSpamForward: opts.DisableAdminSpamForward,
+		LoggerEnabled:           opts.Logger.Enabled,
+		SuperUsers:              opts.SuperUsers,
+		NoSpamReply:             opts.NoSpamReply,
+		CasEnabled:              opts.CAS.API != "",
+		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0,
+		MetaLinksLimit:          opts.Meta.LinksLimit,
+		MetaImageOnly:           opts.Meta.ImageOnly,
+		OpenAIEnabled:           opts.OpenAI.Token != "",
+		SamplesDataPath:         opts.Files.SamplesDataPath,
+		DynamicDataPath:         opts.Files.DynamicDataPath,
+		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
+		SimilarityThreshold:     opts.SimilarityThreshold,
+		MinMsgLen:               opts.MinMsgLen,
+		MaxEmoji:                opts.MaxEmoji,
+		MinSpamProbability:      opts.MinSpamProbability,
+		ParanoidMode:            opts.ParanoidMode,
+		FirstMessagesCount:      opts.FirstMessagesCount,
+		StartupMessageEnabled:   opts.Message.Startup != "",
+		TrainingEnabled:         opts.Training,
+	}
+
 	srv := webapi.Server{Config: webapi.Config{
 		ListenAddr:         opts.Server.ListenAddr,
 		Detector:           sf.Detector,
@@ -346,6 +371,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		AuthPasswd:         authPassswd,
 		Version:            revision,
 		Dbg:                opts.Dbg,
+		Settings:           settings,
 	}}
 
 	go func() {
