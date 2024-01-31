@@ -487,7 +487,7 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 
 	spamInfoLine := len(msgLines)
 	for i, line := range msgLines {
-		if strings.HasPrefix(line, "spam detection results") {
+		if strings.HasPrefix(line, "spam detection results") || strings.HasPrefix(line, "**spam detection results**") {
 			spamInfoLine = i - 1
 			break
 		}
