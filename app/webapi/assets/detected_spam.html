@@ -2,10 +2,7 @@
 <html>
 <head>
     <title>Detected Spam - TG-Spam</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org"></script>
-    <link href="styles.css" rel="stylesheet">
+    {{template "heads.html"}}
 </head>
 <body>
 {{template "navbar.html"}}
@@ -26,6 +23,9 @@
                 </thead>
                 <tbody>
                 {{range .DetectedSpamEntries}}
+                {{$text := .Text}}
+                {{$id := .ID}}
+                {{$added := .Added}}
                 <tr>
                     <td class="ds-timestamp">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
                     <td>{{.UserID}}</td>
@@ -33,10 +33,21 @@
                     <td class="ds-text">{{.Text}}</td>
                     <td class="ds-checks">
                         {{range .Checks}}
-                        <div class="{{if .Spam}}text-danger{{else}}text-success{{end}}">
-                            <strong>{{.Name}}:</strong> {{.Details}}
+                        <div style="display: flex; align-items: center;">
+                            <div class="{{if .Spam}}text-danger{{else}}text-success{{end}}" style="flex-grow: 1;">
+                                <strong>{{.Name}}:</strong> {{.Details}}
+                            </div>
+                            {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
+                            <button
+                                    hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}' hx-target="html"
+                                    hx-swap="innerHTML" class="btn btn-sm btn-warning"
+                                    title="Add this message to spam samples">
+                                Add
+                            </button>
+                            {{end}}
                         </div>
                         {{end}}
+                    </td>
                 </tr>
                 {{else}}
                 <tr>

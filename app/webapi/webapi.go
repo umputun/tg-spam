@@ -31,7 +31,7 @@ import (
 //go:generate moq --out mocks/detector.go --pkg mocks --with-resets --skip-ensure . Detector
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
-//go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpamReader
+//go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -43,15 +43,15 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version            string             // version to show in /ping
-	ListenAddr         string             // listen address
-	Detector           Detector           // spam detector
-	SpamFilter         SpamFilter         // spam filter (bot)
-	DetectedSpamReader DetectedSpamReader // detected spam reader from storage
-	Locator            Locator            // locator for user info
-	AuthPasswd         string             // basic auth password for user "tg-spam"
-	Dbg                bool               // debug mode
-	Settings           Settings           // application settings
+	Version      string       // version to show in /ping
+	ListenAddr   string       // listen address
+	Detector     Detector     // spam detector
+	SpamFilter   SpamFilter   // spam filter (bot)
+	DetectedSpam DetectedSpam // detected spam accessor
+	Locator      Locator      // locator for user info
+	AuthPasswd   string       // basic auth password for user "tg-spam"
+	Dbg          bool         // debug mode
+	Settings     Settings     // application settings
 }
 
 // Settings contains all application settings
@@ -104,9 +104,10 @@ type Locator interface {
 	UserNameByID(userID int64) string
 }
 
-// DetectedSpamReader is a storage interface used to get detected spam messages.
-type DetectedSpamReader interface {
+// DetectedSpam is a storage interface used to get detected spam messages and set added flag.
+type DetectedSpam interface {
 	Read() ([]storage.DetectedSpamInfo, error)
+	SetAddedToSamplesFlag(id int64) error
 }
 
 // NewServer creates a new web API server.
@@ -190,13 +191,14 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 
 	router.Group(func(webUI chi.Router) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
-		webUI.Get("/", s.htmlSpamCheckHandler)                   // serve template for webUI UI
-		webUI.Get("/manage_samples", s.htmlManageSamplesHandler) // serve manage samples page
-		webUI.Get("/manage_users", s.htmlManageUsersHandler)     // serve manage users page
-		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)   // serve detected spam page
-		webUI.Get("/list_settings", s.htmlSettingsHandler)       // serve settings
-		webUI.Get("/styles.css", s.stylesHandler)                // serve styles.css
-		webUI.Get("/logo.png", s.logoutHandler)                  // serve logo.png
+		webUI.Get("/", s.htmlSpamCheckHandler)                         // serve template for webUI UI
+		webUI.Get("/manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
+		webUI.Get("/manage_users", s.htmlManageUsersHandler)           // serve manage users page
+		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
+		webUI.Get("/list_settings", s.htmlSettingsHandler)             // serve settings
+		webUI.Get("/styles.css", s.stylesHandler)                      // serve styles.css
+		webUI.Get("/logo.png", s.logoutHandler)                        // serve logo.png
+		webUI.Post("/detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
 	})
 
 	return router
@@ -452,7 +454,8 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 // htmlSpamCheckHandler handles GET / request.
 // It returns rendered spam_check.html template with all the components.
 func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS, "assets/spam_check.html", "assets/components/navbar.html")
+	tmpl, err := template.New("").ParseFS(templateFS,
+		"assets/spam_check.html", "assets/components/heads.html", "assets/components/navbar.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
@@ -497,7 +500,8 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 
 	// Parse the navbar and manage_samples templates
 	tmpl, err := template.New("").ParseFS(templateFS,
-		"assets/manage_samples.html", "assets/components/navbar.html", "assets/components/samples_list.html")
+		"assets/manage_samples.html", "assets/components/heads.html",
+		"assets/components/navbar.html", "assets/components/samples_list.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -514,7 +518,7 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 
 func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.New("").ParseFS(templateFS, "assets/manage_users.html",
-		"assets/components/navbar.html", "assets/components/users_list.html")
+		"assets/components/heads.html", "assets/components/navbar.html", "assets/components/users_list.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
@@ -539,14 +543,15 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 }
 
 func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS, "assets/detected_spam.html", "assets/components/navbar.html")
+	tmpl, err := template.New("").ParseFS(templateFS,
+		"assets/detected_spam.html", "assets/components/heads.html", "assets/components/navbar.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
 		return
 	}
 
-	ds, err := s.DetectedSpamReader.Read()
+	ds, err := s.DetectedSpam.Read()
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -568,8 +573,33 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 	}
 }
 
+func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	msg := r.FormValue("msg")
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil || msg == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+		return
+	}
+
+	if err := s.SpamFilter.UpdateSpam(msg); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't update samples", "details": err.Error()})
+		return
+
+	}
+	if err := s.DetectedSpam.SetAddedToSamplesFlag(int64(id)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't update detected spam", "details": err.Error()})
+		return
+	}
+	w.Header().Set("HX-Redirect", "/detected_spam")
+	_, _ = w.Write([]byte("redirecting..."))
+}
+
 func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS, "assets/settings.html", "assets/components/navbar.html")
+	tmpl, err := template.New("").ParseFS(templateFS,
+		"assets/settings.html", "assets/components/heads.html", "assets/components/navbar.html")
 	if err != nil {
 		log.Printf("[WARN] can't load template: %v", err)
 		http.Error(w, "Error loading template", http.StatusInternalServerError)
