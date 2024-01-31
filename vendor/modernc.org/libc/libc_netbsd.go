@@ -623,7 +623,12 @@ func Xmkfifo(t *TLS, pathname uintptr, mode types.Mode_t) int32 {
 	if __ccgo_strace {
 		trc("t=%v pathname=%v mode=%v, (%v:)", t, pathname, mode, origin(2))
 	}
-	panic(todo(""))
+	if err := unix.Mkfifo(GoString(pathname), uint32(mode)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
 }
 
 // mode_t umask(mode_t mask);

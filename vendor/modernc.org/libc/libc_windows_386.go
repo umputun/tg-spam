@@ -373,26 +373,6 @@ func Xunlink(t *TLS, pathname uintptr) int32 {
 
 }
 
-// int access(const char *pathname, int mode);
-func Xaccess(t *TLS, pathname uintptr, mode int32) int32 {
-	if __ccgo_strace {
-		trc("t=%v pathname=%v mode=%v, (%v:)", t, pathname, mode, origin(2))
-	}
-	panic(todo(""))
-	// 	if _, _, err := unix.Syscall(unix.SYS_ACCESS, pathname, uintptr(mode), 0); err != 0 {
-	// 		if dmesgs {
-	// 			dmesg("%v: %q: %v", origin(1), GoString(pathname), err)
-	// 		}
-	// 		t.setErrno(err)
-	// 		return -1
-	// 	}
-	//
-	// 	if dmesgs {
-	// 		dmesg("%v: %q %#o: ok", origin(1), GoString(pathname), mode)
-	// 	}
-	// 	return 0
-}
-
 // int rmdir(const char *pathname);
 func Xrmdir(t *TLS, pathname uintptr) int32 {
 	if __ccgo_strace {

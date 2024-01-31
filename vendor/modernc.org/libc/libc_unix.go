@@ -219,20 +219,6 @@ func Xpoll(t *TLS, fds uintptr, nfds poll.Nfds_t, timeout int32) int32 {
 	return int32(n)
 }
 
-// ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
-func Xrecvmsg(t *TLS, sockfd int32, msg uintptr, flags int32) types.Ssize_t {
-	if __ccgo_strace {
-		trc("t=%v sockfd=%v msg=%v flags=%v, (%v:)", t, sockfd, msg, flags, origin(2))
-	}
-	n, _, err := unix.Syscall(unix.SYS_RECVMSG, uintptr(sockfd), msg, uintptr(flags))
-	if err != 0 {
-		t.setErrno(err)
-		return -1
-	}
-
-	return types.Ssize_t(n)
-}
-
 // struct cmsghdr *CMSG_NXTHDR(struct msghdr *msgh, struct cmsghdr *cmsg);
 func X__cmsg_nxthdr(t *TLS, msgh, cmsg uintptr) uintptr {
 	if __ccgo_strace {

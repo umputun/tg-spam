@@ -211,6 +211,10 @@ var (
 
 	userenvapi                = syscall.NewLazyDLL("userenv.dll")
 	procGetProfilesDirectoryW = userenvapi.NewProc("GetProfilesDirectoryW")
+
+	modcrt        = syscall.NewLazyDLL("msvcrt.dll")
+	procAccess    = modcrt.NewProc("_access")
+	procStat64i32 = modcrt.NewProc("_stat64i32")
 )
 
 var (
@@ -5906,7 +5910,7 @@ func X__mingw_vsnprintf(t *TLS, str uintptr, size types.Size_t, format, ap uintp
 	if __ccgo_strace {
 		trc("t=%v str=%v size=%v ap=%v, (%v:)", t, str, size, ap, origin(2))
 	}
-	panic(todo(""))
+	return Xvsnprintf(t, str, size, format, ap)
 }
 
 // int putchar(int char)
@@ -7354,4 +7358,51 @@ func X_lseeki64(t *TLS, fd int32, offset int64, whence int32) int64 {
 		dmesg("%v: fd %v, off %#x, whence %v: ok", origin(1), f._fd, offset, whenceStr(whence))
 	}
 	return n
+}
+
+func Xislower(tls *TLS, c int32) int32 { /* islower.c:4:5: */
+	if __ccgo_strace {
+		trc("tls=%v c=%v, (%v:)", tls, c, origin(2))
+	}
+	return Bool32(uint32(c)-uint32('a') < uint32(26))
+}
+
+func Xisupper(tls *TLS, c int32) int32 { /* isupper.c:4:5: */
+	if __ccgo_strace {
+		trc("tls=%v c=%v, (%v:)", tls, c, origin(2))
+	}
+	return Bool32(uint32(c)-uint32('A') < uint32(26))
+}
+
+// int access(const char *pathname, int mode);
+func Xaccess(t *TLS, pathname uintptr, mode int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v pathname=%v mode=%v, (%v:)", t, pathname, mode, origin(2))
+	}
+	r0, _, err := syscall.SyscallN(procAccess.Addr(), uintptr(pathname), uintptr(mode))
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return int32(r0)
+}
+
+// int _vscprintf(const char *format, va_list argptr);
+func X_vscprintf(t *TLS, format uintptr, argptr uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v format=%v argptr=%v, (%v:)", t, format, argptr, origin(2))
+	}
+
+	return int32(len(printf(format, argptr)))
+}
+
+// int _stat32i64(const char *path, struct _stat32i64 *buffer);
+func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v path=%v buffer=%v, (%v:)", t, path, buffer, origin(2))
+	}
+	r0, _, err := syscall.SyscallN(procStat64i32.Addr(), uintptr(path), uintptr(buffer))
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return int32(r0)
 }
