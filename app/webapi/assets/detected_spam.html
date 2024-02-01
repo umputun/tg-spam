@@ -10,6 +10,7 @@
 <div class="container mt-4">
     <div class="row" id="spam-list">
         <div class="col-md-12">
+            <div id="error-message" class="alert alert-danger d-none" role="alert"></div>
             <h4>Detected Spam ({{.TotalDetectedSpam}})</h4>
             <table class="table table-striped">
                 <thead class="custom-table-header">
@@ -39,8 +40,9 @@
                             </div>
                             {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
                             <button
-                                    hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}' hx-target="html"
-                                    hx-swap="innerHTML" class="btn btn-sm btn-warning"
+                                    hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}'
+                                    hx-target="#error-message" hx-error="#error-message" hx-swap="outerHTML"
+                                    class="btn btn-sm btn-warning"
                                     title="Add this message to spam samples">
                                 Add
                             </button>

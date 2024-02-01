@@ -574,23 +574,27 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 }
 
 func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	reportErr := func(err error, _ int) {
+		w.Header().Set("HX-Retarget", "#error-message")
+		fmt.Fprintf(w, "<div class='alert alert-danger'>%s</div>", err)
+	}
 	msg := r.FormValue("msg")
 	id, err := strconv.Atoi(r.FormValue("id"))
 	if err != nil || msg == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+		log.Printf("[WARN] bad request: %v", err)
+		reportErr(fmt.Errorf("bad request: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	if err := s.SpamFilter.UpdateSpam(msg); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't update samples", "details": err.Error()})
+		log.Printf("[WARN] failed to update spam samples: %v", err)
+		reportErr(fmt.Errorf("can't update spam samples: %v", err), http.StatusInternalServerError)
 		return
 
 	}
 	if err := s.DetectedSpam.SetAddedToSamplesFlag(int64(id)); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't update detected spam", "details": err.Error()})
+		log.Printf("[WARN] failed to update detected spam: %v", err)
+		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("HX-Redirect", "/detected_spam")
