@@ -579,7 +579,8 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		fmt.Fprintf(w, "<div class='alert alert-danger'>%s</div>", err)
 	}
 	msg := r.FormValue("msg")
-	id, err := strconv.Atoi(r.FormValue("id"))
+
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil || msg == "" {
 		log.Printf("[WARN] bad request: %v", err)
 		reportErr(fmt.Errorf("bad request: %v", err), http.StatusBadRequest)
@@ -592,7 +593,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		return
 
 	}
-	if err := s.DetectedSpam.SetAddedToSamplesFlag(int64(id)); err != nil {
+	if err := s.DetectedSpam.SetAddedToSamplesFlag(id); err != nil {
 		log.Printf("[WARN] failed to update detected spam: %v", err)
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return
