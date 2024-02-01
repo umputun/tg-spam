@@ -58,6 +58,44 @@ func TestDetectedSpam_Write(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+func TestSetAddedToSamplesFlag(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	ds, err := NewDetectedSpam(db)
+	require.NoError(t, err)
+
+	spamEntry := DetectedSpamInfo{
+		Text:      "spam message",
+		UserID:    1,
+		UserName:  "Spammer",
+		Timestamp: time.Now(),
+	}
+
+	checks := []spamcheck.Response{
+		{
+			Name:    "Check1",
+			Spam:    true,
+			Details: "Details 1",
+		},
+	}
+
+	err = ds.Write(spamEntry, checks)
+	require.NoError(t, err)
+	var added bool
+	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
+	require.NoError(t, err)
+	assert.False(t, added)
+
+	err = ds.SetAddedToSamplesFlag(1)
+	require.NoError(t, err)
+
+	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
+	require.NoError(t, err)
+	assert.True(t, added)
+}
+
 func TestDetectedSpam_Read(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)

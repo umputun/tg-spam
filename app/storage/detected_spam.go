@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -20,10 +21,12 @@ type DetectedSpam struct {
 
 // DetectedSpamInfo represents information about a detected spam entry.
 type DetectedSpamInfo struct {
+	ID         int64                `db:"id"`
 	Text       string               `db:"text"`
 	UserID     int64                `db:"user_id"`
 	UserName   string               `db:"user_name"`
 	Timestamp  time.Time            `db:"timestamp"`
+	Added      bool                 `db:"added"`  // added to samples
 	ChecksJSON string               `db:"checks"` // Store as JSON
 	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB
 }
@@ -31,17 +34,24 @@ type DetectedSpamInfo struct {
 // NewDetectedSpam creates a new DetectedSpam storage
 func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS detected_spam (
-    	id INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT,
-        user_id INTEGER,
-        user_name TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        checks TEXT
-    )`)
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		text TEXT,
+		user_id INTEGER,
+		user_name TEXT,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+		added BOOLEAN DEFAULT 0,
+		checks TEXT
+	)`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create detected_spam table: %w", err)
 	}
 
+	_, err = db.Exec(`ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`)
+	if err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
+		}
+	}
 	// add index on timestamp
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
 		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
@@ -66,10 +76,19 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 	return nil
 }
 
+// SetAddedToSamplesFlag sets the added flag to true for the detected spam entry with the given id
+func (ds *DetectedSpam) SetAddedToSamplesFlag(id int64) error {
+	query := `UPDATE detected_spam SET added = 1 WHERE id = ?`
+	if _, err := ds.db.Exec(query, id); err != nil {
+		return fmt.Errorf("failed to update added to samples flag: %w", err)
+	}
+	return nil
+}
+
 // Read returns all detected spam entries
 func (ds *DetectedSpam) Read() ([]DetectedSpamInfo, error) {
 	var entries []DetectedSpamInfo
-	err := ds.db.Select(&entries, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
+	err := ds.db.Select(&entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get detected spam entries: %w", err)
 	}

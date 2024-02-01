@@ -697,7 +697,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 
 func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 	calls := 0
-	ds := &mocks.DetectedSpamReaderMock{
+	ds := &mocks.DetectedSpamMock{
 		ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
 			calls++
 			if calls > 1 {
@@ -719,7 +719,7 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 			}, nil
 		},
 	}
-	server := NewServer(Config{DetectedSpamReader: ds})
+	server := NewServer(Config{DetectedSpam: ds})
 
 	t.Run("successful rendering", func(t *testing.T) {
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
@@ -745,6 +745,33 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
+}
+
+func TestServer_htmlAddDetectedSpamHandler(t *testing.T) {
+	ds := &mocks.DetectedSpamMock{
+		SetAddedToSamplesFlagFunc: func(id int64) error {
+			return nil
+		},
+	}
+	sf := &mocks.SpamFilterMock{
+		UpdateSpamFunc: func(msg string) error {
+			return nil
+		},
+	}
+	server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+	req, err := http.NewRequest("POST", "/detected_spam/add?id=123&msg=blah", http.NoBody)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 1, len(ds.SetAddedToSamplesFlagCalls()))
+	assert.Equal(t, int64(123), ds.SetAddedToSamplesFlagCalls()[0].ID)
+	assert.Equal(t, 1, len(sf.UpdateSpamCalls()))
+	assert.Equal(t, "blah", sf.UpdateSpamCalls()[0].Msg)
 }
 
 func TestServer_GenerateRandomPassword(t *testing.T) {

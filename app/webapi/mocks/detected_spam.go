@@ -8,38 +8,50 @@ import (
 	"sync"
 )
 
-// DetectedSpamReaderMock is a mock implementation of webapi.DetectedSpamReader.
+// DetectedSpamMock is a mock implementation of webapi.DetectedSpam.
 //
-//	func TestSomethingThatUsesDetectedSpamReader(t *testing.T) {
+//	func TestSomethingThatUsesDetectedSpam(t *testing.T) {
 //
-//		// make and configure a mocked webapi.DetectedSpamReader
-//		mockedDetectedSpamReader := &DetectedSpamReaderMock{
+//		// make and configure a mocked webapi.DetectedSpam
+//		mockedDetectedSpam := &DetectedSpamMock{
 //			ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
 //				panic("mock out the Read method")
 //			},
+//			SetAddedToSamplesFlagFunc: func(id int64) error {
+//				panic("mock out the SetAddedToSamplesFlag method")
+//			},
 //		}
 //
-//		// use mockedDetectedSpamReader in code that requires webapi.DetectedSpamReader
+//		// use mockedDetectedSpam in code that requires webapi.DetectedSpam
 //		// and then make assertions.
 //
 //	}
-type DetectedSpamReaderMock struct {
+type DetectedSpamMock struct {
 	// ReadFunc mocks the Read method.
 	ReadFunc func() ([]storage.DetectedSpamInfo, error)
+
+	// SetAddedToSamplesFlagFunc mocks the SetAddedToSamplesFlag method.
+	SetAddedToSamplesFlagFunc func(id int64) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Read holds details about calls to the Read method.
 		Read []struct {
 		}
+		// SetAddedToSamplesFlag holds details about calls to the SetAddedToSamplesFlag method.
+		SetAddedToSamplesFlag []struct {
+			// ID is the id argument value.
+			ID int64
+		}
 	}
-	lockRead sync.RWMutex
+	lockRead                  sync.RWMutex
+	lockSetAddedToSamplesFlag sync.RWMutex
 }
 
 // Read calls ReadFunc.
-func (mock *DetectedSpamReaderMock) Read() ([]storage.DetectedSpamInfo, error) {
+func (mock *DetectedSpamMock) Read() ([]storage.DetectedSpamInfo, error) {
 	if mock.ReadFunc == nil {
-		panic("DetectedSpamReaderMock.ReadFunc: method is nil but DetectedSpamReader.Read was just called")
+		panic("DetectedSpamMock.ReadFunc: method is nil but DetectedSpam.Read was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -52,8 +64,8 @@ func (mock *DetectedSpamReaderMock) Read() ([]storage.DetectedSpamInfo, error) {
 // ReadCalls gets all the calls that were made to Read.
 // Check the length with:
 //
-//	len(mockedDetectedSpamReader.ReadCalls())
-func (mock *DetectedSpamReaderMock) ReadCalls() []struct {
+//	len(mockedDetectedSpam.ReadCalls())
+func (mock *DetectedSpamMock) ReadCalls() []struct {
 } {
 	var calls []struct {
 	}
@@ -64,15 +76,58 @@ func (mock *DetectedSpamReaderMock) ReadCalls() []struct {
 }
 
 // ResetReadCalls reset all the calls that were made to Read.
-func (mock *DetectedSpamReaderMock) ResetReadCalls() {
+func (mock *DetectedSpamMock) ResetReadCalls() {
 	mock.lockRead.Lock()
 	mock.calls.Read = nil
 	mock.lockRead.Unlock()
 }
 
+// SetAddedToSamplesFlag calls SetAddedToSamplesFlagFunc.
+func (mock *DetectedSpamMock) SetAddedToSamplesFlag(id int64) error {
+	if mock.SetAddedToSamplesFlagFunc == nil {
+		panic("DetectedSpamMock.SetAddedToSamplesFlagFunc: method is nil but DetectedSpam.SetAddedToSamplesFlag was just called")
+	}
+	callInfo := struct {
+		ID int64
+	}{
+		ID: id,
+	}
+	mock.lockSetAddedToSamplesFlag.Lock()
+	mock.calls.SetAddedToSamplesFlag = append(mock.calls.SetAddedToSamplesFlag, callInfo)
+	mock.lockSetAddedToSamplesFlag.Unlock()
+	return mock.SetAddedToSamplesFlagFunc(id)
+}
+
+// SetAddedToSamplesFlagCalls gets all the calls that were made to SetAddedToSamplesFlag.
+// Check the length with:
+//
+//	len(mockedDetectedSpam.SetAddedToSamplesFlagCalls())
+func (mock *DetectedSpamMock) SetAddedToSamplesFlagCalls() []struct {
+	ID int64
+} {
+	var calls []struct {
+		ID int64
+	}
+	mock.lockSetAddedToSamplesFlag.RLock()
+	calls = mock.calls.SetAddedToSamplesFlag
+	mock.lockSetAddedToSamplesFlag.RUnlock()
+	return calls
+}
+
+// ResetSetAddedToSamplesFlagCalls reset all the calls that were made to SetAddedToSamplesFlag.
+func (mock *DetectedSpamMock) ResetSetAddedToSamplesFlagCalls() {
+	mock.lockSetAddedToSamplesFlag.Lock()
+	mock.calls.SetAddedToSamplesFlag = nil
+	mock.lockSetAddedToSamplesFlag.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
-func (mock *DetectedSpamReaderMock) ResetCalls() {
+func (mock *DetectedSpamMock) ResetCalls() {
 	mock.lockRead.Lock()
 	mock.calls.Read = nil
 	mock.lockRead.Unlock()
+
+	mock.lockSetAddedToSamplesFlag.Lock()
+	mock.calls.SetAddedToSamplesFlag = nil
+	mock.lockSetAddedToSamplesFlag.Unlock()
 }
