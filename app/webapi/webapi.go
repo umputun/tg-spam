@@ -598,8 +598,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("HX-Redirect", "/detected_spam")
-	_, _ = w.Write([]byte("redirecting..."))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {

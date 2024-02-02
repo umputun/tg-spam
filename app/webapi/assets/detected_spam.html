@@ -41,7 +41,7 @@
                             {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
                             <button
                                     hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}'
-                                    hx-target="#error-message" hx-error="#error-message" hx-swap="outerHTML"
+                                    hx-target="this" hx-error="#error-message" hx-swap="outerHTML"
                                     class="btn btn-sm btn-warning"
                                     title="Add this message to spam samples">
                                 Add
