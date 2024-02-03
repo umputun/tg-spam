@@ -35,6 +35,7 @@ import (
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
+var tmpl = template.Must(template.ParseFS(templateFS, "assets/*.html", "assets/components/*.html"))
 
 // Server is a web API server.
 type Server struct {
@@ -250,12 +251,6 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		Checks: cr,
 	}
 
-	tmpl, err := template.New("").ParseFS(templateFS, "assets/components/check_results.html")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
-		return
-	}
 	if err := tmpl.ExecuteTemplate(w, "check_results.html", resultDisplay); err != nil {
 		log.Printf("[WARN] can't execute result template: %v", err)
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
@@ -414,12 +409,6 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 		}
 
 		if isHtmxRequest {
-			tmpl, err := template.New("").ParseFS(templateFS, "assets/components/users_list.html")
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				rest.RenderJSON(w, rest.JSON{"error": "can't parse template", "details": err.Error()})
-				return
-			}
 			users := s.Detector.ApprovedUsers()
 			tmplData := struct {
 				ApprovedUsers      []approved.UserInfo
@@ -454,14 +443,6 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 // htmlSpamCheckHandler handles GET / request.
 // It returns rendered spam_check.html template with all the components.
 func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS,
-		"assets/spam_check.html", "assets/components/heads.html", "assets/components/navbar.html")
-	if err != nil {
-		log.Printf("[WARN] can't load template: %v", err)
-		http.Error(w, "Error loading template", http.StatusInternalServerError)
-		return
-	}
-
 	tmplData := struct {
 		Version string
 	}{
@@ -498,16 +479,6 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 		TotalHamSamples:  len(ham),
 	}
 
-	// Parse the navbar and manage_samples templates
-	tmpl, err := template.New("").ParseFS(templateFS,
-		"assets/manage_samples.html", "assets/components/heads.html",
-		"assets/components/navbar.html", "assets/components/samples_list.html")
-	if err != nil {
-		log.Printf("[WARN] failed to parse templates: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
 	// Execute the manage_samples template with the data
 	if err := tmpl.ExecuteTemplate(w, "manage_samples.html", tmplData); err != nil {
 		log.Printf("[WARN] failed to execute template: %v", err)
@@ -517,14 +488,6 @@ func (s *Server) htmlManageSamplesHandler(w http.ResponseWriter, _ *http.Request
 }
 
 func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS, "assets/manage_users.html",
-		"assets/components/heads.html", "assets/components/navbar.html", "assets/components/users_list.html")
-	if err != nil {
-		log.Printf("[WARN] can't load template: %v", err)
-		http.Error(w, "Error loading template", http.StatusInternalServerError)
-		return
-	}
-
 	users := s.Detector.ApprovedUsers()
 	tmplData := struct {
 		ApprovedUsers      []approved.UserInfo
@@ -543,14 +506,6 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 }
 
 func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS,
-		"assets/detected_spam.html", "assets/components/heads.html", "assets/components/navbar.html")
-	if err != nil {
-		log.Printf("[WARN] can't load template: %v", err)
-		http.Error(w, "Error loading template", http.StatusInternalServerError)
-		return
-	}
-
 	ds, err := s.DetectedSpam.Read()
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
@@ -602,14 +557,6 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.New("").ParseFS(templateFS,
-		"assets/settings.html", "assets/components/heads.html", "assets/components/navbar.html")
-	if err != nil {
-		log.Printf("[WARN] can't load template: %v", err)
-		http.Error(w, "Error loading template", http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Settings
 		Version string

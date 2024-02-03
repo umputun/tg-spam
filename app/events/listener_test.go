@@ -541,8 +541,8 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	assert.Equal(t, int(999999), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, int(0), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
-	assert.Equal(t, int64(123), mockAPI.RequestCalls()[2].C.(tbapi.RestrictChatMemberConfig).ChatID)
-	assert.Equal(t, int64(666), mockAPI.RequestCalls()[2].C.(tbapi.RestrictChatMemberConfig).UserID)
+	assert.Equal(t, int64(123), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).ChatID)
+	assert.Equal(t, int64(666), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).UserID)
 }
 
 func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
