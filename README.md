@@ -113,6 +113,10 @@ This is not a separate check, but rather a parameter to control the minimum mess
 
 This option is disabled by default. If set to a positive number, the bot will check the message for the number of links. If the number of links is greater than `--meta.links-limit=, [$META_LINKS_LIMIT]` (default is -1), the message will be marked as spam. Setting the limit to -1 will effectively disable this check.
 
+**Links only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
+
 **Image only check**
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.

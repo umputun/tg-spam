@@ -4,6 +4,7 @@ run:
     format: tab
   skip-dirs:
     - vendor
+  tests: false
 
 linters-settings:
   govet:
@@ -69,5 +70,3 @@ issues:
         - dupl
   exclude-use-default: false
 
-service:
-  golangci-lint-version: 1.43.x

@@ -2,6 +2,7 @@ package tgspam
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -27,6 +28,32 @@ func LinksCheck(limit int) MetaCheck {
 			}
 		}
 		return spamcheck.Response{Spam: false, Name: "links", Details: fmt.Sprintf("links %d/%d", links, limit)}
+	}
+}
+
+var linkRe = regexp.MustCompile(`https?://\S+`)
+
+// LinkOnlyCheck is a function that returns a MetaCheck function that checks if the req.Msg contains only links.
+func LinkOnlyCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if strings.TrimSpace(req.Msg) == "" {
+			return spamcheck.Response{
+				Name:    "link-only",
+				Spam:    false,
+				Details: "empty message",
+			}
+		}
+		msgWithoutLinks := linkRe.ReplaceAllString(req.Msg, "")
+		msgWithoutLinks = strings.TrimSpace(msgWithoutLinks)
+
+		if msgWithoutLinks == "" {
+			return spamcheck.Response{
+				Name:    "link-only",
+				Spam:    true,
+				Details: "message contains links only",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "link-only", Details: "message contains text"}
 	}
 }
 

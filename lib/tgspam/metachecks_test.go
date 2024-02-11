@@ -71,6 +71,57 @@ func TestLinksCheck(t *testing.T) {
 	}
 }
 
+func TestLinkOnlyCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name: "with no links",
+			req: spamcheck.Request{
+				Msg: "This is a message without links.",
+			},
+			expected: spamcheck.Response{Name: "link-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name: "with only links",
+			req: spamcheck.Request{
+				Msg: "http://example.com https://example.org",
+			},
+			expected: spamcheck.Response{Name: "link-only", Spam: true, Details: "message contains links only"},
+		},
+		{
+			name: "with a single link, no text",
+			req: spamcheck.Request{
+				Msg: " https://example.org ",
+			},
+			expected: spamcheck.Response{Name: "link-only", Spam: true, Details: "message contains links only"},
+		},
+		{
+			name: "with text and links",
+			req: spamcheck.Request{
+				Msg: "Check out this link: http://example.com",
+			},
+			expected: spamcheck.Response{Name: "link-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name: "Empty message",
+			req: spamcheck.Request{
+				Msg: "",
+			},
+			expected: spamcheck.Response{Name: "link-only", Spam: false, Details: "empty message"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := LinkOnlyCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestImagesCheck(t *testing.T) {
 	tests := []struct {
 		name     string
