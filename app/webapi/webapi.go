@@ -65,6 +65,7 @@ type Settings struct {
 	CasEnabled              bool     `json:"cas_enabled"`
 	MetaEnabled             bool     `json:"meta_enabled"`
 	MetaLinksLimit          int      `json:"meta_links_limit"`
+	MetaLinksOnly           bool     `json:"meta_links_only"`
 	MetaImageOnly           bool     `json:"meta_image_only"`
 	OpenAIEnabled           bool     `json:"openai_enabled"`
 	SamplesDataPath         string   `json:"samples_data_path"`
@@ -167,10 +168,10 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 		})
 
 		authApi.Route("/download", func(r chi.Router) {
-			r.Get("/spam", s.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+			r.Get("/spam", s.downloadSampleHandler(func(spam, _ []string) ([]string, string) {
 				return spam, "spam.txt"
 			}))
-			r.Get("/ham", s.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+			r.Get("/ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
 				return ham, "ham.txt"
 			}))
 		})
@@ -281,7 +282,7 @@ func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request
 
 // downloadSampleHandler handles GET /download/spam|ham request. It returns dynamic samples both for spam and ham.
 func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		spam, ham, err := s.SpamFilter.DynamicSamples()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

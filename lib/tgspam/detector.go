@@ -322,7 +322,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, document{spamClass: "spam", tokens: tokens})
+		docs = append(docs, newDocument("spam", tokens...))
 		lr.SpamSamples++
 	}
 
