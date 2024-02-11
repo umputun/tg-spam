@@ -128,10 +128,10 @@ func (s *Server) Run(ctx context.Context) error {
 
 	if s.AuthPasswd != "" {
 		log.Printf("[INFO] basic auth enabled for webapi server")
+		router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
-	router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
 
 	router = s.routes(router) // setup routes
 
