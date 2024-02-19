@@ -167,7 +167,7 @@ func (a *admin) DirectSpamReport(update tbapi.Update) error {
 
 	// make a message with spam info and send to admin chat
 	spamInfo := []string{}
-	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: origMsg.From.ID}})
+	resp := a.bot.OnMessage(bot.Message{Text: msgTxt, From: bot.User{ID: origMsg.From.ID}})
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
@@ -175,8 +175,9 @@ func (a *admin) DirectSpamReport(update tbapi.Update) error {
 	if len(spamInfo) > 0 {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*the user banned and message deleted*",
-		escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID, msgTxt, escapeMarkDownV1Text(spamInfoText))
+	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*the user banned by %q and message deleted*",
+		escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID, msgTxt, escapeMarkDownV1Text(spamInfoText),
+		escapeMarkDownV1Text(update.Message.From.UserName))
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
 	}

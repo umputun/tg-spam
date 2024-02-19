@@ -529,6 +529,10 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "detection results")
+	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, `the user banned by "superuser1"`)
+
+	require.Equal(t, 1, len(b.OnMessageCalls()))
+	assert.Equal(t, "text 123", b.OnMessageCalls()[0].Msg.Text)
 
 	require.Equal(t, 1, len(b.UpdateSpamCalls()))
 	assert.Equal(t, "text 123", b.UpdateSpamCalls()[0].Msg)
@@ -543,6 +547,7 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	assert.Equal(t, int(0), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).ChatID)
 	assert.Equal(t, int64(666), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).UserID)
+
 }
 
 func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
