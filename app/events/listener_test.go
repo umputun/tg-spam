@@ -507,7 +507,7 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
 			Chat: &tbapi.Chat{ID: 123},
-			Text: "/spam",
+			Text: "/SpAm",
 			From: &tbapi.User{UserName: "superuser1", ID: 77},
 			ReplyToMessage: &tbapi.Message{
 				MessageID: 999999,

@@ -145,7 +145,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 			// handle spam reports from superusers
 			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName) {
-				if update.Message.Text == "/spam" || update.Message.Text == "spam" {
+				if strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam") {
 					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
 					if err := l.adminHandler.DirectSpamReport(update); err != nil {
 						log.Printf("[WARN] failed to process direct spam report: %v", err)
