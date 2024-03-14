@@ -181,10 +181,10 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 
 	// make a warning message and replay to origMsg.MessageID
-	warnText := "You've violated our rules and this is your first and last warning!\nFurther violations will lead to permanent access denial. Stay compliant or face the consequences."
-	warnMsg := fmt.Sprintf("**warning from %s**\n\n@%s %s", escapeMarkDownV1Text(update.Message.From.UserName),
+	warnText := "You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!"
+	warnMsg := fmt.Sprintf("warning from %s\n\n@%s %s", update.Message.From.UserName,
 		origMsg.From.UserName, warnText)
-	if err := send(tbapi.NewMessage(a.primChatID, warnMsg), a.tbAPI); err != nil {
+	if err := send(tbapi.NewMessage(a.primChatID, escapeMarkDownV1Text(warnMsg)), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
 
