@@ -137,6 +137,14 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 ![unban-confirmation](https://github.com/umputun/tg-spam/raw/master/site/docs/unban-confirmation.png)
 </details>
 
+**admin commands**
+
+* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
+
+* Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
+
+* Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
+
 
 ### Updating spam and ham samples dynamically
 
@@ -270,6 +278,7 @@ message:
       --message.startup=            startup message [$MESSAGE_STARTUP]
       --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
+      --message.warn=               warn message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]
@@ -312,7 +321,7 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 ### Training the bot on a live system safely
 
-In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/soam` to mark it as spam.
+In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
 
 In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly. 
 

@@ -27,6 +27,7 @@ type admin struct {
 	adminChatID  int64
 	trainingMode bool
 	dry          bool
+	warnMsg      string
 }
 
 const (
@@ -138,6 +139,60 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 // DirectSpamReport handles messages replayed with "/spam" or "spam" by admin
 func (a *admin) DirectSpamReport(update tbapi.Update) error {
+	return a.directReport(update, true)
+}
+
+// DirectBanReport handles messages replayed with "/ban" or "ban" by admin. doing all the same as DirectSpamReport
+// but without updating spam samples
+func (a *admin) DirectBanReport(update tbapi.Update) error {
+	return a.directReport(update, false)
+}
+
+// DirectWarnReport handles messages replayed with "/warn" or "warn" by admin.
+// it is removing the original message and posting a warning to the main chat as well as recording the warning th admin chat
+func (a *admin) DirectWarnReport(update tbapi.Update) error {
+	log.Printf("[DEBUG] direct warn by admin %q: msg id: %d, from: %q",
+		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
+	origMsg := update.Message.ReplyToMessage
+
+	// this is a replayed message, it is an example of something we didn't like and want to issue a warning
+	msgTxt := origMsg.Text
+	if msgTxt == "" { // if no text, try to get it from the transformed message
+		m := transform(origMsg)
+		msgTxt = m.Text
+	}
+	log.Printf("[DEBUG] reported warn message from superuser %q: %q", update.Message.From.UserName, msgTxt)
+	// check if the reply message will ban a super-user and ignore it
+	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName) {
+		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
+	}
+	errs := new(multierror.Error)
+	// delete original message
+	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: origMsg.MessageID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
+	} else {
+		log.Printf("[INFO] warn message %d deleted", origMsg.MessageID)
+	}
+
+	// delete reply message
+	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: update.Message.MessageID}); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
+	} else {
+		log.Printf("[INFO] admin warn reprot message %d deleted", update.Message.MessageID)
+	}
+
+	// make a warning message and replay to origMsg.MessageID
+	warnMsg := fmt.Sprintf("warning from %s\n\n@%s %s", update.Message.From.UserName,
+		origMsg.From.UserName, a.warnMsg)
+	if err := send(tbapi.NewMessage(a.primChatID, escapeMarkDownV1Text(warnMsg)), a.tbAPI); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
+	}
+
+	return errs.ErrorOrNil()
+}
+
+// directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
+func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q",
 		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
 
@@ -187,8 +242,10 @@ func (a *admin) DirectSpamReport(update tbapi.Update) error {
 	}
 
 	// update spam samples
-	if err := a.bot.UpdateSpam(msgTxt); err != nil {
-		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+	if updateSamples {
+		if err := a.bot.UpdateSpam(msgTxt); err != nil {
+			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+		}
 	}
 
 	// delete original message

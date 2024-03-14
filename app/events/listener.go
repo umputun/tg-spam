@@ -34,6 +34,7 @@ type TelegramListener struct {
 	SuperUsers              SuperUsers    // list of superusers, can ban and report spam, can't be banned
 	TestingIDs              []int64       // list of chat IDs to test the bot
 	StartupMsg              string        // message to send on startup to the primary chat
+	WarnMsg                 string        // message to send on warning
 	NoSpamReply             bool          // do not reply on spam messages in the primary chat
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	Locator                 Locator       // message locator to get info about messages
@@ -91,7 +92,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, dry: l.Dry}
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, dry: l.Dry, warnMsg: l.WarnMsg}
 	adminForwardStatus := "enabled"
 	if l.DisableAdminSpamForward {
 		adminForwardStatus = "disabled"
@@ -149,6 +150,20 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
 					if err := l.adminHandler.DirectSpamReport(update); err != nil {
 						log.Printf("[WARN] failed to process direct spam report: %v", err)
+					}
+					continue
+				}
+				if strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban") {
+					log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
+					if err := l.adminHandler.DirectBanReport(update); err != nil {
+						log.Printf("[WARN] failed to process direct ban request: %v", err)
+					}
+					continue
+				}
+				if strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn") {
+					log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
+					if err := l.adminHandler.DirectWarnReport(update); err != nil {
+						log.Printf("[WARN] failed to process direct warning request: %v", err)
 					}
 					continue
 				}
