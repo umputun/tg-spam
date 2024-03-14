@@ -152,6 +152,20 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 					}
 					continue
 				}
+				if strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban") {
+					log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
+					if err := l.adminHandler.DirectBanReport(update); err != nil {
+						log.Printf("[WARN] failed to process direct ban request: %v", err)
+					}
+					continue
+				}
+				if strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn") {
+					log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
+					if err := l.adminHandler.DirectWarnReport(update); err != nil {
+						log.Printf("[WARN] failed to process direct warning request: %v", err)
+					}
+					continue
+				}
 			}
 
 			if err := l.procEvents(update); err != nil {
