@@ -591,6 +591,7 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 		StartupMsg: "startup",
 		SuperUsers: SuperUsers{"superuser1"}, // include a test superuser
 		Locator:    locator,
+		WarnMsg:    "You've violated our rules",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)

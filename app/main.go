@@ -98,6 +98,7 @@ type options struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
 		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
 		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
+		Warn    string `long:"warn" env:"WARN" default:"You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!" description:"warning message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
 
 	Server struct {
@@ -261,6 +262,7 @@ func execute(ctx context.Context, opts options) error {
 		SuperUsers:              opts.SuperUsers,
 		Bot:                     spamBot,
 		StartupMsg:              opts.Message.Startup,
+		WarnMsg:                 opts.Message.Warn,
 		NoSpamReply:             opts.NoSpamReply,
 		SpamLogger:              spamLogger,
 		AdminGroup:              opts.AdminGroup,
