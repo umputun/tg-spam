@@ -328,47 +328,45 @@ func (s *SpamFilter) RemoveDynamicHamSample(sample string) (int, error) {
 }
 
 // removeDynamicSample removes a sample from the spam dynamic samples file and reloads samples after this
-//
-//nolint:gosec // potential inclusion is fine here
 func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
-	spamDynamicReader, err := os.Open(fileName)
+	spamDynamicReader, err := os.Open(fileName) //nolint:gosec // file name is not user input
 	if err != nil {
 		return 0, fmt.Errorf("failed to open spam dynamic file %s: %w", fileName, err)
 	}
 	defer spamDynamicReader.Close()
-	// read all samples, remove the one we need and write the rest back
+
+	// create a temporary file
+	spamDynamicWriter, err := os.CreateTemp("", "spam-dynamic-*.txt")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temporary file for spam dynamic samples: %w", err)
+	}
+	defer spamDynamicWriter.Close()
+
+	// read from the original file and write to a temporary file, skipping the message to remove
 	scanner := bufio.NewScanner(spamDynamicReader)
 	count := 0
-	var samples []string
 	for scanner.Scan() {
-		s := scanner.Text()
-		if s != msg {
-			samples = append(samples, s)
+		sample := scanner.Text()
+		if sample != msg {
+			if _, err := spamDynamicWriter.WriteString(sample + "\n"); err != nil {
+				return 0, fmt.Errorf("failed to write to temporary spam dynamic file: %w", err)
+			}
 		} else {
 			count++
 		}
 	}
-	if err = scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil {
 		return 0, fmt.Errorf("failed to read spam dynamic file: %w", err)
 	}
+
+	// replace the original file with the temporary file
+	if err := os.Rename(spamDynamicWriter.Name(), fileName); err != nil {
+		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
+	}
+
 	if count == 0 {
 		return 0, fmt.Errorf("sample %q not found in %s", msg, fileName)
 	}
 
-	// write samples back
-	if err = spamDynamicReader.Close(); err != nil {
-		return 0, fmt.Errorf("failed to close spam dynamic file: %w", err)
-	}
-
-	spamDynamicWriter, err := os.Create(fileName)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open spam dynamic file for writing: %w", err)
-	}
-	defer spamDynamicWriter.Close()
-	for _, s := range samples {
-		if _, err := spamDynamicWriter.WriteString(s + "\n"); err != nil {
-			return 0, fmt.Errorf("failed to write to spam dynamic file: %w", err)
-		}
-	}
 	return count, nil
 }
