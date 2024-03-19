@@ -457,6 +457,12 @@ A small utility and docker container provided to update spam and ham samples fro
 
 It also has an example of [docker-compose.yml](https://github.com/umputun/tg-spam/tree/master/updater/docker-compose.yml) to run it as a container side-by-side with the bot.
 
+## Running tgspam for multiple groups
+
+It is not possible to run the bot for multiple groups, as the bot is designed to work with a single group only. However, it is possible to run multiple instances of the bot with different tokens and different groups. Note: it has to have a token per bot, because TG doesn't allow using the same token for multiple bots at the same time, and such a reuse attempt will prevent the bot from working properly.
+
+At the same time, multiple instances of the bot can share the same set of samples and dynamic data files. To do so, user should mount the same directory with samples and dynamic data files to all the instances of the bot.
+
 ## Using tg-spam as a library
 
 The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
