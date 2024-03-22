@@ -28,6 +28,32 @@ func TestSampleUpdater(t *testing.T) {
 		assert.Equal(t, "Test message\n", string(content))
 	})
 
+	t.Run("dedup", func(t *testing.T) {
+		file, err := os.CreateTemp(os.TempDir(), "sample")
+		require.NoError(t, err)
+		defer os.Remove(file.Name())
+
+		updater := NewSampleUpdater(file.Name())
+		err = updater.Append("Test message")
+		assert.NoError(t, err)
+
+		// duplicate message
+		err = updater.Append(" Test message  ")
+		assert.NoError(t, err)
+
+		// duplicate message
+		err = updater.Append(" TesT MessagE")
+		assert.NoError(t, err)
+
+		reader, err := updater.Reader()
+		require.NoError(t, err)
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Test message\n", string(content))
+	})
+
 	t.Run("multi-line", func(t *testing.T) {
 		file, err := os.CreateTemp(os.TempDir(), "sample")
 		require.NoError(t, err)

@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -27,9 +28,23 @@ func (s *SampleUpdater) Reader() (io.ReadCloser, error) {
 	return fh, nil
 }
 
-// Append a message to the file
+// Append a message to the file, preventing duplicates
 func (s *SampleUpdater) Append(msg string) error {
-	fh, err := os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644) //nolint:gosec // keep it readable by all
+	fh, err := os.Open(s.fileName)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
+	}
+	defer fh.Close()
+
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		// if a line matches the message, return right away
+		if strings.EqualFold(strings.TrimSpace(scanner.Text()), strings.TrimSpace(msg)) {
+			return nil
+		}
+	}
+
+	fh, err = os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644) //nolint:gosec // keep it readable by all
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
 	}
