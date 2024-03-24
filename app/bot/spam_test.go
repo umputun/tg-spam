@@ -461,7 +461,7 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 	})
 }
 
-func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
+func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 	mockDirector := &mocks.DetectorMock{
 		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
 			return tgspam.LoadResult{}, nil
@@ -474,11 +474,11 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 	prep := func() (res *SpamFilter, teardown func()) {
 		tmpDir, err := os.MkdirTemp("", "spamfilter_test")
 		require.NoError(t, err)
-
-		spamFile, err := os.CreateTemp("", "spam_dynamic")
+		t.Logf("tmpDir: %s", tmpDir)
+		spamFile, err := os.Create(filepath.Join(tmpDir, "spam_samples.txt"))
 		require.NoError(t, err)
 
-		hamFile, err := os.CreateTemp("", "ham_dynamic")
+		hamFile, err := os.Create(filepath.Join(tmpDir, "ham_samples.txt"))
 		require.NoError(t, err)
 
 		excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
@@ -486,14 +486,19 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
 		stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
 
-		_, err = os.Create(excludedTokensFile)
+		fh, err := os.Create(excludedTokensFile)
 		require.NoError(t, err)
-		_, err = os.Create(spamSamplesFile)
+		fh.Close()
+
+		fh, err = os.Create(spamSamplesFile)
 		require.NoError(t, err)
-		_, err = os.Create(hamSamplesFile)
+		fh.Close()
+		fh, err = os.Create(hamSamplesFile)
 		require.NoError(t, err)
-		_, err = os.Create(stopWordsFile)
+		fh.Close()
+		fh, err = os.Create(stopWordsFile)
 		require.NoError(t, err)
+		fh.Close()
 
 		// Write sample data to the files
 		_, err = spamFile.WriteString("spam1\nspam2\nspam3\nspam3\n")
@@ -516,9 +521,9 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 	}
 
 	t.Run("remove from spam", func(t *testing.T) {
+		mockDirector.ResetCalls()
 		sf, teardown := prep()
 		defer teardown()
-
 		count, err := sf.RemoveDynamicSpamSample("spam1")
 		require.NoError(t, err)
 		assert.Equal(t, 1, count)
@@ -526,6 +531,7 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"spam2", "spam3", "spam3"}, spam)
 		assert.Equal(t, []string{"ham1", "ham2"}, ham)
+		assert.True(t, len(mockDirector.LoadSamplesCalls()) >= 1, "LoadSamples should be called at least once")
 	})
 
 	t.Run("remove multi from spam", func(t *testing.T) {
@@ -566,5 +572,53 @@ func TestSpamFilter_RemoveDynamiSample(t *testing.T) {
 		assert.Equal(t, []string{"spam1", "spam2", "spam3", "spam3"}, spam)
 		assert.Equal(t, []string{"ham1", "ham2"}, ham)
 	})
+}
 
+func TestSpamFilter_RemoveDynamicSampleReal(t *testing.T) {
+	mockDirector := &mocks.DetectorMock{
+		LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
+		},
+		LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
+			return tgspam.LoadResult{}, nil
+		},
+	}
+
+	// make a temp file from testdata/spam.txt
+	tmpFile, err := os.CreateTemp("", "spam")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	input, err := os.ReadFile("testdata/spam.txt")
+	require.NoError(t, err)
+	_, err = tmpFile.Write(input)
+	require.NoError(t, err)
+
+	tmpDir := filepath.Dir(tmpFile.Name())
+	spamFile, err := os.Create(filepath.Join(tmpDir, "spam_samples.txt"))
+	require.NoError(t, err)
+	hamFile, err := os.Create(filepath.Join(tmpDir, "ham_samples.txt"))
+	require.NoError(t, err)
+	excludedTokensFile := filepath.Join(tmpDir, "excluded_tokens.txt")
+	hamSamplesFile := filepath.Join(tmpDir, "ham_samples.txt")
+	stopWordsFile := filepath.Join(tmpDir, "stop_words.txt")
+
+	sf := NewSpamFilter(context.Background(), mockDirector, SpamConfig{
+		SpamDynamicFile:    tmpFile.Name(),
+		HamDynamicFile:     hamFile.Name(),
+		SpamSamplesFile:    spamFile.Name(),
+		HamSamplesFile:     hamSamplesFile,
+		StopWordsFile:      stopWordsFile,
+		ExcludedTokensFile: excludedTokensFile,
+	})
+	spam, _, err := sf.DynamicSamples()
+	require.NoError(t, err)
+	assert.Contains(t, spam, "Здрαвствуйте, ищем ответственного человеκα для удαленной рαботы в новый проеκт!")
+
+	count, err := sf.RemoveDynamicSpamSample("Здрαвствуйте, ищем ответственного человеκα для удαленной рαботы в новый проеκт!")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should remove one sample")
+
+	spam, _, err = sf.DynamicSamples()
+	require.NoError(t, err)
+	assert.NotContains(t, spam, "Здрαвствуйте, ищем ответственного человеκα для удαленной рαботы в новый проеκт!")
 }

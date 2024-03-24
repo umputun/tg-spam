@@ -172,6 +172,10 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 				if !ok {
 					return
 				}
+				if event.Op == fsnotify.Remove {
+					// may happen when the file is renamed, ignore
+					continue
+				}
 				log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
 				if !reloadPending {
 					reloadPending = true
@@ -350,23 +354,34 @@ func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
 	for scanner.Scan() {
 		sample := scanner.Text()
 		if sample != msg {
-			if _, err := spamDynamicWriter.WriteString(sample + "\n"); err != nil {
+			if _, err = spamDynamicWriter.WriteString(sample + "\n"); err != nil {
 				return 0, fmt.Errorf("failed to write to temporary spam dynamic file: %w", err)
 			}
 		} else {
 			count++
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	if err = scanner.Err(); err != nil {
 		return 0, fmt.Errorf("failed to read spam dynamic file: %w", err)
 	}
 
 	// ensure all writes are flushed to disk
-	if err := spamDynamicWriter.Sync(); err != nil {
+	if err = spamDynamicWriter.Sync(); err != nil {
 		return 0, fmt.Errorf("failed to flush writes to temporary file: %w", err)
 	}
-	if err := spamDynamicWriter.Close(); err != nil {
+	if err = spamDynamicWriter.Close(); err != nil {
 		return 0, fmt.Errorf("failed to close temporary spam dynamic file: %w", err)
+	}
+
+	// get the file info of the original file to retrieve its permissions
+	fileInfo, err := os.Stat(fileName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get file info of the original spam dynamic file: %w", err)
+	}
+
+	// set the permissions of the temporary file to match the original file
+	if err = os.Chmod(spamDynamicWriter.Name(), fileInfo.Mode()); err != nil {
+		return 0, fmt.Errorf("failed to set permissions of the temporary spam dynamic file: %w", err)
 	}
 
 	if count == 0 {
