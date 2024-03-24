@@ -188,14 +188,14 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if errJSON != nil {
 		return fmt.Errorf("failed to marshal update.Message to json: %w", errJSON)
 	}
-	log.Printf("[DEBUG] %s", string(msgJSON))
-	msg := transform(update.Message)
 	fromChat := update.Message.Chat.ID
-
 	// ignore messages from other chats except the one we are monitor and ones from the test list
 	if !l.isChatAllowed(fromChat) {
 		return nil
 	}
+
+	log.Printf("[DEBUG] %s", string(msgJSON))
+	msg := transform(update.Message)
 
 	// ignore empty messages
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil {
