@@ -305,6 +305,7 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicSpamSample(sample string) (int, error) {
+	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
 	count, err := s.removeDynamicSample(sample, s.params.SpamDynamicFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to remove dynamic spam sample: %w", err)
@@ -317,6 +318,7 @@ func (s *SpamFilter) RemoveDynamicSpamSample(sample string) (int, error) {
 
 // RemoveDynamicHamSample removes a sample from the ham dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicHamSample(sample string) (int, error) {
+	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
 	count, err := s.removeDynamicSample(sample, s.params.HamDynamicFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to remove dynamic ham sample: %w", err)
@@ -359,13 +361,26 @@ func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
 		return 0, fmt.Errorf("failed to read spam dynamic file: %w", err)
 	}
 
-	// replace the original file with the temporary file
-	if err := os.Rename(spamDynamicWriter.Name(), fileName); err != nil {
-		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
+	// ensure all writes are flushed to disk
+	if err := spamDynamicWriter.Sync(); err != nil {
+		return 0, fmt.Errorf("failed to flush writes to temporary file: %w", err)
+	}
+	if err := spamDynamicWriter.Close(); err != nil {
+		return 0, fmt.Errorf("failed to close temporary spam dynamic file: %w", err)
 	}
 
 	if count == 0 {
+		// not found, no need to replace the original file
+		if err := os.Remove(spamDynamicWriter.Name()); err != nil {
+			// cleanup temporary file as we won't replace the original file with it
+			return 0, fmt.Errorf("failed to remove temporary spam dynamic file: %w", err)
+		}
 		return 0, fmt.Errorf("sample %q not found in %s", msg, fileName)
+	}
+
+	// replace the original file with the temporary file
+	if err := os.Rename(spamDynamicWriter.Name(), fileName); err != nil {
+		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
 	}
 
 	return count, nil
