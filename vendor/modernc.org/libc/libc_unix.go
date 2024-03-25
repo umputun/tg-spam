@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build unix
+//go:build unix && !(linux && (amd64 || loong64))
 // +build unix
+// +build !linux !amd64,!loong64
 
 package libc // import "modernc.org/libc"
 
@@ -25,9 +26,11 @@ import (
 	"unsafe"
 
 	guuid "github.com/google/uuid"
+	"github.com/ncruces/go-strftime"
 	"golang.org/x/sys/unix"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/grp"
+	"modernc.org/libc/limits"
 	"modernc.org/libc/poll"
 	"modernc.org/libc/pwd"
 	"modernc.org/libc/signal"
@@ -1240,3 +1243,152 @@ func Xsysctlbyname(t *TLS, name, oldp, oldlenp, newp uintptr, newlen types.Size_
 // func init() {
 // 	defaultZone = addObject(newMallocZone(true))
 // }
+
+// /tmp/libc/musl-master/src/time/gmtime.c:6:19:
+var _tm ctime.Tm
+
+// /tmp/libc/musl-master/src/time/gmtime.c:4:11:
+func Xgmtime(tls *TLS, t uintptr) (r uintptr) { // /tmp/libc/musl-master/src/time/gmtime.c:7:2:
+	if __ccgo_strace {
+		trc("tls=%v t=%v, (%v:)", tls, t, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return Xgmtime_r(tls, t, uintptr(unsafe.Pointer(&_tm)))
+}
+
+var _days_in_month = [12]int8{
+	0:  int8(31),
+	1:  int8(30),
+	2:  int8(31),
+	3:  int8(30),
+	4:  int8(31),
+	5:  int8(31),
+	6:  int8(30),
+	7:  int8(31),
+	8:  int8(30),
+	9:  int8(31),
+	10: int8(31),
+	11: int8(29),
+}
+
+var x___utc = [4]int8{'U', 'T', 'C'}
+
+func Xstrftime(tls *TLS, s uintptr, n size_t, f uintptr, tm uintptr) (r size_t) {
+	if __ccgo_strace {
+		trc("tls=%v s=%v n=%v f=%v tm=%v, (%v:)", tls, s, n, f, tm, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	tt := time.Date(
+		int((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_year+1900),
+		time.Month((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_mon+1),
+		int((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_mday),
+		int((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_hour),
+		int((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_min),
+		int((*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec),
+		0,
+		time.UTC,
+	)
+	fmt := GoString(f)
+	var result string
+	if fmt != "" {
+		result = strftime.Format(fmt, tt)
+	}
+	switch r = size_t(len(result)); {
+	case r > n:
+		r = 0
+	default:
+		copy((*RawMem)(unsafe.Pointer(s))[:r:r], result)
+		*(*byte)(unsafe.Pointer(s + uintptr(r))) = 0
+	}
+	return r
+
+}
+
+func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	if x___secs_to_tm(tls, int64(*(*time_t)(unsafe.Pointer(t))), tm) < 0 {
+		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(errno.EOVERFLOW)
+		return uintptr(0)
+	}
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_isdst = 0
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_gmtoff = 0
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_zone = uintptr(unsafe.Pointer(&x___utc))
+	return tm
+}
+
+func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
+	var c_cycles, leap, months, q_cycles, qc_cycles, remdays, remsecs, remyears, wday, yday int32
+	var days, secs, years int64
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = c_cycles, days, leap, months, q_cycles, qc_cycles, remdays, remsecs, remyears, secs, wday, yday, years
+	/* Reject time_t values whose year would overflow int */
+	if t < int64(-Int32FromInt32(1)-Int32FromInt32(0x7fffffff))*Int64FromInt64(31622400) || t > Int64FromInt32(limits.INT_MAX)*Int64FromInt64(31622400) {
+		return -int32(1)
+	}
+	secs = t - (Int64FromInt64(946684800) + int64(Int32FromInt32(86400)*(Int32FromInt32(31)+Int32FromInt32(29))))
+	days = secs / int64(86400)
+	remsecs = int32(secs % int64(86400))
+	if remsecs < 0 {
+		remsecs += int32(86400)
+		days--
+	}
+	wday = int32((int64(3) + days) % int64(7))
+	if wday < 0 {
+		wday += int32(7)
+	}
+	qc_cycles = int32(days / int64(Int32FromInt32(365)*Int32FromInt32(400)+Int32FromInt32(97)))
+	remdays = int32(days % int64(Int32FromInt32(365)*Int32FromInt32(400)+Int32FromInt32(97)))
+	if remdays < 0 {
+		remdays += Int32FromInt32(365)*Int32FromInt32(400) + Int32FromInt32(97)
+		qc_cycles--
+	}
+	c_cycles = remdays / (Int32FromInt32(365)*Int32FromInt32(100) + Int32FromInt32(24))
+	if c_cycles == int32(4) {
+		c_cycles--
+	}
+	remdays -= c_cycles * (Int32FromInt32(365)*Int32FromInt32(100) + Int32FromInt32(24))
+	q_cycles = remdays / (Int32FromInt32(365)*Int32FromInt32(4) + Int32FromInt32(1))
+	if q_cycles == int32(25) {
+		q_cycles--
+	}
+	remdays -= q_cycles * (Int32FromInt32(365)*Int32FromInt32(4) + Int32FromInt32(1))
+	remyears = remdays / int32(365)
+	if remyears == int32(4) {
+		remyears--
+	}
+	remdays -= remyears * int32(365)
+	leap = BoolInt32(!(remyears != 0) && (q_cycles != 0 || !(c_cycles != 0)))
+	yday = remdays + int32(31) + int32(28) + leap
+	if yday >= int32(365)+leap {
+		yday -= int32(365) + leap
+	}
+	years = int64(remyears+int32(4)*q_cycles+int32(100)*c_cycles) + int64(400)*int64(int64(qc_cycles))
+	months = 0
+	for {
+		if !(int32(_days_in_month[months]) <= remdays) {
+			break
+		}
+		remdays -= int32(_days_in_month[months])
+		goto _1
+	_1:
+		months++
+	}
+	if months >= int32(10) {
+		months -= int32(12)
+		years++
+	}
+	if years+int64(100) > int64(limits.INT_MAX) || years+int64(100) < int64(-Int32FromInt32(1)-Int32FromInt32(0x7fffffff)) {
+		return -int32(1)
+	}
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_year = int32(years + int64(100))
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_mon = months + int32(2)
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_mday = remdays + int32(1)
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_wday = wday
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_yday = yday
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_hour = remsecs / int32(3600)
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_min = remsecs / int32(60) % int32(60)
+	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
+	return 0
+}

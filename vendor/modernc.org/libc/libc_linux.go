@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !(linux && (amd64 || loong64))
+
 package libc // import "modernc.org/libc"
 
 import (
@@ -1269,14 +1271,6 @@ func Xrealpath(t *TLS, path, resolved_path uintptr) uintptr {
 	copy((*RawMem)(unsafe.Pointer(resolved_path))[:len(s):len(s)], s)
 	(*RawMem)(unsafe.Pointer(resolved_path))[len(s)] = 0
 	return resolved_path
-}
-
-// struct tm *gmtime_r(const time_t *timep, struct tm *result);
-func Xgmtime_r(t *TLS, timep, result uintptr) uintptr {
-	if __ccgo_strace {
-		trc("t=%v result=%v, (%v:)", t, result, origin(2))
-	}
-	panic(todo(""))
 }
 
 // char *inet_ntoa(struct in_addr in);

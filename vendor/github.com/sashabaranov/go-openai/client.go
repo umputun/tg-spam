@@ -107,13 +107,13 @@ func (c *Client) newRequest(ctx context.Context, method, url string, setters ...
 }
 
 func (c *Client) sendRequest(req *http.Request, v Response) error {
-	req.Header.Set("Accept", "application/json; charset=utf-8")
+	req.Header.Set("Accept", "application/json")
 
 	// Check whether Content-Type is already set, Upload Files API requires
 	// Content-Type == multipart/form-data
 	contentType := req.Header.Get("Content-Type")
 	if contentType == "" {
-		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	res, err := c.config.HTTPClient.Do(req)
@@ -175,7 +175,7 @@ func (c *Client) setCommonHeaders(req *http.Request) {
 	// Azure API Key authentication
 	if c.config.APIType == APITypeAzure {
 		req.Header.Set(AzureAPIKeyHeader, c.config.authToken)
-	} else {
+	} else if c.config.authToken != "" {
 		// OpenAI or Azure AD authentication
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.authToken))
 	}
@@ -221,7 +221,7 @@ func (c *Client) fullURL(suffix string, args ...any) string {
 		baseURL = strings.TrimRight(baseURL, "/")
 		// if suffix is /models change to {endpoint}/openai/models?api-version=2022-12-01
 		// https://learn.microsoft.com/en-us/rest/api/cognitiveservices/azureopenaistable/models/list?tabs=HTTP
-		if strings.Contains(suffix, "/models") {
+		if containsSubstr([]string{"/models", "/assistants", "/threads", "/files"}, suffix) {
 			return fmt.Sprintf("%s/%s%s?api-version=%s", baseURL, azureAPIPrefix, suffix, c.config.APIVersion)
 		}
 		azureDeploymentName := "UNKNOWN"
@@ -257,4 +257,13 @@ func (c *Client) handleErrorResp(resp *http.Response) error {
 
 	errRes.Error.HTTPStatusCode = resp.StatusCode
 	return errRes.Error
+}
+
+func containsSubstr(s []string, e string) bool {
+	for _, v := range s {
+		if strings.Contains(e, v) {
+			return true
+		}
+	}
+	return false
 }

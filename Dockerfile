@@ -9,6 +9,8 @@ ENV GOFLAGS="-mod=vendor"
 ADD . /build
 WORKDIR /build
 
+RUN go version
+
 RUN \
     if [ -z "$CI" ] ; then \
     echo "runs outside of CI" && version=$(git rev-parse --abbrev-ref HEAD)-$(git log -1 --format=%h)-$(date +%Y%m%dT%H:%M:%S); \

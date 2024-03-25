@@ -21,6 +21,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/ncruces/go-strftime"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/fcntl"
 	"modernc.org/libc/limits"
@@ -161,6 +162,7 @@ var (
 	procSleepEx                    = modkernel32.NewProc("SleepEx")
 	procSystemTimeToFileTime       = modkernel32.NewProc("SystemTimeToFileTime")
 	procTerminateThread            = modkernel32.NewProc("TerminateThread")
+	procTryEnterCriticalSection    = modkernel32.NewProc("TryEnterCriticalSection")
 	procUnlockFile                 = modkernel32.NewProc("UnlockFile")
 	procUnlockFileEx               = modkernel32.NewProc("UnlockFileEx")
 	procWaitForSingleObjectEx      = modkernel32.NewProc("WaitForSingleObjectEx")
@@ -214,7 +216,11 @@ var (
 
 	modcrt        = syscall.NewLazyDLL("msvcrt.dll")
 	procAccess    = modcrt.NewProc("_access")
+	procGmtime    = modcrt.NewProc("gmtime")
+	procGmtime64  = modcrt.NewProc("_gmtime64")
 	procStat64i32 = modcrt.NewProc("_stat64i32")
+	procStrftime  = modcrt.NewProc("strftime")
+	procStrtod    = modcrt.NewProc("strtod")
 )
 
 var (
@@ -2940,6 +2946,22 @@ func XEnterCriticalSection(t *TLS, lpCriticalSection uintptr) {
 		trc("t=%v lpCriticalSection=%v, (%v:)", t, lpCriticalSection, origin(2))
 	}
 	syscall.Syscall(procEnterCriticalSection.Addr(), 1, lpCriticalSection, 0, 0)
+}
+
+// BOOL TryEnterCriticalSection(
+//
+//	LPCRITICAL_SECTION lpCriticalSection
+//
+// );
+func XTryEnterCriticalSection(t *TLS, lpCriticalSection uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("t=%v lpCriticalSection=%v, (%v:)", t, lpCriticalSection, origin(2))
+	}
+	r0, _, err := syscall.SyscallN(procTryEnterCriticalSection.Addr(), lpCriticalSection)
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return int32(r0)
 }
 
 // void LeaveCriticalSection(
@@ -5685,10 +5707,6 @@ func X_ftime(t *TLS, timeptr uintptr) {
 	tPtr.Ftimezone = int16(offset)
 }
 
-func Xgmtime(t *TLS, _ ...interface{}) uintptr {
-	panic(todo(""))
-}
-
 func XDdeInitializeW(t *TLS, _ ...interface{}) uint32 {
 	panic(todo(""))
 }
@@ -7047,13 +7065,6 @@ func Xsscanf(t *TLS, str, format, va uintptr) int32 {
 	return r
 }
 
-func Xstrtod(tls *TLS, s uintptr, p uintptr) float64 { /* strtod.c:22:8: */
-	if __ccgo_strace {
-		trc("tls=%v s=%v p=%v, (%v:)", tls, s, p, origin(2))
-	}
-	panic(todo(""))
-}
-
 func Xrint(tls *TLS, x float64) float64 {
 	if __ccgo_strace {
 		trc("tls=%v x=%v, (%v:)", tls, x, origin(2))
@@ -7085,7 +7096,11 @@ func X_gmtime64(t *TLS, sourceTime uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v sourceTime=%v, (%v:)", t, sourceTime, origin(2))
 	}
-	panic(todo(""))
+	r0, _, err := syscall.SyscallN(procGmtime64.Addr(), uintptr(sourceTime))
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return uintptr(r0)
 }
 
 // __time64_t _mktime64(struct tm *timeptr);
@@ -7405,4 +7420,74 @@ func X_stat64i32(t *TLS, path uintptr, buffer uintptr) int32 {
 		t.setErrno(err)
 	}
 	return int32(r0)
+}
+
+func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
+	return byte(a_load_8(ptr))
+}
+
+// struct tm *gmtime( const time_t *sourceTime );
+func Xgmtime(t *TLS, sourceTime uintptr) uintptr {
+	if __ccgo_strace {
+		trc("t=%v sourceTime=%v, (%v:)", t, sourceTime, origin(2))
+	}
+	r0, _, err := syscall.SyscallN(procGmtime.Addr(), uintptr(sourceTime))
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return uintptr(r0)
+}
+
+// size_t strftime(
+//
+//	char *strDest,
+//	size_t maxsize,
+//	const char *format,
+//	const struct tm *timeptr
+//
+// );
+func Xstrftime(tls *TLS, s uintptr, n size_t, f uintptr, tm uintptr) (r size_t) {
+	if __ccgo_strace {
+		trc("tls=%v s=%v n=%v f=%v tm=%v, (%v:)", tls, s, n, f, tm, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	tt := gotime.Date(
+		int((*time.Tm)(unsafe.Pointer(tm)).Ftm_year+1900),
+		gotime.Month((*time.Tm)(unsafe.Pointer(tm)).Ftm_mon+1),
+		int((*time.Tm)(unsafe.Pointer(tm)).Ftm_mday),
+		int((*time.Tm)(unsafe.Pointer(tm)).Ftm_hour),
+		int((*time.Tm)(unsafe.Pointer(tm)).Ftm_min),
+		int((*time.Tm)(unsafe.Pointer(tm)).Ftm_sec),
+		0,
+		gotime.UTC,
+	)
+	fmt := GoString(f)
+	var result string
+	if fmt != "" {
+		result = strftime.Format(fmt, tt)
+	}
+	switch r = size_t(len(result)); {
+	case r > n:
+		r = 0
+	default:
+		copy((*RawMem)(unsafe.Pointer(s))[:r:r], result)
+		*(*byte)(unsafe.Pointer(s + uintptr(r))) = 0
+	}
+	return r
+
+}
+
+func X__mingw_strtod(t *TLS, s uintptr, p uintptr) float64 {
+	return Xstrtod(t, s, p)
+}
+
+func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
+	if __ccgo_strace {
+		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
+	}
+	r0, _, err := syscall.SyscallN(procStrtod.Addr(), uintptr(s), uintptr(p))
+	if err != 0 {
+		t.setErrno(err)
+	}
+	return math.Float64frombits(uint64(r0))
 }

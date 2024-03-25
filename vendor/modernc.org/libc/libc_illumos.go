@@ -1337,14 +1337,6 @@ func Xrealpath(t *TLS, path, resolved_path uintptr) uintptr {
 	return resolved_path
 }
 
-// struct tm *gmtime_r(const time_t *timep, struct tm *result);
-func Xgmtime_r(t *TLS, timep, result uintptr) uintptr {
-	if __ccgo_strace {
-		trc("t=%v result=%v, (%v:)", t, result, origin(2))
-	}
-	panic(todo(""))
-}
-
 // char *inet_ntoa(struct in_addr in);
 func Xinet_ntoa(t *TLS, in1 in.In_addr) uintptr {
 	if __ccgo_strace {

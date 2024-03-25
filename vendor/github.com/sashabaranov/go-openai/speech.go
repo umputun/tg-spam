@@ -33,6 +33,8 @@ const (
 	SpeechResponseFormatOpus SpeechResponseFormat = "opus"
 	SpeechResponseFormatAac  SpeechResponseFormat = "aac"
 	SpeechResponseFormatFlac SpeechResponseFormat = "flac"
+	SpeechResponseFormatWav  SpeechResponseFormat = "wav"
+	SpeechResponseFormatPcm  SpeechResponseFormat = "pcm"
 )
 
 var (
@@ -74,9 +76,9 @@ func (c *Client) CreateSpeech(ctx context.Context, request CreateSpeechRequest) 
 		err = ErrInvalidVoice
 		return
 	}
-	req, err := c.newRequest(ctx, http.MethodPost, c.fullURL("/audio/speech", request.Model),
+	req, err := c.newRequest(ctx, http.MethodPost, c.fullURL("/audio/speech", string(request.Model)),
 		withBody(request),
-		withContentType("application/json; charset=utf-8"),
+		withContentType("application/json"),
 	)
 	if err != nil {
 		return
