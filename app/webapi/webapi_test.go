@@ -927,7 +927,7 @@ func TestServer_logoHandler(t *testing.T) {
 	req, err := http.NewRequest("GET", "/logo.png", http.NoBody)
 	require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.logoutHandler)
+	handler := http.HandlerFunc(server.logoHandler)
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
@@ -1111,7 +1111,7 @@ func TestServer_renderSamples(t *testing.T) {
 		SpamFilter: mockSpamFilter,
 	})
 	w := httptest.NewRecorder()
-	server.renderSamples(w)
+	server.renderSamples(w, "samples_list.html")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
 	t.Log(w.Body.String())
