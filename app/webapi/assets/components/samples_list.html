@@ -6,17 +6,17 @@
         </h4>
         <ul class="list-group" id="spam-samples-list">
             {{range .SpamSamples}}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                {{.}}
-                <form method="POST" hx-post="/delete/spam" hx-target="#samples-list" hx-swap="outerHTML">
-                    <input type="hidden" name="msg" value="{{.}}">
-                    <button type="submit" class="btn btn-sm btn-danger">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </form>
-            </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                     <span id="loading-{{.ID}}">{{.Sample}} <img class="htmx-indicator" src="/spinner.svg"/></span>
+                    <form method="POST" hx-post="/delete/spam" hx-target="#samples-list" hx-swap="outerHTML" hx-indicator="#loading-{{.ID}}">
+                        <input type="hidden" name="msg" value="{{.Sample}}">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                           <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </li>
             {{else}}
-            <li class="list-group-item">No spam samples found</li>
+                <li class="list-group-item">No spam samples found</li>
             {{end}}
         </ul>
     </div>
@@ -29,9 +29,9 @@
         <ul class="list-group" id="ham-samples-list">
             {{range .HamSamples}}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                {{.}}
+                {{.Sample}}
                 <form method="POST" hx-post="/delete/ham" hx-target="#samples-list" hx-swap="outerHTML">
-                    <input type="hidden" name="msg" value="{{.}}">
+                    <input type="hidden" name="msg" value="{{.Sample}}">
                     <button type="submit" class="btn btn-sm btn-danger">
                         <i class="bi bi-trash"></i>
                     </button>
