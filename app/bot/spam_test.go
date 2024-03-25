@@ -500,7 +500,6 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 		require.NoError(t, err)
 		fh.Close()
 
-		// Write sample data to the files
 		_, err = spamFile.WriteString("spam1\nspam2\nspam3\nspam3\n")
 		require.NoError(t, err)
 		_, err = hamFile.WriteString("ham1\nham2\n")

@@ -394,9 +394,28 @@ func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
 	}
 
 	// replace the original file with the temporary file
-	if err := os.Rename(spamDynamicWriter.Name(), fileName); err != nil {
+	if err := s.fileReplace(spamDynamicWriter.Name(), fileName, fileInfo.Mode()); err != nil {
 		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
 	}
-
+	log.Printf("[DEBUG] removed %d samples from %s", count, fileName)
 	return count, nil
+}
+
+// fileReplace copies the file content from src to dst and removes the src file.
+// This function is used as a workaround for the "invalid cross-device link" error.
+func (s *SpamFilter) fileReplace(src, dst string, perm os.FileMode) error {
+	input, err := os.ReadFile(src) //nolint:gosec // file name is not user input
+	if err != nil {
+		return fmt.Errorf("failed to read from the source file: %w", err)
+	}
+
+	if err := os.WriteFile(dst, input, perm); err != nil {
+		return fmt.Errorf("failed to write to the destination file: %w", err)
+	}
+
+	if err := os.Remove(src); err != nil {
+		return fmt.Errorf("failed to remove the source file after copy: %w", err)
+	}
+
+	return nil
 }
