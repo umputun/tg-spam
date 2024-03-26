@@ -27,10 +27,58 @@
     </div>
 
     <!-- Include the samples list template -->
-    {{template "samples_list.html" .}}
+    {{template "samples_list" .}}
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
 
 </body>
 </html>
+
+
+<!-- list of samples, both spam and ham -->
+{{define "samples_list"}}
+    <div class="row" id="samples-list">
+        <div class="col-md-6">
+            <h4>
+                Spam Samples ({{.TotalSpamSamples}})
+                <a href="/download/spam" class="btn btn-custom-blue btn-sm">Download</a>
+            </h4>
+            <ul class="list-group" id="spam-samples-list">
+                {{range .SpamSamples}}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span id="loading-{{.ID}}">{{.Sample}} <img class="htmx-indicator" src="/spinner.svg"/></span>
+                        <form method="POST" hx-post="/delete/spam" hx-target="#samples-list" hx-swap="outerHTML" hx-indicator="#loading-{{.ID}}">
+                            <input type="hidden" name="msg" value="{{.Sample}}">
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </li>
+                {{else}}
+                    <li class="list-group-item">No spam samples found</li>
+                {{end}}
+            </ul>
+        </div>
+
+        <div class="col-md-6">
+            <h4>
+                Ham Samples ({{.TotalHamSamples}})
+                <a href="/download/ham" class="btn btn-custom-blue btn-sm">Download</a>
+            </h4>
+            <ul class="list-group" id="ham-samples-list">
+                {{range .HamSamples}}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{.Sample}}
+                        <form method="POST" hx-post="/delete/ham" hx-target="#samples-list" hx-swap="outerHTML">
+                            <input type="hidden" name="msg" value="{{.Sample}}">
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </li>
+                {{else}}
+                    <li class="list-group-item">No ham samples found</li>
+                {{end}}
+            </ul>
+        </div>
+    </div>
+{{end}}

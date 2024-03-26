@@ -254,7 +254,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		Checks: cr,
 	}
 
-	if err := tmpl.ExecuteTemplate(w, "check_results.html", resultDisplay); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "check_results", resultDisplay); err != nil {
 		log.Printf("[WARN] can't execute result template: %v", err)
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
@@ -323,7 +323,7 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 		}
 
 		if isHtmxRequest {
-			s.renderSamples(w, "samples_list.html")
+			s.renderSamples(w, "samples_list")
 		} else {
 			rest.RenderJSON(w, rest.JSON{"updated": true, "msg": req.Msg})
 		}
@@ -355,7 +355,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 		}
 
 		if isHtmxRequest {
-			s.renderSamples(w, "samples_list.html")
+			s.renderSamples(w, "samples_list")
 		} else {
 			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": count})
 		}
@@ -421,8 +421,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 				TotalApprovedUsers: len(users),
 			}
 
-			if err := tmpl.ExecuteTemplate(w, "users_list.html", tmplData); err != nil {
-				log.Printf("[WARN] can't execute template: %v", err)
+			if err := tmpl.ExecuteTemplate(w, "users_list", tmplData); err != nil {
 				http.Error(w, "Error executing template", http.StatusInternalServerError)
 				return
 			}

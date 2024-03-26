@@ -25,10 +25,51 @@
         </div>
     </div>
 
-    <!-- Include the Approved Users List component -->
-    {{template "users_list.html" .}}
+
+    {{template "users_list" .}}
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.min.js"></script>
 </body>
 </html>
+
+
+<!-- list of users -->
+{{define "users_list"}}
+<div class="row" id="users-list">
+    <div class="col-md-12">
+        <div id="error-message"></div> <!-- Error message container -->
+        <h4>Approved Users ({{.TotalApprovedUsers}})</h4>
+        <table class="table table-striped">
+            <thead class="custom-table-header">
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Timestamp</th>
+                <th></th> <!-- Header for the action column -->
+            </tr>
+            </thead>
+            <tbody>
+            {{range .ApprovedUsers}}
+                <tr>
+                    <td>{{.UserID}}</td>
+                    <td>{{.UserName}}</td>
+                    <td>{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+                    <td class="text-end">
+                        <form method="POST" hx-post="/users/delete" hx-target="#users-list" hx-swap="outerHTML" class="d-inline">
+                            <input type="hidden" name="user_id" value="{{.UserID}}">
+                            <button type="submit" class="btn btn-danger btn-sm" title="Delete User">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            {{else}}
+                <tr>
+                    <td colspan="4">No approved users found</td>
+                </tr>
+            {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
