@@ -1111,7 +1111,7 @@ func TestServer_renderSamples(t *testing.T) {
 		SpamFilter: mockSpamFilter,
 	})
 	w := httptest.NewRecorder()
-	server.renderSamples(w, "samples_list.html")
+	server.renderSamples(w, "samples_list")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
 	t.Log(w.Body.String())
