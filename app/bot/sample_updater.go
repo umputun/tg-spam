@@ -30,6 +30,14 @@ func (s *SampleUpdater) Reader() (io.ReadCloser, error) {
 
 // Append a message to the file, preventing duplicates
 func (s *SampleUpdater) Append(msg string) error {
+	// if file does not exist, create it
+	if _, err := os.Stat(s.fileName); os.IsNotExist(err) {
+		if _, err = os.Create(s.fileName); err != nil {
+			return fmt.Errorf("failed to create %s: %w", s.fileName, err)
+		}
+	}
+
+	// check if the message is already in the file
 	fh, err := os.Open(s.fileName)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)
@@ -44,6 +52,7 @@ func (s *SampleUpdater) Append(msg string) error {
 		}
 	}
 
+	// append the message to the file
 	fh, err = os.OpenFile(s.fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644) //nolint:gosec // keep it readable by all
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", s.fileName, err)

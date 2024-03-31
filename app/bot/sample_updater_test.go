@@ -3,6 +3,7 @@ package bot
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,6 +71,24 @@ func TestSampleUpdater(t *testing.T) {
 		content, err := io.ReadAll(reader)
 		assert.NoError(t, err)
 		assert.Equal(t, "Test message second line third line\n", string(content))
+	})
+
+	t.Run("no file", func(t *testing.T) {
+		dir := os.TempDir()
+		file := filepath.Join(dir, "non-existent-samples.txt")
+		defer os.Remove(file)
+
+		updater := NewSampleUpdater(file)
+		err := updater.Append("Test message")
+		assert.NoError(t, err)
+
+		reader, err := updater.Reader()
+		require.NoError(t, err)
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Test message\n", string(content))
 	})
 
 	t.Run("unhappy path", func(t *testing.T) {
