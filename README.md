@@ -237,6 +237,7 @@ Success! The new status is: DISABLED. /help
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]
       --dry                         dry mode, no bans [$DRY]
+      --delete-system-messages      delete noisy system messages (user added/removed, message pinned, etc) [$DELETE_SYSTEM_MESSAGES]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
 

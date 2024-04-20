@@ -107,10 +107,11 @@ type options struct {
 		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password for user 'tg-spam'"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
-	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
-	Dry      bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg      bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	TGDbg    bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
+	Training             bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
+	Dry                  bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
+	DeleteSystemMessages bool `long:"delete-system-messages" env:"DELETE_SYSTEM_MESSAGES" description:"delete noisy system messages (user added/removed, message pinned, etc)"`
+	Dbg                  bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	TGDbg                bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
 // file names
@@ -271,6 +272,7 @@ func execute(ctx context.Context, opts options) error {
 		TrainingMode:            opts.Training,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		Dry:                     opts.Dry,
+		DeleteSystemMessages:    opts.DeleteSystemMessages,
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+

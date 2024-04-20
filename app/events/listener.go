@@ -40,6 +40,7 @@ type TelegramListener struct {
 	Locator                 Locator       // message locator to get info about messages
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
+	DeleteSystemMessages    bool          // delete noisy system messages (user added/removed, message pinned, etc)
 
 	adminHandler *admin
 	chatID       int64
@@ -197,6 +198,19 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
+	// system messages
+	if l.DeleteSystemMessages {
+		text := l.checkSystemMessage(update)
+
+		if !l.Dry {
+			if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: update.Message.MessageID}); err != nil {
+				return fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err)
+			}
+
+			l.adminHandler.ReportDeletedSystemMessage(text, msg)
+		}
+	}
+
 	// ignore empty messages
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil {
 		return nil
@@ -258,6 +272,65 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	return errs.ErrorOrNil()
+}
+
+func (l *TelegramListener) checkSystemMessage(update tbapi.Update) string {
+	switch true {
+	case update.Message.NewChatTitle != "":
+		user := *update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+		return fmt.Sprintf("%s changed group name to %s", who, update.Message.NewChatTitle)
+	case update.Message.NewChatPhoto != nil:
+		user := *update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+		return fmt.Sprintf("%s changed chat photo", who)
+	case update.Message.DeleteChatPhoto == true:
+		user := *update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+		return fmt.Sprintf("%s deleted chat photo", who)
+	case update.Message.NewChatMembers != nil:
+		user := *update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+
+		if len(update.Message.NewChatMembers) == 1 && user.ID == update.Message.NewChatMembers[0].ID {
+			whom := fmt.Sprintf("[%s %s](tg://user?id=%d)", user.FirstName, user.LastName, user.ID)
+			return fmt.Sprintf("%s joined the group", whom)
+		}
+
+		whom := make([]string, 0, len(update.Message.NewChatMembers))
+
+		for _, user = range update.Message.NewChatMembers {
+			whom = append(whom, fmt.Sprintf("[%s %s](tg://user?id=%d)", user.FirstName, user.LastName, user.ID))
+		}
+
+		return fmt.Sprintf("%s added %s", who, strings.Join(whom, ", "))
+	case update.Message.LeftChatMember != nil:
+		user := update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+
+		if user.ID == update.Message.LeftChatMember.ID {
+			whom := fmt.Sprintf("[%s %s](tg://user?id=%d)", user.FirstName, user.LastName, user.ID)
+			return fmt.Sprintf("%s left the group", whom)
+		}
+
+		user = update.Message.LeftChatMember
+		whom := fmt.Sprintf("[%s %s](tg://user?id=%d)", user.FirstName, user.LastName, user.ID)
+
+		return fmt.Sprintf("%s removed %s", who, whom)
+	case update.Message.PinnedMessage != nil:
+		user := update.Message.From
+		who := fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+		return fmt.Sprintf("%s pinned [message](tg://resolve?domain=%s&post=%d&single&comment=qweqweqwe)", who, update.Message.Chat.UserName, update.Message.MessageID)
+
+		// case update.Message.MessageAutoDeleteTimerChanged != nil:
+		// case update.Message.GroupChatCreated == true:
+		// case update.Message.SuperGroupChatCreated == true:
+		// case update.Message.ChannelChatCreated == true:
+		// case update.Message.MigrateToChatID != 0:
+		// case update.Message.MigrateFromChatID != 0:
+	}
+
+	return ""
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {

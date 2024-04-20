@@ -46,6 +46,17 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
+// ReportDeletedSystemMessage a message to admin chat
+func (a *admin) ReportDeletedSystemMessage(text string, msg *bot.Message) {
+	log.Printf("[DEBUG] report to admin chat, delete system message, group: %d", a.adminChatID)
+
+	forwardMsg := fmt.Sprintf("**deleted system message**\n\n%s\n\n", text)
+
+	if err := a.send(forwardMsg, msg.From, msg.ID, a.adminChatID); err != nil {
+		log.Printf("[WARN] failed to send admin message, %v", err)
+	}
+}
+
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
 // the user will be baned even in training mode, but not in the dry mode.
@@ -554,6 +565,20 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 	// Adjust the slice to include the line before spamInfoLine
 	cleanMsg := strings.Join(msgLines[2:spamInfoLine], "\n")
 	return cleanMsg, nil
+}
+
+// send just sends a message to admin chat.
+// text is message with details.
+func (a *admin) send(text string, user bot.User, msgID int, chatID int64) error {
+	log.Printf("[DEBUG] action response: user %+v, msgID:%d, text: %q", user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
+	tbMsg := tbapi.NewMessage(chatID, text)
+	tbMsg.ParseMode = tbapi.ModeMarkdown
+	tbMsg.DisableWebPagePreview = true
+
+	if _, err := a.tbAPI.Send(tbMsg); err != nil {
+		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
+	}
+	return nil
 }
 
 // sendWithUnbanMarkup sends a message to admin chat and adds buttons to ui.
