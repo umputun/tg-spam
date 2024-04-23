@@ -236,6 +236,8 @@ Success! The new status is: DISABLED. /help
       --paranoid                    paranoid mode, check all messages [$PARANOID]
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]
+      --soft-ban                    soft ban mode, restrict user actions but not ban [$SOFT_BAN]
+      
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
@@ -300,7 +302,8 @@ Help Options:
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
-- `--training` - if set to `true`, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
+- `--training` - if set, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
+- `--soft-ban` - if set, the bot will restrict user actions but won't ban. This is useful for chats where the false-positive is hard or costly to recover from. With soft ban, the user won't be removed from the chat but will be restricted in actions. Practically, it means the user won't be able to send messages, but the recovery is easy - just unban the user, and they won't need to rejoin the chat.
 - `--disable-admin-spam-forward` - if set to `true`, the bot will not treat messages forwarded to the admin chat as spam.
 - `--dry` - if set to `true`, the bot will not ban users and delete messages. This is useful for testing purposes.
 - `--dbg` - if set to `true`, the bot will print debug information to the console.

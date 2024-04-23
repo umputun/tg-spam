@@ -37,6 +37,7 @@ type TelegramListener struct {
 	WarnMsg                 string        // message to send on warning
 	NoSpamReply             bool          // do not reply on spam messages in the primary chat
 	TrainingMode            bool          // do not ban users, just report and train spam detector
+	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
@@ -57,6 +58,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	if l.TrainingMode {
 		log.Printf("[WARN] training mode, no bans")
+	}
+
+	if l.SoftBanMode {
+		log.Printf("[INFO] soft ban mode, no bans but restrictions")
 	}
 
 	// get chat ID for the group we are monitoring
@@ -92,7 +97,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, dry: l.Dry, warnMsg: l.WarnMsg}
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg}
+
 	adminForwardStatus := "enabled"
 	if l.DisableAdminSpamForward {
 		adminForwardStatus = "disabled"
@@ -239,7 +245,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 
 		banReq := banRequest{duration: resp.BanInterval, userID: resp.User.ID, channelID: resp.ChannelID,
-			chatID: fromChat, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI}
+			chatID: fromChat, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode}
 		if err := banUserOrChannel(banReq); err == nil {
 			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
 			if l.adminChatID != 0 && msg.From.ID != 0 {
