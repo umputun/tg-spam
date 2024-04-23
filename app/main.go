@@ -108,9 +108,11 @@ type options struct {
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
-	Dry      bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg      bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	TGDbg    bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
+	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
+
+	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
+	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
 // file names

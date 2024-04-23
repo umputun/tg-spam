@@ -105,7 +105,8 @@ type banRequest struct {
 	duration  time.Duration
 
 	dry      bool
-	training bool
+	training bool // training mode, do not do the actual ban
+	restrict bool // restrict instead of ban
 }
 
 // The bot must be an administrator in the supergroup for this to work
@@ -132,6 +133,31 @@ func banUserOrChannel(r banRequest) error {
 
 	if r.duration < 30*time.Second {
 		r.duration = 1 * time.Minute
+	}
+
+	if r.restrict {
+		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
+			ChatMemberConfig: tbapi.ChatMemberConfig{
+				ChatID: r.chatID,
+				UserID: r.userID,
+			},
+			UntilDate: time.Now().Add(r.duration).Unix(),
+			Permissions: &tbapi.ChatPermissions{
+				CanSendMessages:      false,
+				CanSendMediaMessages: false,
+				CanSendOtherMessages: false,
+				CanChangeInfo:        false,
+				CanInviteUsers:       false,
+				CanPinMessages:       false,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		if !resp.Ok {
+			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
+		}
+		return nil
 	}
 
 	if r.channelID != 0 {

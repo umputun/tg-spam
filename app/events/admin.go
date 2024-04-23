@@ -26,6 +26,7 @@ type admin struct {
 	primChatID   int64
 	adminChatID  int64
 	trainingMode bool
+	softBan      bool // if true, the user not banned automatically, but only restricted
 	dry          bool
 	warnMsg      string
 }
@@ -414,12 +415,8 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 
 	// unban user if not in training mode (in training mode, the user is not banned automatically)
 	if !a.trainingMode {
-		// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
-		// https://core.telegram.org/bots/api#unbanchatmember
-		_, err = a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
-			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}, OnlyIfBanned: true})
-		if err != nil {
-			return fmt.Errorf("failed to unban user %d: %w", userID, err)
+		if uerr := a.unban(userID); uerr != nil {
+			return uerr
 		}
 	}
 
@@ -440,6 +437,29 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+	}
+	return nil
+}
+
+func (a *admin) unban(userID int64) error {
+	if a.softBan { // soft ban, just drop restrictions
+		_, err := a.tbAPI.Request(tbapi.RestrictChatMemberConfig{
+			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID},
+			Permissions:      &tbapi.ChatPermissions{CanSendMessages: true, CanSendMediaMessages: true, CanSendOtherMessages: true, CanSendPolls: true},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to drop restrictions for user %d: %w", userID, err)
+		}
+		return nil
+	}
+
+	// hard ban, unban the user for real
+	_, err := a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
+		ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID}, OnlyIfBanned: true})
+	// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
+	// https://core.telegram.org/bots/api#unbanchatmember
+	if err != nil {
+		return fmt.Errorf("failed to unban user %d: %w", userID, err)
 	}
 	return nil
 }
