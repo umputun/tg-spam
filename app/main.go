@@ -271,6 +271,7 @@ func execute(ctx context.Context, opts options) error {
 		TestingIDs:              opts.TestingIDs,
 		Locator:                 locator,
 		TrainingMode:            opts.Training,
+		SoftBanMode:             opts.SoftBan,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		Dry:                     opts.Dry,
 	}
