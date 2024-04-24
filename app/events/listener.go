@@ -244,15 +244,12 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			return nil
 		}
 
-		banReq := banRequest{duration: resp.BanInterval, userID: resp.User.ID, channelID: resp.ChannelID,
+		banReq := banRequest{duration: resp.BanInterval, userID: resp.User.ID, channelID: resp.ChannelID, userName: banUserStr,
 			chatID: fromChat, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode}
-		if err := banUserOrChannel(banReq); err == nil {
-			log.Printf("[INFO] %s banned by bot for %v", banUserStr, resp.BanInterval)
-			if l.adminChatID != 0 && msg.From.ID != 0 {
-				l.adminHandler.ReportBan(banUserStr, msg)
-			}
-		} else {
+		if err := banUserOrChannel(banReq); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
+		} else if l.adminChatID != 0 && msg.From.ID != 0 {
+			l.adminHandler.ReportBan(banUserStr, msg)
 		}
 	}
 

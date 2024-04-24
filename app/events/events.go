@@ -62,7 +62,7 @@ type Bot interface {
 func escapeMarkDownV1Text(text string) string {
 	escSymbols := []string{"_", "*", "`", "["}
 	for _, esc := range escSymbols {
-		text = strings.Replace(text, esc, "\\"+esc, -1)
+		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
 }
@@ -103,6 +103,7 @@ type banRequest struct {
 	channelID int64
 	chatID    int64
 	duration  time.Duration
+	userName  string
 
 	dry      bool
 	training bool // training mode, do not do the actual ban
@@ -135,7 +136,7 @@ func banUserOrChannel(r banRequest) error {
 		r.duration = 1 * time.Minute
 	}
 
-	if r.restrict {
+	if r.restrict { // soft ban mode
 		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{
 				ChatID: r.chatID,
@@ -157,6 +158,7 @@ func banUserOrChannel(r banRequest) error {
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
+		log.Printf("[INFO] %s restricted by bot for %v", r.userName, r.duration)
 		return nil
 	}
 
@@ -172,6 +174,7 @@ func banUserOrChannel(r banRequest) error {
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
+		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
 		return nil
 	}
 
@@ -189,6 +192,7 @@ func banUserOrChannel(r banRequest) error {
 		return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 	}
 
+	log.Printf("[INFO] user %s banned by bot for %v", r.userName, r.duration)
 	return nil
 }
 

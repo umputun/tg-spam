@@ -128,13 +128,12 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	// ban user
 	banReq := banRequest{duration: bot.PermanentBanDuration, userID: info.UserID, chatID: a.primChatID,
-		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode}
+		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: update.Message.ForwardSenderName}
 
 	if err := banUserOrChannel(banReq); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
 	}
 
-	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, info.UserID)
 	return errs.ErrorOrNil()
 }
 
@@ -261,18 +260,16 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
 		log.Printf("[INFO] admin spam reprot message %d deleted", update.Message.MessageID)
-
 	}
 
 	// ban user
 	banReq := banRequest{duration: bot.PermanentBanDuration, userID: origMsg.From.ID, chatID: a.primChatID,
-		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode}
+		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: update.Message.ForwardSenderName}
 
 	if err := banUserOrChannel(banReq); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, err))
 	}
 
-	log.Printf("[INFO] user %q (%d) banned", update.Message.ForwardSenderName, origMsg.From.ID)
 	return errs.ErrorOrNil()
 }
 
@@ -506,6 +503,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 // deleteAndBan deletes the message and bans the user
 func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int) error {
 	errs := new(multierror.Error)
+	userName := a.locator.UserNameByID(userID)
 	banReq := banRequest{
 		duration: bot.PermanentBanDuration,
 		userID:   userID,
@@ -513,10 +511,10 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 		tbAPI:    a.tbAPI,
 		dry:      a.dry,
 		training: false, // reset training flag, ban for real
+		userName: userName,
 	}
 
 	// check if user is super and don't ban if so
-	userName := a.locator.UserNameByID(userID)
 	msgFromSuper := userName != "" && a.superUsers.IsSuper(userName)
 	if !msgFromSuper {
 		if err := banUserOrChannel(banReq); err != nil {
