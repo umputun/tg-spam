@@ -379,6 +379,20 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		}
 	}
 
+	// for  soft ban we need to ba user for real on confirmation
+	if a.softBan && !a.trainingMode {
+		userName, err := a.extractUsername(query.Message.Text) // try to extract username from the message
+		if err != nil {
+			log.Printf("[DEBUG] failed to extract username from %q: %v", query.Message.Text, err)
+			userName = ""
+		}
+		banReq := banRequest{duration: bot.PermanentBanDuration, userID: userID, chatID: a.primChatID,
+			tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: userName, restrict: false}
+		if err := banUserOrChannel(banReq); err != nil {
+			return fmt.Errorf("failed to ban user %d: %w", userID, err)
+		}
+	}
+
 	return nil
 }
 
