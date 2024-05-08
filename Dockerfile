@@ -4,8 +4,6 @@ ARG GIT_BRANCH
 ARG GITHUB_SHA
 ARG CI
 
-ENV GOFLAGS="-mod=vendor"
-
 ADD . /build
 WORKDIR /build
 
@@ -20,6 +18,8 @@ RUN \
 
 
 FROM alpine:3.19
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#docker
+LABEL org.opencontainers.image.source="https://github.com/umputun/tg-spam"
 ENV TGSPAM_IN_DOCKER=1
 RUN apk add --no-cache tzdata
 COPY --from=build /build/tg-spam /srv/tg-spam
