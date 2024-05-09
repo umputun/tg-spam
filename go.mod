@@ -14,11 +14,11 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
-	github.com/sashabaranov/go-openai v1.22.0
-	github.com/stretchr/testify v1.8.4
+	github.com/sashabaranov/go-openai v1.23.1
+	github.com/stretchr/testify v1.9.0
 	github.com/umputun/go-flags v1.5.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.29.8
+	modernc.org/sqlite v1.29.9
 )
 
 require (
