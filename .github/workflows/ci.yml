@@ -41,7 +41,14 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: v1.58
+
+    - name: golangci-lint on example directory
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.58
+        args: --config ../../.golangci.yml
+        working-directory: _examples/simplechat
 
     - name: install goveralls
       run: go install github.com/mattn/goveralls@latest
