@@ -18,7 +18,7 @@ RUN \
 
 
 FROM alpine:3.19
-# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#docker
+# enables automatic changelog generation by tools like Dependabot
 LABEL org.opencontainers.image.source="https://github.com/umputun/tg-spam"
 ENV TGSPAM_IN_DOCKER=1
 RUN apk add --no-cache tzdata
