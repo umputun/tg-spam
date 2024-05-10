@@ -31,8 +31,17 @@ jobs:
 
     - name: build and test
       run: |
-        go test -v -timeout=100s -covermode=count -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp ./...
+        go test -v -race -timeout=100s -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp ./...
+        go build -race ./...
         cat $GITHUB_WORKSPACE/profile.cov_tmp | grep -v "mocks" | grep -v "_mock" > $GITHUB_WORKSPACE/profile.cov
+      env:
+        TZ: "America/Chicago"
+
+    - name: test examples
+      run: |
+        go test -race ./...
+        go build -race ./...
+      working-directory: _examples/simplechat
       env:
         TZ: "America/Chicago"
 
