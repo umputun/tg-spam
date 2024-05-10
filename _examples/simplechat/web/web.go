@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam"
@@ -51,12 +52,17 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/fetch-messages", s.loggingMiddleware(s.authMiddleware(s.fetchMessagesHandler)))
 	mux.HandleFunc("/dismiss-spam-report", s.dismissSpamReportHandler)
 
-	return http.ListenAndServe(s.Addr, mux)
+	srv := &http.Server{
+		Addr:              s.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 // indexHandler handles the root endpoint ("/") and renders the "index.html" template with the last 100 messages from the storage.
 // If there is an error retrieving the messages or executing the template, it returns a server error HTTP status code.
-func (s *Server) indexHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) indexHandler(w http.ResponseWriter, _ *http.Request) {
 	messages, err := s.Storage.Last(100)
 	if err != nil {
 		http.Error(w, "Server error", http.StatusInternalServerError)
@@ -137,10 +143,6 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 	if spam {
 		log.Printf("spam detected: %+v", details)
 		w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
-		resMsg := []string{}
-		for _, d := range details {
-			resMsg = append(resMsg, d.String())
-		}
 		data := struct {
 			Content string
 			Checks  []spamcheck.Response
@@ -184,7 +186,11 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return false
 	}
 	if r.Method == "GET" {
-		tmpl.ExecuteTemplate(w, "login.html", nil)
+		err := tmpl.ExecuteTemplate(w, "login.html", nil)
+		if err != nil {
+			http.Error(w, "Problem with login template", http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 
