@@ -29,8 +29,8 @@ func TestAdmin_reportBan(t *testing.T) {
 		},
 		Text: "Test\n\n_message_",
 	}
-
-	adm.ReportBan("testUser", msg)
+	spamReplyID := 789
+	adm.ReportBan("testUser", msg, spamReplyID)
 
 	require.Equal(t, 1, len(mockAPI.SendCalls()))
 	t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
@@ -122,29 +122,31 @@ func TestAdmin_parseCallbackData(t *testing.T) {
 		data       string
 		wantUserID int64
 		wantMsgID  int
+		wantSpamReplyID int
 		wantErr    bool
 	}{
-		{"Valid data", "12345:678", 12345, 678, false},
-		{"Data too short", "12", 0, 0, true},
-		{"No colon separator", "12345678", 0, 0, true},
-		{"Invalid userID", "abc:678", 0, 0, true},
-		{"Invalid msgID", "12345:xyz", 0, 0, true},
-		{"wrong prefix with valid data", "c12345:678", 0, 0, true},
-		{"valid prefix+ with valid data", "+12345:678", 12345, 678, false},
-		{"valid prefix! with valid data", "!12345:678", 12345, 678, false},
-		{"valid prefix? with valid data", "?12345:678", 12345, 678, false},
+		{"Valid data", "12345:678:90", 12345, 678, 90, false},
+		{"Data too short", "12", 0, 0, 0, true},
+		{"No colon separator", "12345678", 0, 0, 0, true},
+		{"Invalid userID", "abc:678", 0, 0, 0, true},
+		{"Invalid msgID", "12345:xyz", 0, 0, 0, true},
+		{"wrong prefix with valid data", "c12345:678", 0, 0, 0, true},
+		{"valid prefix+ with valid data", "+12345:678:90", 12345, 678, 90, false},
+		{"valid prefix! with valid data", "!12345:678:90", 12345, 678, 90, false},
+		{"valid prefix? with valid data", "?12345:678:90", 12345, 678, 90, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := admin{}
-			gotUserID, gotMsgID, err := a.parseCallbackData(tt.data)
+			gotUserID, gotMsgID, spamReplyID, err := a.parseCallbackData(tt.data)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantUserID, gotUserID)
 				assert.Equal(t, tt.wantMsgID, gotMsgID)
+				assert.Equal(t, tt.wantSpamReplyID, spamReplyID)
 			}
 		})
 	}

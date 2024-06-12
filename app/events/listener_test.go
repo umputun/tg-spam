@@ -753,7 +753,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -827,7 +827,7 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -903,7 +903,7 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -1043,7 +1043,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999:987654", // + means unban declined
+			Data: "+999:987654:88", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -1115,7 +1115,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999:987654", // + means unban declined
+			Data: "+999:987654:88", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -1185,7 +1185,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "!999:987654", // ! means we show info
+			Data: "!999:987654:88", // ! means we show info
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
