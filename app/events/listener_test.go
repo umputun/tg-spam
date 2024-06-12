@@ -754,7 +754,7 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -772,9 +772,12 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
+
+	assert.Equal(t, 88, mockAPI.SendCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
+
 	require.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
@@ -828,7 +831,7 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -846,9 +849,10 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
+	assert.Equal(t, 88, mockAPI.SendCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	require.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
@@ -905,7 +909,7 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "777:999",
+			Data: "777:999:88",
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -923,9 +927,10 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.Equal(t, 2, len(mockAPI.SendCalls()))
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
+	assert.Equal(t, 88, mockAPI.SendCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	require.Equal(t, 1, len(mockAPI.RequestCalls()))
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
@@ -1045,7 +1050,7 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999:987654", // + means unban declined
+			Data: "+999:987654:88", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -1117,7 +1122,7 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "+999:987654", // + means unban declined
+			Data: "+999:987654:88", // + means unban declined
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},
@@ -1187,7 +1192,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		CallbackQuery: &tbapi.CallbackQuery{
-			Data: "!999:987654", // ! means we show info
+			Data: "!999:987654:88", // ! means we show info
 			Message: &tbapi.Message{
 				MessageID:   987654,
 				Chat:        &tbapi.Chat{ID: 123},

@@ -92,7 +92,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	// send startup message if any set
 	if l.StartupMsg != "" && !l.TrainingMode && !l.Dry {
-		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
+		if _, err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
 			log.Printf("[WARN] failed to send startup message, %v", err)
 		}
 	}
@@ -129,7 +129,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 				if err := l.adminHandler.MsgHandler(update); err != nil {
 					log.Printf("[WARN] failed to process admin chat message: %v", err)
-					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					_, _ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
 				}
 				continue
 			}
@@ -138,7 +138,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.CallbackQuery != nil {
 				if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
 					log.Printf("[WARN] failed to process callback: %v", err)
-					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					_, _ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
 				}
 				continue
 			}
@@ -202,7 +202,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 		case <-time.After(l.IdleDuration): // hit bots on idle timeout
 			resp := l.Bot.OnMessage(bot.Message{Text: "idle"})
-			if err := l.sendBotResponse(resp, l.chatID); err != nil {
+			if _, err := l.sendBotResponse(resp, l.chatID); err != nil {
 				log.Printf("[WARN] failed to respond on idle, %v", err)
 			}
 		}
@@ -288,10 +288,13 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// send response to the channel if allowed
+	spamReplyID := 0
 	if resp.Send && !l.NoSpamReply && !l.TrainingMode {
-		if err := l.sendBotResponse(resp, fromChat); err != nil {
+		var err error
+		if spamReplyID, err = l.sendBotResponse(resp, fromChat); err != nil {
 			log.Printf("[WARN] failed to respond on update, %v", err)
 		}
+		log.Printf("[DEBUG] response sent, spamReplyID: %d", spamReplyID)
 	}
 
 	errs := new(multierror.Error)
@@ -307,7 +310,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 		if l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) {
 			if l.TrainingMode {
-				l.adminHandler.ReportBan(banUserStr, msg)
+				l.adminHandler.ReportBan(banUserStr, msg, 0)
 			}
 			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
 			return nil
@@ -318,7 +321,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		if err := banUserOrChannel(banReq); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban %s: %w", banUserStr, err))
 		} else if l.adminChatID != 0 && msg.From.ID != 0 {
-			l.adminHandler.ReportBan(banUserStr, msg)
+			l.adminHandler.ReportBan(banUserStr, msg, spamReplyID)
 		}
 	}
 
@@ -375,9 +378,9 @@ func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update
 
 // sendBotResponse sends bot's answer to tg channel
 // actionText is a text for the button to unban user, optional
-func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) error {
+func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) (int, error) {
 	if !resp.Send {
-		return nil
+		return 0, nil
 	}
 
 	log.Printf("[DEBUG] bot response - %+v, reply-to:%d", strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo)
@@ -386,11 +389,11 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	tbMsg.DisableWebPagePreview = true
 	tbMsg.ReplyToMessageID = resp.ReplyTo
 
-	if err := send(tbMsg, l.TbAPI); err != nil {
-		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
+	tbResp, err := l.TbAPI.Send(tbMsg)
+	if err != nil {
+		return 0, fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
 	}
-
-	return nil
+	return tbResp.MessageID, nil
 }
 
 func (l *TelegramListener) getChatID(group string) (int64, error) {
