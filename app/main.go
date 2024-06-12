@@ -104,6 +104,7 @@ type options struct {
 		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
 		Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
 		Warn    string `long:"warn" env:"WARN" default:"You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!" description:"warning message"`
+		Restore string `long:"restore" env:"RESTORE" default:"" description:"restore message"`
 	} `group:"message" namespace:"message" env-namespace:"MESSAGE"`
 
 	Server struct {
@@ -270,6 +271,7 @@ func execute(ctx context.Context, opts options) error {
 		Bot:                     spamBot,
 		StartupMsg:              opts.Message.Startup,
 		WarnMsg:                 opts.Message.Warn,
+		RestoreMsg:              opts.Message.Restore,
 		NoSpamReply:             opts.NoSpamReply,
 		SuppressJoinMessage:     opts.SuppressJoinMessage,
 		SpamLogger:              spamLogger,
