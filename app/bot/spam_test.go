@@ -36,7 +36,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 		det.ResetCalls()
 		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}, Image: &Image{FileID: "123"}})
-		assert.Equal(t, Response{Text: `detected: "john" (1)`, Send: true, BanInterval: PermanentBanDuration,
+		assert.Equal(t, Response{Text: `detected`, Send: true, BanInterval: PermanentBanDuration,
 			User: User{ID: 1, Username: "john"}, DeleteReplyTo: true,
 			CheckResults: []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}}, resp)
 		assert.Equal(t, 1, len(det.CheckCalls()))
@@ -48,7 +48,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 	t.Run("spam detected, dry", func(t *testing.T) {
 		s := NewSpamFilter(ctx, det, SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry", Dry: true})
 		resp := s.OnMessage(Message{Text: "spam", From: User{ID: 1, Username: "john"}})
-		assert.Equal(t, `detected dry: "john" (1)`, resp.Text)
+		assert.Equal(t, `detected dry`, resp.Text)
 		assert.True(t, resp.Send)
 		assert.Equal(t, []spamcheck.Response{{Name: "something", Spam: true, Details: "some spam"}}, resp.CheckResults)
 	})
