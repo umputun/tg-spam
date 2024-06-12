@@ -99,7 +99,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
 		}
-		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
+		spamRespMsg := msgPrefix;
 		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration, CheckResults: checkResults,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
