@@ -59,6 +59,7 @@ Second, are messages the bot is sending. There are three messages user may want 
 - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
 - `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
 - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
+- `--message.restore=, [$MESSAGE_RESTORE]` - message sent to the group when original message is unbanned by admin, can be empty to supress reporting the original message
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter. 
 
@@ -281,6 +282,7 @@ message:
       --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
       --message.warn=               warn message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.restore=            restore message [$MESSAGE_RESTORE]
 
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]

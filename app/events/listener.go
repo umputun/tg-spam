@@ -35,6 +35,7 @@ type TelegramListener struct {
 	TestingIDs              []int64       // list of chat IDs to test the bot
 	StartupMsg              string        // message to send on startup to the primary chat
 	WarnMsg                 string        // message to send on warning
+	RestoreMsg			    string        // message to send on restore
 	NoSpamReply             bool          // do not reply on spam messages in the primary chat
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
@@ -97,7 +98,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg}
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg, restoreMsg: l.RestoreMsg}
 
 	adminForwardStatus := "enabled"
 	if l.DisableAdminSpamForward {

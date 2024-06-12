@@ -29,6 +29,7 @@ type admin struct {
 	softBan      bool // if true, the user not banned automatically, but only restricted
 	dry          bool
 	warnMsg      string
+	restoreMsg   string
 }
 
 const (
@@ -462,6 +463,31 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 			log.Printf("[WARN] failed to delete our spam reply message %d: %v", spamReplyID, err)
 		}
 	}
+
+	if a.restoreMsg != "" {
+		// send the original message text back to the main chat and meniton the original poster
+		fmtName := ""
+		if name != "" {
+			fmtName = fmt.Sprintf("[%s](tg://user?id=%d)", name, userID)
+		} else {
+			displayName, err := a.extractDisplayname(query.Message.Text)
+			if err != nil {
+				log.Printf("[DEBUG] failed to extract displayname from %q: %v", query.Message.Text, err)
+				fmtName = fmt.Sprintf("[%d](tg://user?id=%d)", userID, userID)
+			} else {
+				fmtName = fmt.Sprintf("[%s](tg://user?id=%d)", displayName, userID)
+			}
+		}
+
+		msgText := fmt.Sprintf("%s, %s\n\n%s", fmtName, a.restoreMsg, cleanMsg)
+		tbMsg := tbapi.NewMessage(a.primChatID, msgText)
+		tbMsg.ParseMode = tbapi.ModeMarkdown
+		tbMsg.DisableWebPagePreview = true
+		if err := send(tbMsg, a.tbAPI); err != nil {
+			return fmt.Errorf("can't send message to telegram %q: %w", tbMsg.Text, err)
+		}
+	}
+
 	return nil
 }
 
@@ -671,4 +697,16 @@ func (a *admin) extractUsername(text string) (string, error) {
 	}
 
 	return "", errors.New("username not found")
+}
+
+// extractDisplayname tries to extract the displayname from a ban message
+func (a *admin) extractDisplayname(text string) (string, error) {
+	// regex for plain format: {200312168 umputun Umputun U}
+	plainRegex := regexp.MustCompile(`\{\d+ \S* (.+?)\}`)
+	matches := plainRegex.FindStringSubmatch(text)
+	if len(matches) > 1 {
+		return matches[1], nil
+	}
+
+	return "", errors.New("displayname not found")
 }
