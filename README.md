@@ -121,6 +121,11 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
 
+**Multi-language words**
+
+Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
+
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -233,6 +238,7 @@ Success! The new status is: DISABLED. /help
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
+      --multi-lang=                 number of words in different languages to consider as spam, 0 to disable (default: 0) [$MULTI_LANG]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]

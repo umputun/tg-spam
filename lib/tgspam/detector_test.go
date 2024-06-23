@@ -582,6 +582,33 @@ func TestDetector_CheckWithMeta(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckMultiLang(t *testing.T) {
+	d := NewDetector(Config{MultiLangWords: 2, MaxAllowedEmoji: -1})
+	tests := []struct {
+		name  string
+		input string
+		count int
+		spam  bool
+	}{
+		{"No MultiLang", "Hello, world!", 0, false},
+		{"One MultiLang", "Hi therе", 1, false},
+		{"Two MultiLang", "Gооd moфning", 2, true},
+		{"WithCyrillic no MultiLang", "Привет  мир", 0, false},
+		{"WithCyrillic two MultiLang", "Привеt  мip", 2, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spam, cr := d.Check(spamcheck.Request{Msg: tt.input})
+			assert.Equal(t, tt.spam, spam)
+			require.Len(t, cr, 1)
+			assert.Equal(t, "multi-lingual", cr[0].Name)
+			assert.Equal(t, tt.spam, cr[0].Spam)
+			assert.Equal(t, fmt.Sprintf("%d/2", tt.count), cr[0].Details)
+		})
+	}
+}
+
 func TestDetector_UpdateSpam(t *testing.T) {
 	upd := &mocks.SampleUpdaterMock{
 		AppendFunc: func(msg string) error {

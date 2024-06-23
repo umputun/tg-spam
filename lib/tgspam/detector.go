@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -54,6 +55,7 @@ type Config struct {
 	HTTPClient          HTTPClient // http client to use for requests
 	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 	OpenAIVeto          bool       // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	MultiLangWords      int        // if true, check for number of multi-lingual words
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
@@ -139,6 +141,10 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for spam with CAS API if CAS API URL is set
 	if d.CasAPI != "" {
 		cr = append(cr, d.isCasSpam(req.UserID))
+	}
+
+	if d.MultiLangWords > 0 {
+		cr = append(cr, d.isMultiLang(req.Msg))
 	}
 
 	// check for message length exceed the minimum size, if min message length is set.
@@ -570,4 +576,59 @@ func (d *Detector) isStopWord(msg string) spamcheck.Response {
 func (d *Detector) isManyEmojis(msg string) spamcheck.Response {
 	count := countEmoji(msg)
 	return spamcheck.Response{Name: "emoji", Spam: count > d.MaxAllowedEmoji, Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
+}
+
+// isMultiLang checks if a given message contains more than MultiLangWords multi-lingual words.
+func (d *Detector) isMultiLang(msg string) spamcheck.Response {
+	isMultiLingual := func(word string) bool {
+		scripts := make(map[string]bool)
+		for _, r := range word {
+			switch {
+			case unicode.Is(unicode.Latin, r):
+				scripts["Latin"] = true
+			case unicode.Is(unicode.Cyrillic, r):
+				scripts["Cyrillic"] = true
+			case unicode.Is(unicode.Greek, r):
+				scripts["Greek"] = true
+			case unicode.Is(unicode.Han, r):
+				scripts["Han"] = true
+			case unicode.Is(unicode.Arabic, r):
+				scripts["Arabic"] = true
+			case unicode.Is(unicode.Hebrew, r):
+				scripts["Hebrew"] = true
+			case unicode.Is(unicode.Devanagari, r):
+				scripts["Devanagari"] = true
+			case unicode.Is(unicode.Thai, r):
+				scripts["Thai"] = true
+			case unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r):
+				scripts["Japanese"] = true
+			case unicode.Is(unicode.Hangul, r):
+				scripts["Korean"] = true
+			case unicode.Is(unicode.Bengali, r):
+				scripts["Bengali"] = true
+			case unicode.Is(unicode.Armenian, r):
+				scripts["Armenian"] = true
+			case unicode.Is(unicode.Georgian, r):
+				scripts["Georgian"] = true
+			case r == 'ї':
+				scripts["Ukrainian"] = true
+			}
+			if len(scripts) > 1 {
+				return true
+			}
+		}
+		return false
+	}
+
+	count := 0
+	words := strings.Fields(msg)
+	for _, word := range words {
+		if isMultiLingual(word) {
+			count++
+		}
+	}
+	if count >= d.MultiLangWords {
+		return spamcheck.Response{Name: "multi-lingual", Spam: true, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
+	}
+	return spamcheck.Response{Name: "multi-lingual", Spam: false, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
 }

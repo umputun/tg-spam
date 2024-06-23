@@ -69,6 +69,7 @@ type Settings struct {
 	MetaLinksLimit          int      `json:"meta_links_limit"`
 	MetaLinksOnly           bool     `json:"meta_links_only"`
 	MetaImageOnly           bool     `json:"meta_image_only"`
+	MultiLangLimit          int      `json:"multi_lang_limit"`
 	OpenAIEnabled           bool     `json:"openai_enabled"`
 	SamplesDataPath         string   `json:"samples_data_path"`
 	DynamicDataPath         string   `json:"dynamic_data_path"`
