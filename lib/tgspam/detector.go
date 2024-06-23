@@ -584,6 +584,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 		scripts := make(map[string]bool)
 		for _, r := range word {
 			switch {
+			case r == 'i': // skip 'i' because it's used in many languages
+				continue
 			case unicode.Is(unicode.Latin, r):
 				scripts["Latin"] = true
 			case unicode.Is(unicode.Cyrillic, r):
