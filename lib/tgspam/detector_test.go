@@ -595,6 +595,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		{"Two MultiLang", "Gооd moфning", 2, true},
 		{"WithCyrillic no MultiLang", "Привет  мир", 0, false},
 		{"WithCyrillic two MultiLang", "Привеt  мip", 2, true},
+		{"WithCyrillic and special symbols", "Привет мир -@#$%^&*(_", 0, false},
 	}
 
 	for _, tt := range tests {
