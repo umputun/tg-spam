@@ -705,7 +705,7 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 			}
 			return []storage.DetectedSpamInfo{
 				{
-					Text:      "spam1",
+					Text:      "spam1 12345'",
 					UserID:    12345,
 					UserName:  "user1",
 					Timestamp: time.Now(),
@@ -732,6 +732,8 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), "<h4>Detected Spam (2)</h4>")
+		assert.Contains(t, rr.Body.String(), "spam1 12345 ")
+		t.Log(rr.Body.String())
 	})
 
 	t.Run("detected spam reading failure", func(t *testing.T) {
