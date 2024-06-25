@@ -498,6 +498,7 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 		d.Text = strings.ReplaceAll(d.Text, "\r", " ")
 		d.Text = strings.ReplaceAll(d.Text, "\t", " ")
 		d.Text = strings.ReplaceAll(d.Text, "\"", " ")
+		d.Text = strings.ReplaceAll(d.Text, "\\", " ")
 		ds[i] = d
 	}
 
