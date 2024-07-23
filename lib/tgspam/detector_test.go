@@ -612,6 +612,14 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d/2", tt.count), cr[0].Details)
 		})
 	}
+
+	d.MultiLangWords = 0 // disable multi-lingual check
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spam, _ := d.Check(spamcheck.Request{Msg: tt.input})
+			assert.False(t, spam)
+		})
+	}
 }
 
 func TestDetector_UpdateSpam(t *testing.T) {
