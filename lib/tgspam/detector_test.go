@@ -332,6 +332,38 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckClassificatorNoHam(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
+	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 2, HamSamples: 0}, lr)
+	d.tokenizedSpam = nil // we don't need tokenizedSpam samples for this test
+	assert.Equal(t, 2, d.classifier.nAllDocument)
+	assert.Equal(t, 2, d.classifier.nDocumentByClass["spam"])
+	assert.Equal(t, 0, d.classifier.nDocumentByClass["ham"])
+	exp := map[string]map[spamClass]int{"win": {"spam": 1}, "free": {"spam": 1}, "iphone": {"spam": 1},
+		"lottery": {"spam": 1}, "prize": {"spam": 1}}
+	assert.Equal(t, exp, d.classifier.learningResults)
+
+	tests := []string{
+		"Hello, how are you?",
+		"Win a free iPhone now!",
+		"You won a free lottery iphone good day",
+		"You won a free lottery iphone have a good day",
+		"win a good day",
+		"free  blah another one user writes good things iPhone day",
+	}
+
+	for _, test := range tests {
+		t.Run(test, func(t *testing.T) {
+			spam, cr := d.Check(spamcheck.Request{Msg: test})
+			assert.False(t, spam)
+			require.Len(t, cr, 0)
+		})
+	}
+}
+
 func TestDetector_CheckOpenAI(t *testing.T) {
 	t.Run("with openai and first-only", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})

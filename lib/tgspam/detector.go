@@ -163,7 +163,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	// check for spam with classifier if classifier is loaded
-	if d.classifier.nAllDocument > 0 {
+	if d.classifier.nAllDocument > 0 && d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0 {
 		cr = append(cr, d.isSpamClassified(req.Msg))
 	}
 
