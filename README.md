@@ -79,6 +79,8 @@ Another useful feature is the ability to keep the list of approved users persist
 
 This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
 
+The analysis is active only if both ham and spam samples files are present and not empty. 
+
 **Spam message similarity check**
 
 This check uses provides samples files and active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.  
