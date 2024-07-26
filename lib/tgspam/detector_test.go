@@ -632,6 +632,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		{"WithCyrillic real example 2", "В поuске паpтнеров, заuнтересованных в пассuвном дoходе с затpатой мuнuмум лuчного временu. Все деталu в лс", 10, true},
 		{"WithCyrillic real example 3", "Всем привет, есть простая шабашка, подойдет любому. Даю 15 тысяч. Накину на проезд, сигареты, обед. ", 0, false},
 		{"WithCyrillic and i", "Привет  мiр", 0, false},
+		{"strange with cyrillic", "𝐇айди и𝐇𝐓и𝐦𝐇ы𝐞 ф𝐨𝐓𝐤и лю𝐛𝐨й д𝐞𝐁𝐲ш𝐤и ч𝐞𝐩𝐞𝟑 𝐛𝐨𝐓а", 7, true},
 	}
 
 	for _, tt := range tests {

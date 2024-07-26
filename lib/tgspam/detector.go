@@ -586,7 +586,7 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 			switch {
 			case r == 'i': // skip 'i' because it's used in many languages
 				continue
-			case unicode.Is(unicode.Latin, r):
+			case unicode.Is(unicode.Latin, r) || unicode.In(r, unicode.Number):
 				scripts["Latin"] = true
 			case unicode.Is(unicode.Cyrillic, r):
 				scripts["Cyrillic"] = true
@@ -614,6 +614,13 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 				scripts["Georgian"] = true
 			case r == 'ї':
 				scripts["Ukrainian"] = true
+			default:
+				// check for mathematical alphanumeric symbols and letterlike symbols
+				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
+					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
+					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
+					scripts["Mathematical"] = true
+				}
 			}
 			if len(scripts) > 1 {
 				return true
