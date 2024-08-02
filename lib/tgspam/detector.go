@@ -614,6 +614,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 				scripts["Georgian"] = true
 			case r == 'ї':
 				scripts["Ukrainian"] = true
+			case unicode.In(r, unicode.Coptic):
+				scripts["Coptic"] = true
 			default:
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
@@ -630,7 +632,9 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 	}
 
 	count := 0
-	words := strings.Fields(msg)
+	words := strings.FieldsFunc(msg, func(r rune) bool {
+		return unicode.IsSpace(r) || r == '-'
+	})
 	for _, word := range words {
 		if isMultiLingual(word) {
 			count++
