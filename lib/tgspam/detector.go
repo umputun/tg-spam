@@ -583,49 +583,41 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 	isMultiLingual := func(word string) bool {
 		scripts := make(map[string]bool)
 		for _, r := range word {
-			switch {
-			case r == 'i': // skip 'i' because it's used in many languages
+			if r == 'i' || unicode.IsSpace(r) { // skip 'i' (common in many langs) and spaces
 				continue
-			case unicode.Is(unicode.Latin, r) || unicode.In(r, unicode.Number):
-				scripts["Latin"] = true
-			case unicode.Is(unicode.Cyrillic, r):
-				scripts["Cyrillic"] = true
-			case unicode.Is(unicode.Greek, r):
-				scripts["Greek"] = true
-			case unicode.Is(unicode.Han, r):
-				scripts["Han"] = true
-			case unicode.Is(unicode.Arabic, r):
-				scripts["Arabic"] = true
-			case unicode.Is(unicode.Hebrew, r):
-				scripts["Hebrew"] = true
-			case unicode.Is(unicode.Devanagari, r):
-				scripts["Devanagari"] = true
-			case unicode.Is(unicode.Thai, r):
-				scripts["Thai"] = true
-			case unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r):
-				scripts["Japanese"] = true
-			case unicode.Is(unicode.Hangul, r):
-				scripts["Korean"] = true
-			case unicode.Is(unicode.Bengali, r):
-				scripts["Bengali"] = true
-			case unicode.Is(unicode.Armenian, r):
-				scripts["Armenian"] = true
-			case unicode.Is(unicode.Georgian, r):
-				scripts["Georgian"] = true
-			case r == 'ї':
-				scripts["Ukrainian"] = true
-			case unicode.In(r, unicode.Coptic):
-				scripts["Coptic"] = true
-			default:
+			}
+
+			scriptFound := false
+			for name, table := range unicode.Scripts {
+				if unicode.Is(table, r) {
+					if name != "Common" && name != "Inherited" {
+						scripts[name] = true
+						if len(scripts) > 1 {
+							return true
+						}
+						scriptFound = true
+					}
+					break
+				}
+			}
+
+			// if no specific script was found, it might be a symbol or punctuation
+			if !scriptFound {
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
 					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
 					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
 					scripts["Mathematical"] = true
+					if len(scripts) > 1 {
+						return true
+					}
+				} else if !unicode.IsPunct(r) && !unicode.IsSymbol(r) {
+					// if it's not punctuation or a symbol, count it as "Other"
+					scripts["Other"] = true
+					if len(scripts) > 1 {
+						return true
+					}
 				}
-			}
-			if len(scripts) > 1 {
-				return true
 			}
 		}
 		return false

@@ -622,7 +622,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		count int
 		spam  bool
 	}{
-		{"No MultiLang", "Hello, world!", 0, false},
+		{"No MultiLang", "Hello, world!\n 12345-980! _", 0, false},
 		{"One MultiLang", "Hi therе", 1, false},
 		{"Two MultiLang", "Gооd moфning", 2, true},
 		{"WithCyrillic no MultiLang", "Привет  мир", 0, false},
@@ -633,7 +633,8 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		{"WithCyrillic real example 3", "Всем привет, есть простая шабашка, подойдет любому. Даю 15 тысяч. Накину на проезд, сигареты, обед. ", 0, false},
 		{"WithCyrillic and i", "Привет  мiр", 0, false},
 		{"strange with cyrillic", "𝐇айди и𝐇𝐓и𝐦𝐇ы𝐞 ф𝐨𝐓𝐤и лю𝐛𝐨й д𝐞𝐁𝐲ш𝐤и ч𝐞𝐩𝐞𝟑 𝐛𝐨𝐓а", 7, true},
-		{"coptic capital leter", "✔️ⲠⲢⲞⳜⲈЙ-ⲖЮⳜⲨЮ-ⲆⲈⲂⲨⲰⲔⲨ...\n\nⲎⲀЙⲆⳘ ⲤⲔⲢЫⲦⲈ ⲂⳘⲆⲞⲤЫ-ⲪⲞⲦⲞⳠⲔⳘ ⳘⲎⲦⳘⲘⲎⲞⲄⲞ-ⲬⲀⲢⲀⲔⲦⲈⲢⲀ..\n@INTIM0CHKI110DE\n\n", 5, true},
+		{"coptic capital leter", "✔️ⲠⲢⲞⳜⲈЙ-ⲖЮⳜⲨЮ-ⲆⲈⲂⲨⲰⲔⲨ...\n\nⲎⲀЙⲆⳘ ⲤⲔⲢЫⲦⲈ ⲂⳘⲆⲞⲤЫ-ⲪⲞⲦⲞⳠⲔⳘ ⳘⲎⲦⳘⲘⲎⲞⲄⲞ-ⲬⲀⲢⲀⲔⲦⲈⲢⲀ..\n@INTIM0CHKI110DE\n\n", 6, true},
+		{"mix with gothic, cyrillic and greek", "𐌿РОВЕРЬ ЛЮБУЮ НА НАЛИЧИЕ ПОШЛЫХ ΦΟͲΟ-ΒͶДξΟ, 🍑НАБЕРИ В Т𐌲 𐌿ОИСКЕ СЛОВО: 30GRL", 5, true},
 	}
 
 	for _, tt := range tests {
