@@ -26,6 +26,53 @@ func TestNewLocator(t *testing.T) {
 	locator.Close()
 }
 
+func TestMessageTableMigrate(t *testing.T) {
+	db, err := sqlx.Connect("sqlite", ":memory:")
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	// create a table with the old schema
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
+		hash TEXT PRIMARY KEY,
+		time TIMESTAMP,
+		chat_id INTEGER,
+		user_id INTEGER,
+		user_name TEXT,
+		msg_id INTEGER
+	)`)
+	require.NoError(t, err)
+
+	err = migrateMessageTable(db)
+	require.NoError(t, err)
+
+	// check if the table was migrated
+	var exists int
+	err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='messages'")
+	require.NoError(t, err)
+	assert.Equal(t, 1, exists)
+
+	// check if the column was added
+	err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='deleted'")
+	require.NoError(t, err)
+	assert.Equal(t, 1, exists)
+
+	// check if old primary key was removed
+	err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='hash' and pk != 0")
+	require.NoError(t, err)
+	assert.Equal(t, 0, exists)
+
+	// check new primary key
+	err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='chat_id' and pk != 0")
+	require.NoError(t, err)
+	assert.Equal(t, 1, exists)
+
+	err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='msg_id' and pk != 0")
+	require.NoError(t, err)
+	assert.Equal(t, 1, exists)
+
+}
+
 func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 	locator := newTestLocator(t)
 
