@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -39,13 +41,21 @@ type SpamData struct {
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
 func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS messages (
-		hash TEXT PRIMARY KEY,
+	// migrate message table if necessary
+	err := migrateMessageTable(db)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
+		hash TEXT,
 		time TIMESTAMP,
 		chat_id INTEGER,
 		user_id INTEGER,
 		user_name TEXT,
-		msg_id INTEGER
+		msg_id INTEGER,
+		deleted INT default 0,
+        PRIMARY KEY (chat_id, msg_id)
 	)`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create messages table: %w", err)
@@ -127,17 +137,26 @@ func (l *Locator) AddSpam(userID int64, checks []spamcheck.Response) error {
 	return l.cleanupSpam()
 }
 
-// Message returns message MsgMeta for given msg
-// this allows to match messages from admin chat (only text available) to the original message
-func (l *Locator) Message(msg string) (MsgMeta, bool) {
-	var meta MsgMeta
+// Messages returns messages MsgMeta for given msg
+// this allows to match messages from admin chat (only text available) to the original messages
+func (l *Locator) Messages(msg string) ([]MsgMeta, bool) {
+	var meta []MsgMeta
 	hash := l.MsgHash(msg)
-	err := l.db.Get(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, hash)
+	err := l.db.Select(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ? and deleted == 0`, hash)
 	if err != nil {
-		log.Printf("[DEBUG] failed to find message by hash %q: %v", hash, err)
-		return MsgMeta{}, false
+		log.Printf("[DEBUG] failed to find messages by hash %q: %v", hash, err)
+		return []MsgMeta{}, false
 	}
-	return meta, true
+	return meta, len(meta) > 0
+}
+
+// DeleteMessage removes message by chatID and msgID
+func (l *Locator) DeleteMessage(chatID int64, msgID int) error {
+	_, err := l.db.Exec(`UPDATE messages SET deleted = 1 WHERE chat_id = ? and msg_id = ?`, chatID, msgID)
+	if err != nil {
+		return fmt.Errorf("failed to set message as deleted: %w", err)
+	}
+	return nil
 }
 
 // UserNameByID returns username by user id. Returns empty string if not found
@@ -153,6 +172,11 @@ func (l *Locator) UserNameByID(userID int64) string {
 
 // UserIDByName returns user id by username. Returns 0 if not found
 func (l *Locator) UserIDByName(userName string) int64 {
+	// many users have empty usernames, so we need to ignore them
+	if strings.TrimSpace(userName) == "" {
+		log.Printf("[DEBUG] failed to find user id by empty name")
+		return 0
+	}
 	var userID int64
 	err := l.db.Get(&userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
 	if err != nil {
@@ -211,4 +235,68 @@ func (m MsgMeta) String() string {
 
 func (s SpamData) String() string {
 	return fmt.Sprintf("{time: %s, checks: %+v}", s.Time.Format(time.RFC3339), s.Checks)
+}
+
+func migrateMessageTable(db *sqlx.DB) error {
+	// check if table not exists or hash isn't a primary key
+	var pk int
+	err := db.Get(&pk, `SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'hash' and pk != 0`)
+	if err != nil {
+		return fmt.Errorf("failed to check for hash primary key: %w", err)
+	}
+	if pk == 0 {
+		// no need to migrate
+		return nil
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// drop old tmp table
+	_, err = tx.Exec(`DROP TABLE IF EXISTS messages_dg_tmp`)
+	if err != nil {
+		return fmt.Errorf("failed to drop messages_dg_tmp table: %w", err)
+	}
+
+	// create new table
+	_, err = tx.Exec(`CREATE TABLE messages_dg_tmp (
+    		hash TEXT,
+    		time TIMESTAMP,
+    		chat_id INTEGER,
+    		user_id INTEGER,
+    		user_name TEXT,
+    		msg_id INTEGER,
+    		deleted INT default 0,
+    		PRIMARY KEY (chat_id, msg_id)
+    	)`)
+	if err != nil {
+		return fmt.Errorf("failed to create messages_dg_tmp table: %w", err)
+	}
+	// copy data
+	_, err = tx.Exec(`INSERT INTO messages_dg_tmp (hash, time, chat_id, user_id, user_name, msg_id)
+    	SELECT hash, time, chat_id, user_id, user_name, msg_id FROM messages`)
+	if err != nil {
+		return fmt.Errorf("failed to copy data to messages_dg_tmp: %w", err)
+	}
+	// drop old table
+	_, err = tx.Exec(`DROP TABLE messages`)
+	if err != nil {
+		return fmt.Errorf("failed to drop messages table: %w", err)
+	}
+	// rename new table
+	_, err = tx.Exec(`ALTER TABLE messages_dg_tmp RENAME TO messages`)
+	if err != nil {
+		return fmt.Errorf("failed to rename messages_dg_tmp to messages: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

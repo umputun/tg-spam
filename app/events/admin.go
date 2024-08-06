@@ -76,62 +76,82 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
-	info, ok := a.locator.Message(msgTxt)
+	infos, ok := a.locator.Messages(msgTxt)
 	if !ok {
 		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
 	}
 
-	log.Printf("[DEBUG] locator found message %s", info)
+	log.Printf("[DEBUG] locator found messages %s", infos)
 	errs := new(multierror.Error)
 
-	// check if the forwarded message will ban a super-user and ignore it
-	if info.UserName != "" && a.superUsers.IsSuper(info.UserName) {
-		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID)
+	users := make(map[int64]string)
+
+	for _, info := range infos {
+		// check if the forwarded message will ban a super-user and ignore it
+		if info.UserName != "" && a.superUsers.IsSuper(info.UserName) {
+			errs = multierror.Append(errs, fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID))
+			continue
+		}
+
+		users[info.UserID] = info.UserName
+
+		if a.dry {
+			continue
+		}
+
+		// delete message
+		if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: info.MsgID}); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
+		} else {
+			log.Printf("[INFO] message %d deleted", info.MsgID)
+			// delete from locator
+			if err := a.locator.DeleteMessage(a.primChatID, info.MsgID); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d from locator: %w", info.MsgID, err))
+			}
+		}
 	}
 
-	// remove user from the approved list and from storage
-	if err := a.bot.RemoveApprovedUser(info.UserID); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", info.UserID, err))
+	if !a.dry {
+		// update spam samples
+		if err := a.bot.UpdateSpam(msgTxt); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to update spam for %q: %w", msgTxt, err))
+		}
 	}
 
-	// make a message with spam info and send to admin chat
-	spamInfo := []string{}
-	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.UserID}})
-	spamInfoText := "**can't get spam info**"
-	for _, check := range resp.CheckResults {
-		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
-	}
-	if len(spamInfo) > 0 {
-		spamInfoText = strings.Join(spamInfo, "\n")
-	}
-	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
-		escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText)
-	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
-	}
+	for userID, userName := range users {
+		// remove user from the approved list and from storage
+		if err := a.bot.RemoveApprovedUser(userID); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", userID, err))
+		}
 
-	if a.dry {
-		return errs.ErrorOrNil()
-	}
+		// make a message with spam info and send to admin chat
+		spamInfo := []string{}
+		resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: userID}})
+		spamInfoText := "**can't get spam info**"
+		for _, check := range resp.CheckResults {
+			spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+		}
+		if len(spamInfo) > 0 {
+			spamInfoText = strings.Join(spamInfo, "\n")
+		}
+		newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
+			escapeMarkDownV1Text(userName), userID, spamInfoText)
+		if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
+		}
 
-	// update spam samples
-	if err := a.bot.UpdateSpam(msgTxt); err != nil {
-		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
-	}
+		if a.dry {
+			continue
+		}
 
-	// delete message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: info.MsgID}); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
-	} else {
-		log.Printf("[INFO] message %d deleted", info.MsgID)
-	}
+		// ban user
+		banReq := banRequest{duration: bot.PermanentBanDuration, userID: userID, chatID: a.primChatID,
+			tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: update.Message.ForwardSenderName}
 
-	// ban user
-	banReq := banRequest{duration: bot.PermanentBanDuration, userID: info.UserID, chatID: a.primChatID,
-		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: update.Message.ForwardSenderName}
+		if err := banUserOrChannel(banReq); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
+		}
 
-	if err := banUserOrChannel(banReq); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
 	}
 
 	return errs.ErrorOrNil()

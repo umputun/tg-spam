@@ -37,9 +37,10 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 
 	require.NoError(t, locator.AddMessage(msg, chatID, userID, userName, msgID))
 
-	retrievedMsg, found := locator.Message(msg)
+	retrievedMsgs, found := locator.Messages(msg)
 	require.True(t, found)
-	assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsg)
+	require.Len(t, retrievedMsgs, 1)
+	assert.Equal(t, MsgMeta{Time: retrievedMsgs[0].Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsgs[0])
 
 	res := locator.UserNameByID(userID)
 	assert.Equal(t, userName, res)
@@ -52,6 +53,39 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 
 	id = locator.UserIDByName("user2")
 	assert.Equal(t, int64(0), id)
+
+	id = locator.UserIDByName("")
+	assert.Equal(t, int64(0), id)
+}
+
+func TestLocator_AddAndRetrieveMessageWithEmptyUsername(t *testing.T) {
+	locator := newTestLocator(t)
+
+	msg := "test message"
+	chatID := int64(123)
+	userID := int64(456)
+	userName := ""
+	msgID := 789
+
+	require.NoError(t, locator.AddMessage(msg, chatID, userID, userName, msgID))
+
+	retrievedMsgs, found := locator.Messages(msg)
+	require.True(t, found)
+	require.Len(t, retrievedMsgs, 1)
+	assert.Equal(t, MsgMeta{Time: retrievedMsgs[0].Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsgs[0])
+
+	res := locator.UserNameByID(userID)
+	assert.Equal(t, userName, res)
+
+	res = locator.UserNameByID(123456)
+	assert.Equal(t, "", res)
+
+	id := locator.UserIDByName(userName)
+	assert.Equal(t, int64(0), id)
+
+	id = locator.UserIDByName("user2")
+	assert.Equal(t, int64(0), id)
+
 }
 
 func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
@@ -64,9 +98,56 @@ func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		retrievedMsg, found := locator.Message(fmt.Sprintf("test message %d", i))
+		retrievedMsgs, found := locator.Messages(fmt.Sprintf("test message %d", i))
 		require.True(t, found)
-		assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsg)
+		require.Len(t, retrievedMsgs, 1)
+		assert.Equal(t, MsgMeta{Time: retrievedMsgs[0].Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsgs[0])
+	}
+}
+
+func TestLocator_AddAndRetrieveSameMessage(t *testing.T) {
+	locator := newTestLocator(t)
+
+	// add 100 messages for 10 users
+	for i := 0; i < 100; i++ {
+		userID := int64(i%10 + 1)
+		locator.AddMessage("test message", 1234, userID, "name"+strconv.Itoa(int(userID)), i)
+	}
+
+	retrievedMsgs, found := locator.Messages("test message")
+	require.True(t, found)
+	require.Len(t, retrievedMsgs, 100)
+	for i := 0; i < 100; i++ {
+		assert.Equal(t, MsgMeta{Time: retrievedMsgs[i].Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsgs[i])
+	}
+}
+
+func TestLocator_AddAndDeleteAndRetrieveManyMessage(t *testing.T) {
+	locator := newTestLocator(t)
+
+	// add 100 messages for 10 users
+	for i := 0; i < 100; i++ {
+		userID := int64(i%10 + 1)
+		locator.AddMessage(fmt.Sprintf("test message %d", i), 1234, userID, "name"+strconv.Itoa(int(userID)), i)
+	}
+
+	//delete every 3rd message
+	for i := 0; i < 100; i++ {
+		if i%3 == 0 {
+			locator.DeleteMessage(1234, i)
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		retrievedMsgs, found := locator.Messages(fmt.Sprintf("test message %d", i))
+		if i%3 == 0 {
+			require.False(t, found)
+			require.Len(t, retrievedMsgs, 0)
+			continue
+		}
+		require.True(t, found)
+		require.Len(t, retrievedMsgs, 1)
+		assert.Equal(t, MsgMeta{Time: retrievedMsgs[0].Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsgs[0])
 	}
 }
 
@@ -94,7 +175,7 @@ func TestLocator_CleanupLogic(t *testing.T) {
 		"old_hash1", oldTime, int64(111), int64(222), "old_user", 333)
 	require.NoError(t, err)
 	_, err = locator.db.Exec(`INSERT INTO messages (hash, time, chat_id, user_id, user_name, msg_id) VALUES (?, ?, ?, ?, ?, ?)`,
-		"old_hash2", oldTime, int64(111), int64(222), "old_user", 333)
+		"old_hash2", oldTime, int64(111), int64(222), "old_user", 334)
 	require.NoError(t, err)
 
 	_, err = locator.db.Exec(`INSERT INTO spam (user_id, time, checks) VALUES (?, ?, ?)`,
@@ -119,7 +200,7 @@ func TestLocator_RetrieveNonExistentMessage(t *testing.T) {
 	locator := newTestLocator(t)
 
 	msg := "non_existent_message"
-	_, found := locator.Message(msg)
+	_, found := locator.Messages(msg)
 	assert.False(t, found, "expected to not find a non-existent message")
 
 	_, found = locator.Spam(1234)
