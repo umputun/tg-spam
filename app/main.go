@@ -588,7 +588,7 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 	log.Printf("[INFO] logger enabled for %s, max size %dM", opts.Logger.FileName, maxSize)
 	return &lumberjack.Logger{
 		Filename:   opts.Logger.FileName,
-		MaxSize:    int(maxSize), // in MB
+		MaxSize:    int(maxSize), //nolint:gosec // size in MB not that big to cause overflow
 		MaxBackups: opts.Logger.MaxBackups,
 		Compress:   true,
 		LocalTime:  true,
