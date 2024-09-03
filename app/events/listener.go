@@ -36,6 +36,7 @@ type TelegramListener struct {
 	StartupMsg              string        // message to send on startup to the primary chat
 	WarnMsg                 string        // message to send on warning
 	NoSpamReply             bool          // do not reply on spam messages in the primary chat
+	SuppressJoinMessage     bool          // delete join message when kick out user
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
@@ -150,6 +151,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// save join messages to locator even if SuppressJoinMessage is set to false
 			if update.Message.NewChatMembers != nil {
 				err := l.procNewChatMemberMessage(update)
 				if err != nil {
@@ -159,9 +161,11 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			if update.Message.LeftChatMember != nil {
-				err := l.procLeftChatMemberMessage(update)
-				if err != nil {
-					log.Printf("[WARN] failed to process left chat member: %v", err)
+				if l.SuppressJoinMessage {
+					err := l.procLeftChatMemberMessage(update)
+					if err != nil {
+						log.Printf("[WARN] failed to process left chat member: %v", err)
+					}
 				}
 				continue
 			}
@@ -205,10 +209,17 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 }
 
+// procNewChatMemberMessage saves new chat member message to locator. It is used to delete the message if the user kicked out
 func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 	fromChat := update.Message.Chat.ID
 	// ignore messages from other chats except the one we are monitor and ones from the test list
 	if !l.isChatAllowed(fromChat) {
+		return nil
+	}
+
+	// ignore multiple new chat members, because we can't delete this message if one of them kicked out
+	if len(update.Message.NewChatMembers) > 1 {
+		log.Printf("[DEBUG] multiple new chat members, ignored")
 		return nil
 	}
 
@@ -224,6 +235,7 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 	return errs.ErrorOrNil()
 }
 
+// procLeftChatMemberMessage deletes the message about new chat member if the user kicked out
 func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error {
 	fromChat := update.Message.Chat.ID
 	// ignore messages from other chats except the one we are monitor and ones from the test list

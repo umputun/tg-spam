@@ -1294,11 +1294,12 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 	defer teardown()
 
 	l := TelegramListener{
-		TbAPI:      mockAPI,
-		Bot:        b,
-		SuperUsers: SuperUsers{"admin"},
-		Group:      "gr",
-		Locator:    locator,
+		TbAPI:               mockAPI,
+		Bot:                 b,
+		SuperUsers:          SuperUsers{"admin"},
+		Group:               "gr",
+		Locator:             locator,
+		SuppressJoinMessage: true,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
@@ -1376,6 +1377,38 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		require.Equal(t, 1, len(mockAPI.RequestCalls()))
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 		assert.Equal(t, 21, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+	})
+
+	//nolint
+	t.Run("user has left the chat by admin, we have a message about joining, SuppressJoinMessage = false", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 999},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		suppressJoinMessage := l.SuppressJoinMessage
+		defer func() {
+			l.SuppressJoinMessage = suppressJoinMessage
+		}()
+		l.SuppressJoinMessage = false
+
+		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		require.NoError(t, err)
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err = l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 0, len(mockAPI.RequestCalls()))
 	})
 
 	//nolint
@@ -1632,12 +1665,11 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                    string
-		update                  tbapi.Update
-		expectedError           bool
-		expectedAddMessageArgs  []addMessageArgs
-		expectedAddMessageCalls int
-		AddMessageMockReturn    error
+		name                   string
+		update                 tbapi.Update
+		expectedError          bool
+		expectedAddMessageArgs []addMessageArgs
+		AddMessageMockReturn   error
 	}{
 		{
 			name: "new chat member added by admin successfully",
@@ -1661,7 +1693,6 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 					MsgID:    22,
 				},
 			},
-			expectedAddMessageCalls: 1,
 		},
 		{
 			name: "new chat member self joined successfully",
@@ -1685,10 +1716,9 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 					MsgID:    22,
 				},
 			},
-			expectedAddMessageCalls: 1,
 		},
 		{
-			name: "2 new chat member added successfully",
+			name: "2 new chat member joined successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
 					Chat: &tbapi.Chat{ID: 123},
@@ -1700,24 +1730,8 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 					MessageID: 22,
 				},
 			},
-			expectedError: false,
-			expectedAddMessageArgs: []addMessageArgs{
-				{
-					Msg:      "new_123_88",
-					ChatID:   123,
-					UserID:   88,
-					UserName: "",
-					MsgID:    22,
-				},
-				{
-					Msg:      "new_123_99",
-					ChatID:   123,
-					UserID:   99,
-					UserName: "",
-					MsgID:    22,
-				},
-			},
-			expectedAddMessageCalls: 2,
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
 		},
 		{
 			name: "empty chat members in the message",
@@ -1727,9 +1741,8 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 					NewChatMembers: []tbapi.User{},
 				},
 			},
-			expectedError:           false,
-			expectedAddMessageArgs:  []addMessageArgs{},
-			expectedAddMessageCalls: 0,
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
 		},
 		{
 			name: "message from unauthorized chat",
@@ -1741,9 +1754,8 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 					},
 				},
 			},
-			expectedError:           false,
-			expectedAddMessageArgs:  []addMessageArgs{},
-			expectedAddMessageCalls: 0,
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
 		},
 	}
 

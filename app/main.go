@@ -56,8 +56,9 @@ type options struct {
 		MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
 	} `group:"logger" namespace:"logger" env-namespace:"LOGGER"`
 
-	SuperUsers  events.SuperUsers `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
-	NoSpamReply bool              `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
+	SuperUsers          events.SuperUsers `long:"super" env:"SUPER_USER" env-delim:"," description:"super-users"`
+	NoSpamReply         bool              `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
+	SuppressJoinMessage bool              `long:"suppress-join-message" env:"SUPPRESS_JOIN_MESSAGE" description:"delete join message if user is kicked out"`
 
 	CAS struct {
 		API     string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
@@ -267,6 +268,7 @@ func execute(ctx context.Context, opts options) error {
 		StartupMsg:              opts.Message.Startup,
 		WarnMsg:                 opts.Message.Warn,
 		NoSpamReply:             opts.NoSpamReply,
+		SuppressJoinMessage:     opts.SuppressJoinMessage,
 		SpamLogger:              spamLogger,
 		AdminGroup:              opts.AdminGroup,
 		TestingIDs:              opts.TestingIDs,
@@ -278,9 +280,10 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" dry: %v, training: %v}",
+		" suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.Dry, tgListener.TrainingMode)
+		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
+		tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil {
