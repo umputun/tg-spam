@@ -350,8 +350,7 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 // callback data: +userID:msgID
 func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	// clear keyboard and update message text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_",
-		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_", query.From.UserName, a.sinceQuery(query))
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
@@ -442,8 +441,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// Create the original forwarded message with new indication of "unbanned" and an empty keyboard
-	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_",
-		query.From.UserName, time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second))
+	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, a.sinceQuery(query))
 	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
@@ -654,4 +652,13 @@ func (a *admin) extractUsername(text string) (string, error) {
 	}
 
 	return "", errors.New("username not found")
+}
+
+// sinceQuery calculates the time elapsed since the message of the query was sent
+func (a *admin) sinceQuery(query *tbapi.CallbackQuery) time.Duration {
+	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	if res < 0 { // negative duration possible if clock is not in sync with tg times and a message is from the future
+		res = 0
+	}
+	return res
 }
