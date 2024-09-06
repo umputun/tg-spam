@@ -218,18 +218,17 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 	}
 
 	// ignore multiple new chat members, because we can't delete this message if one of them kicked out
-	if len(update.Message.NewChatMembers) > 1 {
-		log.Printf("[DEBUG] multiple new chat members, ignored")
+	if len(update.Message.NewChatMembers) != 1 {
+		log.Printf("[DEBUG] we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers))
 		return nil
 	}
 
 	errs := new(multierror.Error)
 
-	for _, member := range update.Message.NewChatMembers {
-		msg := fmt.Sprintf("new_%d_%d", fromChat, member.ID)
-		if err := l.Locator.AddMessage(msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
-		}
+	member := update.Message.NewChatMembers[0]
+	msg := fmt.Sprintf("new_%d_%d", fromChat, member.ID)
+	if err := l.Locator.AddMessage(msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
 	}
 
 	return errs.ErrorOrNil()
