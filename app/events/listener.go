@@ -217,7 +217,6 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 		return nil
 	}
 
-	// ignore multiple new chat members, because we can't delete this message if one of them kicked out
 	if len(update.Message.NewChatMembers) != 1 {
 		log.Printf("[DEBUG] we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers))
 		return nil
