@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -1218,6 +1219,236 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
 }
 
+func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			return tbapi.Chat{ID: 123}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+	b := &mocks.BotMock{}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:      mockAPI,
+		Bot:        b,
+		SuperUsers: SuperUsers{"admin"},
+		Group:      "gr",
+		Locator:    locator,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat:           &tbapi.Chat{ID: 123},
+			From:           &tbapi.User{UserName: "new_user", ID: 321},
+			NewChatMembers: []tbapi.User{{UserName: "new_user", ID: 321}},
+			MessageID:      22,
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+
+	meta, found := l.Locator.Message("new_123_321")
+	assert.True(t, found)
+	assert.Equal(t, int64(321), meta.UserID)
+	assert.Equal(t, 22, meta.MsgID)
+	assert.Equal(t, "", meta.UserName)
+	assert.Equal(t, int64(123), meta.ChatID)
+
+}
+
+func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+			return tbapi.Chat{ID: 123}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{}, nil
+		},
+	}
+	b := &mocks.BotMock{}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:               mockAPI,
+		Bot:                 b,
+		SuperUsers:          SuperUsers{"admin"},
+		Group:               "gr",
+		Locator:             locator,
+		SuppressJoinMessage: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
+	defer cancel()
+
+	//nolint
+	t.Run("user has left the chat by himself", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 321},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 0, len(mockAPI.RequestCalls()))
+	})
+
+	//nolint
+	t.Run("user has left the chat by admin, we don't have a message about joining", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 999},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 0, len(mockAPI.RequestCalls()))
+	})
+
+	//nolint
+	t.Run("user has left the chat by admin, we have a message about joining", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 999},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		require.NoError(t, err)
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err = l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
+		assert.Equal(t, 21, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+	})
+
+	//nolint
+	t.Run("user has left the chat by admin, we have a message about joining, SuppressJoinMessage = false", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 999},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		suppressJoinMessage := l.SuppressJoinMessage
+		defer func() {
+			l.SuppressJoinMessage = suppressJoinMessage
+		}()
+		l.SuppressJoinMessage = false
+
+		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		require.NoError(t, err)
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err = l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 0, len(mockAPI.RequestCalls()))
+	})
+
+	//nolint
+	t.Run("error from procLeftChatMemberMessage", func(t *testing.T) {
+		mockAPI.ResetCalls()
+
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:           &tbapi.Chat{ID: 123},
+				From:           &tbapi.User{UserName: "new_user", ID: 999},
+				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
+				MessageID:      22,
+			},
+		}
+
+		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		require.NoError(t, err)
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+		oldRequestFunc := mockAPI.RequestFunc
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return nil, errors.New("some error")
+		}
+		defer func() {
+			mockAPI.RequestFunc = oldRequestFunc
+		}()
+
+		err = l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
+		assert.Equal(t, 21, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+	})
+
+}
+
 func TestTelegramListener_isChatAllowed(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -1419,6 +1650,277 @@ func TestUpdateSupers(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers)
+			}
+		})
+	}
+}
+
+func TestProcNewChatMemberMessage(t *testing.T) {
+	type addMessageArgs struct {
+		Msg      string
+		ChatID   int64
+		UserID   int64
+		UserName string
+		MsgID    int
+	}
+
+	tests := []struct {
+		name                   string
+		update                 tbapi.Update
+		expectedError          bool
+		expectedAddMessageArgs []addMessageArgs
+		AddMessageMockReturn   error
+	}{
+		{
+			name: "new chat member added by admin successfully",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: &tbapi.Chat{ID: 123},
+					From: &tbapi.User{UserName: "superuser1", ID: 77},
+					NewChatMembers: []tbapi.User{
+						{ID: 88, UserName: "user1"},
+					},
+					MessageID: 22,
+				},
+			},
+			expectedError: false,
+			expectedAddMessageArgs: []addMessageArgs{
+				{
+					Msg:      "new_123_88",
+					ChatID:   123,
+					UserID:   88,
+					UserName: "",
+					MsgID:    22,
+				},
+			},
+		},
+		{
+			name: "new chat member self joined successfully",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: &tbapi.Chat{ID: 123},
+					From: &tbapi.User{UserName: "user1", ID: 88},
+					NewChatMembers: []tbapi.User{
+						{ID: 88, UserName: "user1"},
+					},
+					MessageID: 22,
+				},
+			},
+			expectedError: false,
+			expectedAddMessageArgs: []addMessageArgs{
+				{
+					Msg:      "new_123_88",
+					ChatID:   123,
+					UserID:   88,
+					UserName: "",
+					MsgID:    22,
+				},
+			},
+		},
+		{
+			name: "2 new chat member joined successfully",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: &tbapi.Chat{ID: 123},
+					From: &tbapi.User{UserName: "superuser1", ID: 77},
+					NewChatMembers: []tbapi.User{
+						{ID: 88, UserName: "user1"},
+						{ID: 99, UserName: "user1"},
+					},
+					MessageID: 22,
+				},
+			},
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
+		},
+		{
+			name: "empty chat members in the message",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 123},
+					NewChatMembers: []tbapi.User{},
+				},
+			},
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
+		},
+		{
+			name: "message from unauthorized chat",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: &tbapi.Chat{ID: 999},
+					NewChatMembers: []tbapi.User{
+						{ID: 88, UserName: "user1"},
+					},
+				},
+			},
+			expectedError:          false,
+			expectedAddMessageArgs: []addMessageArgs{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := &TelegramListener{
+				Locator: locator,
+				chatID:  123,
+			}
+
+			err := l.procNewChatMemberMessage(tt.update)
+			if tt.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			for _, args := range tt.expectedAddMessageArgs {
+				msgMeta, found := l.Locator.Message(args.Msg)
+				assert.True(t, found)
+				assert.Equal(t, args.ChatID, msgMeta.ChatID)
+				assert.Equal(t, args.UserID, msgMeta.UserID)
+				assert.Equal(t, args.UserName, msgMeta.UserName)
+				assert.Equal(t, args.MsgID, msgMeta.MsgID)
+			}
+		})
+	}
+}
+
+func TestProcLeftChatMemberMessage(t *testing.T) {
+	type deleteMessageArgs struct {
+		ChatID int64
+		MsgID  int
+	}
+
+	tests := []struct {
+		name                       string
+		update                     tbapi.Update
+		expectedError              bool
+		expectedDeleteMessageArgs  deleteMessageArgs
+		expectedDeleteMessageCalls int
+		returnErrorInRequest       bool
+	}{
+		{
+			name: "new chat member kick by admin successfully",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 123},
+					From:           &tbapi.User{UserName: "superuser1", ID: 77},
+					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
+					MessageID:      22,
+				},
+			},
+			expectedError: false,
+			expectedDeleteMessageArgs: deleteMessageArgs{
+				ChatID: 123,
+				MsgID:  20,
+			},
+			expectedDeleteMessageCalls: 1,
+		},
+		{
+			name: "new chat member left self successfully",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 123},
+					From:           &tbapi.User{UserName: "user1", ID: 88},
+					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
+					MessageID:      22,
+				},
+			},
+			expectedError:              false,
+			expectedDeleteMessageArgs:  deleteMessageArgs{},
+			expectedDeleteMessageCalls: 0,
+		},
+		{
+			name: "message from unauthorized chat",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 999},
+					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
+				},
+			},
+			expectedError:              false,
+			expectedDeleteMessageArgs:  deleteMessageArgs{},
+			expectedDeleteMessageCalls: 0,
+		},
+		{
+			name: "no new message in the chat found",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 123},
+					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
+					From:           &tbapi.User{ID: 77, UserName: "superuser1"},
+				},
+			},
+			expectedError:              false,
+			expectedDeleteMessageArgs:  deleteMessageArgs{},
+			expectedDeleteMessageCalls: 0,
+		},
+		{
+			name: "failed to delete new chat member message",
+			update: tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:           &tbapi.Chat{ID: 123},
+					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
+					From:           &tbapi.User{ID: 77, UserName: "superuser1"},
+				},
+			},
+			expectedError: true,
+			expectedDeleteMessageArgs: deleteMessageArgs{
+				ChatID: 123,
+				MsgID:  20,
+			},
+			expectedDeleteMessageCalls: 1,
+			returnErrorInRequest:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+					return tbapi.Chat{ID: 123}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if tt.returnErrorInRequest {
+						return nil, errors.New("request error")
+					}
+					return &tbapi.APIResponse{}, nil
+				},
+			}
+
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := &TelegramListener{
+				Locator: locator,
+				chatID:  123,
+				TbAPI:   mockAPI,
+			}
+
+			if tt.expectedDeleteMessageArgs.ChatID != 0 && tt.expectedDeleteMessageArgs.MsgID != 0 {
+				msg := fmt.Sprintf("new_%d_%d", tt.expectedDeleteMessageArgs.ChatID, tt.update.Message.LeftChatMember.ID)
+				err := l.Locator.AddMessage(msg, tt.expectedDeleteMessageArgs.ChatID, tt.update.Message.LeftChatMember.ID, "", tt.expectedDeleteMessageArgs.MsgID)
+				require.NoError(t, err)
+			}
+
+			err := l.procLeftChatMemberMessage(tt.update)
+			if tt.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			require.Equal(t, tt.expectedDeleteMessageCalls, len(mockAPI.RequestCalls()))
+			if tt.expectedDeleteMessageCalls == 1 {
+				assert.Equal(t, tt.expectedDeleteMessageArgs.ChatID, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
+				assert.Equal(t, tt.expectedDeleteMessageArgs.MsgID, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 			}
 		})
 	}
