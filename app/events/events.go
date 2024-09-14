@@ -268,9 +268,6 @@ func transform(msg *tbapi.Message) *bot.Message {
 			Caption:  msg.Caption,
 			Entities: transformEntities(msg.CaptionEntities),
 		}
-		if msg.Text == "" {
-			message.Text = msg.Caption
-		}
 	}
 
 	// fill in the message's reply-to message
@@ -292,5 +289,12 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	if msg.Caption != "" {
+		if message.Text == "" {
+			message.Text = msg.Caption
+		} else {
+			message.Text += "\n" + msg.Caption
+		}
+	}
 	return &message
 }
