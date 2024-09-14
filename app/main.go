@@ -42,7 +42,7 @@ type options struct {
 	} `group:"telegram" namespace:"telegram" env-namespace:"TELEGRAM"`
 
 	AdminGroup              string `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
-	DisableAdminSpamForward bool   `long:"disable-admin-spam-forward" env:"DISABLE_ADMIN_SPAM_FORWARD" description:"disable forwarding spam messages to admin group"`
+	DisableAdminSpamForward bool   `long:"disable-admin-spam-forward" env:"DISABLE_ADMIN_SPAM_FORWARD" description:"disable handling messages forwarded to admin group as spam"`
 
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 

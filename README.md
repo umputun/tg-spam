@@ -230,7 +230,7 @@ Success! The new status is: DISABLED. /help
 
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
-      --disable-admin-spam-forward  disable forwarding spam messages to admin group [$DISABLE_ADMIN_SPAM_FORWARD]      
+      --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]      
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
