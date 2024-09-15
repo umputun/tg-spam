@@ -581,6 +581,10 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 		}
 	}
 
+	if len(msgLines) < 3 { // no original message found
+		return "", fmt.Errorf("no original message found in callback msgsData: %q", msg)
+	}
+
 	// Adjust the slice to include the line before spamInfoLine
 	cleanMsg := strings.Join(msgLines[2:spamInfoLine], "\n")
 	return cleanMsg, nil
