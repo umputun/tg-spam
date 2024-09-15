@@ -291,8 +291,10 @@ func transform(msg *tbapi.Message) *bot.Message {
 
 	if msg.Caption != "" {
 		if message.Text == "" {
+			log.Printf("[DEBUG] caption only message: %q", msg.Caption)
 			message.Text = msg.Caption
 		} else {
+			log.Printf("[DEBUG] caption appended to message: %q", msg.Caption)
 			message.Text += "\n" + msg.Caption
 		}
 	}
