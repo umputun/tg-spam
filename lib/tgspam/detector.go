@@ -583,7 +583,7 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 	isMultiLingual := func(word string) bool {
 		scripts := make(map[string]bool)
 		for _, r := range word {
-			if r == 'i' || unicode.IsSpace(r) { // skip 'i' (common in many langs) and spaces
+			if r == 'i' || unicode.IsSpace(r) || unicode.IsNumber(r) { // skip 'i' (common in many langs) and spaces
 				continue
 			}
 
