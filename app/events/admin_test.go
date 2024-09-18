@@ -189,3 +189,20 @@ func TestAdmin_extractUsername(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmin_dryModeForwardMessage(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+	}
+	adm := admin{
+		tbAPI: mockAPI,
+		dry:   true,
+	}
+	msg := &bot.Message{}
+
+	adm.ReportBan("testUser", msg)
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned [testUser]")
+
+}
