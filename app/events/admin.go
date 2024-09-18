@@ -41,7 +41,11 @@ const (
 func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
-	forwardMsg := fmt.Sprintf("**permanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", banUserStr, msg.From.ID, text)
+	would := ""
+	if a.dry {
+		would = "would have "
+	}
+	forwardMsg := fmt.Sprintf("**%spermanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", would, banUserStr, msg.From.ID, text)
 	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", msg.From, msg.ID, a.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
