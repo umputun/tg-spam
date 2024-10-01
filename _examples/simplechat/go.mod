@@ -5,8 +5,8 @@ go 1.22
 toolchain go1.22.3
 
 require (
-	github.com/umputun/tg-spam v1.13.5
-	modernc.org/sqlite v1.32.0
+	github.com/umputun/tg-spam v1.13.6
+	modernc.org/sqlite v1.33.1
 )
 
 require (
