@@ -580,18 +580,18 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 	spamInfoLine := len(msgLines)
 	for i, line := range msgLines {
 		if strings.HasPrefix(line, "spam detection results") || strings.HasPrefix(line, "**spam detection results**") {
-			spamInfoLine = i - 1
+			spamInfoLine = i
 			break
 		}
 	}
 
-	if len(msgLines) < 3 { // no original message found
+	// ensure we have at least one line of content
+	if spamInfoLine <= 2 {
 		return "", fmt.Errorf("no original message found in callback msgsData: %q", msg)
 	}
 
-	// Adjust the slice to include the line before spamInfoLine
 	cleanMsg := strings.Join(msgLines[2:spamInfoLine], "\n")
-	return cleanMsg, nil
+	return strings.TrimSpace(cleanMsg), nil
 }
 
 // sendWithUnbanMarkup sends a message to admin chat and adds buttons to ui.

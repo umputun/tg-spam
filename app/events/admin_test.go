@@ -81,6 +81,12 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 			expected: "",
 			err:      true,
 		},
+		{
+			name:     "spam detection results immediately after header",
+			input:    "Line 1\n\nspam detection results:\nLine 3",
+			expected: "",
+			err:      true,
+		},
 	}
 
 	for _, tt := range tests {
