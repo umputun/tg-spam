@@ -73,6 +73,7 @@ type options struct {
 
 	OpenAI struct {
 		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase                          string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
 		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
@@ -435,7 +436,9 @@ func makeDetector(opts options) *tgspam.Detector {
 			RetryCount:        opts.OpenAI.RetryCount,
 		}
 		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
-		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)
+		config := openai.DefaultConfig(opts.OpenAI.Token)
+		config.BaseURL = opts.OpenAI.APIBase
+		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
