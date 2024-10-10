@@ -73,6 +73,7 @@ type options struct {
 
 	OpenAI struct {
 		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		ApiBase                          string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
 		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
@@ -426,6 +427,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.OpenAI.Token != "" {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
+			BaseURL:           opts.OpenAI.ApiBase,
 			SystemPrompt:      opts.OpenAI.Prompt,
 			Model:             opts.OpenAI.Model,
 			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
