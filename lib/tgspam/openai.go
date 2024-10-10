@@ -22,6 +22,7 @@ type openAIChecker struct {
 
 // OpenAIConfig contains parameters for openAIChecker
 type OpenAIConfig struct {
+	BaseURL           string
 	// https://platform.openai.com/docs/api-reference/chat/create#chat/create-max_tokens
 	MaxTokensResponse int // Hard limit for the number of tokens in the response
 	// The OpenAI has a limit for the number of tokens in the request + response (4097)
@@ -58,7 +59,7 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 		params.MaxSymbolsRequest = 8192
 	}
 	if params.Model == "" {
-		params.Model = "gpt-4"
+		params.Model = "gpt-4o-mini"
 	}
 	return &openAIChecker{client: client, params: params}
 }

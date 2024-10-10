@@ -95,7 +95,7 @@ Nothing needed to enable CAS integration, it is enabled by default. To disable i
 
 **OpenAI integration**
 
-Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--openai.token [$OPENAI_TOKEN]` or `--openai.apibase [$OPENAI_API_BASE]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
@@ -273,9 +273,10 @@ meta:
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.apibase=             custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
-      --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
+      --openai.model=               openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
@@ -344,7 +345,7 @@ Pls note: Missed spam messages forwarded to the admin chat will be removed from 
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-bot` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
