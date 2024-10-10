@@ -276,7 +276,7 @@ openai:
       --openai.apibase=             custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
-      --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
+      --openai.model=               openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
