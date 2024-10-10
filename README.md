@@ -95,7 +95,7 @@ Nothing needed to enable CAS integration, it is enabled by default. To disable i
 
 **OpenAI integration**
 
-Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--openai.token [$OPENAI_TOKEN]` or `--openai.apibase [$OPENAI_API_BASE]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 

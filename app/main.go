@@ -361,7 +361,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MultiLangLimit:          opts.MultiLangWords,
-		OpenAIEnabled:           opts.OpenAI.Token != "",
+		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		SamplesDataPath:         opts.Files.SamplesDataPath,
 		DynamicDataPath:         opts.Files.DynamicDataPath,
 		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
@@ -424,7 +424,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	detector := tgspam.NewDetector(detectorConfig)
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 
-	if opts.OpenAI.Token != "" {
+	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:      opts.OpenAI.Prompt,
