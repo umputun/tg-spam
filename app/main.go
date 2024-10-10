@@ -76,7 +76,7 @@ type options struct {
 		APIBase                          string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
+		Model                            string `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
 		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`

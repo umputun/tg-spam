@@ -58,7 +58,7 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 		params.MaxSymbolsRequest = 8192
 	}
 	if params.Model == "" {
-		params.Model = "gpt-4"
+		params.Model = "gpt-4o-mini"
 	}
 	return &openAIChecker{client: client, params: params}
 }
