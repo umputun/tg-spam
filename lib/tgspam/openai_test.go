@@ -27,7 +27,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		MaxTokensResponse: 300,
 		MaxTokensRequest:  3000,
 		MaxSymbolsRequest: 12000,
-		Model:             "gpt-4",
+		Model:             "gpt-4o-mini",
 	})
 
 	t.Run("spam response", func(t *testing.T) {
