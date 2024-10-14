@@ -79,6 +79,7 @@ type options struct {
 		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	Files struct {
@@ -431,6 +432,7 @@ func makeDetector(opts options) *tgspam.Detector {
 			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
 			MaxTokensRequest:  opts.OpenAI.MaxTokensRequestMaxTokensRequest,
 			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
+			RetryCount:        opts.OpenAI.RetryCount,
 		}
 		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
 		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)

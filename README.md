@@ -279,6 +279,7 @@ openai:
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
+      --openai.retry-count=         openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
 
 files:
       --files.samples=              samples data path (default: data) [$FILES_SAMPLES]

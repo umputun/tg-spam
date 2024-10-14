@@ -29,6 +29,7 @@ type OpenAIConfig struct {
 	MaxSymbolsRequest int // Fallback: Max request length in symbols, if tokenizer was failed
 	Model             string
 	SystemPrompt      string
+	RetryCount        int
 }
 
 type openAIClient interface {
@@ -60,6 +61,9 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 	if params.Model == "" {
 		params.Model = "gpt-4"
 	}
+	if params.RetryCount <= 0 {
+		params.RetryCount = 1
+	}
 	return &openAIChecker{client: client, params: params}
 }
 
@@ -69,10 +73,18 @@ func (o *openAIChecker) check(msg string) (spam bool, cr spamcheck.Response) {
 		return false, spamcheck.Response{}
 	}
 
-	resp, err := o.sendRequest(msg)
+	// try to send a request several times if it fails
+	var resp openAIResponse
+	var err error
+	for i := 0; i < o.params.RetryCount; i++ {
+		if resp, err = o.sendRequest(msg); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return false, spamcheck.Response{Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err)}
 	}
+
 	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "openai",
 		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
 }
