@@ -177,7 +177,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
 			spam, details := d.openaiChecker.check(req.Msg)
 			cr = append(cr, details)
-			spamDetected = spam
+			if spamDetected && details.Error != nil {
+				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
+				log.Printf("[WARN] openai error: %v", details.Error)
+			} else {
+				spamDetected = spam
+			}
 		}
 	}
 

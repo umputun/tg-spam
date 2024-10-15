@@ -44,6 +44,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		assert.True(t, spam)
 		assert.Equal(t, "openai", details.Name)
 		assert.Equal(t, "bad text, confidence: 100%", details.Details)
+		assert.NoError(t, details.Error)
 	})
 
 	t.Run("not spam response", func(t *testing.T) {
@@ -60,6 +61,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
 		assert.Equal(t, "good text, confidence: 99%", details.Details)
+		assert.NoError(t, details.Error)
 	})
 
 	t.Run("error response", func(t *testing.T) {
@@ -72,6 +74,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
 		assert.Equal(t, "OpenAI error: assert.AnError general error for testing", details.Details)
+		assert.Equal(t, "assert.AnError general error for testing", details.Error.Error())
 	})
 
 	t.Run("bad encoding", func(t *testing.T) {
@@ -88,6 +91,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
 		assert.Equal(t, "OpenAI error: can't unmarshal response: invalid character 'b' looking for beginning of value", details.Details)
+		assert.Equal(t, "can't unmarshal response: invalid character 'b' looking for beginning of value", details.Error.Error())
 	})
 
 	t.Run("no choices", func(t *testing.T) {

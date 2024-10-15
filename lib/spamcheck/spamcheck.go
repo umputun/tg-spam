@@ -26,6 +26,7 @@ type Response struct {
 	Name    string `json:"name"`    // name of the check
 	Spam    bool   `json:"spam"`    // true if spam
 	Details string `json:"details"` // details of the check
+	Error   error  `json:"-"`       // error message, if any. Do not serialize it
 }
 
 func (r *Response) String() string {
