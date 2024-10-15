@@ -853,8 +853,9 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
-	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendMediaMessages: true, CanSendOtherMessages: true,
-		CanSendPolls: true}, mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).Permissions)
+	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendMediaMessages: true, CanSendPolls: true,
+		CanSendOtherMessages: true, CanAddWebPagePreviews: false, CanChangeInfo: true, CanInviteUsers: true, CanPinMessages: true},
+		mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).Permissions)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
 	require.Equal(t, 1, len(b.AddApprovedUserCalls()))

@@ -458,7 +458,15 @@ func (a *admin) unban(userID int64) error {
 	if a.softBan { // soft ban, just drop restrictions
 		_, err := a.tbAPI.Request(tbapi.RestrictChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatID: a.primChatID},
-			Permissions:      &tbapi.ChatPermissions{CanSendMessages: true, CanSendMediaMessages: true, CanSendOtherMessages: true, CanSendPolls: true},
+			Permissions: &tbapi.ChatPermissions{
+				CanSendMessages:      true,
+				CanSendMediaMessages: true,
+				CanSendOtherMessages: true,
+				CanSendPolls:         true,
+				CanChangeInfo:        true,
+				CanInviteUsers:       true,
+				CanPinMessages:       true,
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to drop restrictions for user %d: %w", userID, err)
