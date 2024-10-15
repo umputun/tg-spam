@@ -197,35 +197,6 @@ Use this token to access the HTTP API:
 12345678:xy778Iltzsdr45tg
 ```
 
-#### Disabling privacy mode
-
-In some cases, for example, for private groups, bot has to have privacy mode disabled. In order to do that user need to send [BotFather](https://core.telegram.org/bots#6-botfather) the command `/setprivacy` and choose needed bot. Then choose `Disable`. Example of such conversation:
-
-```
-Umputun:
-/setprivacy
-
-BotFather:
-Choose a bot to change group messages settings.
-
-Umputun:
-example_comments_bot
-
-BotFather:
-'Enable' - your bot will only receive messages that either start with the '/' symbol or mention the bot by username.
-'Disable' - your bot will receive all messages that people send to groups.
-Current status is: DISABLED
-
-Umputun:
-Disable
-
-BotFather:
-Success! The new status is: DISABLED. /help
-```
-
-**Important:** the privacy has to be disabled _before_ bot is added to the group. If it was done after, user should remove bot from the group and add again.
-
-
 ## All Application Options
 
 ```
