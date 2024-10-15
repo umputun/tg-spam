@@ -82,7 +82,8 @@ func (o *openAIChecker) check(msg string) (spam bool, cr spamcheck.Response) {
 		}
 	}
 	if err != nil {
-		return false, spamcheck.Response{Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err)}
+		return false, spamcheck.Response{
+			Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err), Error: err}
 	}
 
 	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "openai",
