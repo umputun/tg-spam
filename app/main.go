@@ -73,9 +73,10 @@ type options struct {
 
 	OpenAI struct {
 		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase                          string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		Model                            string `long:"model" env:"MODEL" default:"gpt-4" description:"openai model"`
+		Model                            string `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
 		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
@@ -361,7 +362,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MultiLangLimit:          opts.MultiLangWords,
-		OpenAIEnabled:           opts.OpenAI.Token != "",
+		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		SamplesDataPath:         opts.Files.SamplesDataPath,
 		DynamicDataPath:         opts.Files.DynamicDataPath,
 		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
@@ -424,7 +425,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	detector := tgspam.NewDetector(detectorConfig)
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 
-	if opts.OpenAI.Token != "" {
+	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:      opts.OpenAI.Prompt,
@@ -435,7 +436,9 @@ func makeDetector(opts options) *tgspam.Detector {
 			RetryCount:        opts.OpenAI.RetryCount,
 		}
 		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
-		detector.WithOpenAIChecker(openai.NewClient(opts.OpenAI.Token), openAIConfig)
+		config := openai.DefaultConfig(opts.OpenAI.Token)
+		config.BaseURL = opts.OpenAI.APIBase
+		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
