@@ -10,7 +10,7 @@ body, #result{
 
 
 .ds-timestamp {
-    min-width: 100px;
+    min-width: 50px;
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -29,6 +29,12 @@ body, #result{
     min-width: 200px;
     max-width: 500px;
     overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .ds-text, .ds-checks {
+        max-width: 150px;
+    }
 }
 
 .btn-custom-blue {
