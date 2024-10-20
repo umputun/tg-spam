@@ -80,7 +80,7 @@ func TestTelegramListener_Do(t *testing.T) {
 
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, SuperUsers{"super", "admin"}, l.SuperUsers)
+	assert.Equal(t, SuperUsers{"super", "1"}, l.SuperUsers)
 
 	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
 	require.Equal(t, 2, len(mockAPI.SendCalls()))
@@ -1498,6 +1498,7 @@ func TestTelegramListener_isAdminChat(t *testing.T) {
 		name     string
 		fromChat int64
 		fromUser string
+		fromID   int64
 		chatID   int64
 		expect   bool
 	}{
@@ -1537,7 +1538,7 @@ func TestTelegramListener_isAdminChat(t *testing.T) {
 				adminChatID: tc.chatID,
 				SuperUsers:  SuperUsers{"umputun"},
 			}
-			result := listener.isAdminChat(tc.fromChat, tc.fromUser)
+			result := listener.isAdminChat(tc.fromChat, tc.fromUser, tc.fromID)
 			assert.Equal(t, tc.expect, result)
 		})
 	}
@@ -1548,6 +1549,7 @@ func TestSuperUser_IsSuper(t *testing.T) {
 		name     string
 		super    SuperUsers
 		userName string
+		userID   int64
 		want     bool
 	}{
 		{
@@ -1557,10 +1559,23 @@ func TestSuperUser_IsSuper(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "User is a super user by ID",
+			super:    SuperUsers{"Alice", "Bob", "123"},
+			userName: "blah",
+			userID:   123,
+			want:     true,
+		},
+		{
 			name:     "User is not a super user",
 			super:    SuperUsers{"Alice", "Bob"},
 			userName: "Charlie",
 			want:     false,
+		},
+		{
+			name:   "User is not a super user ny ID",
+			super:  SuperUsers{"Alice", "Bob", "123"},
+			userID: 789,
+			want:   false,
 		},
 		{
 			name:     "User is a super user with slash prefix",
@@ -1578,7 +1593,7 @@ func TestSuperUser_IsSuper(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, tt.super.IsSuper(tt.userName))
+			assert.Equal(t, tt.want, tt.super.IsSuper(tt.userName, tt.userID))
 		})
 	}
 }
@@ -1600,29 +1615,43 @@ func TestUpdateSupers(t *testing.T) {
 		},
 		{
 			name:           "non-empty admin usernames",
-			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
-			expectedResult: []string{"admin1", "admin2"},
+			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "", ID: 1}}, {User: &tbapi.User{UserName: "admin2", ID: 2}}},
+			expectedResult: []string{"1", "2"},
 			expectedErr:    false,
 		},
 		{
-			name:           "non-empty admin usernames, existing supers",
-			superUsers:     SuperUsers{"super1"},
-			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
-			expectedResult: []string{"super1", "admin1", "admin2"},
+			name: "non-empty admin user ids",
+			chatAdmins: []tbapi.ChatMember{
+				{User: &tbapi.User{UserName: "admin1", ID: 21}},
+				{User: &tbapi.User{UserName: "admin2", ID: 22}}},
+			expectedResult: []string{"21", "22"},
 			expectedErr:    false,
 		},
 		{
-			name:           "non-empty admin usernames, existing supers with duplicate",
-			superUsers:     SuperUsers{"admin1"},
-			chatAdmins:     []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: "admin2"}}},
-			expectedResult: []string{"admin1", "admin2"},
+			name:       "non-empty admin usernames, existing supers",
+			superUsers: SuperUsers{"super1"},
+			chatAdmins: []tbapi.ChatMember{
+				{User: &tbapi.User{UserName: "admin1", ID: 1}},
+				{User: &tbapi.User{UserName: "admin2", ID: 2}}},
+			expectedResult: []string{"super1", "1", "2"},
+			expectedErr:    false,
+		},
+		{
+			name:       "non-empty admin usernames, existing supers with duplicate",
+			superUsers: SuperUsers{"admin1"},
+			chatAdmins: []tbapi.ChatMember{
+				{User: &tbapi.User{UserName: "admin1", ID: 1}},
+				{User: &tbapi.User{UserName: "admin2", ID: 2}}},
+			expectedResult: []string{"admin1", "2"},
 			expectedErr:    false,
 		},
 		{
 			name: "admin usernames with empty string",
-			chatAdmins: []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin1"}}, {User: &tbapi.User{UserName: ""}},
-				{User: &tbapi.User{UserName: "admin2"}}},
-			expectedResult: []string{"admin1", "admin2"},
+			chatAdmins: []tbapi.ChatMember{
+				{User: &tbapi.User{UserName: "admin1", ID: 1}},
+				{User: &tbapi.User{UserName: ""}},
+				{User: &tbapi.User{UserName: "admin2", ID: 2}}},
+			expectedResult: []string{"1", "2"},
 			expectedErr:    false,
 		},
 		{
@@ -1650,7 +1679,7 @@ func TestUpdateSupers(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers)
+				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers, "Expected: %v, got: %v", tt.expectedResult, l.SuperUsers)
 			}
 		})
 	}
