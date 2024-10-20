@@ -123,7 +123,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			// handle admin chat messages
-			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName) {
+			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
 				if l.DisableAdminSpamForward {
 					continue
 				}
@@ -171,7 +171,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			// handle spam reports from superusers
-			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName) {
+			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) {
 				if strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam") {
 					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
 					if err := l.adminHandler.DirectSpamReport(update); err != nil {
@@ -304,7 +304,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 		banUserStr := l.getBanUsername(resp, update)
 
-		if l.SuperUsers.IsSuper(msg.From.Username) {
+		if l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) {
 			if l.TrainingMode {
 				l.adminHandler.ReportBan(banUserStr, msg)
 			}
@@ -322,7 +322,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// delete message if requested by bot
-	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username) && !l.TrainingMode {
+	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
 		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
@@ -343,10 +343,10 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 	return false
 }
 
-func (l *TelegramListener) isAdminChat(fromChat int64, from string) bool {
+func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64) bool {
 	if fromChat == l.adminChatID {
 		log.Printf("[DEBUG] message in admin chat %d, from %s", fromChat, from)
-		if !l.SuperUsers.IsSuper(from) {
+		if !l.SuperUsers.IsSuper(from, fromID) {
 			log.Printf("[DEBUG] %s is not superuser in admin chat, ignored", from)
 			return false
 		}
@@ -407,10 +407,14 @@ func (l *TelegramListener) getChatID(group string) (int64, error) {
 }
 
 // updateSupers updates the list of super-users based on the chat administrators fetched from the Telegram API.
+// it uses the user ID first, but can match by username if set in the list of super-users.
 func (l *TelegramListener) updateSupers() error {
-	isSuper := func(username string) bool {
+	isSuper := func(username string, id int64) bool {
 		for _, super := range l.SuperUsers {
-			if super == username {
+			if super == fmt.Sprintf("%d", id) {
+				return true
+			}
+			if username != "" && super == username {
 				return true
 			}
 		}
@@ -423,25 +427,34 @@ func (l *TelegramListener) updateSupers() error {
 	}
 
 	for _, admin := range admins {
-		if strings.TrimSpace(admin.User.UserName) == "" {
+		if admin.User.UserName == "" && admin.User.ID == 0 {
 			continue
 		}
-		if isSuper(admin.User.UserName) {
+		if isSuper(admin.User.UserName, admin.User.ID) {
 			continue // already in the list
 		}
-		l.SuperUsers = append(l.SuperUsers, admin.User.UserName)
+		l.SuperUsers = append(l.SuperUsers, fmt.Sprintf("%d", admin.User.ID))
 	}
 
 	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
 	return err
 }
 
-// SuperUsers for moderators
+// SuperUsers for moderators. Can be either username or user ID.
 type SuperUsers []string
 
-// IsSuper checks if username in the list of super users
-func (s SuperUsers) IsSuper(userName string) bool {
+// IsSuper checks if userID or username in the list of super users
+// First it treats super as user ID, then as username
+func (s SuperUsers) IsSuper(userName string, userID int64) bool {
 	for _, super := range s {
+		if id, err := strconv.ParseInt(super, 10, 64); err == nil {
+			// super is user ID
+			if userID == id {
+				return true
+			}
+			continue
+		}
+		// super is username
 		if strings.EqualFold(userName, super) || strings.EqualFold("/"+userName, super) {
 			return true
 		}

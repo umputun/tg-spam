@@ -89,7 +89,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	errs := new(multierror.Error)
 
 	// check if the forwarded message will ban a super-user and ignore it
-	if info.UserName != "" && a.superUsers.IsSuper(info.UserName) {
+	if info.UserName != "" && a.superUsers.IsSuper(info.UserName, info.UserID) {
 		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID)
 	}
 
@@ -167,7 +167,7 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 	log.Printf("[DEBUG] reported warn message from superuser %q: %q", update.Message.From.UserName, msgTxt)
 	// check if the reply message will ban a super-user and ignore it
-	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName) {
+	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 	errs := new(multierror.Error)
@@ -212,7 +212,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	log.Printf("[DEBUG] reported spam message from superuser %q: %q", update.Message.From.UserName, msgTxt)
 
 	// check if the reply message will ban a super-user and ignore it
-	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName) {
+	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("banned message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
@@ -539,7 +539,7 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 	}
 
 	// check if user is super and don't ban if so
-	msgFromSuper := userName != "" && a.superUsers.IsSuper(userName)
+	msgFromSuper := userName != "" && a.superUsers.IsSuper(userName, userID)
 	if !msgFromSuper {
 		if err := banUserOrChannel(banReq); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
