@@ -7,9 +7,18 @@ import (
 )
 
 var (
+	ErrO1MaxTokensDeprecated                   = errors.New("this model is not supported MaxTokens, please use MaxCompletionTokens")                               //nolint:lll
 	ErrCompletionUnsupportedModel              = errors.New("this model is not supported with this method, please use CreateChatCompletion client method instead") //nolint:lll
 	ErrCompletionStreamNotSupported            = errors.New("streaming is not supported with this method, please use CreateCompletionStream")                      //nolint:lll
 	ErrCompletionRequestPromptTypeNotSupported = errors.New("the type of CompletionRequest.Prompt only supports string and []string")                              //nolint:lll
+)
+
+var (
+	ErrO1BetaLimitationsMessageTypes = errors.New("this model has beta-limitations, user and assistant messages only, system messages are not supported")                                  //nolint:lll
+	ErrO1BetaLimitationsStreaming    = errors.New("this model has beta-limitations, streaming not supported")                                                                              //nolint:lll
+	ErrO1BetaLimitationsTools        = errors.New("this model has beta-limitations, tools, function calling, and response format parameters are not supported")                            //nolint:lll
+	ErrO1BetaLimitationsLogprobs     = errors.New("this model has beta-limitations, logprobs not supported")                                                                               //nolint:lll
+	ErrO1BetaLimitationsOther        = errors.New("this model has beta-limitations, temperature, top_p and n are fixed at 1, while presence_penalty and frequency_penalty are fixed at 0") //nolint:lll
 )
 
 // GPT3 Defines the models provided by OpenAI to use when generating
@@ -17,6 +26,10 @@ var (
 // GPT3 Models are designed for text-based tasks. For code-specific
 // tasks, please refer to the Codex series of models.
 const (
+	O1Mini                = "o1-mini"
+	O1Mini20240912        = "o1-mini-2024-09-12"
+	O1Preview             = "o1-preview"
+	O1Preview20240912     = "o1-preview-2024-09-12"
 	GPT432K0613           = "gpt-4-32k-0613"
 	GPT432K0314           = "gpt-4-32k-0314"
 	GPT432K               = "gpt-4-32k"
@@ -24,6 +37,10 @@ const (
 	GPT40314              = "gpt-4-0314"
 	GPT4o                 = "gpt-4o"
 	GPT4o20240513         = "gpt-4o-2024-05-13"
+	GPT4o20240806         = "gpt-4o-2024-08-06"
+	GPT4oLatest           = "chatgpt-4o-latest"
+	GPT4oMini             = "gpt-4o-mini"
+	GPT4oMini20240718     = "gpt-4o-mini-2024-07-18"
 	GPT4Turbo             = "gpt-4-turbo"
 	GPT4Turbo20240409     = "gpt-4-turbo-2024-04-09"
 	GPT4Turbo0125         = "gpt-4-0125-preview"
@@ -39,30 +56,33 @@ const (
 	GPT3Dot5Turbo16K0613  = "gpt-3.5-turbo-16k-0613"
 	GPT3Dot5Turbo         = "gpt-3.5-turbo"
 	GPT3Dot5TurboInstruct = "gpt-3.5-turbo-instruct"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextDavinci003 = "text-davinci-003"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextDavinci002 = "text-davinci-002"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextCurie001 = "text-curie-001"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextBabbage001 = "text-babbage-001"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextAda001 = "text-ada-001"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3TextDavinci001 = "text-davinci-001"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3DavinciInstructBeta = "davinci-instruct-beta"
-	GPT3Davinci             = "davinci"
-	GPT3Davinci002          = "davinci-002"
-	// Deprecated: Will be shut down on January 04, 2024. Use gpt-3.5-turbo-instruct instead.
+	// Deprecated: Model is shutdown. Use davinci-002 instead.
+	GPT3Davinci    = "davinci"
+	GPT3Davinci002 = "davinci-002"
+	// Deprecated: Model is shutdown. Use gpt-3.5-turbo-instruct instead.
 	GPT3CurieInstructBeta = "curie-instruct-beta"
 	GPT3Curie             = "curie"
 	GPT3Curie002          = "curie-002"
-	GPT3Ada               = "ada"
-	GPT3Ada002            = "ada-002"
-	GPT3Babbage           = "babbage"
-	GPT3Babbage002        = "babbage-002"
+	// Deprecated: Model is shutdown. Use babbage-002 instead.
+	GPT3Ada    = "ada"
+	GPT3Ada002 = "ada-002"
+	// Deprecated: Model is shutdown. Use babbage-002 instead.
+	GPT3Babbage    = "babbage"
+	GPT3Babbage002 = "babbage-002"
 )
 
 // Codex Defines the models provided by OpenAI.
@@ -74,8 +94,21 @@ const (
 	CodexCodeDavinci001 = "code-davinci-001"
 )
 
+// O1SeriesModels List of new Series of OpenAI models.
+// Some old api attributes not supported.
+var O1SeriesModels = map[string]struct{}{
+	O1Mini:            {},
+	O1Mini20240912:    {},
+	O1Preview:         {},
+	O1Preview20240912: {},
+}
+
 var disabledModelsForEndpoints = map[string]map[string]bool{
 	"/completions": {
+		O1Mini:               true,
+		O1Mini20240912:       true,
+		O1Preview:            true,
+		O1Preview20240912:    true,
 		GPT3Dot5Turbo:        true,
 		GPT3Dot5Turbo0301:    true,
 		GPT3Dot5Turbo0613:    true,
@@ -86,6 +119,10 @@ var disabledModelsForEndpoints = map[string]map[string]bool{
 		GPT4:                 true,
 		GPT4o:                true,
 		GPT4o20240513:        true,
+		GPT4o20240806:        true,
+		GPT4oLatest:          true,
+		GPT4oMini:            true,
+		GPT4oMini20240718:    true,
 		GPT4TurboPreview:     true,
 		GPT4VisionPreview:    true,
 		GPT4Turbo1106:        true,
@@ -127,27 +164,97 @@ func checkPromptType(prompt any) bool {
 	return isString || isStringSlice
 }
 
+var unsupportedToolsForO1Models = map[ToolType]struct{}{
+	ToolTypeFunction: {},
+}
+
+var availableMessageRoleForO1Models = map[string]struct{}{
+	ChatMessageRoleUser:      {},
+	ChatMessageRoleAssistant: {},
+}
+
+// validateRequestForO1Models checks for deprecated fields of OpenAI models.
+func validateRequestForO1Models(request ChatCompletionRequest) error {
+	if _, found := O1SeriesModels[request.Model]; !found {
+		return nil
+	}
+
+	if request.MaxTokens > 0 {
+		return ErrO1MaxTokensDeprecated
+	}
+
+	// Beta Limitations
+	// refs:https://platform.openai.com/docs/guides/reasoning/beta-limitations
+	// Streaming: not supported
+	if request.Stream {
+		return ErrO1BetaLimitationsStreaming
+	}
+	// Logprobs: not supported.
+	if request.LogProbs {
+		return ErrO1BetaLimitationsLogprobs
+	}
+
+	// Message types: user and assistant messages only, system messages are not supported.
+	for _, m := range request.Messages {
+		if _, found := availableMessageRoleForO1Models[m.Role]; !found {
+			return ErrO1BetaLimitationsMessageTypes
+		}
+	}
+
+	// Tools: tools, function calling, and response format parameters are not supported
+	for _, t := range request.Tools {
+		if _, found := unsupportedToolsForO1Models[t.Type]; found {
+			return ErrO1BetaLimitationsTools
+		}
+	}
+
+	// Other: temperature, top_p and n are fixed at 1, while presence_penalty and frequency_penalty are fixed at 0.
+	if request.Temperature > 0 && request.Temperature != 1 {
+		return ErrO1BetaLimitationsOther
+	}
+	if request.TopP > 0 && request.TopP != 1 {
+		return ErrO1BetaLimitationsOther
+	}
+	if request.N > 0 && request.N != 1 {
+		return ErrO1BetaLimitationsOther
+	}
+	if request.PresencePenalty > 0 {
+		return ErrO1BetaLimitationsOther
+	}
+	if request.FrequencyPenalty > 0 {
+		return ErrO1BetaLimitationsOther
+	}
+
+	return nil
+}
+
 // CompletionRequest represents a request structure for completion API.
 type CompletionRequest struct {
-	Model            string   `json:"model"`
-	Prompt           any      `json:"prompt,omitempty"`
-	Suffix           string   `json:"suffix,omitempty"`
-	MaxTokens        int      `json:"max_tokens,omitempty"`
-	Temperature      float32  `json:"temperature,omitempty"`
-	TopP             float32  `json:"top_p,omitempty"`
-	N                int      `json:"n,omitempty"`
-	Stream           bool     `json:"stream,omitempty"`
-	LogProbs         int      `json:"logprobs,omitempty"`
-	Echo             bool     `json:"echo,omitempty"`
-	Stop             []string `json:"stop,omitempty"`
-	PresencePenalty  float32  `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float32  `json:"frequency_penalty,omitempty"`
-	BestOf           int      `json:"best_of,omitempty"`
+	Model            string  `json:"model"`
+	Prompt           any     `json:"prompt,omitempty"`
+	BestOf           int     `json:"best_of,omitempty"`
+	Echo             bool    `json:"echo,omitempty"`
+	FrequencyPenalty float32 `json:"frequency_penalty,omitempty"`
 	// LogitBias is must be a token id string (specified by their token ID in the tokenizer), not a word string.
 	// incorrect: `"logit_bias":{"You": 6}`, correct: `"logit_bias":{"1639": 6}`
 	// refs: https://platform.openai.com/docs/api-reference/completions/create#completions/create-logit_bias
 	LogitBias map[string]int `json:"logit_bias,omitempty"`
-	User      string         `json:"user,omitempty"`
+	// Store can be set to true to store the output of this completion request for use in distillations and evals.
+	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-store
+	Store bool `json:"store,omitempty"`
+	// Metadata to store with the completion.
+	Metadata        map[string]string `json:"metadata,omitempty"`
+	LogProbs        int               `json:"logprobs,omitempty"`
+	MaxTokens       int               `json:"max_tokens,omitempty"`
+	N               int               `json:"n,omitempty"`
+	PresencePenalty float32           `json:"presence_penalty,omitempty"`
+	Seed            *int              `json:"seed,omitempty"`
+	Stop            []string          `json:"stop,omitempty"`
+	Stream          bool              `json:"stream,omitempty"`
+	Suffix          string            `json:"suffix,omitempty"`
+	Temperature     float32           `json:"temperature,omitempty"`
+	TopP            float32           `json:"top_p,omitempty"`
+	User            string            `json:"user,omitempty"`
 }
 
 // CompletionChoice represents one of possible completions.
@@ -203,7 +310,12 @@ func (c *Client) CreateCompletion(
 		return
 	}
 
-	req, err := c.newRequest(ctx, http.MethodPost, c.fullURL(urlSuffix, request.Model), withBody(request))
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPost,
+		c.fullURL(urlSuffix, withModel(request.Model)),
+		withBody(request),
+	)
 	if err != nil {
 		return
 	}

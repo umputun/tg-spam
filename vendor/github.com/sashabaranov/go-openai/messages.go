@@ -73,6 +73,14 @@ type MessageFilesList struct {
 	httpHeader
 }
 
+type MessageDeletionStatus struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Deleted bool   `json:"deleted"`
+
+	httpHeader
+}
+
 // CreateMessage creates a new message.
 func (c *Client) CreateMessage(ctx context.Context, threadID string, request MessageRequest) (msg Message, err error) {
 	urlSuffix := fmt.Sprintf("/threads/%s/%s", threadID, messagesSuffix)
@@ -92,6 +100,7 @@ func (c *Client) ListMessage(ctx context.Context, threadID string,
 	order *string,
 	after *string,
 	before *string,
+	runID *string,
 ) (messages MessagesList, err error) {
 	urlValues := url.Values{}
 	if limit != nil {
@@ -106,6 +115,10 @@ func (c *Client) ListMessage(ctx context.Context, threadID string,
 	if before != nil {
 		urlValues.Add("before", *before)
 	}
+	if runID != nil {
+		urlValues.Add("run_id", *runID)
+	}
+
 	encodedValues := ""
 	if len(urlValues) > 0 {
 		encodedValues = "?" + urlValues.Encode()
@@ -184,5 +197,21 @@ func (c *Client) ListMessageFiles(
 	}
 
 	err = c.sendRequest(req, &files)
+	return
+}
+
+// DeleteMessage deletes a message..
+func (c *Client) DeleteMessage(
+	ctx context.Context,
+	threadID, messageID string,
+) (status MessageDeletionStatus, err error) {
+	urlSuffix := fmt.Sprintf("/threads/%s/%s/%s", threadID, messagesSuffix, messageID)
+	req, err := c.newRequest(ctx, http.MethodDelete, c.fullURL(urlSuffix),
+		withBetaAssistantVersion(c.config.AssistantVersion))
+	if err != nil {
+		return
+	}
+
+	err = c.sendRequest(req, &status)
 	return
 }

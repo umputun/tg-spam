@@ -16,7 +16,7 @@ var ErrVectorLengthMismatch = errors.New("vector length mismatch")
 type EmbeddingModel string
 
 const (
-	// Deprecated: The following block will be shut down on January 04, 2024. Use text-embedding-ada-002 instead.
+	// Deprecated: The following block is shut down. Use text-embedding-ada-002 instead.
 	AdaSimilarity         EmbeddingModel = "text-similarity-ada-001"
 	BabbageSimilarity     EmbeddingModel = "text-similarity-babbage-001"
 	CurieSimilarity       EmbeddingModel = "text-similarity-curie-001"
@@ -241,7 +241,12 @@ func (c *Client) CreateEmbeddings(
 	conv EmbeddingRequestConverter,
 ) (res EmbeddingResponse, err error) {
 	baseReq := conv.Convert()
-	req, err := c.newRequest(ctx, http.MethodPost, c.fullURL("/embeddings", string(baseReq.Model)), withBody(baseReq))
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPost,
+		c.fullURL("/embeddings", withModel(string(baseReq.Model))),
+		withBody(baseReq),
+	)
 	if err != nil {
 		return
 	}

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build linux && (amd64 || loong64)
+//go:build linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)
 
 package libc // import "modernc.org/libc"
 
@@ -32,6 +32,10 @@ func X__builtin_round(tls *TLS, x float64) (r float64) {
 	return Xround(tls, x)
 }
 
+func X__builtin_lround(tls *TLS, x float64) (r long) {
+	return Xlround(tls, x)
+}
+
 func X__builtin_roundf(tls *TLS, x float32) (r float32) {
 	return Xroundf(tls, x)
 }
@@ -56,16 +60,20 @@ func X__builtin_ctz(t *TLS, n uint32) int32 {
 	return int32(mbits.TrailingZeros32(n))
 }
 
+func X__builtin_ctzl(tls *TLS, x ulong) int32 {
+	return int32(mbits.TrailingZeros64(uint64(x)))
+}
+
 func X__builtin_clz(t *TLS, n uint32) int32 {
 	return int32(mbits.LeadingZeros32(n))
 }
 
 func X__builtin_clzl(t *TLS, n ulong) int32 {
-	return int32(mbits.LeadingZeros64(n))
+	return int32(mbits.LeadingZeros64(uint64(n)))
 }
 
 func X__builtin_clzll(t *TLS, n uint64) int32 {
-	return int32(mbits.LeadingZeros64(n))
+	return int32(mbits.LeadingZeros64(uint64(n)))
 }
 func X__builtin_constant_p_impl() { panic(todo("internal error: should never be called")) }
 
@@ -166,7 +174,7 @@ func X__builtin_popcount(t *TLS, x uint32) int32 {
 
 // int __builtin_popcountl (unsigned long x)
 func X__builtin_popcountl(t *TLS, x ulong) int32 {
-	return int32(mbits.OnesCount64(x))
+	return int32(mbits.OnesCount64(uint64(x)))
 }
 
 // char * __builtin___strcpy_chk (char *dest, const char *src, size_t os);
