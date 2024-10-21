@@ -345,9 +345,9 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 
 func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64) bool {
 	if fromChat == l.adminChatID {
-		log.Printf("[DEBUG] message in admin chat %d, from %s", fromChat, from)
+		log.Printf("[DEBUG] message in admin chat %d, from %s (%d)", fromChat, from, fromID)
 		if !l.SuperUsers.IsSuper(from, fromID) {
-			log.Printf("[DEBUG] %s is not superuser in admin chat, ignored", from)
+			log.Printf("[DEBUG] %s (%d) is not superuser in admin chat, ignored", from, fromID)
 			return false
 		}
 		return true

@@ -61,8 +61,9 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		}
 		return string([]rune(inp)[:max]) + "..."
 	}
-	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q",
-		update.Message.MessageID, update.UpdateID, update.Message.From.UserName, update.Message.ForwardSenderName)
+	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
+		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
+		update.Message.ForwardSenderName, update.Message.ForwardFromMessageID)
 
 	if update.Message.ForwardSenderName == "" && update.Message.ForwardFrom == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
@@ -76,7 +77,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		m := transform(update.Message)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] forwarded message from superuser %q to admin chat %d: %q", update.Message.From.UserName, a.adminChatID, msgTxt)
+	log.Printf("[DEBUG] forwarded message from superuser %q (%d) to admin chat %d: %q",
+		update.Message.From.UserName, update.Message.From.ID, a.adminChatID, msgTxt)
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
@@ -155,8 +157,9 @@ func (a *admin) DirectBanReport(update tbapi.Update) error {
 // DirectWarnReport handles messages replayed with "/warn" or "warn" by admin.
 // it is removing the original message and posting a warning to the main chat as well as recording the warning th admin chat
 func (a *admin) DirectWarnReport(update tbapi.Update) error {
-	log.Printf("[DEBUG] direct warn by admin %q: msg id: %d, from: %q",
-		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
+	log.Printf("[DEBUG] direct warn by admin %q: msg id: %d, from: %q (%d)",
+		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID,
+		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID)
 	origMsg := update.Message.ReplyToMessage
 
 	// this is a replayed message, it is an example of something we didn't like and want to issue a warning
@@ -165,7 +168,7 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported warn message from superuser %q: %q", update.Message.From.UserName, msgTxt)
+	log.Printf("[DEBUG] reported warn message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
@@ -197,8 +200,9 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
 func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
-	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q",
-		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID, update.Message.ReplyToMessage.From.UserName)
+	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q (%d)",
+		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID,
+		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID)
 
 	origMsg := update.Message.ReplyToMessage
 
@@ -209,7 +213,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported spam message from superuser %q: %q", update.Message.From.UserName, msgTxt)
+	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
 
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
