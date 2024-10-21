@@ -61,9 +61,16 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		}
 		return string([]rune(inp)[:max]) + "..."
 	}
+
+	// try to get the forwarded user ID, this is just for logging
+	var fwdID int64
+	if update.Message.ForwardFrom != nil {
+		fwdID = update.Message.ForwardFrom.ID
+	}
+
 	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
-		update.Message.ForwardSenderName, update.Message.ForwardFromMessageID)
+		update.Message.ForwardSenderName, fwdID)
 
 	if update.Message.ForwardSenderName == "" && update.Message.ForwardFrom == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
