@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -21,8 +20,9 @@ import (
 	"github.com/didip/tollbooth_chi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-pkgz/lgr"
+	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
+	"github.com/go-pkgz/rest/logger"
 
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib/approved"
@@ -122,7 +122,8 @@ func NewServer(config Config) *Server {
 // Run starts server and accepts requests checking for spam messages.
 func (s *Server) Run(ctx context.Context) error {
 	router := chi.NewRouter()
-	router.Use(rest.Recoverer(lgr.Default()))
+	router.Use(rest.Recoverer(log.Default()))
+	router.Use(logger.New(logger.Log(log.Default()), logger.Prefix("[DEBUG]")).Handler)
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
 	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
