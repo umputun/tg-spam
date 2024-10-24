@@ -457,6 +457,23 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 
 	// Create the original forwarded message with new indication of "unbanned" and an empty keyboard
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, a.sinceQuery(query))
+
+	// add spam info to the message
+	if userID != 0 {
+		spamInfoText := []string{"\n\n**original detection results**\n"}
+
+		info, found := a.locator.Spam(userID)
+		if found {
+			for _, check := range info.Checks {
+				spamInfoText = append(spamInfoText, "- "+escapeMarkDownV1Text(check.String()))
+			}
+		}
+
+		if len(spamInfoText) > 1 {
+			updText += strings.Join(spamInfoText, "\n")
+		}
+	}
+
 	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
