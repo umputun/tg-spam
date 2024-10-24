@@ -230,7 +230,7 @@ Success! The new status is: DISABLED. /help
 
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
-      --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]      
+      --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -241,12 +241,11 @@ Success! The new status is: DISABLED. /help
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
-      --multi-lang=                 number of words in different languages to consider as spam, 0 to disable (default: 0) [$MULTI_LANG]
+      --multi-lang=                 number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]
       --soft-ban                    soft ban mode, restrict user actions but not ban [$SOFT_BAN]
-      
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
@@ -270,6 +269,7 @@ cas:
 meta:
       --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
       --meta.image-only             enable image only check [$META_IMAGE_ONLY]
+      --meta.links-only             enable links only check [$META_LINKS_ONLY]
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
@@ -291,7 +291,8 @@ message:
       --message.startup=            startup message [$MESSAGE_STARTUP]
       --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=               warn message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.warn=               warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay
+                                    compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]
