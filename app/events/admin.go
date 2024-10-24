@@ -459,7 +459,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, a.sinceQuery(query))
 
 	// add spam info to the message
-	if userID != 0 {
+	if !strings.Contains(query.Message.Text, "spam detection results") && userID != 0 {
 		spamInfoText := []string{"\n\n**original detection results**\n"}
 
 		info, found := a.locator.Spam(userID)
