@@ -181,6 +181,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
 				log.Printf("[WARN] openai error: %v", details.Error)
 			} else {
+				log.Printf("[DEBUG] openai result: %v", details)
 				spamDetected = spam
 			}
 		}
