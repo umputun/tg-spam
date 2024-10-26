@@ -144,7 +144,7 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 	}
 
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &response); err != nil {
-		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %w", err)
+		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", resp.Choices[0].Message.Content, err)
 	}
 
 	return response, nil

@@ -90,8 +90,10 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
-		assert.Equal(t, "OpenAI error: can't unmarshal response: invalid character 'b' looking for beginning of value", details.Details)
-		assert.Equal(t, "can't unmarshal response: invalid character 'b' looking for beginning of value", details.Error.Error())
+		assert.Equal(t, "OpenAI error: can't unmarshal response: bad json - invalid character 'b' looking for beginning of value",
+			details.Details)
+		assert.Equal(t, "can't unmarshal response: bad json - invalid character 'b' looking for beginning of value",
+			details.Error.Error())
 	})
 
 	t.Run("no choices", func(t *testing.T) {
