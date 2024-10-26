@@ -435,9 +435,13 @@ func makeDetector(opts options) *tgspam.Detector {
 			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
 			RetryCount:        opts.OpenAI.RetryCount,
 		}
-		log.Printf("[DEBUG] openai  config: %+v", openAIConfig)
+
 		config := openai.DefaultConfig(opts.OpenAI.Token)
-		config.BaseURL = opts.OpenAI.APIBase
+		if opts.OpenAI.APIBase != "" {
+			config.BaseURL = opts.OpenAI.APIBase
+		}
+		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
+
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
 	}
 
