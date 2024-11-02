@@ -268,6 +268,10 @@ func transform(msg *tbapi.Message) *bot.Message {
 			Caption:  msg.Caption,
 			Entities: transformEntities(msg.CaptionEntities),
 		}
+	case msg.Video != nil:
+		message.WithVideo = true
+	case msg.VideoNote != nil:
+		message.WithVideoNote = true
 	}
 
 	// fill in the message's reply-to message

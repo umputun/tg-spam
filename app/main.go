@@ -69,6 +69,7 @@ type options struct {
 		LinksLimit int  `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
 		ImageOnly  bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
 		LinksOnly  bool `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
+		VideosOnly bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -361,6 +362,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaLinksLimit:          opts.Meta.LinksLimit,
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
+		MetaVideoOnly:           opts.Meta.VideosOnly,
 		MultiLangLimit:          opts.MultiLangWords,
 		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		SamplesDataPath:         opts.Files.SamplesDataPath,
@@ -449,6 +451,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Meta.ImageOnly {
 		log.Printf("[INFO] image only check enabled")
 		metaChecks = append(metaChecks, tgspam.ImagesCheck())
+	}
+	if opts.Meta.VideosOnly {
+		log.Printf("[INFO] videos only check enabled")
+		metaChecks = append(metaChecks, tgspam.VideosCheck())
 	}
 	if opts.Meta.LinksLimit >= 0 {
 		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
