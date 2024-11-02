@@ -83,6 +83,9 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
 	}
+	if msg.WithVideo || msg.WithVideoNote {
+		spamReq.Meta.HasVideo = true
+	}
 	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
 	isSpam, checkResults := s.Check(spamReq)
 	crs := []string{}

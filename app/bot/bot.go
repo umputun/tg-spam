@@ -56,6 +56,9 @@ type Message struct {
 		Sent       time.Time
 		SenderChat SenderChat `json:"sender_chat,omitempty"`
 	} `json:",omitempty"`
+
+	WithVideo     bool `json:",omitempty"`
+	WithVideoNote bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.

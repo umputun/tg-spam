@@ -71,3 +71,18 @@ func ImagesCheck() MetaCheck {
 		return spamcheck.Response{Spam: false, Name: "images", Details: "no images without text"}
 	}
 }
+
+// VideosCheck is a function that returns a MetaCheck function.
+// It checks if the message has a video or video note and the message is empty (i.e. it contains only videos).
+func VideosCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasVideo && req.Msg == "" {
+			return spamcheck.Response{
+				Name:    "videos",
+				Spam:    true,
+				Details: "videos without text",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "videos", Details: "no videos without text"}
+	}
+}

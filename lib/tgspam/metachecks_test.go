@@ -185,3 +185,67 @@ func TestImagesCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestVideosCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name: "No videos and text",
+			req: spamcheck.Request{
+				Msg: "This is a message with text.",
+				Meta: spamcheck.MetaData{
+					HasVideo: false,
+				},
+			},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "no videos without text"},
+		},
+		{
+			name: "Videos with text",
+			req: spamcheck.Request{
+				Msg: "This is a message with text and a video.",
+				Meta: spamcheck.MetaData{
+					HasVideo: true,
+				},
+			},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "no videos without text"},
+		},
+		{
+			name: "Videos without text",
+			req: spamcheck.Request{
+				Msg: "",
+				Meta: spamcheck.MetaData{
+					HasVideo: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "videos",
+				Spam:    true,
+				Details: "videos without text",
+			},
+		},
+		{
+			name: "Video note without text",
+			req: spamcheck.Request{
+				Msg: "",
+				Meta: spamcheck.MetaData{
+					HasVideo: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "videos",
+				Spam:    true,
+				Details: "videos without text",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := VideosCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}

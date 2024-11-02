@@ -48,18 +48,18 @@ func TestRequestString(t *testing.T) {
 	}{
 		{
 			name:     "Normal message",
-			request:  Request{"Hello, world!", "123", "Alice", MetaData{2, 1}},
-			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1`,
+			request:  Request{"Hello, world!", "123", "Alice", MetaData{2, 1, false}},
+			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1, has_video:false`,
 		},
 		{
 			name:     "Spam message",
-			request:  Request{"Spam message", "456", "Bob", MetaData{0, 3}},
-			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3`,
+			request:  Request{"Spam message", "456", "Bob", MetaData{0, 3, true}},
+			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3, has_video:true`,
 		},
 		{
 			name:     "Empty fields",
-			request:  Request{"", "", "", MetaData{0, 0}},
-			expected: `msg:"", user:"", id:, images:0, links:0`,
+			request:  Request{"", "", "", MetaData{0, 0, false}},
+			expected: `msg:"", user:"", id:, images:0, links:0, has_video:false`,
 		},
 	}
 
