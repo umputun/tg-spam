@@ -98,6 +98,9 @@ func NewDetector(p Config) *Detector {
 	if p.FirstMessagesCount > 0 {
 		res.FirstMessageOnly = true
 	}
+	if p.FirstMessageOnly && p.FirstMessagesCount == 0 {
+		res.FirstMessagesCount = 1 // default value for FirstMessagesCount if FirstMessageOnly is set
+	}
 	return res
 }
 
@@ -117,7 +120,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	defer d.lock.RUnlock()
 
 	// approved user don't need to be checked
-	if d.FirstMessageOnly && d.approvedUsers[req.UserID].Count > d.FirstMessagesCount {
+	if d.FirstMessageOnly && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
 		return false, []spamcheck.Response{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
 	}
 
