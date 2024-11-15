@@ -55,11 +55,11 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
 // the user will be baned even in training mode, but not in the dry mode.
 func (a *admin) MsgHandler(update tbapi.Update) error {
-	shrink := func(inp string, max int) string {
-		if utf8.RuneCountInString(inp) <= max {
+	shrink := func(inp string, maxLen int) string {
+		if utf8.RuneCountInString(inp) <= maxLen {
 			return inp
 		}
-		return string([]rune(inp)[:max]) + "..."
+		return string([]rune(inp)[:maxLen]) + "..."
 	}
 
 	// try to get the forwarded user ID, this is just for logging

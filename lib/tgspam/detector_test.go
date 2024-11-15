@@ -816,7 +816,7 @@ func TestDetector_FirstMessagesCount(t *testing.T) {
 		assert.Equal(t, true, spam)
 	})
 	t.Run("first messages are ham, third is spam", func(t *testing.T) {
-		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 3, FirstMessageOnly: true})
 
 		// first ham
 		spam, _ := d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
