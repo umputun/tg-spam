@@ -840,10 +840,6 @@ func TestDetector_FirstMessagesCount(t *testing.T) {
 		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
-		// third ham
-		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
-
 		spam, _ = d.Check(spamcheck.Request{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
 		assert.Equal(t, false, spam, "spam is not detected because user is approved")
 	})
@@ -855,10 +851,6 @@ func TestDetector_FirstMessagesCount(t *testing.T) {
 		assert.Equal(t, false, spam)
 
 		// second ham
-		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
-
-		// third ham
 		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
 		assert.Equal(t, false, spam)
 
