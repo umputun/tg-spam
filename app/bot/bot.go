@@ -8,8 +8,6 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-//go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient:HTTPClient
-
 // PermanentBanDuration defines duration of permanent ban:
 // If user is restricted for more than 366 days or less than 30 seconds from the current time,
 // they are considered to be restricted forever.
