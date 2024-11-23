@@ -4,7 +4,7 @@
 package mocks
 
 import (
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"sync"
 )
 
@@ -14,7 +14,7 @@ import (
 //
 //		// make and configure a mocked events.TbAPI
 //		mockedTbAPI := &TbAPIMock{
-//			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+//			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
 //				panic("mock out the GetChat method")
 //			},
 //			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
@@ -37,7 +37,7 @@ import (
 //	}
 type TbAPIMock struct {
 	// GetChatFunc mocks the GetChat method.
-	GetChatFunc func(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
+	GetChatFunc func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error)
 
 	// GetChatAdministratorsFunc mocks the GetChatAdministrators method.
 	GetChatAdministratorsFunc func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
@@ -87,7 +87,7 @@ type TbAPIMock struct {
 }
 
 // GetChat calls GetChatFunc.
-func (mock *TbAPIMock) GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
+func (mock *TbAPIMock) GetChat(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
 	if mock.GetChatFunc == nil {
 		panic("TbAPIMock.GetChatFunc: method is nil but TbAPI.GetChat was just called")
 	}

@@ -3,6 +3,7 @@ module github.com/umputun/tg-spam
 go 1.23
 
 require (
+	github.com/OvyFlash/telegram-bot-api v0.0.0-20241107191146-851f2334eccf
 	github.com/didip/tollbooth/v7 v7.0.2
 	github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
 	github.com/fatih/color v1.18.0
@@ -10,7 +11,6 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.19.0
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
