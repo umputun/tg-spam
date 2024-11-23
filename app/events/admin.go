@@ -63,17 +63,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	}
 
 	// try to get the forwarded user ID, this is just for logging
-	var fwdID int64
-	var username string
-	if update.Message.ForwardOrigin != nil {
-		if update.Message.ForwardOrigin.IsUser() {
-			fwdID = update.Message.ForwardOrigin.SenderUser.ID
-			username = update.Message.ForwardOrigin.SenderUser.UserName
-		}
-		if update.Message.ForwardOrigin.IsHiddenUser() {
-			username = update.Message.ForwardOrigin.SenderUserName
-		}
-	}
+	fwdID, username := a.getForwardUsernameAndID(update)
 
 	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
@@ -140,12 +130,13 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	}
 
 	// delete message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
 		BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  info.MsgID,
 			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
 	} else {
 		log.Printf("[INFO] message %d deleted", info.MsgID)
@@ -194,20 +185,22 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 	errs := new(multierror.Error)
 	// delete original message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 		MessageID:  origMsg.MessageID,
 		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}}); err != nil {
+	}})
+	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
 		log.Printf("[INFO] warn message %d deleted", origMsg.MessageID)
 	}
 
 	// delete reply message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 		MessageID:  update.Message.MessageID,
 		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}}); err != nil {
+	}})
+	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
 		log.Printf("[INFO] admin warn reprot message %d deleted", update.Message.MessageID)
@@ -221,6 +214,20 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 
 	return errs.ErrorOrNil()
+}
+
+// returns the user ID and username from the tg update if's forwarded message,
+// or just username in case sender is hidden user
+func (a *admin) getForwardUsernameAndID(update tbapi.Update) (fwdID int64, username string) {
+	if update.Message.ForwardOrigin != nil {
+		if update.Message.ForwardOrigin.IsUser() {
+			return update.Message.ForwardOrigin.SenderUser.ID, update.Message.ForwardOrigin.SenderUser.UserName
+		}
+		if update.Message.ForwardOrigin.IsHiddenUser() {
+			return 0, update.Message.ForwardOrigin.SenderUserName
+		}
+	}
+	return 0, ""
 }
 
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
@@ -282,34 +289,28 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	// delete original message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 		MessageID:  origMsg.MessageID,
 		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}}); err != nil {
+	}})
+	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
 		log.Printf("[INFO] spam message %d deleted", origMsg.MessageID)
 	}
 
 	// delete reply message
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 		MessageID:  update.Message.MessageID,
 		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}}); err != nil {
+	}})
+	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
 		log.Printf("[INFO] admin spam reprot message %d deleted", update.Message.MessageID)
 	}
 
-	var username string
-	if update.Message.ForwardOrigin != nil {
-		if update.Message.ForwardOrigin.IsUser() {
-			username = update.Message.ForwardOrigin.SenderUser.UserName
-		}
-		if update.Message.ForwardOrigin.IsHiddenUser() {
-			username = update.Message.ForwardOrigin.SenderUserName
-		}
-	}
+	_, username := a.getForwardUsernameAndID(update)
 
 	// ban user
 	banReq := banRequest{duration: bot.PermanentBanDuration, userID: origMsg.From.ID, chatID: a.primChatID,
@@ -613,10 +614,11 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 	}
 
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
-	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 		MessageID:  msgID,
 		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}}); err != nil {
+	}})
+	if err != nil {
 		return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
 	}
 
