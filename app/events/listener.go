@@ -104,7 +104,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	if l.DisableAdminSpamForward {
 		adminForwardStatus = "disabled"
 	}
-	log.Printf("[DEBUG] admin handler created, spam forvarding %s, %+v", adminForwardStatus, l.adminHandler)
+	log.Printf("[DEBUG] admin handler created, spam forwarding %s, %+v", adminForwardStatus, l.adminHandler)
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
