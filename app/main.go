@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"

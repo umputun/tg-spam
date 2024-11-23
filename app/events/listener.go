@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
@@ -146,10 +146,6 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.Message == nil {
 				continue
 			}
-			if update.Message.Chat == nil {
-				log.Print("[DEBUG] ignoring message not from chat")
-				continue
-			}
 
 			// save join messages to locator even if SuppressJoinMessage is set to false
 			if update.Message.NewChatMembers != nil {
@@ -250,7 +246,9 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 		log.Printf("[DEBUG] no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
 		return nil
 	}
-	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: fromChat, MessageID: msg.MsgID}); err != nil {
+	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
+		BaseChatMessage: tbapi.BaseChatMessage{ChatConfig: tbapi.ChatConfig{ChatID: fromChat}, MessageID: msg.MsgID},
+	}); err != nil {
 		return fmt.Errorf("failed to delete new chat member message %d: %w", msg.MsgID, err)
 	}
 
@@ -324,7 +322,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	// delete message if requested by bot
 	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
-		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: l.chatID, MessageID: resp.ReplyTo}); err != nil {
+		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  resp.ReplyTo,
+			ChatConfig: tbapi.ChatConfig{ChatID: l.chatID},
+		}}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
 	}
@@ -368,7 +369,14 @@ func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update
 	}
 	// if botChat.UserName not set, that means the ban comes from superuser and username should be taken from ReplyToMessage
 	if botChat.UserName == "" && update.Message.ReplyToMessage.SenderChat != nil {
-		botChat.UserName = update.Message.ReplyToMessage.SenderChat.UserName
+		if update.Message.ReplyToMessage.ForwardOrigin != nil {
+			if update.Message.ReplyToMessage.ForwardOrigin.IsUser() {
+				botChat.UserName = update.Message.ReplyToMessage.ForwardOrigin.SenderUser.UserName
+			}
+			if update.Message.ReplyToMessage.ForwardOrigin.IsHiddenUser() {
+				botChat.UserName = update.Message.ReplyToMessage.ForwardOrigin.SenderUserName
+			}
+		}
 	}
 	return fmt.Sprintf("%v", botChat)
 }
@@ -383,8 +391,8 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 	log.Printf("[DEBUG] bot response - %+v, reply-to:%d", strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo)
 	tbMsg := tbapi.NewMessage(chatID, resp.Text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
-	tbMsg.DisableWebPagePreview = true
-	tbMsg.ReplyToMessageID = resp.ReplyTo
+	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	tbMsg.ReplyParameters = tbapi.ReplyParameters{MessageID: resp.ReplyTo}
 
 	if err := send(tbMsg, l.TbAPI); err != nil {
 		return fmt.Errorf("can't send message to telegram %q: %w", resp.Text, err)
@@ -444,7 +452,7 @@ func (l *TelegramListener) updateSupers() error {
 // SuperUsers for moderators. Can be either username or user ID.
 type SuperUsers []string
 
-// IsSuper checks if userID or username in the list of super users
+// IsSuper checks if userID or username in the list of superusers
 // First it treats super as user ID, then as username
 func (s SuperUsers) IsSuper(userName string, userID int64) bool {
 	for _, super := range s {
