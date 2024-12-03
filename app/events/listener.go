@@ -197,7 +197,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 		case <-time.After(l.IdleDuration): // hit bots on idle timeout
-			resp := l.Bot.OnMessage(bot.Message{Text: "idle"})
+			resp := l.Bot.OnMessage(bot.Message{Text: "idle"}, false)
 			if err := l.sendBotResponse(resp, l.chatID); err != nil {
 				log.Printf("[WARN] failed to respond on idle, %v", err)
 			}
@@ -279,7 +279,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if err := l.Locator.AddMessage(msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
-	resp := l.Bot.OnMessage(*msg)
+	resp := l.Bot.OnMessage(*msg, false)
 
 	if !resp.Send { // not spam
 		return nil

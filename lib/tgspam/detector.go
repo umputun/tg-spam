@@ -203,8 +203,8 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		au := approved.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
 			UserName: req.UserName, Timestamp: time.Now()}
 		d.approvedUsers[req.UserID] = au
-		if d.userStorage != nil {
-			_ = d.userStorage.Write(au) // ignore error, failed to write to storage is not critical
+		if d.userStorage != nil && !req.CheckOnly {
+			_ = d.userStorage.Write(au) // ignore error, failed to write to storage is not critical here
 		}
 	}
 	return false, cr
