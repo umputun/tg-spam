@@ -116,6 +116,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		return false
 	}
 
+	cleanMsg := d.cleanText(req.Msg)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
@@ -128,7 +129,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for stop words if any stop words are loaded
 	if len(d.stopWords) > 0 {
-		cr = append(cr, d.isStopWord(req.Msg))
+		cr = append(cr, d.isStopWord(cleanMsg))
 	}
 
 	// check for emojis if max allowed emojis is set
@@ -162,12 +163,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for spam similarity if a similarity threshold is set and spam samples are loaded
 	if d.SimilarityThreshold > 0 && len(d.tokenizedSpam) > 0 {
-		cr = append(cr, d.isSpamSimilarityHigh(req.Msg))
+		cr = append(cr, d.isSpamSimilarityHigh(cleanMsg))
 	}
 
 	// check for spam with classifier if classifier is loaded
 	if d.classifier.nAllDocument > 0 && d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0 {
-		cr = append(cr, d.isSpamClassified(req.Msg))
+		cr = append(cr, d.isSpamClassified(cleanMsg))
 	}
 
 	spamDetected := isSpamDetected(cr)
@@ -178,7 +179,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
-			spam, details := d.openaiChecker.check(req.Msg)
+			spam, details := d.openaiChecker.check(cleanMsg)
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
@@ -650,4 +651,22 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 		return spamcheck.Response{Name: "multi-lingual", Spam: true, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
 	}
 	return spamcheck.Response{Name: "multi-lingual", Spam: false, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
+}
+
+// cleanText removes control and format characters from a given text
+func (d *Detector) cleanText(text string) string {
+	var result strings.Builder
+	result.Grow(len(text))
+	for _, r := range text {
+		// skip control and format characters
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		// skip specific ranges of invisible characters
+		if (r >= 0x200B && r <= 0x200F) || (r >= 0x2060 && r <= 0x206F) {
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }
