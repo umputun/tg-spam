@@ -108,7 +108,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	// make a message with spam info and send to admin chat
 	spamInfo := []string{}
-	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.UserID}})
+	// check only, don't update the storage
+	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.UserID}}, true)
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
@@ -264,7 +265,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 
 	// make a message with spam info and send to admin chat
 	spamInfo := []string{}
-	resp := a.bot.OnMessage(bot.Message{Text: msgTxt, From: bot.User{ID: origMsg.From.ID}})
+	// check only, don't update the storage
+	resp := a.bot.OnMessage(bot.Message{Text: msgTxt, From: bot.User{ID: origMsg.From.ID}}, true)
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))

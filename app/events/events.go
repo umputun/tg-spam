@@ -51,7 +51,7 @@ type Locator interface {
 
 // Bot is an interface for bot events.
 type Bot interface {
-	OnMessage(msg bot.Message) (response bot.Response)
+	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error

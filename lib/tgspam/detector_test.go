@@ -284,7 +284,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	}
 }
 
-func TestDetector_CheckClassificator(t *testing.T) {
+func TestDetector_CheckClassifier(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
@@ -333,7 +333,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	})
 }
 
-func TestDetector_CheckClassificatorNoHam(t *testing.T) {
+func TestDetector_CheckClassifierNoHam(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)

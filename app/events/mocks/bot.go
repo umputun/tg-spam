@@ -20,7 +20,7 @@ import (
 //			IsApprovedUserFunc: func(userID int64) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
-//			OnMessageFunc: func(msg bot.Message) bot.Response {
+//			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 //				panic("mock out the OnMessage method")
 //			},
 //			RemoveApprovedUserFunc: func(id int64) error {
@@ -46,7 +46,7 @@ type BotMock struct {
 	IsApprovedUserFunc func(userID int64) bool
 
 	// OnMessageFunc mocks the OnMessage method.
-	OnMessageFunc func(msg bot.Message) bot.Response
+	OnMessageFunc func(msg bot.Message, checkOnly bool) bot.Response
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id int64) error
@@ -75,6 +75,8 @@ type BotMock struct {
 		OnMessage []struct {
 			// Msg is the msg argument value.
 			Msg bot.Message
+			// CheckOnly is the checkOnly argument value.
+			CheckOnly bool
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
 		RemoveApprovedUser []struct {
@@ -183,19 +185,21 @@ func (mock *BotMock) ResetIsApprovedUserCalls() {
 }
 
 // OnMessage calls OnMessageFunc.
-func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
+func (mock *BotMock) OnMessage(msg bot.Message, checkOnly bool) bot.Response {
 	if mock.OnMessageFunc == nil {
 		panic("BotMock.OnMessageFunc: method is nil but Bot.OnMessage was just called")
 	}
 	callInfo := struct {
-		Msg bot.Message
+		Msg       bot.Message
+		CheckOnly bool
 	}{
-		Msg: msg,
+		Msg:       msg,
+		CheckOnly: checkOnly,
 	}
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = append(mock.calls.OnMessage, callInfo)
 	mock.lockOnMessage.Unlock()
-	return mock.OnMessageFunc(msg)
+	return mock.OnMessageFunc(msg, checkOnly)
 }
 
 // OnMessageCalls gets all the calls that were made to OnMessage.
@@ -203,10 +207,12 @@ func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
 //
 //	len(mockedBot.OnMessageCalls())
 func (mock *BotMock) OnMessageCalls() []struct {
-	Msg bot.Message
+	Msg       bot.Message
+	CheckOnly bool
 } {
 	var calls []struct {
-		Msg bot.Message
+		Msg       bot.Message
+		CheckOnly bool
 	}
 	mock.lockOnMessage.RLock()
 	calls = mock.calls.OnMessage
