@@ -8,7 +8,7 @@ type Request struct {
 	UserID    string   `json:"user_id"`    // user id
 	UserName  string   `json:"user_name"`  // user name
 	Meta      MetaData `json:"meta"`       // meta-info, provided by the client
-	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not update the storage state
+	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not write newly approved user to the database
 }
 
 // MetaData is a meta-info about the message, provided by the client.
