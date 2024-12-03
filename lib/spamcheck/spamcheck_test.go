@@ -69,3 +69,39 @@ func TestRequestString(t *testing.T) {
 		})
 	}
 }
+
+func TestChecksToString(t *testing.T) {
+	tests := []struct {
+		name     string
+		checks   []Response
+		expected string
+	}{
+		{
+			name: "single check",
+			checks: []Response{
+				{Name: "check1", Spam: true, Details: "details1"},
+			},
+			expected: "[{check1: spam, details1}] ",
+		},
+		{
+			name: "multiple checks",
+			checks: []Response{
+				{Name: "check1", Spam: true, Details: "details1"},
+				{Name: "check2", Spam: false, Details: "details2"},
+			},
+			expected: "[{check1: spam, details1}, {check2: ham, details2}] ",
+		},
+		{
+			name:     "no checks",
+			checks:   []Response{},
+			expected: "[] ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := ChecksToString(tt.checks)
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
