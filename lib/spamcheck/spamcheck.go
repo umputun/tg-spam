@@ -1,6 +1,9 @@
 package spamcheck
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Request is a request to check a message for spam.
 type Request struct {
@@ -36,4 +39,14 @@ func (r *Response) String() string {
 		spamOrHam = "spam"
 	}
 	return fmt.Sprintf("%s: %s, %s", r.Name, spamOrHam, r.Details)
+}
+
+// ChecksToString converts a slice of checks to a string
+func ChecksToString(checks []Response) string {
+	elems := []string{}
+	for _, r := range checks {
+		elems = append(elems, "{"+r.String()+"}")
+
+	}
+	return fmt.Sprintf("[%s] ", strings.Join(elems, ", "))
 }
