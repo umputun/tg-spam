@@ -98,8 +98,9 @@ Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
 - Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
-- OpenAI check is the last in the chain of checks. Unless `--openai.veto` is not set, the bot will not even call OpenAI if any of the previous checks marked the message as spam. However, if `--openai.veto` is set, it will be called and the message will be marked as spam only if OpenAI thinks so.
-- By default, OpenAI integration is disabled. 
+- OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
+- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
+- By default, OpenAI integration is disabled.
 
 **Emoji Count**
 
