@@ -398,7 +398,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 	go func() {
 		if err := srv.Run(ctx); err != nil {
-			slog.Error("web server failed", "err", err)
+			slog.Error("web server failed", slog.Any("error", err))
 		}
 	}()
 	return nil
@@ -556,12 +556,12 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 		}
 		line, err := json.Marshal(&m)
 		if err != nil {
-			slog.Warn("can't marshal json,", "err", err)
+			slog.Warn("can't marshal json,", slog.Any("error", err))
 
 			return
 		}
 		if _, err := wr.Write(append(line, '\n')); err != nil {
-			slog.Warn("can't write to log,", "err", err)
+			slog.Warn("can't write to log,", slog.Any("error", err))
 		}
 
 		// write to db store
@@ -572,7 +572,7 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 			Timestamp: time.Now().In(time.Local),
 		}
 		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
-			slog.Warn("can't write to db", "err", err)
+			slog.Warn("can't write to db", slog.Any("error", err))
 		}
 	})
 
@@ -653,15 +653,6 @@ func setupLog(dbg bool, loggingFormat string, secrets ...string) error {
 	} else {
 		return errors.New("Invalid logging format")
 	}
-	count := 0
-	slog.Info("approved users", "from", dataFile, "loaded:", count)
-
-	slog.Error("", slog.Any("error", errors.New("Invalid logging format")))
-	os.Exit(1)
-
-	slog.Info("info demo", "count", 3)
-	slog.Warn("warn demo", slog.String("somekey", "somevalue"))
-	slog.Error("error demo", slog.Int("someintkey", 123))
 
 	return nil
 }
