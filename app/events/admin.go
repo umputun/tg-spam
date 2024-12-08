@@ -69,7 +69,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	slog.Debug(fmt.Sprintf("message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d), fwd: %d",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
-		username, fwdID)
+		username, fwdID))
 
 	if username == "" && update.Message.ForwardOrigin == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
