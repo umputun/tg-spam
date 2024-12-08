@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -85,8 +85,9 @@ func (l *Locator) Close() error {
 // AddMessage adds messages to the locator and also cleans up old messages.
 func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, msgID int) error {
 	hash := l.MsgHash(msg)
-	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
+	debugMsg := fmt.Sprintf("add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
 		msg, hash, userID, userName, chatID, msgID)
+	slog.Debug(debugMsg)
 	_, err := l.db.NamedExec(`INSERT OR REPLACE INTO messages (hash, time, chat_id, user_id, user_name, msg_id) 
         VALUES (:hash, :time, :chat_id, :user_id, :user_name, :msg_id)`,
 		struct {
@@ -134,7 +135,7 @@ func (l *Locator) Message(msg string) (MsgMeta, bool) {
 	hash := l.MsgHash(msg)
 	err := l.db.Get(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, hash)
 	if err != nil {
-		log.Printf("[DEBUG] failed to find message by hash %q: %v", hash, err)
+		slog.Debug(fmt.Sprintf("failed to find message by hash %q: %v", hash, err))
 		return MsgMeta{}, false
 	}
 	return meta, true
@@ -145,7 +146,7 @@ func (l *Locator) UserNameByID(userID int64) string {
 	var userName string
 	err := l.db.Get(&userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
 	if err != nil {
-		log.Printf("[DEBUG] failed to find user name by id %d: %v", userID, err)
+		slog.Debug(fmt.Sprintf("failed to find user name by id %d: %v", userID, err))
 		return ""
 	}
 	return userName
@@ -156,7 +157,7 @@ func (l *Locator) UserIDByName(userName string) int64 {
 	var userID int64
 	err := l.db.Get(&userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
 	if err != nil {
-		log.Printf("[DEBUG] failed to find user id by name %q: %v", userName, err)
+		slog.Debug(fmt.Sprintf("failed to find user id by name %q: %v", userName, err))
 		return 0
 	}
 	return userID

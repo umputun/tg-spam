@@ -10,7 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,14 +55,14 @@ type TelegramListener struct {
 
 // Do process all events, blocked call
 func (l *TelegramListener) Do(ctx context.Context) error {
-	log.Printf("[INFO] start telegram listener for %q", l.Group)
+	slog.Info("start telegram listener for", slog.Any("Group", l.Group))
 
 	if l.TrainingMode {
-		log.Printf("[WARN] training mode, no bans")
+		slog.Warn("training mode, no bans")
 	}
 
 	if l.SoftBanMode {
-		log.Printf("[INFO] soft ban mode, no bans but restrictions")
+		slog.Warn("soft ban mode, no bans but restrictions")
 	}
 
 	// get chat ID for the group we are monitoring
@@ -72,7 +72,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	if err := l.updateSupers(); err != nil {
-		log.Printf("[WARN] failed to update superusers: %v", err)
+		slog.Warn("failed to update superusers", slog.Any("error", err))
 	}
 
 	if l.AdminGroup != "" {
@@ -80,7 +80,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		if l.adminChatID, getChatErr = l.getChatID(l.AdminGroup); getChatErr != nil {
 			return fmt.Errorf("failed to get chat ID for admin group %q: %w", l.AdminGroup, getChatErr)
 		}
-		log.Printf("[INFO] admin chat ID: %d", l.adminChatID)
+		slog.Info(fmt.Sprintf("admin chat ID: %d", l.adminChatID))
 	}
 
 	l.msgs.once.Do(func() {
@@ -93,7 +93,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	// send startup message if any set
 	if l.StartupMsg != "" && !l.TrainingMode && !l.Dry {
 		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
-			log.Printf("[WARN] failed to send startup message, %v", err)
+			slog.Warn("failed to send startup message", slog.Any("error", err))
 		}
 	}
 
@@ -104,8 +104,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	if l.DisableAdminSpamForward {
 		adminForwardStatus = "disabled"
 	}
-	log.Printf("[DEBUG] admin handler created, spam forwarding %s, %+v", adminForwardStatus, l.adminHandler)
-
+	slog.Debug(fmt.Sprintf("admin handler created, spam forwarding %s, %+v", adminForwardStatus, l.adminHandler))
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -128,7 +127,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 					continue
 				}
 				if err := l.adminHandler.MsgHandler(update); err != nil {
-					log.Printf("[WARN] failed to process admin chat message: %v", err)
+					msg := fmt.Sprintf("failed to process admin chat message: %v", err)
+					slog.Warn(msg)
 					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
 				}
 				continue
@@ -137,7 +137,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			// handle admin chat inline buttons
 			if update.CallbackQuery != nil {
 				if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
-					log.Printf("[WARN] failed to process callback: %v", err)
+					msg := fmt.Sprintf("failed to process callback: %v", err)
+					slog.Warn(msg)
 					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
 				}
 				continue
@@ -147,7 +148,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 			if update.Message.Chat == nil {
-				log.Print("[DEBUG] ignoring message not from chat")
+				slog.Debug("ignoring message not from chat")
 				continue
 			}
 
@@ -155,7 +156,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.Message.NewChatMembers != nil {
 				err := l.procNewChatMemberMessage(update)
 				if err != nil {
-					log.Printf("[WARN] failed to process new chat member: %v", err)
+					msg := fmt.Sprintf("failed to process new chat member: %v", err)
+					slog.Warn(msg)
 				}
 				continue
 			}
@@ -164,8 +166,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				if l.SuppressJoinMessage {
 					err := l.procLeftChatMemberMessage(update)
 					if err != nil {
-						log.Printf("[WARN] failed to process left chat member: %v", err)
+						msg := fmt.Sprintf("[WARN] failed to process left chat member: %v", err)
+						slog.Warn(msg)
 					}
+
 				}
 				continue
 			}
@@ -173,37 +177,40 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			// handle spam reports from superusers
 			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) {
 				if strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam") {
-					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
+					slog.Debug(fmt.Sprintf("superuser %s reported spam", update.Message.From.UserName))
 					if err := l.adminHandler.DirectSpamReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct spam report: %v", err)
+						msg := fmt.Sprintf("failed to process direct spam report: %v", err)
+						slog.Warn(msg)
 					}
 					continue
 				}
 				if strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban") {
-					log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
+					slog.Debug(fmt.Sprintf("superuser %s requested ban", update.Message.From.UserName))
 					if err := l.adminHandler.DirectBanReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct ban request: %v", err)
+						msg := fmt.Sprintf("failed to process direct ban request: %v", err)
+						slog.Warn(msg)
 					}
 					continue
 				}
 				if strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn") {
-					log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
+					slog.Debug(fmt.Sprintf("superuser %s requested warning", update.Message.From.UserName))
 					if err := l.adminHandler.DirectWarnReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct warning request: %v", err)
+						msg := fmt.Sprintf("failed to process direct warning request: %v", err)
+						slog.Warn(msg)
 					}
 					continue
 				}
 			}
 
 			if err := l.procEvents(update); err != nil {
-				log.Printf("[WARN] failed to process update: %v", err)
+				slog.Warn(fmt.Sprintf("failed to process update: %v", err))
 				continue
 			}
 
 		case <-time.After(l.IdleDuration): // hit bots on idle timeout
 			resp := l.Bot.OnMessage(bot.Message{Text: "idle"})
 			if err := l.sendBotResponse(resp, l.chatID); err != nil {
-				log.Printf("[WARN] failed to respond on idle, %v", err)
+				slog.Warn(fmt.Sprintf("failed to respond on idle: %v", err))
 			}
 		}
 	}
@@ -218,7 +225,7 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 	}
 
 	if len(update.Message.NewChatMembers) != 1 {
-		log.Printf("[DEBUG] we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers))
+		slog.Debug(fmt.Sprintf("we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers)))
 		return nil
 	}
 
@@ -242,12 +249,12 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 	}
 
 	if update.Message.From.ID == update.Message.LeftChatMember.ID {
-		log.Printf("[DEBUG] left chat member is the same as the message sender, ignored")
+		slog.Debug("left chat member is the same as the message sender, ignored")
 		return nil
 	}
 	msg, found := l.Locator.Message(fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
 	if !found {
-		log.Printf("[DEBUG] no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
+		slog.Debug("no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
 		return nil
 	}
 	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{ChatID: fromChat, MessageID: msg.MsgID}); err != nil {
@@ -268,7 +275,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		return nil
 	}
 
-	log.Printf("[DEBUG] %s", string(msgJSON))
+	slog.Debug(string(msgJSON))
 	msg := transform(update.Message)
 
 	// ignore empty messages
@@ -276,10 +283,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		return nil
 	}
 
-	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
-	log.Printf("[DEBUG] incoming msg details: %+v", msg)
+	slog.Debug(fmt.Sprintf("incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " ")))
+	slog.Debug(fmt.Sprintf("incoming msg details: %+v", msg))
 	if err := l.Locator.AddMessage(msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
-		log.Printf("[WARN] failed to add message to locator: %v", err)
+		msg := fmt.Sprintf("failed to add message to locator: %v", err)
+		slog.Warn(msg)
 	}
 	resp := l.Bot.OnMessage(*msg)
 
@@ -290,7 +298,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	// send response to the channel if allowed
 	if resp.Send && !l.NoSpamReply && !l.TrainingMode {
 		if err := l.sendBotResponse(resp, fromChat); err != nil {
-			log.Printf("[WARN] failed to respond on update, %v", err)
+			slog.Warn(fmt.Sprintf("failed to respond on update: %v", err))
 		}
 	}
 
@@ -298,10 +306,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 	// ban user if requested by bot
 	if resp.Send && resp.BanInterval > 0 {
-		log.Printf("[DEBUG] ban initiated for %+v", resp)
+		slog.Debug(fmt.Sprintf("ban initiated for %+v", resp))
 		l.SpamLogger.Save(msg, &resp)
 		if err := l.Locator.AddSpam(msg.From.ID, resp.CheckResults); err != nil {
-			log.Printf("[WARN] failed to add spam to locator: %v", err)
+			slog.Warn(fmt.Sprintf("failed to add spam to locator: %v", err))
 		}
 		banUserStr := l.getBanUsername(resp, update)
 
@@ -309,7 +317,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 			if l.TrainingMode {
 				l.adminHandler.ReportBan(banUserStr, msg)
 			}
-			log.Printf("[DEBUG] superuser %s requested ban, ignored", banUserStr)
+			slog.Debug(fmt.Sprintf("superuser %s requested ban, ignored", banUserStr))
 			return nil
 		}
 
@@ -346,9 +354,9 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 
 func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64) bool {
 	if fromChat == l.adminChatID {
-		log.Printf("[DEBUG] message in admin chat %d, from %s (%d)", fromChat, from, fromID)
+		slog.Debug(fmt.Sprintf("message in admin chat %d, from %s (%d)", fromChat, from, fromID))
 		if !l.SuperUsers.IsSuper(from, fromID) {
-			log.Printf("[DEBUG] %s (%d) is not superuser in admin chat, ignored", from, fromID)
+			slog.Debug(fmt.Sprintf("%s (%d) is not superuser in admin chat, ignored", from, fromID))
 			return false
 		}
 		return true
@@ -380,7 +388,7 @@ func (l *TelegramListener) sendBotResponse(resp bot.Response, chatID int64) erro
 		return nil
 	}
 
-	log.Printf("[DEBUG] bot response - %+v, reply-to:%d", strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo)
+	slog.Debug(fmt.Sprintf("bot response - %+v, reply-to:%d", strings.ReplaceAll(resp.Text, "\n", "\\n"), resp.ReplyTo))
 	tbMsg := tbapi.NewMessage(chatID, resp.Text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	tbMsg.DisableWebPagePreview = true
@@ -437,7 +445,7 @@ func (l *TelegramListener) updateSupers() error {
 		l.SuperUsers = append(l.SuperUsers, fmt.Sprintf("%d", admin.User.ID))
 	}
 
-	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
+	slog.Info(fmt.Sprintf("added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", ")))
 	return err
 }
 

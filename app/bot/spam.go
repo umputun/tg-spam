@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -66,7 +66,7 @@ func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *S
 	res := &SpamFilter{Detector: detector, params: params}
 	go func() {
 		if err := res.watch(ctx, params.WatchDelay); err != nil {
-			log.Printf("[WARN] samples file watcher failed: %v", err)
+			slog.Warn("samples file watcher failed", slog.Any("error", err))
 		}
 	}()
 	return res
@@ -94,7 +94,7 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 	}
 	checkResultStr := strings.Join(crs, ", ")
 	if isSpam {
-		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text)
+		slog.Info(fmt.Sprintf("user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text))
 		msgPrefix := s.params.SpamMsg
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
@@ -104,14 +104,14 @@ func (s *SpamFilter) OnMessage(msg Message) (response Response) {
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
 		}
 	}
-	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)
+	slog.Debug(fmt.Sprintf("user %s is not a spammer: %s", displayUsername, checkResultStr))
 	return Response{CheckResults: checkResults} // not a spam
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
 func (s *SpamFilter) UpdateSpam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[DEBUG] update spam samples with %q", cleanMsg)
+	slog.Debug(fmt.Sprintf("update spam samples with %q", cleanMsg))
 	if err := s.Detector.UpdateSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
@@ -121,7 +121,7 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (s *SpamFilter) UpdateHam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[DEBUG] update ham samples with %q", cleanMsg)
+	slog.Debug(fmt.Sprintf("update ham samples with %q", cleanMsg))
 	if err := s.Detector.UpdateHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
@@ -135,7 +135,7 @@ func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage
 func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
-	log.Printf("[INFO] add aproved user: id:%d, name:%q", id, name)
+	slog.Info(fmt.Sprintf("add approved user: id:%d, name:%q", id, name))
 	if err := s.Detector.AddApprovedUser(approved.UserInfo{UserID: fmt.Sprintf("%d", id), UserName: name}); err != nil {
 		return fmt.Errorf("failed to write approved user to storage: %w", err)
 	}
@@ -144,7 +144,7 @@ func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
 
 // RemoveApprovedUser removes users from the list of approved users in both the detector and the storage
 func (s *SpamFilter) RemoveApprovedUser(id int64) error {
-	log.Printf("[INFO] remove aproved user: %d", id)
+	slog.Info(fmt.Sprintf("remove approved user: id:%d", id))
 	if err := s.Detector.RemoveApprovedUser(fmt.Sprintf("%d", id)); err != nil {
 		return fmt.Errorf("failed to delete approved user from storage: %w", err)
 	}
@@ -169,7 +169,7 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("[INFO] stopping watcher for samples: %v", ctx.Err())
+				slog.Info(fmt.Sprintf("stopping watcher for samples: %v", ctx.Err()))
 				return
 			case event, ok := <-watcher.Events:
 				if !ok {
@@ -179,7 +179,7 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 					// may happen when the file is renamed, ignore
 					continue
 				}
-				log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
+				slog.Debug(fmt.Sprintf("file %q updated, op: %v", event.Name, event.Op))
 				if !reloadPending {
 					reloadPending = true
 					reloadTimer.Reset(delay)
@@ -188,14 +188,14 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 				if reloadPending {
 					reloadPending = false
 					if err := s.ReloadSamples(); err != nil {
-						log.Printf("[WARN] %v", err)
+						slog.Warn("failed to reload samples", slog.Any("error", err))
 					}
 				}
 			case e, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
-				log.Printf("[WARN] watcher error: %v", e)
+				slog.Warn("watcher error", slog.Any("error", e))
 			}
 		}
 	}()
@@ -205,7 +205,7 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 		if _, err := os.Stat(file); err != nil {
 			return fmt.Errorf("failed to stat file %q: %w", file, err)
 		}
-		log.Printf("[DEBUG] add file %q to watcher", file)
+		slog.Debug(fmt.Sprintf("add file %q to watcher", file))
 		return watcher.Add(file)
 	}
 	errs = multierror.Append(errs, addToWatcher(s.params.ExcludedTokensFile))
@@ -221,7 +221,7 @@ func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
 
 // ReloadSamples reloads samples and stop-words
 func (s *SpamFilter) ReloadSamples() (err error) {
-	log.Printf("[DEBUG] reloading samples")
+	slog.Debug("reloading samples")
 
 	var exclReader, spamReader, hamReader, stopWordsReader, spamDynamicReader, hamDynamicReader io.ReadCloser
 
@@ -271,8 +271,8 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 		return fmt.Errorf("failed to reload stop words: %w", err)
 	}
 
-	log.Printf("[INFO] loaded samples - spam: %d, ham: %d, excluded tokens: %d, stop-words: %d",
-		lr.SpamSamples, lr.HamSamples, lr.ExcludedTokens, ls.StopWords)
+	slog.Info(fmt.Sprintf("loaded samples - spam: %d, ham: %d, excluded tokens: %d, stop-words: %d",
+		lr.SpamSamples, lr.HamSamples, lr.ExcludedTokens, ls.StopWords))
 
 	return nil
 }
@@ -312,7 +312,7 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicSpamSample(sample string) (int, error) {
-	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
+	slog.Debug(fmt.Sprintf("remove dynamic spam sample: %q", sample))
 	count, err := s.removeDynamicSample(sample, s.params.SpamDynamicFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to remove dynamic spam sample: %w", err)
@@ -325,7 +325,7 @@ func (s *SpamFilter) RemoveDynamicSpamSample(sample string) (int, error) {
 
 // RemoveDynamicHamSample removes a sample from the ham dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicHamSample(sample string) (int, error) {
-	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
+	slog.Debug(fmt.Sprintf("remove dynamic ham sample: %q", sample))
 	count, err := s.removeDynamicSample(sample, s.params.HamDynamicFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to remove dynamic ham sample: %w", err)
@@ -400,7 +400,7 @@ func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
 	if err := s.fileReplace(spamDynamicWriter.Name(), fileName, fileInfo.Mode()); err != nil {
 		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
 	}
-	log.Printf("[DEBUG] removed %d samples from %s", count, fileName)
+	slog.Debug(fmt.Sprintf("removed %d samples from %s", count, fileName))
 	return count, nil
 }
 

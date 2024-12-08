@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam"
+	"golang.org/x/exp/slog"
 
 	"github.com/umputun/tg-spam/_examples/simplechat/storage"
 )
@@ -43,7 +43,7 @@ type Storage interface {
 
 // ListenAndServe starts the HTTP server
 func (s *Server) ListenAndServe() error {
-	log.Printf("Starting server on %s", s.Addr)
+	slog.Info("Starting server on ", slog.Any("error", s.Addr))
 	s.sessions.data = make(map[string]bool)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.loggingMiddleware(s.authMiddleware(s.indexHandler)))
@@ -141,7 +141,7 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 	// check for spam
 	spam, details := s.Detector.Check(spamcheck.Request{Msg: content, UserID: string(username)})
 	if spam {
-		log.Printf("spam detected: %+v", details)
+		slog.Info("spam detected:", slog.Any("details", details))
 		w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
 		data := struct {
 			Content string
@@ -237,7 +237,7 @@ func (s *Server) authMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 // loggingMiddleware logs the request method, URI and remote address
 func (s *Server) loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("request: %s %s %s", r.Method, r.RequestURI, r.RemoteAddr)
+		slog.Info("request:", slog.Any("method", r.Method), slog.Any("uri", r.RequestURI), slog.Any("remote address", r.RemoteAddr))
 		next(w, r)
 	}
 }

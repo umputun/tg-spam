@@ -86,7 +86,8 @@ func TestMakeSpamLogger(t *testing.T) {
 }
 
 func TestMakeSpamLogWriter(t *testing.T) {
-	setupLog(true, "super-secret-token")
+	err := setupLog(true, "text", "super-secret-token")
+	require.NoError(t, err)
 	t.Run("happy path", func(t *testing.T) {
 		file, err := os.CreateTemp(os.TempDir(), "log")
 		require.NoError(t, err)

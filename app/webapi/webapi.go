@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -131,10 +132,10 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
 	if s.AuthPasswd != "" {
-		log.Printf("[INFO] basic auth enabled for webapi server")
+		slog.Info("basic auth enabled for webapi server")
 		router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
 	} else {
-		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
+		slog.Warn("basic auth disabled, access to webapi is not protected")
 	}
 
 	router = s.routes(router) // setup routes
@@ -143,13 +144,13 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("[WARN] failed to shutdown webapi server: %v", err)
+			slog.Warn("failed to shutdown webapi server", slog.Any("err", err))
 		} else {
-			log.Printf("[INFO] webapi server stopped")
+			slog.Info("webapi server stopped")
 		}
 	}()
 
-	log.Printf("[INFO] start webapi server on %s", s.ListenAddr)
+	slog.Info("start webapi server on ", slog.Any("addr", s.ListenAddr))
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("failed to run server: %w", err)
 	}
@@ -228,7 +229,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
-			log.Printf("[WARN] can't decode request: %v", err)
+			slog.Warn("can't decode request", slog.Any("", err))
 			return
 		}
 	} else {
@@ -258,14 +259,14 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "check_results", resultDisplay); err != nil {
-		log.Printf("[WARN] can't execute result template: %v", err)
+		slog.Warn("can't execute result template", slog.Any("err", err))
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
 	}
 
 	// the successful check may add user to the approved list. we want to avoid it
 	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
-		log.Printf("[DEBUG] failed to clenaup after check: %v", err)
+		slog.Debug("failed to cleanup after check", slog.Any("err", err))
 	}
 }
 
@@ -455,7 +456,7 @@ func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "spam_check.html", tmplData); err != nil {
-		log.Printf("[WARN] can't execute template: %v", err)
+		slog.Warn("can't execute template", slog.Any("err", err))
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
@@ -479,7 +480,7 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	tmplData.TotalApprovedUsers = len(tmplData.ApprovedUsers)
 
 	if err := tmpl.ExecuteTemplate(w, "manage_users.html", tmplData); err != nil {
-		log.Printf("[WARN] can't execute template: %v", err)
+		slog.Warn("can't execute template", slog.Any("err", err))
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
@@ -488,7 +489,7 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
 	ds, err := s.DetectedSpam.Read()
 	if err != nil {
-		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
+		slog.Error("failed to fetch detected spam", slog.Any("err", err))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -513,7 +514,7 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "detected_spam.html", tmplData); err != nil {
-		log.Printf("[WARN] can't execute template: %v", err)
+		slog.Warn("can't execute template", slog.Any("err", err))
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
@@ -528,19 +529,19 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 
 	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 	if err != nil || msg == "" {
-		log.Printf("[WARN] bad request: %v", err)
+		slog.Warn("bad request", slog.Any("err", err))
 		reportErr(fmt.Errorf("bad request: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	if err := s.SpamFilter.UpdateSpam(msg); err != nil {
-		log.Printf("[WARN] failed to update spam samples: %v", err)
+		slog.Warn("failed to update spam samples", slog.Any("err", err))
 		reportErr(fmt.Errorf("can't update spam samples: %v", err), http.StatusInternalServerError)
 		return
 
 	}
 	if err := s.DetectedSpam.SetAddedToSamplesFlag(id); err != nil {
-		log.Printf("[WARN] failed to update detected spam: %v", err)
+		slog.Warn("failed to update detected spam", slog.Any("err", err))
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -557,7 +558,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
-		log.Printf("[WARN] can't execute template: %v", err)
+		slog.Warn("can't execute template", slog.Any("err", err))
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
@@ -567,7 +568,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
 	body, err := templateFS.ReadFile("assets/styles.css")
 	if err != nil {
-		log.Printf("[WARN] can't read styles.css: %v", err)
+		slog.Warn("can't read styles.css", slog.Any("err", err))
 		http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
 		return
 	}

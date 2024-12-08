@@ -2,7 +2,7 @@ package events
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -87,7 +87,7 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 
 	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
 	if _, err := tbAPI.Send(msg); err != nil {
-		log.Printf("[WARN] failed to send message as markdown, %v", err)
+		slog.Warn("failed to send message as markdown", slog.Any("error", err))
 		msg = withParseMode(tbMsg, "") // try plain text
 		if _, err := tbAPI.Send(msg); err != nil {
 			return fmt.Errorf("can't send message to telegram: %w", err)
@@ -123,12 +123,12 @@ func banUserOrChannel(r banRequest) error {
 	// so this `if` statement is unlikely to be evaluated to true.
 
 	if r.dry {
-		log.Printf("[INFO] dry run: ban %d for %v", r.userID, r.duration)
+		slog.Info(fmt.Sprintf("dry run: ban %d for %v", r.userID, r.duration))
 		return nil
 	}
 
 	if r.training {
-		log.Printf("[INFO] training mode: ban %d for %v", r.userID, r.duration)
+		slog.Info(fmt.Sprintf("training mode: ban %d for %v", r.userID, r.duration))
 		return nil
 	}
 
@@ -158,7 +158,7 @@ func banUserOrChannel(r banRequest) error {
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
-		log.Printf("[INFO] %s restricted by bot for %v", r.userName, r.duration)
+		slog.Info(fmt.Sprintf("%s restricted by bot for %v", r.userName, r.duration))
 		return nil
 	}
 
@@ -174,7 +174,7 @@ func banUserOrChannel(r banRequest) error {
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
-		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
+		slog.Info(fmt.Sprintf("channel %d banned by bot for %v", r.channelID, r.duration))
 		return nil
 	}
 
@@ -192,7 +192,7 @@ func banUserOrChannel(r banRequest) error {
 		return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 	}
 
-	log.Printf("[INFO] user %s banned by bot for %v", r.userName, r.duration)
+	slog.Info(fmt.Sprintf("%s banned by bot for %v", r.userName, r.duration))
 	return nil
 }
 
@@ -295,10 +295,10 @@ func transform(msg *tbapi.Message) *bot.Message {
 
 	if msg.Caption != "" {
 		if message.Text == "" {
-			log.Printf("[DEBUG] caption only message: %q", msg.Caption)
+			slog.Debug("caption only message", slog.Any("caption", msg.Caption))
 			message.Text = msg.Caption
 		} else {
-			log.Printf("[DEBUG] caption appended to message: %q", msg.Caption)
+			slog.Debug("caption appended to message", slog.Any("caption", msg.Caption))
 			message.Text += "\n" + msg.Caption
 		}
 	}

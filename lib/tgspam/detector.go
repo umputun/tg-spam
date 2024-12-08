@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"sort"
@@ -182,9 +182,9 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
-				log.Printf("[WARN] openai error: %v", details.Error)
+				slog.Warn("openai error", slog.Any("", details.Error))
 			} else {
-				log.Printf("[DEBUG] openai result: %v", details)
+				slog.Debug("openai result", slog.Any("", details))
 				spamDetected = spam
 			}
 		}
@@ -434,7 +434,7 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 			}
 
 			if err := scanner.Err(); err != nil {
-				log.Printf("[WARN] failed to read tokens, error=%v", err)
+				slog.Warn("failed to read tokens", slog.Any("error", err))
 			}
 		}
 	}()

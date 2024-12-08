@@ -3,7 +3,7 @@ package main
 import (
 	"database/sql"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -17,16 +17,18 @@ import (
 )
 
 func main() {
-	log.Println("Starting simple chat")
+	slog.Info("Starting simple chat")
 
 	// prepare storage
 	db, err := sql.Open("sqlite", "messages.db")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("", slog.Any("error", err))
+		os.Exit(1)
 	}
 	store, err := storage.NewMessages(db)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// make spam detector
@@ -40,38 +42,38 @@ func main() {
 	// load stop words from a file
 	stopWords, err := os.Open("data/stop-words.txt")
 	if err != nil {
-		log.Println("Error opening stop words file:", err)
+		slog.Error("Error opening stop words file:", slog.Any("error", err))
 		return
 	}
 	res, err := detector.LoadStopWords(stopWords)
 	if err != nil {
-		log.Println("Error loading stop words:", err)
+		slog.Error("Error loading stop words:", slog.Any("error", err))
 		return
 	}
-	log.Printf("Loaded %d stop words", res.StopWords)
+	slog.Info("Loaded %d stop words", res.StopWords)
 
 	// load spam and ham samples from files
 	spamSamples, err := os.Open("data/spam-samples.txt")
 	if err != nil {
-		log.Println("Error opening spam samples file:", err)
+		slog.Error("Error opening spam samples file:", slog.Any("error", err))
 		return
 	}
 	hamSamples, err := os.Open("data/ham-samples.txt")
 	if err != nil {
-		log.Println("Error opening ham samples file:", err)
+		slog.Error("Error opening ham samples file:", slog.Any("error", err))
 		return
 	}
 	excludedTokens, err := os.Open("data/exclude-tokens.txt")
 	if err != nil {
-		log.Println("Error opening excluded tokens file:", err)
+		slog.Error("Error opening excluded tokens file:", slog.Any("error", err))
 		return
 	}
 	res, err = detector.LoadSamples(excludedTokens, []io.Reader{spamSamples}, []io.Reader{hamSamples})
 	if err != nil {
-		log.Println("Error loading samples:", err)
+		slog.Error("Error loading samples:", slog.Any("error", err))
 		return
 	}
-	log.Printf("Loaded %d spam samples and %d ham samples", res.SpamSamples, res.HamSamples)
+	slog.Info("Loaded %d spam samples and %d ham samples", res.SpamSamples, res.HamSamples)
 
 	// prepare and start web server
 	srv := &web.Server{
@@ -85,6 +87,7 @@ func main() {
 		},
 	}
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		slog.Error("", slog.Any("error", err))
+		os.Exit(1)
 	}
 }

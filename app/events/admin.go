@@ -3,7 +3,7 @@ package events
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,7 +39,7 @@ const (
 
 // ReportBan a ban message to admin chat with a button to unban the user
 func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
-	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
+	slog.Debug(fmt.Sprintf("report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID))
 	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
 	would := ""
 	if a.dry {
@@ -47,7 +47,7 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 	forwardMsg := fmt.Sprintf("**%spermanently banned [%s](tg://user?id=%d)**\n\n%s\n\n", would, banUserStr, msg.From.ID, text)
 	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", msg.From, msg.ID, a.adminChatID); err != nil {
-		log.Printf("[WARN] failed to send admin message, %v", err)
+		slog.Warn("failed to send admin message", slog.Any("error", err))
 	}
 }
 
@@ -68,9 +68,9 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		fwdID = update.Message.ForwardFrom.ID
 	}
 
-	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
+	slog.Debug(fmt.Sprintf("message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d), fwd: %d",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
-		update.Message.ForwardSenderName, fwdID)
+		update.Message.ForwardSenderName, fwdID))
 
 	if update.Message.ForwardSenderName == "" && update.Message.ForwardFrom == nil {
 		// this is a regular message from admin chat, not the forwarded one, ignore it
@@ -84,8 +84,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		m := transform(update.Message)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] forwarded message from superuser %q (%d) to admin chat %d: %q",
-		update.Message.From.UserName, update.Message.From.ID, a.adminChatID, msgTxt)
+	slog.Debug(fmt.Sprintf("forwarded message from superuser %q (%d) to admin chat %d: %q",
+		update.Message.From.UserName, update.Message.From.ID, a.adminChatID, msgTxt))
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
@@ -94,7 +94,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
 	}
 
-	log.Printf("[DEBUG] locator found message %s", info)
+	slog.Debug(fmt.Sprintf("locator found message %s", info))
 	errs := new(multierror.Error)
 
 	// check if the forwarded message will ban a super-user and ignore it
@@ -136,7 +136,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: info.MsgID}); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
 	} else {
-		log.Printf("[INFO] message %d deleted", info.MsgID)
+		slog.Info(fmt.Sprintf("message %d deleted", info.MsgID))
 	}
 
 	// ban user
@@ -164,9 +164,9 @@ func (a *admin) DirectBanReport(update tbapi.Update) error {
 // DirectWarnReport handles messages replayed with "/warn" or "warn" by admin.
 // it is removing the original message and posting a warning to the main chat as well as recording the warning th admin chat
 func (a *admin) DirectWarnReport(update tbapi.Update) error {
-	log.Printf("[DEBUG] direct warn by admin %q: msg id: %d, from: %q (%d)",
+	slog.Debug(fmt.Sprintf("direct warn by admin %q: msg id: %d, from: %q (%d)",
 		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID,
-		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID)
+		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID))
 	origMsg := update.Message.ReplyToMessage
 
 	// this is a replayed message, it is an example of something we didn't like and want to issue a warning
@@ -175,7 +175,7 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported warn message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
+	slog.Debug(fmt.Sprintf("reported warn message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt))
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
@@ -185,14 +185,14 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: origMsg.MessageID}); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
-		log.Printf("[INFO] warn message %d deleted", origMsg.MessageID)
+		slog.Info(fmt.Sprintf("warn message %d deleted", origMsg.MessageID))
 	}
 
 	// delete reply message
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: update.Message.MessageID}); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
-		log.Printf("[INFO] admin warn reprot message %d deleted", update.Message.MessageID)
+		slog.Info(fmt.Sprintf("admin warn reprot message %d deleted", update.Message.MessageID))
 	}
 
 	// make a warning message and replay to origMsg.MessageID
@@ -207,9 +207,9 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
 func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
-	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q (%d)",
+	slog.Debug(fmt.Sprintf("direct ban by admin %q: msg id: %d, from: %q (%d)",
 		update.Message.From.UserName, update.Message.ReplyToMessage.MessageID,
-		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID)
+		update.Message.ReplyToMessage.From.UserName, update.Message.ReplyToMessage.From.ID))
 
 	origMsg := update.Message.ReplyToMessage
 
@@ -220,7 +220,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
+	slog.Debug(fmt.Sprintf("reported spam message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt))
 
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
@@ -232,7 +232,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	if err := a.bot.RemoveApprovedUser(origMsg.From.ID); err != nil {
 		// error here is not critical, user may not be in the approved list if we run in paranoid mode or
 		// if not reached the threshold for approval yet
-		log.Printf("[DEBUG] can't remove user %d from approved list: %v", origMsg.From.ID, err)
+		slog.Debug(fmt.Sprintf("can't remove user %d from approved list: %v", origMsg.From.ID, err))
 	}
 
 	// make a message with spam info and send to admin chat
@@ -267,14 +267,14 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: origMsg.MessageID}); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
-		log.Printf("[INFO] spam message %d deleted", origMsg.MessageID)
+		slog.Info(fmt.Sprintf("spam message %d deleted", origMsg.MessageID))
 	}
 
 	// delete reply message
 	if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{ChatID: a.primChatID, MessageID: update.Message.MessageID}); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
-		log.Printf("[INFO] admin spam reprot message %d deleted", update.Message.MessageID)
+		slog.Info(fmt.Sprintf("admin spam reprot message %d deleted", update.Message.MessageID))
 	}
 
 	// ban user
@@ -302,8 +302,8 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		if err := a.callbackAskBanConfirmation(query); err != nil {
 			return fmt.Errorf("failed to make ban confirmation dialog: %w", err)
 		}
-		log.Printf("[DEBUG] unban confirmation request sent, chatID: %d, userID: %s, orig: %q",
-			chatID, callbackData[1:], query.Message.Text)
+		slog.Debug(fmt.Sprintf("unban confirmation request sent, chatID: %d, userID: %s, orig: %q",
+			chatID, callbackData[1:], query.Message.Text))
 		return nil
 	}
 
@@ -312,7 +312,7 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		if err := a.callbackBanConfirmed(query); err != nil {
 			return fmt.Errorf("failed confirmation ban: %w", err)
 		}
-		log.Printf("[DEBUG] ban confirmed, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		slog.Debug(fmt.Sprintf("ban confirmed, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text))
 		return nil
 	}
 
@@ -321,17 +321,16 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		if err := a.callbackShowInfo(query); err != nil {
 			return fmt.Errorf("failed to show spam info: %w", err)
 		}
-		log.Printf("[DEBUG] spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+		slog.Debug(fmt.Sprintf("spam info sent, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text))
 		return nil
 	}
 
 	// no prefix, callback msgsData here is userID, we should unban the user
-	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
+	slog.Debug(fmt.Sprintf("unban action activated, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text))
 	if err := a.callbackUnbanConfirmed(query); err != nil {
 		return fmt.Errorf("failed to unban user: %w", err)
 	}
-	log.Printf("[INFO] user unbanned, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text)
-
+	slog.Info(fmt.Sprintf("user unbanned, chatID: %d, userID: %s, orig: %q", chatID, callbackData, query.Message.Text))
 	return nil
 }
 
@@ -397,7 +396,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	if a.softBan && !a.trainingMode {
 		userName, err := a.extractUsername(query.Message.Text) // try to extract username from the message
 		if err != nil {
-			log.Printf("[DEBUG] failed to extract username from %q: %v", query.Message.Text, err)
+			slog.Debug(fmt.Sprintf("failed to extract username from %q: %v", query.Message.Text, err))
 			userName = ""
 		}
 		banReq := banRequest{duration: bot.PermanentBanDuration, userID: userID, chatID: a.primChatID,
@@ -417,7 +416,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
 	chatID := query.Message.Chat.ID // this is ID of admin chat
-	log.Printf("[DEBUG] unban action activated, chatID: %d, userID: %s", chatID, callbackData)
+	slog.Debug(fmt.Sprintf("unban action activated, chatID: %d, userID: %s", chatID, callbackData))
 	// callback msgsData here is userID, we should unban the user
 	callbackResponse := tbapi.NewCallback(query.ID, "accepted")
 	if _, err := a.tbAPI.Request(callbackResponse); err != nil {
@@ -448,7 +447,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	// add user to the approved list
 	name, err := a.extractUsername(query.Message.Text) // try to extract username from the message
 	if err != nil {
-		log.Printf("[DEBUG] failed to extract username from %q: %v", query.Message.Text, err)
+		slog.Debug(fmt.Sprintf("failed to extract username from %q: %v", query.Message.Text, err))
 		name = ""
 	}
 	if err := a.bot.AddApprovedUser(userID, name); err != nil { // name is not available here
@@ -590,9 +589,9 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 	}
 
 	if msgFromSuper {
-		log.Printf("[INFO] message %d deleted, user %q (%d) is super, not banned", msgID, userName, userID)
+		slog.Info(fmt.Sprintf("message %d deleted, user %q (%d) is super, not banned", msgID, userName, userID))
 	} else {
-		log.Printf("[INFO] message %d deleted, user %q (%d) banned", msgID, userName, userID)
+		slog.Info(fmt.Sprintf("message %d deleted, user %q (%d) banned", msgID, userName, userID))
 	}
 	return nil
 }
@@ -634,7 +633,7 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 // text is message with details and action it for the button label to unban, which is user id prefixed with "?" for confirmation;
 // the second button is to show info about the spam analysis.
 func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID int, chatID int64) error {
-	log.Printf("[DEBUG] action response %q: user %+v, msgID:%d, text: %q", action, user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
+	slog.Debug(fmt.Sprintf("action response %q: user %+v, msgID:%d, text: %q", action, user, msgID, strings.ReplaceAll(text, "\n", "\\n")))
 	tbMsg := tbapi.NewMessage(chatID, text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	tbMsg.DisableWebPagePreview = true

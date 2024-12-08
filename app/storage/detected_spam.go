@@ -3,7 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -72,7 +72,7 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 		return fmt.Errorf("failed to insert detected spam entry: %w", err)
 	}
 
-	log.Printf("[INFO] detected spam entry added for user_id:%d, name:%s", entry.UserID, entry.UserName)
+	slog.Info(fmt.Sprintf("detected spam entry added for user_id:%d, name:%s", entry.UserID, entry.UserName))
 	return nil
 }
 
