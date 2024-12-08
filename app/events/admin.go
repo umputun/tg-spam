@@ -67,7 +67,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	// try to get the forwarded user ID, this is just for logging
 	fwdID, username := a.getForwardUsernameAndID(update)
 
-	slog.Debug(fmt.Sprintf("message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d), fwd: %d",
+	slog.Debug(fmt.Sprintf("message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
 		update.Message.MessageID, update.UpdateID, update.Message.From.UserName,
 		username, fwdID))
 

@@ -250,7 +250,8 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 	}
 	msg, found := l.Locator.Message(fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
 	if !found {
-		slog.Debug("no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
+		debugMsg := fmt.Sprintf("no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
+		slog.Debug(debugMsg)
 		return nil
 	}
 	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
