@@ -148,13 +148,13 @@ func main() {
 	}
 
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
+	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" { // auto passwd should not be masked as we print it
+		masked = append(masked, opts.Server.AuthPasswd)
+	}
 	err := setupLog(opts.Dbg, opts.LoggingFormat, masked...)
 	if err != nil {
 		slog.Error("can't setup log: ", slog.Any("error", err))
 		os.Exit(1)
-	}
-	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" { // auto passwd should not be masked as we print it
-		masked = append(masked, opts.Server.AuthPasswd)
 	}
 
 	slog.Debug(fmt.Sprintf("options: %+v", opts))
@@ -288,12 +288,12 @@ func execute(ctx context.Context, opts options) error {
 		Dry:                     opts.Dry,
 	}
 
-	debug_message := fmt.Sprintf("telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
+	debugMsg := fmt.Sprintf("telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
 		" suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
-	slog.Debug(debug_message)
+	slog.Debug(debugMsg)
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil {
 		return fmt.Errorf("telegram listener failed, %w", err)
@@ -651,7 +651,7 @@ func setupLog(dbg bool, loggingFormat string, secrets ...string) error {
 		lgr.SetupStdLogger(logOpts...)
 		lgr.Setup(logOpts...)
 	} else {
-		return errors.New("Invalid logging format")
+		return errors.New("invalid logging format")
 	}
 
 	return nil
