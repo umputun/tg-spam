@@ -50,7 +50,7 @@ func main() {
 		slog.Error("Error loading stop words:", slog.Any("error", err))
 		return
 	}
-	slog.Info("Loaded %d stop words", res.StopWords)
+	slog.Info("Loaded ", slog.Any("stop words", res.StopWords))
 
 	// load spam and ham samples from files
 	spamSamples, err := os.Open("data/spam-samples.txt")
@@ -73,7 +73,8 @@ func main() {
 		slog.Error("Error loading samples:", slog.Any("error", err))
 		return
 	}
-	slog.Info("Loaded %d spam samples and %d ham samples", res.SpamSamples, res.HamSamples)
+
+	slog.Info("Loaded ", slog.Any("spam samples", res.SpamSamples), slog.Any("ham samples", res.HamSamples))
 
 	// prepare and start web server
 	srv := &web.Server{
