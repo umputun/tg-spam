@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/umputun/tg-spam/app/bot"
@@ -94,7 +94,7 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 		{
 			name: "Basic text message",
 			input: &tbapi.Message{
-				Chat: &tbapi.Chat{
+				Chat: tbapi.Chat{
 					ID: 123456,
 				},
 				From: &tbapi.User{
@@ -122,7 +122,7 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 		{
 			name: "Text message with nil values",
 			input: &tbapi.Message{
-				Chat:      &tbapi.Chat{ID: 123456},
+				Chat:      tbapi.Chat{ID: 123456},
 				MessageID: 31,
 				Date:      1579627415,
 				Text:      "",
@@ -137,7 +137,7 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 		{
 			name: "Text message with sender chat",
 			input: &tbapi.Message{
-				Chat: &tbapi.Chat{ID: 123456},
+				Chat: tbapi.Chat{ID: 123456},
 				SenderChat: &tbapi.Chat{
 					ID:       654321,
 					UserName: "channelname",

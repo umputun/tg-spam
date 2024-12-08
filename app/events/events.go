@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
@@ -22,7 +22,7 @@ type TbAPI interface {
 	GetUpdatesChan(config tbapi.UpdateConfig) tbapi.UpdatesChannel
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
-	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
+	GetChat(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error)
 	GetChatAdministrators(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
 }
 
@@ -51,7 +51,7 @@ type Locator interface {
 
 // Bot is an interface for bot events.
 type Bot interface {
-	OnMessage(msg bot.Message) (response bot.Response)
+	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error
@@ -73,11 +73,11 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 		switch msg := tbMsg.(type) {
 		case tbapi.MessageConfig:
 			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
+			msg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
 			return msg
 		case tbapi.EditMessageTextConfig:
 			msg.ParseMode = parseMode
-			msg.DisableWebPagePreview = true
+			msg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
 			return msg
 		case tbapi.EditMessageReplyMarkupConfig:
 			return msg
@@ -122,13 +122,19 @@ func banUserOrChannel(r banRequest) error {
 	// In practice BanDuration is equal to ten minutes,
 	// so this `if` statement is unlikely to be evaluated to true.
 
+	bannedEntity := fmt.Sprintf("user %d", r.userID)
+	if r.channelID != 0 {
+		bannedEntity = fmt.Sprintf("channel %d", r.channelID)
+	}
 	if r.dry {
-		slog.Info(fmt.Sprintf("dry run: ban %d for %v", r.userID, r.duration))
+		slog.Info(
+			"dry run:", slog.Any("ban", r.userID), slog.Any("for", r.duration))
 		return nil
 	}
 
 	if r.training {
 		slog.Info(fmt.Sprintf("training mode: ban %d for %v", r.userID, r.duration))
+		slog.Info("training mode:", slog.Any("ban", bannedEntity), slog.Any("for", r.duration))
 		return nil
 	}
 
@@ -139,13 +145,18 @@ func banUserOrChannel(r banRequest) error {
 	if r.restrict { // soft ban mode
 		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{
-				ChatID: r.chatID,
-				UserID: r.userID,
+				ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
+				UserID:     r.userID,
 			},
 			UntilDate: time.Now().Add(r.duration).Unix(),
 			Permissions: &tbapi.ChatPermissions{
 				CanSendMessages:      false,
-				CanSendMediaMessages: false,
+				CanSendAudios:        false,
+				CanSendDocuments:     false,
+				CanSendPhotos:        false,
+				CanSendVideos:        false,
+				CanSendVideoNotes:    false,
+				CanSendVoiceNotes:    false,
 				CanSendOtherMessages: false,
 				CanChangeInfo:        false,
 				CanInviteUsers:       false,
@@ -164,7 +175,7 @@ func banUserOrChannel(r banRequest) error {
 
 	if r.channelID != 0 {
 		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
-			ChatID:       r.chatID,
+			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
 			SenderChatID: r.channelID,
 			UntilDate:    int(time.Now().Add(r.duration).Unix()),
 		})
@@ -180,8 +191,8 @@ func banUserOrChannel(r banRequest) error {
 
 	resp, err := r.tbAPI.Request(tbapi.BanChatMemberConfig{
 		ChatMemberConfig: tbapi.ChatMemberConfig{
-			ChatID: r.chatID,
-			UserID: r.userID,
+			ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
+			UserID:     r.userID,
 		},
 		UntilDate: time.Now().Add(r.duration).Unix(),
 	})
@@ -229,9 +240,7 @@ func transform(msg *tbapi.Message) *bot.Message {
 		Text: msg.Text,
 	}
 
-	if msg.Chat != nil {
-		message.ChatID = msg.Chat.ID
-	}
+	message.ChatID = msg.Chat.ID
 
 	if msg.From != nil {
 		message.From = bot.User{

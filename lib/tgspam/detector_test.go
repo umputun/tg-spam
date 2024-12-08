@@ -284,7 +284,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 	}
 }
 
-func TestDetector_CheckClassificator(t *testing.T) {
+func TestDetector_CheckClassifier(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
@@ -333,7 +333,7 @@ func TestDetector_CheckClassificator(t *testing.T) {
 	})
 }
 
-func TestDetector_CheckClassificatorNoHam(t *testing.T) {
+func TestDetector_CheckClassifierNoHam(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1, MinSpamProbability: 60})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
 	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, nil)
@@ -1090,4 +1090,63 @@ func TestDetector_tokenChanMultipleReaders(t *testing.T) {
 		res = append(res, token)
 	}
 	assert.Equal(t, []string{"hello", "world", "something, new"}, res)
+}
+
+func TestCleanText(t *testing.T) {
+	d := Detector{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "English text with word joiners",
+			input:    "D\u2062ude i\u2062t i\u2062s t\u2062he la\u2062st da\u2062y",
+			expected: "Dude it is the last day",
+		},
+		{
+			name:     "Russian text with word joiners",
+			input:    "Р\u2062ебята д\u2062авайте б\u2062ыстрее",
+			expected: "Ребята давайте быстрее",
+		},
+		{
+			name:     "Text with pop directional formatting",
+			input:    "F\u2068ast t\u2068ake i\u2068t",
+			expected: "Fast take it",
+		},
+		{
+			name:     "Mixed invisible characters",
+			input:    "Hello\u200BWorld\u2062Test\u206FCase",
+			expected: "HelloWorldTestCase",
+		},
+		{
+			name:     "No invisible characters",
+			input:    "Hello World",
+			expected: "Hello World",
+		},
+		{
+			name:     "Only invisible characters",
+			input:    "\u200B\u2062\u206F",
+			expected: "",
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "URLs with invisible characters",
+			input:    "https://\u2062example\u2062.com/\u2062test",
+			expected: "https://example.com/test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test regex-based implementation
+			result := d.cleanText(tt.input)
+			assert.Equal(t, tt.expected, result, "failed for case: %s", tt.name)
+		})
+	}
 }

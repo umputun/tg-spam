@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -21,8 +21,8 @@ import (
 func TestTelegramListener_Do(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -39,7 +39,7 @@ func TestTelegramListener_Do(t *testing.T) {
 			}, nil
 		},
 	}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{Send: true, Text: "bot's answer"}
@@ -53,7 +53,7 @@ func TestTelegramListener_Do(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        b,
+		Bot:        botMock,
 		Group:      "gr",
 		AdminGroup: "987654321",
 		StartupMsg: "startup",
@@ -66,7 +66,7 @@ func TestTelegramListener_Do(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat: &tbapi.Chat{ID: 123},
+			Chat: tbapi.Chat{ID: 123},
 			Text: "text 123",
 			From: &tbapi.User{UserName: "user"},
 			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
@@ -88,13 +88,18 @@ func TestTelegramListener_Do(t *testing.T) {
 	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
 	assert.Equal(t, 1, len(mockAPI.GetChatAdministratorsCalls()))
 
+	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
+	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
+
 }
 
 func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -106,7 +111,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 			return nil, nil
 		},
 	}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{Send: true, Text: "bot's answer", BanInterval: 2 * time.Minute,
@@ -128,7 +133,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        b,
+		Bot:        botMock,
 		SuperUsers: SuperUsers{"admin"},
 		Group:      "gr",
 		Locator:    locator,
@@ -139,9 +144,10 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 
 	t.Run("test ban of the user", func(t *testing.T) {
 		mockLogger.ResetCalls()
+		botMock.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat: &tbapi.Chat{ID: 123},
+				Chat: tbapi.Chat{ID: 123},
 				Text: "text 123",
 				From: &tbapi.User{UserName: "user", ID: 123},
 				Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
@@ -162,14 +168,20 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, "bot's answer", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID)
+
+		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
+		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 	})
 
 	t.Run("test ban of the channel", func(t *testing.T) {
 		mockLogger.ResetCalls()
+		botMock.ResetCalls()
 		mockAPI.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat: &tbapi.Chat{ID: 123},
+				Chat: tbapi.Chat{ID: 123},
 				Text: "text 321",
 				From: &tbapi.User{UserName: "ChannelBot", ID: 136817688},
 				SenderChat: &tbapi.Chat{
@@ -197,12 +209,18 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatSenderChatConfig).ChatID)
 		assert.Equal(t, int64(12345), mockAPI.RequestCalls()[0].C.(tbapi.BanChatSenderChatConfig).SenderChatID)
+
+		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "text 321", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.Equal(t, "ChannelBot", botMock.OnMessageCalls()[0].Msg.From.Username)
+		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 	})
 
 	//nolint
 	t.Run("test ban of the channel on behalf of the superuser", func(t *testing.T) {
 		mockLogger.ResetCalls()
 		mockAPI.ResetCalls()
+		botMock.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
 				ReplyToMessage: &tbapi.Message{
@@ -211,7 +229,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 						UserName: "original_bot",
 					},
 				},
-				Chat: &tbapi.Chat{ID: 123},
+				Chat: tbapi.Chat{ID: 123},
 				Text: "text 543",
 				From: &tbapi.User{UserName: "admin", ID: 555},
 				Date: int(time.Date(2020, 2, 11, 19, 37, 55, 9, time.UTC).Unix()),
@@ -232,14 +250,19 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, 1, len(mockAPI.SendCalls()))
 		assert.Equal(t, "bot's answer for admin", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		require.Equal(t, 0, len(mockAPI.RequestCalls()))
+
+		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "text 543", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.Equal(t, "admin", botMock.OnMessageCalls()[0].Msg.From.Username)
+		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 	})
 }
 
 func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -251,7 +274,7 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 			return nil, nil
 		},
 	}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{Send: true, Text: "bot's answer", BanInterval: 2 * time.Minute,
@@ -273,7 +296,7 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger:  mockLogger,
 		TbAPI:       mockAPI,
-		Bot:         b,
+		Bot:         botMock,
 		SuperUsers:  SuperUsers{"admin"},
 		Group:       "gr",
 		Locator:     locator,
@@ -285,7 +308,7 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat: &tbapi.Chat{ID: 123},
+			Chat: tbapi.Chat{ID: 123},
 			Text: "text 123",
 			From: &tbapi.User{UserName: "user", ID: 123},
 			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
@@ -307,15 +330,19 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 	assert.Equal(t, 1, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).ChatID)
 	assert.Equal(t, int64(1), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).UserID)
-	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: false, CanSendMediaMessages: false, CanSendOtherMessages: false,
-		CanSendPolls: false}, mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).Permissions)
+	assert.Equal(t, &tbapi.ChatPermissions{}, mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).Permissions)
+
+	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
+	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 }
 
 func TestTelegramListener_DoWithTraining(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "ChannelBot"}}, nil
@@ -327,7 +354,7 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 			return nil, nil
 		},
 	}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		return bot.Response{DeleteReplyTo: true, ReplyTo: msg.ID, ChannelID: msg.ChatID, BanInterval: time.Hour,
 			Send: true, Text: "bot's answer", User: bot.User{Username: "user", ID: 1, DisplayName: "First Last"}}
@@ -339,7 +366,7 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger:   mockLogger,
 		TbAPI:        mockAPI,
-		Bot:          b,
+		Bot:          botMock,
 		Group:        "gr",
 		Locator:      locator,
 		TrainingMode: true,
@@ -350,7 +377,7 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat: &tbapi.Chat{ID: 123},
+			Chat: tbapi.Chat{ID: 123},
 			Text: "text 321",
 			From: &tbapi.User{UserName: "user", ID: 136817688},
 			SenderChat: &tbapi.Chat{
@@ -374,13 +401,17 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 	assert.Equal(t, 0, len(mockAPI.SendCalls()), "no messages should be sent in training mode")
 	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
 
+	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	assert.Equal(t, "text 321", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
+	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 }
 
 func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "ChannelBot"}}, nil
@@ -392,7 +423,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 			return nil, nil
 		},
 	}
-	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message) bot.Response {
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 		t.Logf("on-message: %+v", msg)
 		if msg.Text == "text 123" && msg.From.Username == "user" {
 			return bot.Response{DeleteReplyTo: true, ReplyTo: msg.ID, ChannelID: msg.ChatID, BanInterval: time.Hour,
@@ -418,7 +449,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
 			MessageID: 321,
-			Chat:      &tbapi.Chat{ID: 123},
+			Chat:      tbapi.Chat{ID: 123},
 			Text:      "text 123",
 			From:      &tbapi.User{UserName: "user"},
 			Date:      int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
@@ -450,8 +481,8 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -462,7 +493,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
 	}
 	b := &mocks.BotMock{
-		OnMessageFunc: func(msg bot.Message) bot.Response {
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 			t.Logf("on-message: %+v", msg)
 			if msg.Text == "text 123" && msg.From.Username == "user" {
 				return bot.Response{Send: true, Text: "bot's answer"}
@@ -498,12 +529,12 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat:              &tbapi.Chat{ID: 123},
-			Text:              "text 123",
-			From:              &tbapi.User{UserName: "umputun", ID: 77},
-			Date:              int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
-			ForwardSenderName: "forwarded_name",
-			MessageID:         999999,
+			Chat:          tbapi.Chat{ID: 123},
+			Text:          "text 123",
+			From:          &tbapi.User{UserName: "umputun", ID: 77},
+			Date:          int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			ForwardOrigin: &tbapi.MessageOrigin{SenderUserName: "forwarded_name"},
+			MessageID:     999999,
 		},
 	}
 
@@ -537,8 +568,8 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -548,11 +579,11 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 		},
 		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
 	}
-	b := &mocks.BotMock{
+	botMock := &mocks.BotMock{
 		RemoveApprovedUserFunc: func(id int64) error {
 			return nil
 		},
-		OnMessageFunc: func(msg bot.Message) bot.Response {
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 			t.Logf("on-message: %+v", msg)
 			if msg.Text == "text 123" && msg.From.Username == "user" {
 				return bot.Response{Send: true, Text: "bot's answer"}
@@ -571,7 +602,7 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	l := TelegramListener{
 		SpamLogger: mockLogger,
 		TbAPI:      mockAPI,
-		Bot:        b,
+		Bot:        botMock,
 		Group:      "gr",
 		StartupMsg: "startup",
 		SuperUsers: SuperUsers{"superuser1"}, // include a test superuser
@@ -583,7 +614,7 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat: &tbapi.Chat{ID: 123},
+			Chat: tbapi.Chat{ID: 123},
 			Text: "/SpAm",
 			From: &tbapi.User{UserName: "superuser1", ID: 77},
 			ReplyToMessage: &tbapi.Message{
@@ -608,20 +639,21 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "detection results")
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, `the user banned by "superuser1"`)
 
-	require.Equal(t, 1, len(b.OnMessageCalls()))
-	assert.Equal(t, "text 123", b.OnMessageCalls()[0].Msg.Text)
+	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
 
-	require.Equal(t, 1, len(b.UpdateSpamCalls()))
-	assert.Equal(t, "text 123", b.UpdateSpamCalls()[0].Msg)
+	require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
+	assert.Equal(t, "text 123", botMock.UpdateSpamCalls()[0].Msg)
 
-	require.Equal(t, 1, len(b.RemoveApprovedUserCalls()))
-	assert.Equal(t, int64(666), b.RemoveApprovedUserCalls()[0].ID)
+	require.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()))
+	assert.Equal(t, int64(666), botMock.RemoveApprovedUserCalls()[0].ID)
 
 	require.Equal(t, 3, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
-	assert.Equal(t, int(999999), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
-	assert.Equal(t, int(0), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
+	assert.Equal(t, 0, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).ChatID)
 	assert.Equal(t, int64(666), mockAPI.RequestCalls()[2].C.(tbapi.BanChatMemberConfig).UserID)
 }
@@ -629,8 +661,8 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -644,7 +676,7 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 		RemoveApprovedUserFunc: func(id int64) error {
 			return nil
 		},
-		OnMessageFunc: func(msg bot.Message) bot.Response {
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 			t.Logf("on-message: %+v", msg)
 			if msg.Text == "text 123" && msg.From.Username == "user" {
 				return bot.Response{Send: true, Text: "bot's answer"}
@@ -676,7 +708,7 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat: &tbapi.Chat{ID: 123},
+			Chat: tbapi.Chat{ID: 123},
 			Text: "/wArn",
 			From: &tbapi.User{UserName: "superuser1", ID: 77},
 			ReplyToMessage: &tbapi.Message{
@@ -707,16 +739,16 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 
 	require.Equal(t, 2, len(mockAPI.RequestCalls()))
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
-	assert.Equal(t, int(999999), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
-	assert.Equal(t, int(0), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
+	assert.Equal(t, 0, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 }
 
 func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -756,11 +788,11 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "777:999",
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -788,8 +820,8 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -830,11 +862,11 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "777:999",
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -853,8 +885,7 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
-	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendMediaMessages: true, CanSendPolls: true,
-		CanSendOtherMessages: true, CanAddWebPagePreviews: false, CanChangeInfo: true, CanInviteUsers: true, CanPinMessages: true},
+	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendAudios: true, CanSendDocuments: true, CanSendPhotos: true, CanSendVideos: true, CanSendVideoNotes: true, CanSendVoiceNotes: true, CanSendOtherMessages: true, CanChangeInfo: true, CanInviteUsers: true, CanPinMessages: true},
 		mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).Permissions)
 	require.Equal(t, 1, len(b.UpdateHamCalls()))
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
@@ -865,8 +896,8 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -907,11 +938,11 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "777:999",
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -937,8 +968,8 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -978,11 +1009,11 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "?777", // ? means confirmation
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -1006,8 +1037,8 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -1047,11 +1078,11 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "+999:987654", // + means unban declined
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -1077,8 +1108,8 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -1119,11 +1150,11 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "+999:987654", // + means unban declined
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the ham, not spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the ham, not spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -1153,8 +1184,8 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{}
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			if mc, ok := c.(tbapi.MessageConfig); ok {
@@ -1189,11 +1220,11 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 		CallbackQuery: &tbapi.CallbackQuery{
 			Data: "!999:987654", // ! means we show info
 			Message: &tbapi.Message{
-				MessageID:   987654,
-				Chat:        &tbapi.Chat{ID: 123},
-				Text:        "unban user blah\n\nthis was the spam",
-				From:        &tbapi.User{UserName: "user", ID: 999},
-				ForwardDate: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				MessageID:     987654,
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "unban user blah\n\nthis was the spam",
+				From:          &tbapi.User{UserName: "user", ID: 999},
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()},
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1000},
 		},
@@ -1222,8 +1253,8 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 
 func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -1250,7 +1281,7 @@ func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
-			Chat:           &tbapi.Chat{ID: 123},
+			Chat:           tbapi.Chat{ID: 123},
 			From:           &tbapi.User{UserName: "new_user", ID: 321},
 			NewChatMembers: []tbapi.User{{UserName: "new_user", ID: 321}},
 			MessageID:      22,
@@ -1276,8 +1307,8 @@ func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 
 func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
-		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-			return tbapi.Chat{ID: 123}, nil
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 		},
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
@@ -1311,7 +1342,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		mockAPI.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat:           &tbapi.Chat{ID: 123},
+				Chat:           tbapi.Chat{ID: 123},
 				From:           &tbapi.User{UserName: "new_user", ID: 321},
 				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
 				MessageID:      22,
@@ -1334,7 +1365,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		mockAPI.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat:           &tbapi.Chat{ID: 123},
+				Chat:           tbapi.Chat{ID: 123},
 				From:           &tbapi.User{UserName: "new_user", ID: 999},
 				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
 				MessageID:      22,
@@ -1357,7 +1388,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		mockAPI.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat:           &tbapi.Chat{ID: 123},
+				Chat:           tbapi.Chat{ID: 123},
 				From:           &tbapi.User{UserName: "new_user", ID: 999},
 				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
 				MessageID:      22,
@@ -1385,7 +1416,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		mockAPI.ResetCalls()
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat:           &tbapi.Chat{ID: 123},
+				Chat:           tbapi.Chat{ID: 123},
 				From:           &tbapi.User{UserName: "new_user", ID: 999},
 				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
 				MessageID:      22,
@@ -1418,7 +1449,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 
 		updMsg := tbapi.Update{
 			Message: &tbapi.Message{
-				Chat:           &tbapi.Chat{ID: 123},
+				Chat:           tbapi.Chat{ID: 123},
 				From:           &tbapi.User{UserName: "new_user", ID: 999},
 				LeftChatMember: &tbapi.User{UserName: "new_user", ID: 321},
 				MessageID:      22,
@@ -1705,7 +1736,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			name: "new chat member added by admin successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat: &tbapi.Chat{ID: 123},
+					Chat: tbapi.Chat{ID: 123},
 					From: &tbapi.User{UserName: "superuser1", ID: 77},
 					NewChatMembers: []tbapi.User{
 						{ID: 88, UserName: "user1"},
@@ -1728,7 +1759,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			name: "new chat member self joined successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat: &tbapi.Chat{ID: 123},
+					Chat: tbapi.Chat{ID: 123},
 					From: &tbapi.User{UserName: "user1", ID: 88},
 					NewChatMembers: []tbapi.User{
 						{ID: 88, UserName: "user1"},
@@ -1751,7 +1782,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			name: "2 new chat member joined successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat: &tbapi.Chat{ID: 123},
+					Chat: tbapi.Chat{ID: 123},
 					From: &tbapi.User{UserName: "superuser1", ID: 77},
 					NewChatMembers: []tbapi.User{
 						{ID: 88, UserName: "user1"},
@@ -1767,7 +1798,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			name: "empty chat members in the message",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 123},
+					Chat:           tbapi.Chat{ID: 123},
 					NewChatMembers: []tbapi.User{},
 				},
 			},
@@ -1778,7 +1809,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			name: "message from unauthorized chat",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat: &tbapi.Chat{ID: 999},
+					Chat: tbapi.Chat{ID: 999},
 					NewChatMembers: []tbapi.User{
 						{ID: 88, UserName: "user1"},
 					},
@@ -1836,7 +1867,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 			name: "new chat member kick by admin successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 123},
+					Chat:           tbapi.Chat{ID: 123},
 					From:           &tbapi.User{UserName: "superuser1", ID: 77},
 					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
 					MessageID:      22,
@@ -1853,7 +1884,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 			name: "new chat member left self successfully",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 123},
+					Chat:           tbapi.Chat{ID: 123},
 					From:           &tbapi.User{UserName: "user1", ID: 88},
 					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
 					MessageID:      22,
@@ -1867,7 +1898,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 			name: "message from unauthorized chat",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 999},
+					Chat:           tbapi.Chat{ID: 999},
 					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
 				},
 			},
@@ -1879,7 +1910,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 			name: "no new message in the chat found",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 123},
+					Chat:           tbapi.Chat{ID: 123},
 					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
 					From:           &tbapi.User{ID: 77, UserName: "superuser1"},
 				},
@@ -1892,7 +1923,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 			name: "failed to delete new chat member message",
 			update: tbapi.Update{
 				Message: &tbapi.Message{
-					Chat:           &tbapi.Chat{ID: 123},
+					Chat:           tbapi.Chat{ID: 123},
 					LeftChatMember: &tbapi.User{ID: 88, UserName: "user1"},
 					From:           &tbapi.User{ID: 77, UserName: "superuser1"},
 				},
@@ -1911,8 +1942,8 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			mockAPI := &mocks.TbAPIMock{
-				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.Chat, error) {
-					return tbapi.Chat{ID: 123}, nil
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
 				},
 				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 					return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
