@@ -79,6 +79,8 @@ Another useful feature is the ability to keep the list of approved users persist
 
 This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
 
+The analysis is active only if both ham and spam samples files are present and not empty.
+
 **Spam message similarity check**
 
 This check uses provides samples files and active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.  
@@ -93,7 +95,7 @@ Nothing needed to enable CAS integration, it is enabled by default. To disable i
 
 **OpenAI integration**
 
-Setting `--openai.token [$OPENAI_PROMPT]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
@@ -121,6 +123,10 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 **Image only check**
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
+
+**Video only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
 
 **Multi-language words**
 
@@ -235,6 +241,7 @@ Success! The new status is: DISABLED. /help
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
       --super=                      super-users [$SUPER_USER]
       --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
+      --suppress-join-message       delete join message if user is kicked out [$SUPPRESS_JOIN_MESSAGE]
       --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
@@ -244,7 +251,7 @@ Success! The new status is: DISABLED. /help
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]
       --soft-ban                    soft ban mode, restrict user actions but not ban [$SOFT_BAN]
-      
+
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
@@ -268,15 +275,19 @@ cas:
 meta:
       --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
       --meta.image-only             enable image only check [$META_IMAGE_ONLY]
+      --meta.video-only             enable video only check [$META_VIDEO_ONLY]
+      --meta.links-only             enable links only check [$META_LINKS_ONLY]
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.apibase=             custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
-      --openai.model=               openai model (default: gpt-4) [$OPENAI_MODEL]
+      --openai.model=               openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
       --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
+      --openai.retry-count=         openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
 
 files:
       --files.samples=              samples data path (default: data) [$FILES_SAMPLES]
@@ -287,7 +298,8 @@ message:
       --message.startup=            startup message [$MESSAGE_STARTUP]
       --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=               warn message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.warn=               warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay
+                                    compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled              enable web server [$SERVER_ENABLED]
@@ -306,6 +318,7 @@ Help Options:
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
+- `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out. This is useful to keep the group clean from spam messages.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
@@ -341,7 +354,7 @@ Pls note: Missed spam messages forwarded to the admin chat will be removed from 
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-bot` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
@@ -467,7 +480,7 @@ A small utility and docker container provided to update spam and ham samples fro
 
 It also has an example of [docker-compose.yml](https://github.com/umputun/tg-spam/tree/master/updater/docker-compose.yml) to run it as a container side-by-side with the bot.
 
-## Running tgspam for multiple groups
+## Running tg-spam for multiple groups
 
 It is not possible to run the bot for multiple groups, as the bot is designed to work with a single group only. However, it is possible to run multiple instances of the bot with different tokens and different groups. Note: it has to have a token per bot, because TG doesn't allow using the same token for multiple bots at the same time, and such a reuse attempt will prevent the bot from working properly.
 
