@@ -36,6 +36,7 @@ TG-Spam can also run as a server, providing a simple HTTP API to check messages 
 - TG-Spam can be installed by cloning the repository and building the binary from source by running `make build`.
 - It can also be installed using `brew tap umputun/apps && brew install umputun/apps/tg-spam` on macOS.
 
+**Install guide for non-technical users is available [here](/INSTALL.md)**
 
 ## Configuration
 
