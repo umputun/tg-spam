@@ -236,7 +236,7 @@ Success! The new status is: DISABLED. /help
 
 ```
       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
-      --disable-admin-spam-forward  disable forwarding spam messages to admin group [$DISABLE_ADMIN_SPAM_FORWARD]      
+      --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -247,12 +247,11 @@ Success! The new status is: DISABLED. /help
       --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
       --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
-      --multi-lang=                 number of words in different languages to consider as spam, 0 to disable (default: 0) [$MULTI_LANG]
+      --multi-lang=                 number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
       --paranoid                    paranoid mode, check all messages [$PARANOID]
       --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                    training mode, passive spam detection only [$TRAINING]
       --soft-ban                    soft ban mode, restrict user actions but not ban [$SOFT_BAN]
-
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
@@ -276,8 +275,8 @@ cas:
 meta:
       --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
       --meta.image-only             enable image only check [$META_IMAGE_ONLY]
-      --meta.video-only             enable video only check [$META_VIDEO_ONLY]
       --meta.links-only             enable links only check [$META_LINKS_ONLY]
+      --meta.video-only             enable video only check [$META_VIDEO_ONLY]
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
@@ -306,10 +305,10 @@ server:
       --server.enabled              enable web server [$SERVER_ENABLED]
       --server.listen=              listen address (default: :8080) [$SERVER_LISTEN]
       --server.auth=                basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
+      --server.auth-hash=           basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
 
 Help Options:
   -h, --help                        Show this help message
-
 
 ```
 
@@ -355,7 +354,21 @@ Pls note: Missed spam messages forwarded to the admin chat will be removed from 
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password and the hash are printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
+
+For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
+
+alternatively, it is possible to use one of the following commands to generate the hash:
+```
+htpasswd -bnBC 10 "" your_password | tr -d ':\n'
+mkpasswd --method=bcrypt your_password
+openssl passwd -apr1 your_password
+
+```
+
+In case if both `--server.auth` and `--server.auth-hash` are set, the hash will be used.
+
+```bash
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
