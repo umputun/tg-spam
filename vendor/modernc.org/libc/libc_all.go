@@ -5,8 +5,8 @@
 package libc // import "modernc.org/libc"
 
 import (
-	"unsafe"
 	"sync/atomic"
+	"unsafe"
 
 	"golang.org/x/exp/constraints"
 )

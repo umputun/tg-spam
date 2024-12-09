@@ -38,8 +38,8 @@ github.com/go-pkgz/expirable-cache/v3
 # github.com/go-pkgz/lgr v0.11.1
 ## explicit; go 1.20
 github.com/go-pkgz/lgr
-# github.com/go-pkgz/rest v1.19.0
-## explicit; go 1.21
+# github.com/go-pkgz/rest v1.20.1
+## explicit; go 1.23
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
@@ -88,21 +88,29 @@ github.com/sandwich-go/gpt3-encoder
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
-# github.com/stretchr/testify v1.9.0
+# github.com/stretchr/testify v1.10.0
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
+github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
 # github.com/umputun/go-flags v1.5.1
 ## explicit; go 1.12
 github.com/umputun/go-flags
-# golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
+# golang.org/x/crypto v0.30.0
+## explicit; go 1.20
+golang.org/x/crypto/argon2
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blake2b
+golang.org/x/crypto/blowfish
+# golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
-# golang.org/x/sys v0.26.0
+# golang.org/x/sys v0.28.0
 ## explicit; go 1.18
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.19.0
+# golang.org/x/text v0.21.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -121,8 +129,8 @@ gopkg.in/yaml.v3
 # modernc.org/gc/v3 v3.0.0-20241004144649-1aea3fae8852
 ## explicit; go 1.20
 modernc.org/gc/v3
-# modernc.org/libc v1.61.0
-## explicit; go 1.20
+# modernc.org/libc v1.61.4
+## explicit; go 1.21
 modernc.org/libc
 modernc.org/libc/errno
 modernc.org/libc/fcntl
@@ -155,8 +163,8 @@ modernc.org/mathutil
 # modernc.org/memory v1.8.0
 ## explicit; go 1.18
 modernc.org/memory
-# modernc.org/sqlite v1.33.1
-## explicit; go 1.20
+# modernc.org/sqlite v1.34.2
+## explicit; go 1.21
 modernc.org/sqlite
 modernc.org/sqlite/lib
 # modernc.org/strutil v1.2.0
