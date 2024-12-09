@@ -22,7 +22,7 @@ First, we need to create a bot with Telegram:
 
 Remember: Never share your bot token with anyone - it's like a password for your bot!
 
-## Step 2: Setting Up Docker Desktop (The Program That Runs TG-Spam)
+## Step 2: Setting Up Docker (The Program That Runs TG-Spam)
 
 *Please note: using an instance, droplet, virtual machine, VPS, or whatever it is called within the provider of your choice with preinstalled Docker and Docker Compose is usually a better and simpler choice. In this case, you can skip this step. To make sure you have Docker installed, run `docker --version` and `docker compose --version` in your terminal.*
 
