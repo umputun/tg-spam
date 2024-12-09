@@ -69,7 +69,6 @@ func TestServer_RunAuth(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("hashed password: %s", string(hashedPassword))
 
-	// run two servers - one with plain password and one with bcrypt hash
 	tests := []struct {
 		name      string
 		srv       *Server
@@ -117,14 +116,23 @@ func TestServer_RunAuth(t *testing.T) {
 				assert.NoError(t, err)
 				close(done)
 			}()
-			time.Sleep(100 * time.Millisecond)
+
+			// Wait for server to be ready
+			require.Eventually(t, func() bool {
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
+				if err != nil {
+					return false
+				}
+				defer resp.Body.Close()
+				return resp.StatusCode == http.StatusOK
+			}, time.Second*2, time.Millisecond*50, "server did not start")
 
 			t.Run("ping", func(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
 				assert.NoError(t, err)
 				t.Log(resp)
 				defer resp.Body.Close()
-				assert.Equal(t, http.StatusOK, resp.StatusCode) // no auth on ping
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
 			})
 
 			t.Run("check unauthorized, no basic auth", func(t *testing.T) {
@@ -175,7 +183,6 @@ func TestServer_RunAuth(t *testing.T) {
 		})
 	}
 	cancel()
-	// wait for all servers to complete
 	for _, done := range doneChannels {
 		<-done
 	}

@@ -219,7 +219,16 @@ func Test_activateServerOnly(t *testing.T) {
 		assert.NoError(t, err)
 		close(done)
 	}()
-	time.Sleep(time.Millisecond * 100)
+
+	// Wait for server to be ready
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9988/ping")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, time.Second*2, time.Millisecond*50, "server did not start")
 
 	resp, err := http.Get("http://localhost:9988/ping")
 	require.NoError(t, err)
