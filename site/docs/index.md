@@ -280,7 +280,6 @@ meta:
 
 openai:
       --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
-      --openai.apibase=             custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
       --openai.model=               openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
