@@ -24,6 +24,8 @@ Remember: Never share your bot token with anyone - it's like a password for your
 
 ## Step 2: Setting Up Docker Desktop (The Program That Runs TG-Spam)
 
+*Please note: using an instance, droplet, virtual machine, VPS, or whatever it is called within the provider of your choice with preinstalled Docker and Docker Compose is usually a better and simpler choice. In this case, you can skip this step. To make sure you have Docker installed, run `docker --version` and `docker compose --version` in your terminal.*
+
 **See the [official Docker Desktop documentation](https://docs.docker.com/desktop/) for more detailed instructions.**
 
 Docker Desktop is a program that helps run TG-Spam on your computer. Here's how to install it:
@@ -97,7 +99,6 @@ sudo systemctl enable docker
 
 3. Log out and log back in for the group changes to take effect
 4. Test Docker by running: `docker --version`
-
 
 
 ## Step 3: Creating Your Configuration File
