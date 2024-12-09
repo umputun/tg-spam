@@ -133,7 +133,6 @@ func banUserOrChannel(r banRequest) error {
 	}
 
 	if r.training {
-		slog.Info(fmt.Sprintf("training mode: ban %d for %v", r.userID, r.duration))
 		slog.Info("training mode:", slog.Any("ban", bannedEntity), slog.Any("for", r.duration))
 		return nil
 	}
