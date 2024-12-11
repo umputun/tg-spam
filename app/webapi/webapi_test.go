@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-pkgz/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -63,64 +65,127 @@ func TestServer_RunAuth(t *testing.T) {
 	}
 	mockSpamFilter := &mocks.SpamFilterMock{}
 
-	srv := NewServer(Config{ListenAddr: ":9877", Version: "dev", Detector: mockDetector, SpamFilter: mockSpamFilter, AuthPasswd: "test"})
-	done := make(chan struct{})
-	go func() {
-		err := srv.Run(ctx)
-		assert.NoError(t, err)
-		close(done)
-	}()
-	time.Sleep(100 * time.Millisecond)
+	hashedPassword, err := rest.GenerateBcryptHash("test")
+	require.NoError(t, err)
+	t.Logf("hashed password: %s", string(hashedPassword))
 
-	t.Run("ping", func(t *testing.T) {
-		resp, err := http.Get("http://localhost:9877/ping")
-		assert.NoError(t, err)
-		t.Log(resp)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode) // no auth on ping
-	})
+	tests := []struct {
+		name      string
+		srv       *Server
+		port      string
+		authType  string
+		password  string
+		useHashed bool
+	}{
+		{
+			name: "plain password auth",
+			srv: NewServer(Config{
+				ListenAddr: ":9877",
+				Version:    "dev",
+				Detector:   mockDetector,
+				SpamFilter: mockSpamFilter,
+				AuthPasswd: "test",
+			}),
+			port:     "9877",
+			authType: "plain",
+			password: "test",
+		},
+		{
+			name: "bcrypt hash auth",
+			srv: NewServer(Config{
+				ListenAddr: ":9878",
+				Version:    "dev",
+				Detector:   mockDetector,
+				SpamFilter: mockSpamFilter,
+				AuthHash:   string(hashedPassword),
+			}),
+			port:      "9878",
+			authType:  "hash",
+			password:  "test",
+			useHashed: true,
+		},
+	}
 
-	t.Run("check unauthorized, no basic auth", func(t *testing.T) {
-		resp, err := http.Get("http://localhost:9877/check")
-		assert.NoError(t, err)
-		t.Log(resp)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
+	var doneChannels []chan struct{}
+	for _, tc := range tests {
+		done := make(chan struct{})
+		doneChannels = append(doneChannels, done)
+		t.Run(tc.authType, func(t *testing.T) {
+			go func() {
+				err := tc.srv.Run(ctx)
+				assert.NoError(t, err)
+				close(done)
+			}()
 
-	t.Run("check authorized", func(t *testing.T) {
-		reqBody, err := json.Marshal(map[string]string{
-			"msg":     "spam example",
-			"user_id": "user123",
+			// Wait for server to be ready
+			require.Eventually(t, func() bool {
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
+				if err != nil {
+					return false
+				}
+				defer resp.Body.Close()
+				return resp.StatusCode == http.StatusOK
+			}, time.Second*2, time.Millisecond*50, "server did not start")
+
+			t.Run("ping", func(t *testing.T) {
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
+				assert.NoError(t, err)
+				t.Log(resp)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			})
+
+			t.Run("check unauthorized, no basic auth", func(t *testing.T) {
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
+				assert.NoError(t, err)
+				t.Log(resp)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+				if tc.useHashed {
+					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
+				}
+			})
+
+			t.Run("check authorized", func(t *testing.T) {
+				reqBody, err := json.Marshal(map[string]string{
+					"msg":     "spam example",
+					"user_id": "user123",
+				})
+				require.NoError(t, err)
+				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+				assert.NoError(t, err)
+				req.SetBasicAuth("tg-spam", tc.password)
+				resp, err := http.DefaultClient.Do(req)
+				assert.NoError(t, err)
+				t.Log(resp)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			})
+
+			t.Run("wrong basic auth", func(t *testing.T) {
+				reqBody, err := json.Marshal(map[string]string{
+					"msg":     "spam example",
+					"user_id": "user123",
+				})
+				require.NoError(t, err)
+				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+				assert.NoError(t, err)
+				req.SetBasicAuth("tg-spam", "bad")
+				resp, err := http.DefaultClient.Do(req)
+				assert.NoError(t, err)
+				t.Log(resp)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+				if tc.useHashed {
+					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
+				}
+			})
 		})
-		require.NoError(t, err)
-		req, err := http.NewRequest("POST", "http://localhost:9877/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
-		req.SetBasicAuth("tg-spam", "test")
-		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
-		t.Log(resp)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-
-	t.Run("wrong basic auth", func(t *testing.T) {
-		reqBody, err := json.Marshal(map[string]string{
-			"msg":     "spam example",
-			"user_id": "user123",
-		})
-		require.NoError(t, err)
-		req, err := http.NewRequest("POST", "http://localhost:9877/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
-		req.SetBasicAuth("tg-spam", "bad")
-		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
-		t.Log(resp)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
+	}
 	cancel()
-	<-done
+	for _, done := range doneChannels {
+		<-done
+	}
 }
 
 func TestServer_routes(t *testing.T) {

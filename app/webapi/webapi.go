@@ -53,6 +53,7 @@ type Config struct {
 	DetectedSpam DetectedSpam // detected spam accessor
 	Locator      Locator      // locator for user info
 	AuthPasswd   string       // basic auth password for user "tg-spam"
+	AuthHash     string       // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
 	Dbg          bool         // debug mode
 	Settings     Settings     // application settings
 }
@@ -131,9 +132,13 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
-	if s.AuthPasswd != "" {
+	if s.AuthPasswd != "" || s.AuthHash != "" {
 		slog.Info("basic auth enabled for webapi server")
-		router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
+		if s.AuthHash != "" {
+			router.Use(rest.BasicAuthWithBcryptHashAndPrompt("tg-spam", s.AuthHash))
+		} else {
+			router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
+		}
 	} else {
 		slog.Warn("basic auth disabled, access to webapi is not protected")
 	}

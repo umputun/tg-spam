@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"math"
 	"net/http"
@@ -192,7 +191,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 			// log if veto is enabled, and openai detected no spam for message that was detected as spam by other checks
 			if d.OpenAIVeto && !spam {
-				log.Printf("[DEBUG] openai vetoed ham message: %q, checks: %s", req.Msg, spamcheck.ChecksToString(cr))
+				slog.Debug("openai vetoed ham message: ", slog.Any("message", req.Msg), slog.Any("checks", spamcheck.ChecksToString(cr)))
 			}
 		}
 	}

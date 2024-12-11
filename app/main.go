@@ -21,6 +21,7 @@ import (
 	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
+	"github.com/go-pkgz/rest"
 	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"github.com/umputun/go-flags"
@@ -110,6 +111,7 @@ type options struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
 		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password for user 'tg-spam'"`
+		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash for user 'tg-spam'"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
@@ -148,9 +150,15 @@ func main() {
 	}
 
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
-	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" { // auto passwd should not be masked as we print it
+	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" {
+		// auto passwd should not be masked as we print it
 		masked = append(masked, opts.Server.AuthPasswd)
 	}
+
+	if opts.Server.AuthHash != "" {
+		masked = append(masked, opts.Server.AuthHash)
+	}
+
 	err := setupLog(opts.Dbg, opts.LoggingFormat, masked...)
 	if err != nil {
 		slog.Error("can't setup log: ", slog.Any("error", err))
@@ -347,7 +355,11 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		if err != nil {
 			return fmt.Errorf("can't generate random password, %w", err)
 		}
-		slog.Warn("generated basic auth password for user", "tg-spam", authPassswd)
+		authHash, err := rest.GenerateBcryptHash(authPassswd)
+		if err != nil {
+			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
+		}
+		slog.Warn("generated basic auth password for user", slog.Any("tg-spam", authPassswd), slog.Any("bcrypt hash", authHash))
 	}
 
 	// make store and load approved users
@@ -391,6 +403,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		Locator:      loc,
 		DetectedSpam: detectedSpamStore,
 		AuthPasswd:   authPassswd,
+		AuthHash:     opts.Server.AuthHash,
 		Version:      revision,
 		Dbg:          opts.Dbg,
 		Settings:     settings,
