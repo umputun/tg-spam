@@ -102,7 +102,7 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 
 - Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
 - OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
-- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
+- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called _only_ if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
 - By default, OpenAI integration is disabled.
 
 **Emoji Count**
@@ -133,7 +133,6 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
-
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -152,12 +151,11 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **admin commands**
 
-* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
+- Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
 
-* Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
+- Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
 
-* Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
-
+- Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
 
 ### Updating spam and ham samples dynamically
 
@@ -231,7 +229,6 @@ Success! The new status is: DISABLED. /help
 
 **Important:** the privacy has to be disabled _before_ bot is added to the group. If it was done after, user should remove bot from the group and add again.
 
-
 ## All Application Options
 
 ```
@@ -255,6 +252,7 @@ Success! The new status is: DISABLED. /help
       --dry                         dry mode, no bans [$DRY]
       --dbg                         debug mode [$DEBUG]
       --tg-dbg                      telegram debug mode [$TG_DEBUG]
+      --logging-format=             logging format text or json (default: text) [$LOGGING_FORMAT]
 
 telegram:
       --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
@@ -344,7 +342,7 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 ### Training the bot on a live system safely
 
-In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
+In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
 
 In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly.
 
@@ -354,11 +352,12 @@ Pls note: Missed spam messages forwarded to the admin chat will be removed from 
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password and the hash are printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password and the hash are printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection.
 
 For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
 
 alternatively, it is possible to use one of the following commands to generate the hash:
+
 ```
 htpasswd -bnBC 10 "" your_password | tr -d ':\n'
 mkpasswd --method=bcrypt your_password
