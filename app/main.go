@@ -619,38 +619,55 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 	}, nil
 }
 
+func setupJSONLogger(dbg bool, secrets ...string) {
+
+	logLvl := slog.LevelInfo
+	if dbg {
+		logLvl = slog.LevelDebug
+	}
+
+	opts := &slog.HandlerOptions{
+		Level: logLvl,
+	}
+	handler := slog.NewJSONHandler(os.Stdout, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	if len(secrets) > 0 {
+		slog.Warn("Secrets are not masked in JSON logger")
+	}
+}
+
+func setupTextLogger(dbg bool, secrets ...string) {
+	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+	colorizer := lgr.Mapper{
+		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
+		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
+		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
+		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
+		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
+		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
+	}
+	logOpts = append(logOpts, lgr.Map(colorizer))
+	if dbg {
+		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+	}
+
+	if len(secrets) > 0 {
+		logOpts = append(logOpts, lgr.Secret(secrets...))
+	}
+	lgr.SetupStdLogger(logOpts...)
+}
+
 func setupLog(dbg bool, loggingFormat string, secrets ...string) error {
-
-	var logger *slog.Logger
-	if loggingFormat == "json" {
-		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		slog.SetDefault(logger)
-		if dbg {
-			slog.SetLogLoggerLevel(slog.LevelDebug)
-		} else {
-			slog.SetLogLoggerLevel(slog.LevelInfo)
-		}
-	} else if loggingFormat == "text" {
-		logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
-		colorizer := lgr.Mapper{
-			ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
-			WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
-			InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
-			DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
-			CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
-			TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
-		}
-		logOpts = append(logOpts, lgr.Map(colorizer))
-		if dbg {
-			logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
-		}
-
-		if len(secrets) > 0 {
-			logOpts = append(logOpts, lgr.Secret(secrets...))
-		}
-		lgr.SetupStdLogger(logOpts...)
-		lgr.Setup(logOpts...)
-	} else {
+	switch loggingFormat {
+	case "json":
+		setupJSONLogger(dbg, secrets...)
+		slog.Info("logging format: json")
+	case "text":
+		setupTextLogger(dbg, secrets...)
+		slog.Info("logging format: text")
+	default:
 		return errors.New("invalid logging format")
 	}
 
