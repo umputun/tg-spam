@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"os"
@@ -120,6 +120,8 @@ type options struct {
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
+
+	LoggingFormat string `long:"logging-format" env:"LOGGING_FORMAT" default:"text" description:"logging format, 'json' or 'text'"`
 }
 
 // file names
@@ -142,7 +144,7 @@ func main() {
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
 		if err.(*flags.Error).Type != flags.ErrHelp {
-			log.Printf("[ERROR] cli error: %v", err)
+			slog.Error("cli ", slog.Any("error", err))
 		}
 		os.Exit(2)
 	}
@@ -152,13 +154,18 @@ func main() {
 		// auto passwd should not be masked as we print it
 		masked = append(masked, opts.Server.AuthPasswd)
 	}
+
 	if opts.Server.AuthHash != "" {
 		masked = append(masked, opts.Server.AuthHash)
 	}
 
-	setupLog(opts.Dbg, masked...)
+	err := setupLog(opts.Dbg, opts.LoggingFormat, masked...)
+	if err != nil {
+		slog.Error("can't setup log: ", slog.Any("error", err))
+		os.Exit(1)
+	}
 
-	log.Printf("[DEBUG] options: %+v", opts)
+	slog.Debug(fmt.Sprintf("options: %+v", opts))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -167,7 +174,7 @@ func main() {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 		<-stop
-		log.Printf("[WARN] interrupt signal")
+		slog.Warn("interrupt signal")
 		cancel()
 	}()
 
@@ -176,14 +183,14 @@ func main() {
 	opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
 
 	if err := execute(ctx, opts); err != nil {
-		log.Printf("[ERROR] %v", err)
+		slog.Error("", slog.Any("error", err))
 		os.Exit(1)
 	}
 }
 
 func execute(ctx context.Context, opts options) error {
 	if opts.Dry {
-		log.Print("[WARN] dry mode, no actual bans")
+		slog.Warn("dry mode, no actual bans")
 	}
 
 	if !opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
@@ -208,7 +215,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't make data db file %s, %w", dataFile, err)
 	}
-	log.Printf("[DEBUG] data db: %s", dataFile)
+	slog.Error("data file ", slog.Any("db", dataFile))
 
 	// make store and load approved users
 	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
@@ -220,7 +227,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
-	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
+	slog.Debug("", slog.Any("approved users from: ", dataFile), slog.Any(" loaded: ", count))
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, detector)
@@ -242,7 +249,7 @@ func execute(ctx context.Context, opts options) error {
 		}
 		// if no telegram token and group set, just run the server
 		if opts.Telegram.Token == "" || opts.Telegram.Group == "" {
-			log.Printf("[WARN] no telegram token and group set, web server only mode")
+			slog.Warn("no telegram token and group set, web server only mode")
 			<-ctx.Done()
 			return nil
 		}
@@ -289,12 +296,12 @@ func execute(ctx context.Context, opts options) error {
 		Dry:                     opts.Dry,
 	}
 
-	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
+	debugMsg := fmt.Sprintf("telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
 		" suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
-
+	slog.Debug(debugMsg)
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil {
 		return fmt.Errorf("telegram listener failed, %w", err)
@@ -308,13 +315,13 @@ func checkVolumeMount(opts options) (ok bool) {
 	if os.Getenv("TGSPAM_IN_DOCKER") != "1" {
 		return true
 	}
-	log.Printf("[DEBUG] running in docker")
+	slog.Debug("running in docker")
 	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart", opts.Files.DynamicDataPath)
 
 	// check if dynamic files dir not present. This means it is not mounted
 	_, err := os.Stat(opts.Files.DynamicDataPath)
 	if err != nil {
-		log.Printf("[WARN] %s", warnMsg)
+		slog.Warn(warnMsg)
 		// no dynamic files dir, no need to check further
 		return false
 	}
@@ -327,7 +334,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	// if .not_mounted file present, it can be mounted anyway with docker named volumes
 	output, err := exec.Command("mount").Output()
 	if err != nil {
-		log.Printf("[WARN] %s, can't check mount: %v", warnMsg, err)
+		slog.Warn("can't check mount: ", warnMsg, slog.Any("error", err))
 		return true
 	}
 	// check if the output contains the specified directory
@@ -337,7 +344,7 @@ func checkVolumeMount(opts options) (ok bool) {
 		}
 	}
 
-	log.Printf("[WARN] %s", warnMsg)
+	slog.Warn(warnMsg)
 	return false
 }
 
@@ -352,7 +359,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		if err != nil {
 			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
 		}
-		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPassswd, authHash)
+		slog.Warn("generated basic auth password for user", slog.Any("tg-spam", authPassswd), slog.Any("bcrypt hash", authHash))
 	}
 
 	// make store and load approved users
@@ -404,7 +411,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 	go func() {
 		if err := srv.Run(ctx); err != nil {
-			log.Printf("[ERROR] web server failed, %v", err)
+			slog.Error("web server failed", slog.Any("error", err))
 		}
 	}()
 	return nil
@@ -437,10 +444,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)
-	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
+	slog.Debug(fmt.Sprintf("detector config: %+v", detectorConfig))
 
 	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
-		log.Printf("[WARN] openai enabled")
+		slog.Warn("openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:      opts.OpenAI.Prompt,
 			Model:             opts.OpenAI.Model,
@@ -454,37 +461,37 @@ func makeDetector(opts options) *tgspam.Detector {
 		if opts.OpenAI.APIBase != "" {
 			config.BaseURL = opts.OpenAI.APIBase
 		}
-		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
+		slog.Debug(fmt.Sprintf("openai config: %+v", openAIConfig))
 
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
 	if opts.Meta.ImageOnly {
-		log.Printf("[INFO] image only check enabled")
+		slog.Info("image only check enabled")
 		metaChecks = append(metaChecks, tgspam.ImagesCheck())
 	}
 	if opts.Meta.VideosOnly {
-		log.Printf("[INFO] videos only check enabled")
+		slog.Info("video only check enabled")
 		metaChecks = append(metaChecks, tgspam.VideosCheck())
 	}
 	if opts.Meta.LinksLimit >= 0 {
-		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
+		slog.Info(fmt.Sprintf("links check enabled, limit: %d", opts.Meta.LinksLimit))
 		metaChecks = append(metaChecks, tgspam.LinksCheck(opts.Meta.LinksLimit))
 	}
 	if opts.Meta.LinksOnly {
-		log.Printf("[INFO] links only check enabled")
+		slog.Info("links only check enabled")
 		metaChecks = append(metaChecks, tgspam.LinkOnlyCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 
 	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
 	detector.WithSpamUpdater(bot.NewSampleUpdater(dynSpamFile))
-	log.Printf("[DEBUG] dynamic spam file: %s", dynSpamFile)
+	slog.Debug(fmt.Sprintf("dynamic spam file: %s", dynSpamFile))
 
 	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
 	detector.WithHamUpdater(bot.NewSampleUpdater(dynHamFile))
-	log.Printf("[DEBUG] dynamic ham file: %s", dynHamFile)
+	slog.Debug(fmt.Sprintf("dynamic ham file: %s", dynHamFile))
 
 	return detector
 }
@@ -503,8 +510,7 @@ func makeSpamBot(ctx context.Context, opts options, detector *tgspam.Detector) (
 		Dry:                opts.Dry,
 	}
 	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
-	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
-
+	slog.Debug(fmt.Sprintf("spam bot config: %+v", spamBotParams))
 	if err := spamBot.ReloadSamples(); err != nil {
 		return nil, fmt.Errorf("can't relaod samples, %w", err)
 	}
@@ -547,7 +553,7 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 		// write to log file
 		text := strings.ReplaceAll(msg.Text, "\n", " ")
 		text = strings.TrimSpace(text)
-		log.Printf("[DEBUG] spam detected from %v, text: %s", msg.From, text)
+		slog.Debug(fmt.Sprintf("spam detected from %v, text: %s", msg.From, text))
 		m := struct {
 			TimeStamp   string `json:"ts"`
 			DisplayName string `json:"display_name"`
@@ -563,11 +569,12 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 		}
 		line, err := json.Marshal(&m)
 		if err != nil {
-			log.Printf("[WARN] can't marshal json, %v", err)
+			slog.Warn("can't marshal json,", slog.Any("error", err))
+
 			return
 		}
 		if _, err := wr.Write(append(line, '\n')); err != nil {
-			log.Printf("[WARN] can't write to log, %v", err)
+			slog.Warn("can't write to log,", slog.Any("error", err))
 		}
 
 		// write to db store
@@ -578,7 +585,7 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 			Timestamp: time.Now().In(time.Local),
 		}
 		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
-			log.Printf("[WARN] can't write to db, %v", err)
+			slog.Warn("can't write to db", slog.Any("error", err))
 		}
 	})
 
@@ -615,7 +622,7 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 
 	maxSize /= 1048576
 
-	log.Printf("[INFO] logger enabled for %s, max size %dM", opts.Logger.FileName, maxSize)
+	slog.Info("logger enabled for %s, max size %dM", opts.Logger.FileName, maxSize)
 	return &lumberjack.Logger{
 		Filename:   opts.Logger.FileName,
 		MaxSize:    int(maxSize), //nolint:gosec // size in MB not that big to cause overflow
@@ -625,12 +632,27 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 	}, nil
 }
 
-func setupLog(dbg bool, secrets ...string) {
-	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+func setupJSONLogger(dbg bool, secrets ...string) {
+
+	logLvl := slog.LevelInfo
 	if dbg {
-		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+		logLvl = slog.LevelDebug
 	}
 
+	opts := &slog.HandlerOptions{
+		Level: logLvl,
+	}
+	handler := slog.NewJSONHandler(os.Stdout, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	if len(secrets) > 0 {
+		slog.Warn("Secrets are not masked in JSON logger")
+	}
+}
+
+func setupTextLogger(dbg bool, secrets ...string) {
+	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	colorizer := lgr.Mapper{
 		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
 		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
@@ -640,10 +662,27 @@ func setupLog(dbg bool, secrets ...string) {
 		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
 	}
 	logOpts = append(logOpts, lgr.Map(colorizer))
+	if dbg {
+		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+	}
 
 	if len(secrets) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secrets...))
 	}
 	lgr.SetupStdLogger(logOpts...)
-	lgr.Setup(logOpts...)
+}
+
+func setupLog(dbg bool, loggingFormat string, secrets ...string) error {
+	switch loggingFormat {
+	case "json":
+		setupJSONLogger(dbg, secrets...)
+		slog.Info("logging format: json")
+	case "text":
+		setupTextLogger(dbg, secrets...)
+		slog.Info("logging format: text")
+	default:
+		return errors.New("invalid logging format")
+	}
+
+	return nil
 }

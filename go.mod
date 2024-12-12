@@ -17,6 +17,7 @@ require (
 	github.com/sashabaranov/go-openai v1.32.5
 	github.com/stretchr/testify v1.10.0
 	github.com/umputun/go-flags v1.5.1
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	modernc.org/sqlite v1.34.2
 )
@@ -36,7 +37,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/samber/lo v1.47.0 // indirect
 	golang.org/x/crypto v0.30.0 // indirect
-	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

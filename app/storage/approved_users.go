@@ -2,10 +2,10 @@ package storage
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/exp/slog"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
 	"github.com/umputun/tg-spam/lib/approved"
@@ -59,7 +59,7 @@ func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
 			Timestamp: u.Timestamp,
 		}
 	}
-	log.Printf("[DEBUG] read %d approved users", len(res))
+	slog.Debug(fmt.Sprintf("read %d approved users", len(res)))
 	return res, nil
 }
 
@@ -73,7 +73,7 @@ func (au *ApprovedUsers) Write(user approved.UserInfo) error {
 	if _, err := au.db.Exec(query, user.UserID, user.UserName, user.Timestamp); err != nil {
 		return fmt.Errorf("failed to insert user %+v: %w", user, err)
 	}
-	log.Printf("[INFO] user %s added to approved users", user.String())
+	slog.Info(fmt.Sprintf("user %s added to approved users", user.String()))
 	return nil
 }
 
@@ -91,7 +91,7 @@ func (au *ApprovedUsers) Delete(id string) error {
 		return fmt.Errorf("failed to delete id %s: %w", id, err)
 	}
 
-	log.Printf("[INFO] user %q (%s) deleted from approved users", user.UserName, id)
+	slog.Info(fmt.Sprintf("user %q (%s) deleted from approved users", user.UserName, id))
 	return nil
 }
 

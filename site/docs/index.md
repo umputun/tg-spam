@@ -8,8 +8,6 @@ TG-Spam is an effective, self-hosted anti-spam bot specifically crafted for Tele
 
 <div align="center">
 
-
-
 </div>
 
 ## What is it and how it works?
@@ -32,10 +30,9 @@ TG-Spam can also run as a server, providing a simple HTTP API to check messages 
 ## Installation
 
 - The primary method of installation is via Docker. TG-Spam is available as a Docker image, making it easy to deploy and run as a container. The image is available on Docker Hub at [umputun/tg-spam](https://hub.docker.com/r/umputun/tg-spam) as well as on GitHub Packages at [ghcr.io/umputun/tg-spam](https://ghcr.io/umputun/tg-spam).
-- Binary releases are also available on the [releases page](https://github.com/umputun/tg-spam/releases/latest). 
+- Binary releases are also available on the [releases page](https://github.com/umputun/tg-spam/releases/latest).
 - TG-Spam can be installed by cloning the repository and building the binary from source by running `make build`.
 - It can also be installed using `brew tap umputun/apps && brew install umputun/apps/tg-spam` on macOS.
-
 
 ## Configuration
 
@@ -52,7 +49,7 @@ There are some important customizations available:
 
 First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
 
-User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located. 
+User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located.
 
 Second, are messages the bot is sending. There are three messages user may want to customize:
 
@@ -60,7 +57,7 @@ Second, are messages the bot is sending. There are three messages user may want 
 - `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
 - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
-By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter. 
+By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
 
 There are 4 files used by the bot to detect spam:
 
@@ -77,7 +74,7 @@ Another useful feature is the ability to keep the list of approved users persist
 
 **Message Analysis**
 
-This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam. 
+This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam.
 
 The analysis is active only if both ham and spam samples files are present and not empty.
 
@@ -87,7 +84,7 @@ This check uses provides samples files and active by default. The bot compares t
 
 **Stop Words Comparison**
 
-If stop words file is present, the bot will check the message for the presence of the phrases in the file. The bot is enabled as long as `stop-words.txt` file is present in samples directory and not empty. 
+If stop words file is present, the bot will check the message for the presence of the phrases in the file. The bot is enabled as long as `stop-words.txt` file is present in samples directory and not empty.
 
 **Combot Anti-Spam System (CAS) integration**
 
@@ -101,7 +98,7 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 
 - Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
 - OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
-- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
+- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called _only_ if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
 - By default, OpenAI integration is disabled.
 
 **Emoji Count**
@@ -132,7 +129,6 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
-
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -151,12 +147,11 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **admin commands**
 
-* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
+- Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
 
-* Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
+- Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
 
-* Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
-
+- Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
 
 ### Updating spam and ham samples dynamically
 
@@ -165,11 +160,12 @@ The bot can be configured to update spam samples dynamically. To enable this fea
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
-Both dynamic spam and ham files are located in the directory set by `--files.dynamic=, [$FILES_DYNAMIC]` parameter. User should mount this directory from the host to keep the data persistent. 
+Both dynamic spam and ham files are located in the directory set by `--files.dynamic=, [$FILES_DYNAMIC]` parameter. User should mount this directory from the host to keep the data persistent.
 
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
+The default logging in text format, you also can choose json log format if you prefer it in you production environment `--logging-format=, [$LOGGING_FORMAT]`
 
 ## Setting up the telegram bot
 
@@ -229,7 +225,6 @@ Success! The new status is: DISABLED. /help
 ```
 
 **Important:** the privacy has to be disabled _before_ bot is added to the group. If it was done after, user should remove bot from the group and add again.
-
 
 ## All Application Options
 
@@ -318,7 +313,7 @@ Help Options:
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
 - `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out. This is useful to keep the group clean from spam messages.
-- `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production. 
+- `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production.
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
 - `--training` - if set, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
@@ -330,7 +325,7 @@ Help Options:
 
 ## Running the bot with an empty set of samples
 
-The provided set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans. 
+The provided set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans.
 
 To do so, several conditions must be met:
 
@@ -343,9 +338,9 @@ After that, the moment admin run into a spam message, he could forward it to the
 
 ### Training the bot on a live system safely
 
-In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
+In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
 
-In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly. 
+In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly.
 
 Pls note: Missed spam messages forwarded to the admin chat will be removed from the primary chat group and the user will be banned.
 
@@ -362,38 +357,37 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 - `GET /ping` - returns `pong` if the server is running
 
 - `POST /check` - return spam check result for the message passed in the body. The body should be a json object with the following fields:
-    - `msg` - message text
-    - `user_id` - user id
-    - `user_name` - username
+  - `msg` - message text
+  - `user_id` - user id
+  - `user_name` - username
 
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
-    - `msg` - spam text
+  - `msg` - spam text
 
 - `POST /update/ham` - update ham samples with the message passed in the body. The body should be a json object with the following fields:
-    - `msg` - ham text
+  - `msg` - ham text
 
 - `POST /delete/spam` - delete spam samples with the message passed in the body. The body should be a json object with the following fields:
-    - `msg` - spam text
+  - `msg` - spam text
 
 - `POST /delete/ham` - delete ham samples with the message passed in the body. The body should be a json object with the following fields:
-    - `msg` - ham text
+  - `msg` - ham text
 
 - `POST /users/add` - add user to the list of approved users. The body should be a json object with the following fields:
-    - `user_id` -  user id to add
-    - `user_name` - username, used for user_id lookup if user_id is not set
-
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `POST /users/delete` - remove user from the list of approved users. The body should be a json object with the following fields:
-    - `user_id` -  user id to add
-    - `user_name` - username, used for user_id lookup if user_id is not set
+  - `user_id` -  user id to add
+  - `user_name` - username, used for user_id lookup if user_id is not set
 
 - `GET /users` - get the list of approved users. The response is a json object with the following fields:
-    - `user_ids` - array of user ids
+  - `user_ids` - array of user ids
 
 - `GET /samples` - get the list of spam and ham samples. The response is a json object with the following fields:
-    - `spam` - array of spam samples
-    - `ham` - array of ham samples
- 
+  - `spam` - array of spam samples
+  - `ham` - array of ham samples
+
 - `PUT /samples` - reload dynamic samples
 
 - `GET /settings` - return the current settings of the bot
@@ -402,7 +396,7 @@ _for the real examples of http requests see [webapp.rest](https://github.com/ump
 
 **how it works**
 
-The server is using the same spam detection logic as the bot itself. It is using the same set of samples and the same set of parameters. The only difference is that the server is not banning users and deleting messages. It also doesn't assume any particular flow user should follow. For example, the `/check` api call doesn't update dynamic spam/ham samples automatically. 
+The server is using the same spam detection logic as the bot itself. It is using the same set of samples and the same set of parameters. The only difference is that the server is not banning users and deleting messages. It also doesn't assume any particular flow user should follow. For example, the `/check` api call doesn't update dynamic spam/ham samples automatically.
 
 However, if users want to update spam/ham dynamic samples, they should call the corresponding endpoint `/update/<spam|ham>`. On the other hand, updating the approved users list is a part of the `/check` api call, so user doesn't need to call it separately. In case if the list of approved users should be managed by the client application, it is possible to call `/users` endpoints directly.
 
@@ -413,7 +407,6 @@ See also [examples](https://github.com/umputun/tg-spam/tree/master/_examples/) f
 ### WEB UI
 
 If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.  
-
 
 <details markdown>
   <summary>Screenshots</summary>
@@ -428,7 +421,6 @@ If webapi server enabled (see [Running with webapi server](#running-with-webapi-
 ## Example of docker-compose.yml
 
 This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
-
 
 ```yaml
 services:
@@ -463,7 +455,7 @@ services:
 
 ## Getting spam samples from CAS
 
-CAS provide an API to get spam samples, which can be used to create a set of spam samples for the bot. Provided [`cas-export.sh`](https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh) script automate the process and result (`messages.txt`) can be used as a base for `spam-samples.txt` file. The script requires `jq` and `curl` to be installed and running it will take a long time. 
+CAS provide an API to get spam samples, which can be used to create a set of spam samples for the bot. Provided [`cas-export.sh`](https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh) script automate the process and result (`messages.txt`) can be used as a base for `spam-samples.txt` file. The script requires `jq` and `curl` to be installed and running it will take a long time.
 
 ```bash
 curl -s https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh > cas-export.sh
