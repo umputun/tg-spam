@@ -368,7 +368,6 @@ openssl passwd -apr1 your_password
 
 In case if both `--server.auth` and `--server.auth-hash` are set, the hash will be used.
 
-```bash
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
