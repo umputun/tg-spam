@@ -43,8 +43,6 @@ github.com/go-pkgz/lgr
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
-# github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
-## explicit; go 1.16
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
@@ -107,15 +105,11 @@ golang.org/x/crypto/blowfish
 # golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
-<<<<<<< HEAD
 golang.org/x/exp/slices
 golang.org/x/exp/slog
 golang.org/x/exp/slog/internal
 golang.org/x/exp/slog/internal/buffer
-# golang.org/x/sys v0.26.0
-=======
 # golang.org/x/sys v0.28.0
->>>>>>> 8d7ed39826a5abf6b06ffc869e1adfab391d7441
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
