@@ -412,15 +412,15 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
-	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err != nil {
-		// we don't want to fail on this error, as lack of a clean message should not prevent deleteAndBan
-		// for soft and training modes, we just don't need to update spam samples with empty messages.
-		log.Printf("[DEBUG] failed to get clean message: %v", err)
-	} else {
-		// update spam samples if we have a clean message
+
+	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err == nil && cleanMsg != "" {
 		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
 			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
 		}
+	} else {
+		// we don't want to fail on this error, as lack of a clean message should not prevent deleteAndBan
+		// for soft and training modes, we just don't need to update spam samples with empty messages.
+		log.Printf("[DEBUG] failed to get clean message: %v", err)
 	}
 
 	userID, msgID, parseErr := a.parseCallbackData(query.Data)
@@ -472,14 +472,14 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// get the original spam message to update ham samples
-	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr != nil {
-		// we don't want to fail on this error, as lack of a clean message should not prevent unban action
-		log.Printf("[DEBUG] failed to get clean message: %v", cleanErr)
-	} else {
+	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr == nil && cleanMsg != "" {
 		// update ham samples if we have a clean message
 		if upErr := a.bot.UpdateHam(cleanMsg); upErr != nil {
 			return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, upErr)
 		}
+	} else {
+		// we don't want to fail on this error, as lack of a clean message should not prevent unban action
+		log.Printf("[DEBUG] failed to get clean message: %v", cleanErr)
 	}
 
 	// unban user if not in training mode (in training mode, the user is not banned automatically)
