@@ -412,13 +412,15 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
-	cleanMsg, err := a.getCleanMessage(query.Message.Text)
-	if err != nil {
-		return fmt.Errorf("failed to get clean message: %w", err)
-	}
-
-	if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
-		return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err != nil {
+		// we don't want to fail on this error, as lack of a clean message should not prevent deleteAndBan
+		// for soft and training modes, we just don't need to update spam samples with empty messages.
+		log.Printf("[DEBUG] failed to get clean message: %v", err)
+	} else {
+		// update spam samples if we have a clean message
+		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
+			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+		}
 	}
 
 	userID, msgID, parseErr := a.parseCallbackData(query.Data)
@@ -428,12 +430,12 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 
 	if a.trainingMode {
 		// in training mode, the user is not banned automatically, here we do the real ban & delete the message
-		if err = a.deleteAndBan(query, userID, msgID); err != nil {
+		if err := a.deleteAndBan(query, userID, msgID); err != nil {
 			return fmt.Errorf("failed to ban user %d: %w", userID, err)
 		}
 	}
 
-	// for  soft ban we need to ba user for real on confirmation
+	// for soft ban we need to ban user for real on confirmation
 	if a.softBan && !a.trainingMode {
 		userName, err := a.extractUsername(query.Message.Text) // try to extract username from the message
 		if err != nil {
@@ -470,12 +472,14 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// get the original spam message to update ham samples
-	cleanMsg, err := a.getCleanMessage(query.Message.Text)
-	if err != nil {
-		return fmt.Errorf("failed to get clean message: %w", err)
-	}
-	if derr := a.bot.UpdateHam(cleanMsg); derr != nil {
-		return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, derr)
+	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr != nil {
+		// we don't want to fail on this error, as lack of a clean message should not prevent unban action
+		log.Printf("[DEBUG] failed to get clean message: %v", cleanErr)
+	} else {
+		// update ham samples if we have a clean message
+		if upErr := a.bot.UpdateHam(cleanMsg); upErr != nil {
+			return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, upErr)
+		}
 	}
 
 	// unban user if not in training mode (in training mode, the user is not banned automatically)
