@@ -15,7 +15,6 @@ var (
 
 var (
 	ErrO1BetaLimitationsMessageTypes = errors.New("this model has beta-limitations, user and assistant messages only, system messages are not supported")                                  //nolint:lll
-	ErrO1BetaLimitationsStreaming    = errors.New("this model has beta-limitations, streaming not supported")                                                                              //nolint:lll
 	ErrO1BetaLimitationsTools        = errors.New("this model has beta-limitations, tools, function calling, and response format parameters are not supported")                            //nolint:lll
 	ErrO1BetaLimitationsLogprobs     = errors.New("this model has beta-limitations, logprobs not supported")                                                                               //nolint:lll
 	ErrO1BetaLimitationsOther        = errors.New("this model has beta-limitations, temperature, top_p and n are fixed at 1, while presence_penalty and frequency_penalty are fixed at 0") //nolint:lll
@@ -38,6 +37,7 @@ const (
 	GPT4o                 = "gpt-4o"
 	GPT4o20240513         = "gpt-4o-2024-05-13"
 	GPT4o20240806         = "gpt-4o-2024-08-06"
+	GPT4o20241120         = "gpt-4o-2024-11-20"
 	GPT4oLatest           = "chatgpt-4o-latest"
 	GPT4oMini             = "gpt-4o-mini"
 	GPT4oMini20240718     = "gpt-4o-mini-2024-07-18"
@@ -120,6 +120,7 @@ var disabledModelsForEndpoints = map[string]map[string]bool{
 		GPT4o:                true,
 		GPT4o20240513:        true,
 		GPT4o20240806:        true,
+		GPT4o20241120:        true,
 		GPT4oLatest:          true,
 		GPT4oMini:            true,
 		GPT4oMini20240718:    true,
@@ -199,12 +200,6 @@ func validateRequestForO1Models(request ChatCompletionRequest) error {
 		return ErrO1MaxTokensDeprecated
 	}
 
-	// Beta Limitations
-	// refs:https://platform.openai.com/docs/guides/reasoning/beta-limitations
-	// Streaming: not supported
-	if request.Stream {
-		return ErrO1BetaLimitationsStreaming
-	}
 	// Logprobs: not supported.
 	if request.LogProbs {
 		return ErrO1BetaLimitationsLogprobs
