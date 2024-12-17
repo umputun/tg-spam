@@ -281,6 +281,8 @@ func transform(msg *tbapi.Message) *bot.Message {
 		message.WithVideoNote = true
 	case msg.Story != nil: // telegram story is a sort of video-like thing, mark it as video
 		message.WithVideo = true
+	case msg.ForwardOrigin != nil:
+		message.WithForward = true
 	}
 
 	// fill in the message's reply-to message

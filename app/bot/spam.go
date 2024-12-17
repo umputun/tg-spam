@@ -87,6 +87,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithVideo || msg.WithVideoNote {
 		spamReq.Meta.HasVideo = true
 	}
+	if msg.WithForward {
+		spamReq.Meta.HasForward = true
+	}
 	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
 	isSpam, checkResults := s.Check(spamReq)
 	crs := []string{}

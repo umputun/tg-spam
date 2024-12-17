@@ -256,6 +256,34 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, "admin", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 	})
+
+	t.Run("test spam check for forwarded message", func(t *testing.T) {
+		mockLogger.ResetCalls()
+		botMock.ResetCalls()
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat:          tbapi.Chat{ID: 123},
+				Text:          "text 123",
+				From:          &tbapi.User{UserName: "user", ID: 123},
+				Date:          int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Now().Unix()},
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		assert.Equal(t, "text 123", mockLogger.SaveCalls()[0].Msg.Text)
+		assert.True(t, mockLogger.SaveCalls()[0].Msg.WithForward)
+		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.True(t, botMock.OnMessageCalls()[0].Msg.WithForward)
+	})
 }
 
 func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
