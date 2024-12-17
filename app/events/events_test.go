@@ -157,6 +157,62 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Message with forward",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID:     30,
+				Date:          1578627415,
+				Text:          "Forwarded message",
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Unix(1578627415, 0).Unix()},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+				},
+				Sent:        time.Unix(1578627415, 0),
+				Text:        "Forwarded message",
+				ChatID:      123456,
+				WithForward: true,
+			},
+		},
+		{
+			name: "Message with story",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Text:      "Message with story",
+				Story:     &tbapi.Story{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+				},
+				Sent:      time.Unix(1578627415, 0),
+				Text:      "Message with story",
+				ChatID:    123456,
+				WithVideo: true,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
