@@ -28,7 +28,7 @@ github.com/fatih/color
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/go-chi/chi/v5 v5.1.0
+# github.com/go-chi/chi/v5 v5.2.0
 ## explicit; go 1.14
 github.com/go-chi/chi/v5
 github.com/go-chi/chi/v5/middleware
@@ -102,7 +102,7 @@ golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
-# golang.org/x/exp v0.0.0-20241210194714-1829a127f884
+# golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
 # golang.org/x/sys v0.28.0
