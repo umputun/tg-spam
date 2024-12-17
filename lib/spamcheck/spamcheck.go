@@ -16,9 +16,10 @@ type Request struct {
 
 // MetaData is a meta-info about the message, provided by the client.
 type MetaData struct {
-	Images   int  `json:"images"`    // number of images in the message
-	Links    int  `json:"links"`     // number of links in the message
-	HasVideo bool `json:"has_video"` // true if the message has a video or video note
+	Images     int  `json:"images"`      // number of images in the message
+	Links      int  `json:"links"`       // number of links in the message
+	HasVideo   bool `json:"has_video"`   // true if the message has a video or video note
+	HasForward bool `json:"has_forward"` // true if the message has a forward
 }
 
 func (r *Request) String() string {

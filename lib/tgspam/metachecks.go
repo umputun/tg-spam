@@ -86,3 +86,19 @@ func VideosCheck() MetaCheck {
 		return spamcheck.Response{Spam: false, Name: "videos", Details: "no videos without text"}
 	}
 }
+
+// ForwardedCheck is a function that returns a MetaCheck function.
+// It checks if the message is a forwarded message.
+func ForwardedCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasForward {
+			return spamcheck.Response{
+				Name:    "forward",
+				Spam:    true,
+				Details: "forwarded message",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "forward", Details: "not forwarded message"}
+	}
+
+}
