@@ -70,6 +70,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	if l.chatID, getChatErr = l.getChatID(l.Group); getChatErr != nil {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
 	}
+	log.Printf("[INFO] primary chat ID: %d", l.chatID)
 
 	if err := l.updateSupers(); err != nil {
 		log.Printf("[WARN] failed to update superusers: %v", err)
@@ -94,6 +95,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	if l.StartupMsg != "" && !l.TrainingMode && !l.Dry {
 		if err := l.sendBotResponse(bot.Response{Send: true, Text: l.StartupMsg}, l.chatID); err != nil {
 			log.Printf("[WARN] failed to send startup message, %v", err)
+		} else {
+			log.Printf("[DEBUG] startup message sent")
 		}
 	}
 
@@ -110,10 +113,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	u.Timeout = 60
 
 	updates := l.TbAPI.GetUpdatesChan(u)
-
+	log.Printf("[DEBUG] start listening for updates")
 	for {
 		select {
-
 		case <-ctx.Done():
 			return ctx.Err()
 
@@ -122,7 +124,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				return fmt.Errorf("telegram update chan closed")
 			}
 
-			// handle admin chat messages
+			// handle admin chat messages. can be just messages (MsgHandler will ignore those)
+			// or forwards of undetected spam by admins to admin's chat (in this case MsgHandler will process them and ban/train)
 			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
 				if l.DisableAdminSpamForward {
 					continue
@@ -156,6 +159,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// handle left member messages, i.e. "blah blah removed from the chat"
 			if update.Message.LeftChatMember != nil {
 				if l.SuppressJoinMessage {
 					err := l.procLeftChatMemberMessage(update)
@@ -191,6 +195,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
+			// process regular messages, the main part of the bot
 			if err := l.procEvents(update); err != nil {
 				log.Printf("[WARN] failed to process update: %v", err)
 				continue
@@ -203,56 +208,6 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 		}
 	}
-}
-
-// procNewChatMemberMessage saves new chat member message to locator. It is used to delete the message if the user kicked out
-func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
-	fromChat := update.Message.Chat.ID
-	// ignore messages from other chats except the one we are monitor and ones from the test list
-	if !l.isChatAllowed(fromChat) {
-		return nil
-	}
-
-	if len(update.Message.NewChatMembers) != 1 {
-		log.Printf("[DEBUG] we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers))
-		return nil
-	}
-
-	errs := new(multierror.Error)
-
-	member := update.Message.NewChatMembers[0]
-	msg := fmt.Sprintf("new_%d_%d", fromChat, member.ID)
-	if err := l.Locator.AddMessage(msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
-	}
-
-	return errs.ErrorOrNil()
-}
-
-// procLeftChatMemberMessage deletes the message about new chat member if the user kicked out
-func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error {
-	fromChat := update.Message.Chat.ID
-	// ignore messages from other chats except the one we are monitor and ones from the test list
-	if !l.isChatAllowed(fromChat) {
-		return nil
-	}
-
-	if update.Message.From.ID == update.Message.LeftChatMember.ID {
-		log.Printf("[DEBUG] left chat member is the same as the message sender, ignored")
-		return nil
-	}
-	msg, found := l.Locator.Message(fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
-	if !found {
-		log.Printf("[DEBUG] no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
-		return nil
-	}
-	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
-		BaseChatMessage: tbapi.BaseChatMessage{ChatConfig: tbapi.ChatConfig{ChatID: fromChat}, MessageID: msg.MsgID},
-	}); err != nil {
-		return fmt.Errorf("failed to delete new chat member message %d: %w", msg.MsgID, err)
-	}
-
-	return nil
 }
 
 func (l *TelegramListener) procEvents(update tbapi.Update) error {
@@ -331,6 +286,56 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	return errs.ErrorOrNil()
+}
+
+// procNewChatMemberMessage saves new chat member message to locator. It is used to delete the message if the user kicked out
+func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
+	fromChat := update.Message.Chat.ID
+	// ignore messages from other chats except the one we are monitor and ones from the test list
+	if !l.isChatAllowed(fromChat) {
+		return nil
+	}
+
+	if len(update.Message.NewChatMembers) != 1 {
+		log.Printf("[DEBUG] we are expecting only one new chat member, got %d", len(update.Message.NewChatMembers))
+		return nil
+	}
+
+	errs := new(multierror.Error)
+
+	member := update.Message.NewChatMembers[0]
+	msg := fmt.Sprintf("new_%d_%d", fromChat, member.ID)
+	if err := l.Locator.AddMessage(msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
+	}
+
+	return errs.ErrorOrNil()
+}
+
+// procLeftChatMemberMessage deletes the message about new chat member if the user kicked out
+func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error {
+	fromChat := update.Message.Chat.ID
+	// ignore messages from other chats except the one we are monitor and ones from the test list
+	if !l.isChatAllowed(fromChat) {
+		return nil
+	}
+
+	if update.Message.From.ID == update.Message.LeftChatMember.ID {
+		log.Printf("[DEBUG] left chat member is the same as the message sender, ignored")
+		return nil
+	}
+	msg, found := l.Locator.Message(fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
+	if !found {
+		log.Printf("[DEBUG] no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
+		return nil
+	}
+	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
+		BaseChatMessage: tbapi.BaseChatMessage{ChatConfig: tbapi.ChatConfig{ChatID: fromChat}, MessageID: msg.MsgID},
+	}); err != nil {
+		return fmt.Errorf("failed to delete new chat member message %d: %w", msg.MsgID, err)
+	}
+
+	return nil
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
