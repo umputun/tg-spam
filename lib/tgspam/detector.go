@@ -59,7 +59,7 @@ type Config struct {
 
 	AbnormalSpacing struct {
 		Enabled                 bool    // if true, enable check for abnormal spacing
-		ShortWordThreshold      int     // the length of the word to be considered short (in rune characters)
+		ShortWordLen            int     // the length of the word to be considered short (in rune characters)
 		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
 		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
 	}
@@ -692,10 +692,10 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 
 	// look for suspicious word lengths and spacing patterns
 	shortWords := 0
-	if d.AbnormalSpacing.ShortWordThreshold > 0 { // if ShortWordThreshold is 0, skip short word detection
+	if d.AbnormalSpacing.ShortWordLen > 0 { // if ShortWordLen is 0, skip short word detection
 		for _, word := range words {
 			wordRunes := []rune(word)
-			if len(wordRunes) <= d.AbnormalSpacing.ShortWordThreshold && len(wordRunes) > 0 {
+			if len(wordRunes) <= d.AbnormalSpacing.ShortWordLen && len(wordRunes) > 0 {
 				shortWords++
 			}
 		}
