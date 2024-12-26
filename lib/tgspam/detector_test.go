@@ -695,7 +695,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	d.Config.AbnormalSpacing.Enabled = true
-	d.Config.AbnormalSpacing.ShortWordThreshold = 3
+	d.Config.AbnormalSpacing.ShortWordLen = 3
 	d.Config.AbnormalSpacing.ShortWordRatioThreshold = 0.7
 	d.Config.AbnormalSpacing.SpaceRatioThreshold = 0.3
 
@@ -785,7 +785,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	}
 
 	t.Run("disabled short word threshold", func(t *testing.T) {
-		d.Config.AbnormalSpacing.ShortWordThreshold = 0
+		d.Config.AbnormalSpacing.ShortWordLen = 0
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.False(t, spam)
@@ -793,7 +793,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	})
 
 	t.Run("enabled short word threshold", func(t *testing.T) {
-		d.Config.AbnormalSpacing.ShortWordThreshold = 3
+		d.Config.AbnormalSpacing.ShortWordLen = 3
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.True(t, spam)

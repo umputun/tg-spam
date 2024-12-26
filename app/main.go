@@ -86,11 +86,11 @@ type options struct {
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
-	AbnormalWords struct {
+	AbnormalSpacing struct {
 		Enabled                 bool    `long:"enabled" env:"ENABLED" description:"enable abnormal words check"`
 		SpaceRatioThreshold     float64 `long:"ratio" env:"RATIO" default:"0.3" description:"the ratio of spaces to all characters in the message"`
-		ShortWordThreshold      int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
 		ShortWordRatioThreshold float64 `long:"short-ratio" env:"SHORT_RATIO" default:"0.7" description:"the ratio of short words to all words in the message"`
+		ShortWordLen            int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
@@ -467,12 +467,12 @@ func makeDetector(opts options) *tgspam.Detector {
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
 	}
 
-	if opts.AbnormalWords.Enabled {
+	if opts.AbnormalSpacing.Enabled {
 		log.Printf("[INFO] words spacing check enabled")
 		detector.AbnormalSpacing.Enabled = true
-		detector.AbnormalSpacing.ShortWordThreshold = opts.AbnormalWords.ShortWordThreshold
-		detector.AbnormalSpacing.ShortWordRatioThreshold = opts.AbnormalWords.ShortWordRatioThreshold
-		detector.AbnormalSpacing.SpaceRatioThreshold = opts.AbnormalWords.SpaceRatioThreshold
+		detector.AbnormalSpacing.ShortWordLen = opts.AbnormalSpacing.ShortWordLen
+		detector.AbnormalSpacing.ShortWordRatioThreshold = opts.AbnormalSpacing.ShortWordRatioThreshold
+		detector.AbnormalSpacing.SpaceRatioThreshold = opts.AbnormalSpacing.SpaceRatioThreshold
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
