@@ -128,7 +128,7 @@ func TestSamples_AddSample(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := s.AddSample(ctx, tt.sType, tt.origin, tt.message)
+			err := s.Add(ctx, tt.sType, tt.origin, tt.message)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -147,7 +147,7 @@ func TestSamples_RemoveSample(t *testing.T) {
 	ctx := context.Background()
 
 	// add a sample first
-	err = s.AddSample(ctx, SampleTypeHam, SampleOriginPreset, "test message")
+	err = s.Add(ctx, SampleTypeHam, SampleOriginPreset, "test message")
 	require.NoError(t, err)
 
 	// get the ID of the inserted sample
@@ -174,7 +174,7 @@ func TestSamples_RemoveSample(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := s.RemoveSample(ctx, tt.id)
+			err := s.Delete(ctx, tt.id)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -205,7 +205,7 @@ func TestSamples_ReadSamples(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		err := s.AddSample(ctx, td.sType, td.origin, td.message)
+		err := s.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
@@ -248,7 +248,7 @@ func TestSamples_ReadSamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			samples, err := s.ReadSamples(ctx, tt.sType, tt.origin)
+			samples, err := s.Read(ctx, tt.sType, tt.origin)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, samples)
@@ -283,11 +283,11 @@ func TestSamples_GetStats(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		err := s.AddSample(ctx, td.sType, td.origin, td.message)
+		err := s.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
-	stats, err := s.GetStats(ctx)
+	stats, err := s.Stats(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
@@ -358,7 +358,7 @@ func TestSamples_Concurrent(t *testing.T) {
 
 	// Verify table exists and is accessible
 	ctx := context.Background()
-	err = s.AddSample(ctx, SampleTypeHam, SampleOriginPreset, "test message")
+	err = s.Add(ctx, SampleTypeHam, SampleOriginPreset, "test message")
 	require.NoError(t, err, "Failed to insert initial test record")
 
 	const numWorkers = 10
@@ -373,7 +373,7 @@ func TestSamples_Concurrent(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < numOps; j++ {
-				if _, err := s.ReadSamples(ctx, SampleTypeHam, SampleOriginAny); err != nil {
+				if _, err := s.Read(ctx, SampleTypeHam, SampleOriginAny); err != nil {
 					select {
 					case errCh <- fmt.Errorf("reader %d failed: %w", workerID, err):
 					default:
@@ -395,7 +395,7 @@ func TestSamples_Concurrent(t *testing.T) {
 				if j%2 == 0 {
 					sType = SampleTypeSpam
 				}
-				if err := s.AddSample(ctx, sType, SampleOriginUser, msg); err != nil {
+				if err := s.Add(ctx, sType, SampleOriginUser, msg); err != nil {
 					select {
 					case errCh <- fmt.Errorf("writer %d failed: %w", workerID, err):
 					default:
@@ -416,11 +416,94 @@ func TestSamples_Concurrent(t *testing.T) {
 	}
 
 	// verify the final state
-	stats, err := s.GetStats(ctx)
+	stats, err := s.Stats(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
 	expectedTotal := numWorkers*numOps + 1 // +1 for the initial test message
 	actualTotal := stats.TotalHam + stats.TotalSpam
 	require.Equal(t, expectedTotal, actualTotal, "expected %d total samples, got %d", expectedTotal, actualTotal)
+}
+
+func TestSamples_Iterator(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	samples, err := NewSamples(db)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Insert test data
+	testData := []struct {
+		sType   SampleType
+		origin  SampleOrigin
+		message string
+	}{
+		{SampleTypeHam, SampleOriginPreset, "ham preset 1"},
+		{SampleTypeHam, SampleOriginUser, "ham user 1"},
+		{SampleTypeSpam, SampleOriginPreset, "spam preset 1"},
+		{SampleTypeSpam, SampleOriginUser, "spam user 1"},
+	}
+
+	for _, td := range testData {
+		err := samples.Add(ctx, td.sType, td.origin, td.message)
+		require.NoError(t, err)
+	}
+
+	// Test cases
+	tests := []struct {
+		name         string
+		sType        SampleType
+		origin       SampleOrigin
+		expectedMsgs []string
+		expectErr    bool
+	}{
+		{
+			name:         "Ham Preset Samples",
+			sType:        SampleTypeHam,
+			origin:       SampleOriginPreset,
+			expectedMsgs: []string{"ham preset 1"},
+			expectErr:    false,
+		},
+		{
+			name:         "Spam User Samples",
+			sType:        SampleTypeSpam,
+			origin:       SampleOriginUser,
+			expectedMsgs: []string{"spam user 1"},
+			expectErr:    false,
+		},
+		{
+			name:         "All Ham Samples",
+			sType:        SampleTypeHam,
+			origin:       SampleOriginAny,
+			expectedMsgs: []string{"ham preset 1", "ham user 1"},
+			expectErr:    false,
+		},
+		{
+			name:         "Invalid Sample Type",
+			sType:        "invalid",
+			origin:       SampleOriginPreset,
+			expectedMsgs: nil,
+			expectErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			iter, err := samples.Iterator(ctx, tt.sType, tt.origin)
+			if tt.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			var messages []string
+			for msg := range iter {
+				messages = append(messages, msg)
+			}
+
+			assert.ElementsMatch(t, tt.expectedMsgs, messages)
+		})
+	}
 }

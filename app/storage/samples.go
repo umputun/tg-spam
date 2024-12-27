@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"iter"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
@@ -86,8 +87,8 @@ func NewSamples(db *sqlx.DB) (*Samples, error) {
 	return &Samples{db: db, lock: &sync.RWMutex{}}, nil
 }
 
-// AddSample adds a sample to the storage. Checks if the sample is already present and skips it if it is.
-func (s *Samples) AddSample(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
+// Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
+func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -133,8 +134,8 @@ func (s *Samples) AddSample(ctx context.Context, t SampleType, o SampleOrigin, m
 	return nil
 }
 
-// RemoveSample removes a sample from the storage by its ID
-func (s *Samples) RemoveSample(ctx context.Context, id int64) error {
+// Delete removes a sample from the storage by its ID
+func (s *Samples) Delete(ctx context.Context, id int64) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -153,8 +154,8 @@ func (s *Samples) RemoveSample(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ReadSamples reads samples from storage by type and origin
-func (s *Samples) ReadSamples(ctx context.Context, t SampleType, o SampleOrigin) ([]string, error) {
+// Read reads samples from storage by type and origin
+func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]string, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -183,6 +184,50 @@ func (s *Samples) ReadSamples(ctx context.Context, t SampleType, o SampleOrigin)
 		return nil, fmt.Errorf("failed to get samples: %w", err)
 	}
 	return samples, nil
+}
+
+// Iterator returns an iterator for samples by type and origin
+func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (iter.Seq[string], error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+
+	s.lock.RLock() // Add lock protection
+
+	var query string
+	var args []any
+
+	if o == SampleOriginAny {
+		query = `SELECT message FROM samples WHERE type = ?`
+		args = []any{t}
+	} else {
+		query = `SELECT message FROM samples WHERE type = ? AND origin = ?`
+		args = []any{t, o}
+	}
+
+	rows, err := s.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		s.lock.RUnlock() // Release lock on error
+		return nil, fmt.Errorf("failed to query samples: %w", err)
+	}
+
+	// create an iterator from the rows
+	return func(yield func(string) bool) {
+		defer rows.Close()
+		defer s.lock.RUnlock() // Release lock after iteration
+		for rows.Next() {
+			var message string
+			if err := rows.Scan(&message); err != nil {
+				return
+			}
+			if !yield(message) {
+				return
+			}
+		}
+	}, nil
 }
 
 // String implements Stringer interface
@@ -219,8 +264,8 @@ type SamplesStats struct {
 	UserHam    int `db:"user_ham_count"`
 }
 
-// GetStats returns statistics about samples
-func (s *Samples) GetStats(ctx context.Context) (*SamplesStats, error) {
+// Stats returns statistics about samples
+func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
