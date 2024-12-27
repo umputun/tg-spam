@@ -184,8 +184,6 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 		return nil, err
 	}
 
-	s.lock.RLock() // Add lock protection
-
 	var query string
 	var args []any
 
@@ -197,23 +195,23 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 		args = []any{t, o}
 	}
 
+	s.lock.RLock()
 	rows, err := s.db.QueryxContext(ctx, query, args...)
+	s.lock.RUnlock()
 	if err != nil {
-		s.lock.RUnlock() // Release lock on error
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
 
-	// create an iterator from the rows
+	// create an iterator getting rows from the database
 	return func(yield func(string) bool) {
 		defer rows.Close()
-		defer s.lock.RUnlock() // Release lock after iteration
 		for rows.Next() {
 			var message string
 			if err := rows.Scan(&message); err != nil {
-				return
+				return // terminate iteration on scan error
 			}
 			if !yield(message) {
-				return
+				return // stop iteration if `yield` returns false
 			}
 		}
 	}, nil
