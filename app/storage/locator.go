@@ -39,42 +39,49 @@ type SpamData struct {
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
 func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS messages (
-		hash TEXT PRIMARY KEY,
-		time TIMESTAMP,
-		chat_id INTEGER,
-		user_id INTEGER,
-		user_name TEXT,
-		msg_id INTEGER
-	)`)
+	if db == nil {
+		return nil, fmt.Errorf("db connection is nil")
+	}
+
+	if err := setSqlitePragma(db); err != nil {
+		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
+	}
+
+	schema := `
+		CREATE TABLE IF NOT EXISTS messages (
+			hash TEXT PRIMARY KEY,
+			time TIMESTAMP,
+			chat_id INTEGER,
+			user_id INTEGER,
+			user_name TEXT,
+			msg_id INTEGER
+		);
+		CREATE TABLE IF NOT EXISTS spam (
+			user_id INTEGER PRIMARY KEY,
+			time TIMESTAMP,
+			checks TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+		CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name);
+		CREATE INDEX IF NOT EXISTS idx_spam_time ON spam(time);
+	`
+
+	// create schema in a single transaction
+	tx, err := db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create messages table: %w", err)
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err = tx.Exec(schema); err != nil {
+		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// add index on user_id
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)`); err != nil {
-		return nil, fmt.Errorf("failed to create index on user_id: %w", err)
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// add index on user_name
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name)`); err != nil {
-		return nil, fmt.Errorf("failed to create index on user_name: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS spam (
-		user_id INTEGER PRIMARY KEY,
-		time TIMESTAMP,
-		checks TEXT
-	)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create spam table: %w", err)
-	}
-
-	return &Locator{
-		ttl:     ttl,
-		minSize: minSize,
-		db:      db,
-	}, nil
+	return &Locator{ttl: ttl, minSize: minSize, db: db}, nil
 }
 
 // Close closes the database

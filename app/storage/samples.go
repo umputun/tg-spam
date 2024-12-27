@@ -41,19 +41,8 @@ func NewSamples(db *sqlx.DB) (*Samples, error) {
 		return nil, fmt.Errorf("db connection is nil")
 	}
 
-	// Set pragmas for better concurrency support
-	pragmas := map[string]string{
-		"journal_mode": "WAL",
-		"synchronous":  "NORMAL",
-		"busy_timeout": "5000",
-		"foreign_keys": "ON",
-	}
-
-	// set pragma
-	for name, value := range pragmas {
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA %s = %s", name, value)); err != nil {
-			return nil, fmt.Errorf("failed to set pragma %q: %w", name, err)
-		}
+	if err := setSqlitePragma(db); err != nil {
+		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
 	}
 
 	// create schema in a single transaction
