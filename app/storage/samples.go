@@ -1,0 +1,242 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/jmoiron/sqlx"
+	_ "modernc.org/sqlite/lib" // sqlite driver
+)
+
+// Samples is a storage for samples. It supports both ham and spam, as well as preset samples and user's samples
+type Samples struct {
+	db   *sqlx.DB
+	lock *sync.RWMutex
+}
+
+// SampleType represents the type of the sample
+type SampleType string
+
+// enum for sample types
+const (
+	SampleTypeHam  SampleType = "ham"
+	SampleTypeSpam SampleType = "spam"
+)
+
+// SampleOrigin represents the origin of the sample
+type SampleOrigin string
+
+// enum for sample origins
+const (
+	SampleOriginPreset SampleOrigin = "preset"
+	SampleOriginUser   SampleOrigin = "user"
+	SampleOriginAny    SampleOrigin = "any"
+)
+
+// NewSamples creates a new Samples storage
+func NewSamples(db *sqlx.DB) (*Samples, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db connection is nil")
+	}
+
+	// Set pragmas for better concurrency support
+	pragmas := map[string]string{
+		"journal_mode": "WAL",
+		"synchronous":  "NORMAL",
+		"busy_timeout": "5000",
+		"foreign_keys": "ON",
+	}
+
+	// set pragma
+	for name, value := range pragmas {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA %s = %s", name, value)); err != nil {
+			return nil, fmt.Errorf("failed to set pragma %q: %w", name, err)
+		}
+	}
+
+	// create schema in a single transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	schema := `
+        CREATE TABLE IF NOT EXISTS samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('ham', 'spam')),
+            origin TEXT CHECK (origin IN ('preset', 'user')),
+            message TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+        CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+    `
+
+	if _, err = tx.Exec(schema); err != nil {
+		return nil, fmt.Errorf("failed to create schema: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return &Samples{db: db, lock: &sync.RWMutex{}}, nil
+}
+
+// AddSample adds a sample to the storage. Checks if the sample is already present and skips it if it is.
+func (s *Samples) AddSample(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	if err := o.Validate(); err != nil {
+		return err
+	}
+	if o == SampleOriginAny {
+		return fmt.Errorf("can't add sample with origin 'any'")
+	}
+	if message == "" {
+		return fmt.Errorf("message can't be empty")
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	// start transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// check if sample already exists
+	var count int
+	query := `SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ? AND message = ?`
+	if err = tx.QueryRowContext(ctx, query, t, o, message).Scan(&count); err != nil {
+		return fmt.Errorf("failed to check if sample exists: %w", err)
+	}
+	if count > 0 {
+		return nil // sample already exists, silently return
+	}
+
+	// add new sample
+	query = `INSERT INTO samples (type, origin, message) VALUES (?, ?, ?)`
+	if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
+		return fmt.Errorf("failed to add sample: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// RemoveSample removes a sample from the storage by its ID
+func (s *Samples) RemoveSample(ctx context.Context, id int64) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to remove sample: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("sample %d not found", id)
+	}
+	return nil
+}
+
+// ReadSamples reads samples from storage by type and origin
+func (s *Samples) ReadSamples(ctx context.Context, t SampleType, o SampleOrigin) ([]string, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+
+	var (
+		query   string
+		args    []any
+		samples []string
+	)
+
+	if o == SampleOriginAny {
+		query = `SELECT message FROM samples WHERE type = ?`
+		args = []any{t}
+	} else {
+		query = `SELECT message FROM samples WHERE type = ? AND origin = ?`
+		args = []any{t, o}
+	}
+
+	if err := s.db.SelectContext(ctx, &samples, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get samples: %w", err)
+	}
+	return samples, nil
+}
+
+// String implements Stringer interface
+func (t SampleType) String() string { return string(t) }
+
+// Validate checks if the sample type is valid
+func (t SampleType) Validate() error {
+	switch t {
+	case SampleTypeHam, SampleTypeSpam:
+		return nil
+	}
+	return fmt.Errorf("invalid sample type: %s", t)
+}
+
+// String implements Stringer interface
+func (o SampleOrigin) String() string { return string(o) }
+
+// Validate checks if the sample origin is valid
+func (o SampleOrigin) Validate() error {
+	switch o {
+	case SampleOriginPreset, SampleOriginUser, SampleOriginAny:
+		return nil
+	}
+	return fmt.Errorf("invalid sample origin: %s", o)
+}
+
+// SamplesStats returns statistics about samples
+type SamplesStats struct {
+	TotalSpam  int `db:"spam_count"`
+	TotalHam   int `db:"ham_count"`
+	PresetSpam int `db:"preset_spam_count"`
+	PresetHam  int `db:"preset_ham_count"`
+	UserSpam   int `db:"user_spam_count"`
+	UserHam    int `db:"user_ham_count"`
+}
+
+// GetStats returns statistics about samples
+func (s *Samples) GetStats(ctx context.Context) (*SamplesStats, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	query := `
+        SELECT 
+            COUNT(CASE WHEN type = 'spam' THEN 1 END) as spam_count,
+            COUNT(CASE WHEN type = 'ham' THEN 1 END) as ham_count,
+            COUNT(CASE WHEN type = 'spam' AND origin = 'preset' THEN 1 END) as preset_spam_count,
+            COUNT(CASE WHEN type = 'ham' AND origin = 'preset' THEN 1 END) as preset_ham_count,
+            COUNT(CASE WHEN type = 'spam' AND origin = 'user' THEN 1 END) as user_spam_count,
+            COUNT(CASE WHEN type = 'ham' AND origin = 'user' THEN 1 END) as user_ham_count
+        FROM samples`
+
+	var stats SamplesStats
+	if err := s.db.GetContext(ctx, &stats, query); err != nil {
+		return nil, fmt.Errorf("failed to get stats: %w", err)
+	}
+	return &stats, nil
+}
