@@ -1,4 +1,4 @@
-# github.com/OvyFlash/telegram-bot-api v0.0.0-20241107191146-851f2334eccf
+# github.com/OvyFlash/telegram-bot-api v0.0.0-20241219171906-3f2ca0c14ada
 ## explicit; go 1.23
 github.com/OvyFlash/telegram-bot-api
 # github.com/davecgh/go-spew v1.1.1
@@ -38,8 +38,8 @@ github.com/go-pkgz/expirable-cache/v3
 # github.com/go-pkgz/lgr v0.11.1
 ## explicit; go 1.20
 github.com/go-pkgz/lgr
-# github.com/go-pkgz/rest v1.20.1
-## explicit; go 1.23
+# github.com/go-pkgz/rest v1.20.2
+## explicit; go 1.21
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
@@ -102,7 +102,7 @@ golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
-# golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e
+# golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
 # golang.org/x/sys v0.28.0
@@ -126,10 +126,10 @@ gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# modernc.org/gc/v3 v3.0.0-20241213165251-3bc300f6d0c9
-## explicit; go 1.20
+# modernc.org/gc/v3 v3.0.0-20241223112719-96e2e1e4408d
+## explicit; go 1.22.0
 modernc.org/gc/v3
-# modernc.org/libc v1.61.4
+# modernc.org/libc v1.61.5
 ## explicit; go 1.21
 modernc.org/libc
 modernc.org/libc/errno
@@ -157,13 +157,13 @@ modernc.org/libc/utime
 modernc.org/libc/uuid
 modernc.org/libc/uuid/uuid
 modernc.org/libc/wctype
-# modernc.org/mathutil v1.6.0
-## explicit; go 1.18
+# modernc.org/mathutil v1.7.0
+## explicit; go 1.21
 modernc.org/mathutil
 # modernc.org/memory v1.8.0
 ## explicit; go 1.18
 modernc.org/memory
-# modernc.org/sqlite v1.34.2
+# modernc.org/sqlite v1.34.4
 ## explicit; go 1.21
 modernc.org/sqlite
 modernc.org/sqlite/lib
