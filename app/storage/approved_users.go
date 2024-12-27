@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -13,7 +14,8 @@ import (
 
 // ApprovedUsers is a storage for approved users ids
 type ApprovedUsers struct {
-	db *sqlx.DB
+	db   *sqlx.DB
+	lock *sync.RWMutex
 }
 
 // ApprovedUsersInfo represents information about an approved user.
@@ -25,6 +27,13 @@ type approvedUsersInfo struct {
 
 // NewApprovedUsers creates a new ApprovedUsers storage
 func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db connection is nil")
+	}
+	if err := setSqlitePragma(db); err != nil {
+		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
+	}
+
 	// migrate the table if necessary
 	err := migrateTable(db)
 	if err != nil {
@@ -41,11 +50,13 @@ func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
 		return nil, fmt.Errorf("failed to create approved_users table: %w", err)
 	}
 
-	return &ApprovedUsers{db: db}, nil
+	return &ApprovedUsers{db: db, lock: &sync.RWMutex{}}, nil
 }
 
 // Read returns all approved users.
 func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
+	au.lock.RLock()
+	defer au.lock.RUnlock()
 	users := []approvedUsersInfo{}
 	err := au.db.Select(&users, "SELECT id, name, timestamp FROM approved_users ORDER BY timestamp DESC")
 	if err != nil {
@@ -65,6 +76,8 @@ func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
 
 // Write writes new user info to the storage
 func (au *ApprovedUsers) Write(user approved.UserInfo) error {
+	au.lock.Lock()
+	defer au.lock.Unlock()
 	if user.Timestamp.IsZero() {
 		user.Timestamp = time.Now()
 	}
@@ -79,6 +92,8 @@ func (au *ApprovedUsers) Write(user approved.UserInfo) error {
 
 // Delete deletes the given id from the storage
 func (au *ApprovedUsers) Delete(id string) error {
+	au.lock.Lock()
+	defer au.lock.Unlock()
 	var user approvedUsersInfo
 
 	// retrieve the user's name and timestamp for logging purposes

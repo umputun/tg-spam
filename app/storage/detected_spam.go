@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -16,7 +17,8 @@ const maxDetectedSpamEntries = 500
 
 // DetectedSpam is a storage for detected spam entries
 type DetectedSpam struct {
-	db *sqlx.DB
+	db   *sqlx.DB
+	lock *sync.RWMutex
 }
 
 // DetectedSpamInfo represents information about a detected spam entry.
@@ -33,6 +35,13 @@ type DetectedSpamInfo struct {
 
 // NewDetectedSpam creates a new DetectedSpam storage
 func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db connection is nil")
+	}
+	if err := setSqlitePragma(db); err != nil {
+		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
+	}
+
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS detected_spam (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		text TEXT,
@@ -57,11 +66,14 @@ func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
 	}
 
-	return &DetectedSpam{db: db}, nil
+	return &DetectedSpam{db: db, lock: &sync.RWMutex{}}, nil
 }
 
 // Write adds a new detected spam entry
 func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Response) error {
+	ds.lock.Lock()
+	defer ds.lock.Unlock()
+
 	checksJSON, err := json.Marshal(checks)
 	if err != nil {
 		return fmt.Errorf("failed to marshal checks: %w", err)
@@ -78,6 +90,9 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 
 // SetAddedToSamplesFlag sets the added flag to true for the detected spam entry with the given id
 func (ds *DetectedSpam) SetAddedToSamplesFlag(id int64) error {
+	ds.lock.Lock()
+	defer ds.lock.Unlock()
+
 	query := `UPDATE detected_spam SET added = 1 WHERE id = ?`
 	if _, err := ds.db.Exec(query, id); err != nil {
 		return fmt.Errorf("failed to update added to samples flag: %w", err)
@@ -87,6 +102,9 @@ func (ds *DetectedSpam) SetAddedToSamplesFlag(id int64) error {
 
 // Read returns all detected spam entries
 func (ds *DetectedSpam) Read() ([]DetectedSpamInfo, error) {
+	ds.lock.RLock()
+	defer ds.lock.RUnlock()
+
 	var entries []DetectedSpamInfo
 	err := ds.db.Select(&entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
 	if err != nil {
