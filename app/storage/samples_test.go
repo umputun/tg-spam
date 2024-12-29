@@ -156,7 +156,7 @@ func TestSamples_AddSample(t *testing.T) {
 	}
 }
 
-func TestSamples_RemoveSample(t *testing.T) {
+func TestSamples_DeleteSample(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
 	s, err := NewSamples(context.Background(), db)
@@ -200,6 +200,112 @@ func TestSamples_RemoveSample(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSamples_DeleteMessage(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+	s, err := NewSamples(context.Background(), db)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// add test samples
+	testData := []struct {
+		sType   SampleType
+		origin  SampleOrigin
+		message string
+	}{
+		{SampleTypeHam, SampleOriginPreset, "message to delete"},
+		{SampleTypeSpam, SampleOriginUser, "message to keep"},
+		{SampleTypeHam, SampleOriginUser, "another message"},
+	}
+
+	for _, td := range testData {
+		err := s.Add(ctx, td.sType, td.origin, td.message)
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		name    string
+		message string
+		wantErr bool
+	}{
+		{
+			name:    "existing message",
+			message: "message to delete",
+			wantErr: false,
+		},
+		{
+			name:    "non-existent message",
+			message: "no such message",
+			wantErr: true,
+		},
+		{
+			name:    "empty message",
+			message: "",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := s.DeleteMessage(ctx, tt.message)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+
+				// verify message no longer exists
+				var count int
+				err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ?", tt.message)
+				require.NoError(t, err)
+				assert.Equal(t, 0, count)
+
+				// verify other messages still exist
+				var totalCount int
+				err = db.Get(&totalCount, "SELECT COUNT(*) FROM samples")
+				require.NoError(t, err)
+				assert.Equal(t, len(testData)-1, totalCount)
+			}
+		})
+	}
+
+	t.Run("concurrent delete", func(t *testing.T) {
+		// add a message that will be deleted concurrently
+		msg := "concurrent delete message"
+		err := s.Add(ctx, SampleTypeHam, SampleOriginPreset, msg)
+		require.NoError(t, err)
+
+		const numWorkers = 10
+		var wg sync.WaitGroup
+		errCh := make(chan error, numWorkers)
+
+		// start multiple goroutines trying to delete the same message
+		for i := 0; i < numWorkers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := s.DeleteMessage(ctx, msg); err != nil && !strings.Contains(err.Error(), "not found") {
+					errCh <- err
+				}
+			}()
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		// check for unexpected errors
+		for err := range errCh {
+			t.Errorf("concurrent delete failed: %v", err)
+		}
+
+		// verify message was deleted
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ?", msg)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
 }
 
 func TestSamples_ReadSamples(t *testing.T) {

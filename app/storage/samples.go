@@ -65,6 +65,7 @@ func NewSamples(ctx context.Context, db *sqlx.DB) (*Samples, error) {
         CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
         CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
         CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+		CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message);
     `
 
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
@@ -131,6 +132,26 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 	}
 	if affected == 0 {
 		return fmt.Errorf("sample %d not found", id)
+	}
+	return nil
+}
+
+// DeleteMessage removes a sample from the storage by its message
+func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE message = ?`, message)
+	if err != nil {
+		return fmt.Errorf("failed to remove sample: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("sample not found: %s", message)
 	}
 	return nil
 }
