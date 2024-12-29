@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+//
 
 func setupTestDB(t *testing.T) (res *sqlx.DB, teardown func()) {
 	t.Helper()
@@ -118,11 +121,18 @@ func TestSamples_AddSample(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "duplicate message",
+			name:    "duplicate message same type and origin",
 			sType:   SampleTypeHam,
 			origin:  SampleOriginPreset,
 			message: "test ham message", // Same as first test case
-			wantErr: false,              // Should silently succeed
+			wantErr: false,              // Should succeed and replace
+		},
+		{
+			name:    "duplicate message different type",
+			sType:   SampleTypeSpam,
+			origin:  SampleOriginPreset,
+			message: "test ham message", // Same message, different type
+			wantErr: false,              // Should succeed and replace
 		},
 	}
 
@@ -133,6 +143,12 @@ func TestSamples_AddSample(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
+				// verify message exists and has correct type and origin
+				var count int
+				err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ? AND type = ? AND origin = ?",
+					tt.message, tt.sType, tt.origin)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count)
 			}
 		})
 	}
@@ -506,4 +522,230 @@ func TestSamples_Iterator(t *testing.T) {
 			assert.ElementsMatch(t, tt.expectedMsgs, messages)
 		})
 	}
+}
+
+func TestSamples_Import(t *testing.T) {
+	ctx := context.Background()
+
+	countSamples := func(db *sqlx.DB, t SampleType, o SampleOrigin) int {
+		var count int
+		err := db.Get(&count, "SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ?", t, o)
+		if err != nil {
+			return -1
+		}
+		return count
+	}
+
+	prep := func() (*sqlx.DB, *Samples, func()) {
+		db, teardown := setupTestDB(t)
+		s, err := NewSamples(db)
+		require.NoError(t, err)
+		return db, s, teardown
+	}
+
+	t.Run("basic import with cleanup", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("sample1\nsample2\nsample3")
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		assert.Equal(t, 3, countSamples(db, SampleTypeHam, SampleOriginPreset))
+		assert.Equal(t, 3, stats.PresetHam)
+	})
+
+	t.Run("import without cleanup should append", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		// first import
+		input1 := strings.NewReader("existing1\nexisting2")
+		_, err := s.Import(ctx, SampleTypeSpam, SampleOriginPreset, input1, true)
+		require.NoError(t, err)
+		assert.Equal(t, 2, countSamples(db, SampleTypeSpam, SampleOriginPreset))
+
+		// second import without cleanup should append
+		input2 := strings.NewReader("new1\nnew2")
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginPreset, input2, false)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		assert.Equal(t, 4, countSamples(db, SampleTypeSpam, SampleOriginPreset))
+		assert.Equal(t, 4, stats.PresetSpam)
+
+		// verify content includes all samples
+		samples, err := s.Read(ctx, SampleTypeSpam, SampleOriginPreset)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"existing1", "existing2", "new1", "new2"}, samples)
+	})
+
+	t.Run("import with cleanup should replace", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		// first import
+		input1 := strings.NewReader("old1\nold2\nold3")
+		_, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, input1, true)
+		require.NoError(t, err)
+		assert.Equal(t, 3, countSamples(db, SampleTypeSpam, SampleOriginUser))
+
+		// second import with cleanup should replace
+		input2 := strings.NewReader("new1\nnew2")
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, input2, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		assert.Equal(t, 2, countSamples(db, SampleTypeSpam, SampleOriginUser))
+		assert.Equal(t, 2, stats.UserSpam)
+
+		// verify content was replaced
+		samples, err := s.Read(ctx, SampleTypeSpam, SampleOriginUser)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"new1", "new2"}, samples)
+	})
+
+	t.Run("different types preserve independence", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		// import ham samples
+		inputHam := strings.NewReader("ham1\nham2")
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, inputHam, true)
+		require.NoError(t, err)
+
+		// import spam samples
+		inputSpam := strings.NewReader("spam1\nspam2\nspam3")
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, inputSpam, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		assert.Equal(t, 2, countSamples(db, SampleTypeHam, SampleOriginUser))
+		assert.Equal(t, 3, countSamples(db, SampleTypeSpam, SampleOriginUser))
+	})
+
+	t.Run("invalid type", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("sample")
+		_, err := s.Import(ctx, "invalid", SampleOriginPreset, input, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid origin", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("sample")
+		_, err := s.Import(ctx, SampleTypeHam, "invalid", input, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("origin any not allowed", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("sample")
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginAny, input, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("")
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+		assert.Equal(t, 0, countSamples(db, SampleTypeHam, SampleOriginPreset))
+	})
+
+	t.Run("input with empty lines", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		input := strings.NewReader("sample1\n\n\nsample2\n\n")
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		samples, err := s.Read(ctx, SampleTypeHam, SampleOriginPreset)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"sample1", "sample2"}, samples)
+	})
+
+	t.Run("nil reader", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, nil, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("reader error", func(t *testing.T) {
+		_, s, teardown := prep()
+		defer teardown()
+
+		errReader := &errorReader{err: fmt.Errorf("read error")}
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, errReader, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("duplicate message different type", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+
+		// import ham samples
+		inputHam := strings.NewReader("message1\nmessage2")
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, inputHam, true)
+		require.NoError(t, err)
+
+		// import spam samples with same messages
+		inputSpam := strings.NewReader("message1\nmessage2\nmessage3")
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, inputSpam, false)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		// verify only new messages are added, duplicates replaced
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples")
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+
+		// verify type is updated for duplicates
+		var spamCount int
+		err = db.Get(&spamCount, "SELECT COUNT(*) FROM samples WHERE type = ?", SampleTypeSpam)
+		require.NoError(t, err)
+		assert.Equal(t, 3, spamCount)
+	})
+
+	t.Run("duplicate message within import", func(t *testing.T) {
+		db, s, teardown := prep()
+		defer teardown()
+		ctx := context.Background()
+
+		// import with duplicate messages
+		input := strings.NewReader("message1\nmessage2\nmessage1")
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		// verify only unique messages are stored
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+	})
+}
+
+// errorReader implements io.Reader interface and always returns an error
+type errorReader struct {
+	err error
+}
+
+func (r *errorReader) Read(_ []byte) (n int, err error) {
+	return 0, r.err
 }

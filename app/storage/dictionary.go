@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"iter"
 	"sync"
 
@@ -159,6 +161,69 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 			}
 		}
 	}, nil
+}
+
+// Import reads phrases from the reader and imports them into the storage.
+// If withCleanup is true removes all entries with the same type before import.
+func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	if r == nil {
+		return nil, fmt.Errorf("reader cannot be nil")
+	}
+
+	d.lock.Lock()
+
+	// start transaction
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		d.lock.Unlock()
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// remove all entries with the same type if requested
+	if withCleanup {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ?`, t); err != nil {
+			d.lock.Unlock()
+			return nil, fmt.Errorf("failed to remove old entries: %w", err)
+		}
+	}
+
+	// add entries, using INSERT OR REPLACE to handle duplicates
+	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data) VALUES (?, ?)`)
+	if err != nil {
+		d.lock.Unlock()
+		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer insertStmt.Close()
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		data := scanner.Text()
+		if data == "" { // skip empty lines
+			continue
+		}
+		if _, err = insertStmt.ExecContext(ctx, t, data); err != nil {
+			d.lock.Unlock()
+			return nil, fmt.Errorf("failed to add entry: %w", err)
+		}
+	}
+
+	// check for scanner errors after the scan is complete
+	if err = scanner.Err(); err != nil {
+		d.lock.Unlock()
+		return nil, fmt.Errorf("error reading input: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		d.lock.Unlock()
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	d.lock.Unlock() // release the lock before getting stats
+
+	return d.Stats(ctx)
 }
 
 // String implements Stringer interface

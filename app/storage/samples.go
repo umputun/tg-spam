@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"iter"
 	"sync"
 
@@ -58,7 +60,7 @@ func NewSamples(db *sqlx.DB) (*Samples, error) {
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             type TEXT CHECK (type IN ('ham', 'spam')),
             origin TEXT CHECK (origin IN ('preset', 'user')),
-            message TEXT NOT NULL
+            message NOT NULL UNIQUE
         );
         CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
         CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
@@ -101,18 +103,8 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 	}
 	defer tx.Rollback()
 
-	// check if sample already exists
-	var count int
-	query := `SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ? AND message = ?`
-	if err = tx.QueryRowContext(ctx, query, t, o, message).Scan(&count); err != nil {
-		return fmt.Errorf("failed to check if sample exists: %w", err)
-	}
-	if count > 0 {
-		return nil // sample already exists, silently return
-	}
-
-	// add new sample
-	query = `INSERT INTO samples (type, origin, message) VALUES (?, ?, ?)`
+	// add new sample, replace if exists
+	query := `INSERT OR REPLACE INTO samples (type, origin, message) VALUES (?, ?, ?)`
 	if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
@@ -215,6 +207,72 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 			}
 		}
 	}, nil
+}
+
+// Import reads samples from the reader and imports them into the storage.
+// Returns statistics about imported samples.
+// If withCleanup is true removes all samples with the same type and origin before import.
+func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, withCleanup bool) (*SamplesStats, error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+	if o == SampleOriginAny {
+		return nil, fmt.Errorf("can't import samples with origin 'any'")
+	}
+	if r == nil {
+		return nil, fmt.Errorf("reader cannot be nil")
+	}
+
+	s.lock.Lock()
+
+	// start transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		s.lock.Unlock()
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// remove all samples with the same type and origin if requested
+	if withCleanup {
+		query := `DELETE FROM samples WHERE type = ? AND origin = ?`
+		if _, err = tx.ExecContext(ctx, query, t, o); err != nil {
+			s.lock.Unlock()
+			return nil, fmt.Errorf("failed to remove old samples: %w", err)
+		}
+	}
+
+	// add samples
+	query := `INSERT OR REPLACE INTO samples (type, origin, message) VALUES (?, ?, ?)`
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		message := scanner.Text()
+		if message == "" { // skip empty lines
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
+			s.lock.Unlock()
+			return nil, fmt.Errorf("failed to add sample: %w", err)
+		}
+	}
+
+	// check for scanner errors after the scan is complete
+	if err = scanner.Err(); err != nil {
+		s.lock.Unlock()
+		return nil, fmt.Errorf("error reading input: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.lock.Unlock()
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	s.lock.Unlock() // release the lock before getting stats
+
+	return s.Stats(ctx)
 }
 
 // String implements Stringer interface

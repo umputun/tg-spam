@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -416,4 +417,122 @@ func TestDictionary_Concurrent(t *testing.T) {
 	expectedTotal := numWorkers*numOps + 1 // +1 for the initial test phrase
 	actualTotal := stats.TotalStopPhrases + stats.TotalIgnoredWords
 	assert.Equal(t, expectedTotal, actualTotal, "expected %d total phrases, got %d", expectedTotal, actualTotal)
+}
+
+func TestDictionary_Import(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+	d, err := NewDictionary(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	t.Run("basic import with cleanup", func(t *testing.T) {
+		input := strings.NewReader("phrase1\nphrase2\nphrase3")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(phrases))
+		assert.Equal(t, 3, stats.TotalStopPhrases)
+	})
+
+	t.Run("import without cleanup should append", func(t *testing.T) {
+		// first import
+		input1 := strings.NewReader("existing1\nexisting2")
+		_, err := d.Import(ctx, DictionaryTypeIgnoredWord, input1, true)
+		require.NoError(t, err)
+
+		// second import without cleanup should append
+		input2 := strings.NewReader("new1\nnew2")
+		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, input2, false)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord)
+		require.NoError(t, err)
+		assert.Equal(t, 4, len(phrases))
+		assert.Equal(t, 4, stats.TotalIgnoredWords)
+	})
+
+	t.Run("import with cleanup should replace", func(t *testing.T) {
+		// first import
+		input1 := strings.NewReader("old1\nold2\nold3")
+		_, err := d.Import(ctx, DictionaryTypeStopPhrase, input1, true)
+		require.NoError(t, err)
+
+		// second import with cleanup should replace
+		input2 := strings.NewReader("new1\nnew2")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input2, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(phrases))
+		assert.Equal(t, 2, stats.TotalStopPhrases)
+		assert.ElementsMatch(t, []string{"new1", "new2"}, phrases)
+	})
+
+	t.Run("different types preserve independence", func(t *testing.T) {
+		// import stop phrases
+		inputStop := strings.NewReader("stop1\nstop2")
+		_, err := d.Import(ctx, DictionaryTypeStopPhrase, inputStop, true)
+		require.NoError(t, err)
+
+		// import ignored words
+		inputIgnored := strings.NewReader("ignored1\nignored2\nignored3")
+		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, inputIgnored, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		stopPhrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(stopPhrases))
+
+		ignoredWords, err := d.Read(ctx, DictionaryTypeIgnoredWord)
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(ignoredWords))
+	})
+
+	t.Run("invalid type", func(t *testing.T) {
+		input := strings.NewReader("phrase")
+		_, err := d.Import(ctx, "invalid", input, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		input := strings.NewReader("")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Empty(t, phrases)
+	})
+
+	t.Run("input with empty lines", func(t *testing.T) {
+		input := strings.NewReader("phrase1\n\n\nphrase2\n\n")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(phrases))
+		assert.ElementsMatch(t, []string{"phrase1", "phrase2"}, phrases)
+	})
+
+	t.Run("nil reader", func(t *testing.T) {
+		_, err := d.Import(ctx, DictionaryTypeStopPhrase, nil, true)
+		assert.Error(t, err)
+	})
+
+	t.Run("reader error", func(t *testing.T) {
+		errReader := &errorReader{err: fmt.Errorf("read error")}
+		_, err := d.Import(ctx, DictionaryTypeStopPhrase, errReader, true)
+		assert.Error(t, err)
+	})
 }
