@@ -22,9 +22,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
+	"github.com/jessevdk/go-flags"
 	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
-	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"

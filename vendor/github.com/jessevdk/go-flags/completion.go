@@ -82,7 +82,7 @@ func (c *completion) skipPositional(s *parseState, n int) {
 func (c *completion) completeOptionNames(s *parseState, prefix string, match string, short bool) []Completion {
 	if short && len(match) != 0 {
 		return []Completion{
-			Completion{
+			{
 				Item: prefix + match,
 			},
 		}
@@ -130,7 +130,7 @@ func (c *completion) completeCommands(s *parseState, match string) []Completion 
 	n := make([]Completion, 0, len(s.command.commands))
 
 	for _, cmd := range s.command.commands {
-		if cmd.data != c && strings.HasPrefix(cmd.Name, match) {
+		if cmd.data != c && !cmd.Hidden && strings.HasPrefix(cmd.Name, match) {
 			n = append(n, Completion{
 				Item:        cmd.Name,
 				Description: cmd.ShortDescription,

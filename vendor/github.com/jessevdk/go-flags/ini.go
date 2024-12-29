@@ -113,18 +113,18 @@ func (i *IniParser) ParseFile(filename string) error {
 //
 // The format of the ini file is as follows:
 //
-//     [Option group name]
-//     option = value
+//	[Option group name]
+//	option = value
 //
 // Each section in the ini file represents an option group or command in the
 // flags parser. The default flags parser option group (i.e. when using
 // flags.Parse) is named 'Application Options'. The ini option name is matched
 // in the following order:
 //
-//     1. Compared to the ini-name tag on the option struct field (if present)
-//     2. Compared to the struct field name
-//     3. Compared to the option long name (if present)
-//     4. Compared to the option short name (if present)
+//  1. Compared to the ini-name tag on the option struct field (if present)
+//  2. Compared to the struct field name
+//  3. Compared to the option long name (if present)
+//  4. Compared to the option short name (if present)
 //
 // Sections for nested groups and commands can be addressed using a dot `.'
 // namespacing notation (i.e [subcommand.Options]). Group section names are
@@ -325,19 +325,19 @@ func writeCommandIni(command *Command, namespace string, writer io.Writer, optio
 	})
 
 	for _, c := range command.commands {
-		var nns string
+		var fqn string
 
 		if c.Hidden {
 			continue
 		}
 
 		if len(namespace) != 0 {
-			nns = c.Name + "." + nns
+			fqn = namespace + "." + c.Name
 		} else {
-			nns = c.Name
+			fqn = c.Name
 		}
 
-		writeCommandIni(c, nns, writer, options)
+		writeCommandIni(c, fqn, writer, options)
 	}
 }
 
@@ -499,13 +499,21 @@ func (i *IniParser) matchingGroups(name string) []*Group {
 func (i *IniParser) parse(ini *ini) error {
 	p := i.parser
 
+	p.eachOption(func(cmd *Command, group *Group, option *Option) {
+		option.clearReferenceBeforeSet = true
+	})
+
 	var quotesLookup = make(map[*Option]bool)
 
 	for name, section := range ini.Sections {
 		groups := i.matchingGroups(name)
 
 		if len(groups) == 0 {
-			return newErrorf(ErrUnknownGroup, "could not find option group `%s'", name)
+			if (p.Options & IgnoreUnknown) == None {
+				return newErrorf(ErrUnknownGroup, "could not find option group `%s'", name)
+			}
+
+			continue
 		}
 
 		for _, inival := range section {
@@ -537,9 +545,8 @@ func (i *IniParser) parse(ini *ini) error {
 				continue
 			}
 
-			// ini value is ignored if override is set and
-			// value was previously set from non default
-			if i.ParseAsDefaults && !opt.isSetDefault {
+			// ini value is ignored if parsed as default but defaults are prevented
+			if i.ParseAsDefaults && opt.preventDefault {
 				continue
 			}
 
@@ -572,13 +579,24 @@ func (i *IniParser) parse(ini *ini) error {
 				}
 			}
 
-			if err := opt.set(pval); err != nil {
+			var err error
+
+			if i.ParseAsDefaults {
+				err = opt.setDefault(pval)
+			} else {
+				err = opt.Set(pval)
+			}
+
+			if err != nil {
 				return &IniError{
 					Message:    err.Error(),
 					File:       ini.File,
 					LineNumber: inival.LineNumber,
 				}
 			}
+
+			// Defaults from ini files take precendence over defaults from parser
+			opt.preventDefault = true
 
 			// either all INI values are quoted or only values who need quoting
 			if _, ok := quotesLookup[opt]; !inival.Quoted || !ok {
