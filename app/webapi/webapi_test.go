@@ -763,7 +763,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 	calls := 0
 	ds := &mocks.DetectedSpamMock{
-		ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
+		ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
 			calls++
 			if calls > 1 {
 				return nil, errors.New("test error")
@@ -816,7 +816,7 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 
 func TestServer_htmlAddDetectedSpamHandler(t *testing.T) {
 	ds := &mocks.DetectedSpamMock{
-		SetAddedToSamplesFlagFunc: func(id int64) error {
+		SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
 			return nil
 		},
 	}

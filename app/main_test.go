@@ -30,7 +30,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	logger, err := makeSpamLogger(file, db)
+	logger, err := makeSpamLogger(context.Background(), file, db)
 	require.NoError(t, err)
 
 	msg := &bot.Message{

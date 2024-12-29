@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -34,7 +35,7 @@ type DetectedSpamInfo struct {
 }
 
 // NewDetectedSpam creates a new DetectedSpam storage
-func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
+func NewDetectedSpam(ctx context.Context, db *sqlx.DB) (*DetectedSpam, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
@@ -55,14 +56,14 @@ func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("failed to create detected_spam table: %w", err)
 	}
 
-	_, err = db.Exec(`ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`)
+	_, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`)
 	if err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
 		}
 	}
 	// add index on timestamp
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
+	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
 		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
 	}
 
@@ -70,7 +71,7 @@ func NewDetectedSpam(db *sqlx.DB) (*DetectedSpam, error) {
 }
 
 // Write adds a new detected spam entry
-func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Response) error {
+func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, checks []spamcheck.Response) error {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
 
@@ -80,7 +81,7 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 	}
 
 	query := `INSERT INTO detected_spam (text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?)`
-	if _, err := ds.db.Exec(query, entry.Text, entry.UserID, entry.UserName, entry.Timestamp, checksJSON); err != nil {
+	if _, err := ds.db.ExecContext(ctx, query, entry.Text, entry.UserID, entry.UserName, entry.Timestamp, checksJSON); err != nil {
 		return fmt.Errorf("failed to insert detected spam entry: %w", err)
 	}
 
@@ -89,24 +90,24 @@ func (ds *DetectedSpam) Write(entry DetectedSpamInfo, checks []spamcheck.Respons
 }
 
 // SetAddedToSamplesFlag sets the added flag to true for the detected spam entry with the given id
-func (ds *DetectedSpam) SetAddedToSamplesFlag(id int64) error {
+func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) error {
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
 
 	query := `UPDATE detected_spam SET added = 1 WHERE id = ?`
-	if _, err := ds.db.Exec(query, id); err != nil {
+	if _, err := ds.db.ExecContext(ctx, query, id); err != nil {
 		return fmt.Errorf("failed to update added to samples flag: %w", err)
 	}
 	return nil
 }
 
 // Read returns all detected spam entries
-func (ds *DetectedSpam) Read() ([]DetectedSpamInfo, error) {
+func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
 	ds.lock.RLock()
 	defer ds.lock.RUnlock()
 
 	var entries []DetectedSpamInfo
-	err := ds.db.Select(&entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
+	err := ds.db.SelectContext(ctx, &entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get detected spam entries: %w", err)
 	}

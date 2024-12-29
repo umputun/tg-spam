@@ -113,8 +113,8 @@ type Locator interface {
 
 // DetectedSpam is a storage interface used to get detected spam messages and set added flag.
 type DetectedSpam interface {
-	Read() ([]storage.DetectedSpamInfo, error)
-	SetAddedToSamplesFlag(id int64) error
+	Read(ctx context.Context) ([]storage.DetectedSpamInfo, error)
+	SetAddedToSamplesFlag(ctx context.Context, id int64) error
 }
 
 // NewServer creates a new web API server.
@@ -491,8 +491,8 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 }
 
-func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
-	ds, err := s.DetectedSpam.Read()
+func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	ds, err := s.DetectedSpam.Read(r.Context())
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -545,7 +545,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		return
 
 	}
-	if err := s.DetectedSpam.SetAddedToSamplesFlag(id); err != nil {
+	if err := s.DetectedSpam.SetAddedToSamplesFlag(r.Context(), id); err != nil {
 		log.Printf("[WARN] failed to update detected spam: %v", err)
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return

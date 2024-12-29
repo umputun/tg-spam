@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ func TestDetectedSpam_NewDetectedSpam(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	_, err = NewDetectedSpam(db)
+	_, err = NewDetectedSpam(context.Background(), db)
 	require.NoError(t, err)
 
 	var exists int
@@ -30,8 +31,9 @@ func TestDetectedSpam_Write(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+	ctx := context.Background()
 
-	ds, err := NewDetectedSpam(db)
+	ds, err := NewDetectedSpam(ctx, db)
 	require.NoError(t, err)
 
 	spamEntry := DetectedSpamInfo{
@@ -49,7 +51,7 @@ func TestDetectedSpam_Write(t *testing.T) {
 		},
 	}
 
-	err = ds.Write(spamEntry, checks)
+	err = ds.Write(ctx, spamEntry, checks)
 	require.NoError(t, err)
 
 	var count int
@@ -62,8 +64,9 @@ func TestSetAddedToSamplesFlag(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+	ctx := context.Background()
 
-	ds, err := NewDetectedSpam(db)
+	ds, err := NewDetectedSpam(ctx, db)
 	require.NoError(t, err)
 
 	spamEntry := DetectedSpamInfo{
@@ -81,14 +84,14 @@ func TestSetAddedToSamplesFlag(t *testing.T) {
 		},
 	}
 
-	err = ds.Write(spamEntry, checks)
+	err = ds.Write(ctx, spamEntry, checks)
 	require.NoError(t, err)
 	var added bool
 	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
 	require.NoError(t, err)
 	assert.False(t, added)
 
-	err = ds.SetAddedToSamplesFlag(1)
+	err = ds.SetAddedToSamplesFlag(ctx, 1)
 	require.NoError(t, err)
 
 	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
@@ -100,8 +103,9 @@ func TestDetectedSpam_Read(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+	ctx := context.Background()
 
-	ds, err := NewDetectedSpam(db)
+	ds, err := NewDetectedSpam(ctx, db)
 	require.NoError(t, err)
 
 	spamEntry := DetectedSpamInfo{
@@ -124,7 +128,7 @@ func TestDetectedSpam_Read(t *testing.T) {
 	_, err = db.Exec("INSERT INTO detected_spam (text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?)", spamEntry.Text, spamEntry.UserID, spamEntry.UserName, spamEntry.Timestamp, checksJSON)
 	require.NoError(t, err)
 
-	entries, err := ds.Read()
+	entries, err := ds.Read(ctx)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 
@@ -143,8 +147,9 @@ func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+	ctx := context.Background()
 
-	ds, err := NewDetectedSpam(db)
+	ds, err := NewDetectedSpam(ctx, db)
 	require.NoError(t, err)
 
 	for i := 0; i < maxDetectedSpamEntries+10; i++ {
@@ -163,11 +168,11 @@ func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
 			},
 		}
 
-		err = ds.Write(spamEntry, checks)
+		err = ds.Write(ctx, spamEntry, checks)
 		require.NoError(t, err)
 	}
 
-	entries, err := ds.Read()
+	entries, err := ds.Read(ctx)
 	require.NoError(t, err)
 	assert.Len(t, entries, maxDetectedSpamEntries, "expected to retrieve only the maximum number of entries")
 }
@@ -176,11 +181,12 @@ func TestDetectedSpam_Read_EmptyDB(t *testing.T) {
 	db, err := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+	ctx := context.Background()
 
-	ds, err := NewDetectedSpam(db)
+	ds, err := NewDetectedSpam(ctx, db)
 	require.NoError(t, err)
 
-	entries, err := ds.Read()
+	entries, err := ds.Read(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, entries, "Expected no entries in an empty database")
 }

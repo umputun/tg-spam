@@ -265,7 +265,7 @@ func execute(ctx context.Context, opts options) error {
 	defer loggerWr.Close()
 
 	// make spam logger
-	spamLogger, err := makeSpamLogger(loggerWr, dataDB)
+	spamLogger, err := makeSpamLogger(ctx, loggerWr, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make spam logger, %w", err)
 	}
@@ -358,7 +358,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -546,9 +546,9 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
+func makeSpamLogger(ctx context.Context, wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {
 		return nil, fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -587,7 +587,7 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 			UserName:  msg.From.Username,
 			Timestamp: time.Now().In(time.Local),
 		}
-		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
+		if err := detectedSpamStore.Write(ctx, rec, response.CheckResults); err != nil {
 			log.Printf("[WARN] can't write to db, %v", err)
 		}
 	})
