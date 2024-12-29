@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -16,18 +17,19 @@ import (
 func TestNewLocator(t *testing.T) {
 	db, err := sqlx.Connect("sqlite", ":memory:")
 	require.NoError(t, err)
-
+	ctx := context.Background()
 	const ttl = 10 * time.Minute
 	const minSize = 1
 
-	locator, err := NewLocator(ttl, minSize, db)
+	locator, err := NewLocator(ctx, ttl, minSize, db)
 	require.NoError(t, err)
 	assert.NotNil(t, locator)
-	locator.Close()
+	locator.Close(ctx)
 }
 
 func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 	locator := newTestLocator(t)
+	ctx := context.Background()
 
 	msg := "test message"
 	chatID := int64(123)
@@ -35,36 +37,36 @@ func TestLocator_AddAndRetrieveMessage(t *testing.T) {
 	userName := "user1"
 	msgID := 789
 
-	require.NoError(t, locator.AddMessage(msg, chatID, userID, userName, msgID))
+	require.NoError(t, locator.AddMessage(ctx, msg, chatID, userID, userName, msgID))
 
-	retrievedMsg, found := locator.Message(msg)
+	retrievedMsg, found := locator.Message(ctx, msg)
 	require.True(t, found)
 	assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: chatID, UserID: userID, UserName: userName, MsgID: msgID}, retrievedMsg)
 
-	res := locator.UserNameByID(userID)
+	res := locator.UserNameByID(ctx, userID)
 	assert.Equal(t, userName, res)
 
-	res = locator.UserNameByID(123456)
+	res = locator.UserNameByID(ctx, 123456)
 	assert.Equal(t, "", res)
 
-	id := locator.UserIDByName(userName)
+	id := locator.UserIDByName(ctx, userName)
 	assert.Equal(t, userID, id)
 
-	id = locator.UserIDByName("user2")
+	id = locator.UserIDByName(ctx, "user2")
 	assert.Equal(t, int64(0), id)
 }
 
 func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
 	locator := newTestLocator(t)
-
+	ctx := context.Background()
 	// add 100 messages for 10 users
 	for i := 0; i < 100; i++ {
 		userID := int64(i%10 + 1)
-		locator.AddMessage(fmt.Sprintf("test message %d", i), 1234, userID, "name"+strconv.Itoa(int(userID)), i)
+		locator.AddMessage(ctx, fmt.Sprintf("test message %d", i), 1234, userID, "name"+strconv.Itoa(int(userID)), i)
 	}
 
 	for i := 0; i < 100; i++ {
-		retrievedMsg, found := locator.Message(fmt.Sprintf("test message %d", i))
+		retrievedMsg, found := locator.Message(ctx, fmt.Sprintf("test message %d", i))
 		require.True(t, found)
 		assert.Equal(t, MsgMeta{Time: retrievedMsg.Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsg)
 	}
@@ -72,13 +74,13 @@ func TestLocator_AddAndRetrieveManyMessage(t *testing.T) {
 
 func TestLocator_AddAndRetrieveSpam(t *testing.T) {
 	locator := newTestLocator(t)
-
+	ctx := context.Background()
 	userID := int64(456)
 	checks := []spamcheck.Response{{Name: "test", Spam: true, Details: "test spam"}}
 
-	require.NoError(t, locator.AddSpam(userID, checks))
+	require.NoError(t, locator.AddSpam(ctx, userID, checks))
 
-	retrievedSpam, found := locator.Spam(userID)
+	retrievedSpam, found := locator.Spam(ctx, userID)
 	require.True(t, found)
 	assert.Equal(t, checks, retrievedSpam.Checks)
 }
@@ -86,6 +88,7 @@ func TestLocator_AddAndRetrieveSpam(t *testing.T) {
 func TestLocator_CleanupLogic(t *testing.T) {
 	ttl := 10 * time.Minute
 	locator := newTestLocator(t)
+	ctx := context.Background()
 
 	oldTime := time.Now().Add(-2 * ttl) // ensure this is older than the ttl
 
@@ -104,7 +107,7 @@ func TestLocator_CleanupLogic(t *testing.T) {
 		int64(223), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
 	require.NoError(t, err)
 
-	require.NoError(t, locator.cleanupMessages())
+	require.NoError(t, locator.cleanupMessages(ctx))
 	require.NoError(t, locator.cleanupSpam())
 
 	var msgCountAfter, spamCountAfter int
@@ -117,18 +120,18 @@ func TestLocator_CleanupLogic(t *testing.T) {
 
 func TestLocator_RetrieveNonExistentMessage(t *testing.T) {
 	locator := newTestLocator(t)
-
+	ctx := context.Background()
 	msg := "non_existent_message"
-	_, found := locator.Message(msg)
+	_, found := locator.Message(ctx, msg)
 	assert.False(t, found, "expected to not find a non-existent message")
 
-	_, found = locator.Spam(1234)
+	_, found = locator.Spam(ctx, 1234)
 	assert.False(t, found, "expected to not find a non-existent spam")
 }
 
 func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 	locator := newTestLocator(t)
-
+	ctx := context.Background()
 	// Insert invalid JSON data directly into the database
 	userID := int64(456)
 	invalidJSON := "invalid json"
@@ -136,23 +139,21 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to retrieve the spam data, which should fail during unmarshalling
-	_, found := locator.Spam(userID)
+	_, found := locator.Spam(ctx, userID)
 	assert.False(t, found, "expected to not find valid data due to unmarshalling failure")
 }
 
 func newTestLocator(t *testing.T) *Locator {
 	db, err := NewSqliteDB(":memory:")
 	require.NoError(t, err)
-
+	ctx := context.Background()
 	const ttl = 10 * time.Minute
 	const minSize = 1
 
-	locator, err := NewLocator(ttl, minSize, db)
+	locator, err := NewLocator(ctx, ttl, minSize, db)
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		locator.Close()
-	})
+	t.Cleanup(func() { locator.Close(ctx) })
 
 	return locator
 }

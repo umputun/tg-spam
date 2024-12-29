@@ -107,8 +107,8 @@ type SpamFilter interface {
 
 // Locator is a storage interface used to get user id by name and vice versa.
 type Locator interface {
-	UserIDByName(userName string) int64
-	UserNameByID(userID int64) string
+	UserIDByName(ctx context.Context, userName string) int64
+	UserNameByID(ctx context.Context, userID int64) string
 }
 
 // DetectedSpam is a storage interface used to get detected spam messages and set added flag.
@@ -399,7 +399,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 
 		// try to get userID from request and fallback to userName lookup if it's empty
 		if req.UserID == "" {
-			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(req.UserName), 10)
+			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(r.Context(), req.UserName), 10)
 		}
 
 		if req.UserID == "" || req.UserID == "0" {

@@ -210,7 +210,7 @@ func TestServer_routes(t *testing.T) {
 		RemoveDynamicHamSampleFunc:  func(sample string) (int, error) { return 1, nil },
 	}
 	locatorMock := &mocks.LocatorMock{
-		UserIDByNameFunc: func(userName string) int64 {
+		UserIDByNameFunc: func(ctx context.Context, userName string) int64 {
 			if userName == "user1" {
 				return 12345
 			}
@@ -655,7 +655,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		},
 	}
 	locatorMock := &mocks.LocatorMock{
-		UserIDByNameFunc: func(userName string) int64 {
+		UserIDByNameFunc: func(ctx context.Context, userName string) int64 {
 			if userName == "user1" {
 				return 12345
 			}

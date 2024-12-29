@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -40,7 +41,7 @@ type SpamData struct {
 }
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
-func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
+func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
@@ -75,7 +76,7 @@ func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(schema); err != nil {
+	if _, err = tx.ExecContext(ctx, schema); err != nil {
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
@@ -87,19 +88,19 @@ func NewLocator(ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
 }
 
 // Close closes the database
-func (l *Locator) Close() error {
+func (l *Locator) Close(_ context.Context) error {
 	return l.db.Close()
 }
 
 // AddMessage adds messages to the locator and also cleans up old messages.
-func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, msgID int) error {
+func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int64, userName string, msgID int) error {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
 	hash := l.MsgHash(msg)
 	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
 		msg, hash, userID, userName, chatID, msgID)
-	_, err := l.db.NamedExec(`INSERT OR REPLACE INTO messages (hash, time, chat_id, user_id, user_name, msg_id) 
+	_, err := l.db.NamedExecContext(ctx, `INSERT OR REPLACE INTO messages (hash, time, chat_id, user_id, user_name, msg_id) 
         VALUES (:hash, :time, :chat_id, :user_id, :user_name, :msg_id)`,
 		struct {
 			MsgMeta
@@ -117,11 +118,11 @@ func (l *Locator) AddMessage(msg string, chatID, userID int64, userName string, 
 	if err != nil {
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
-	return l.cleanupMessages()
+	return l.cleanupMessages(ctx)
 }
 
 // AddSpam adds spam data to the locator and also cleans up old spam data.
-func (l *Locator) AddSpam(userID int64, checks []spamcheck.Response) error {
+func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.Response) error {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
@@ -129,7 +130,7 @@ func (l *Locator) AddSpam(userID int64, checks []spamcheck.Response) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal checks: %w", err)
 	}
-	_, err = l.db.NamedExec(`INSERT OR REPLACE INTO spam (user_id, time, checks) 
+	_, err = l.db.NamedExecContext(ctx, `INSERT OR REPLACE INTO spam (user_id, time, checks) 
         VALUES (:user_id, :time, :checks)`,
 		map[string]interface{}{
 			"user_id": userID,
@@ -144,13 +145,13 @@ func (l *Locator) AddSpam(userID int64, checks []spamcheck.Response) error {
 
 // Message returns message MsgMeta for given msg
 // this allows to match messages from admin chat (only text available) to the original message
-func (l *Locator) Message(msg string) (MsgMeta, bool) {
+func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
 	var meta MsgMeta
 	hash := l.MsgHash(msg)
-	err := l.db.Get(&meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, hash)
+	err := l.db.GetContext(ctx, &meta, `SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ?`, hash)
 	if err != nil {
 		log.Printf("[DEBUG] failed to find message by hash %q: %v", hash, err)
 		return MsgMeta{}, false
@@ -159,12 +160,12 @@ func (l *Locator) Message(msg string) (MsgMeta, bool) {
 }
 
 // UserNameByID returns username by user id. Returns empty string if not found
-func (l *Locator) UserNameByID(userID int64) string {
+func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
 	var userName string
-	err := l.db.Get(&userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
+	err := l.db.GetContext(ctx, &userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
 	if err != nil {
 		log.Printf("[DEBUG] failed to find user name by id %d: %v", userID, err)
 		return ""
@@ -173,12 +174,12 @@ func (l *Locator) UserNameByID(userID int64) string {
 }
 
 // UserIDByName returns user id by username. Returns 0 if not found
-func (l *Locator) UserIDByName(userName string) int64 {
+func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
 	var userID int64
-	err := l.db.Get(&userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
+	err := l.db.GetContext(ctx, &userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
 	if err != nil {
 		log.Printf("[DEBUG] failed to find user id by name %q: %v", userName, err)
 		return 0
@@ -187,13 +188,13 @@ func (l *Locator) UserIDByName(userName string) int64 {
 }
 
 // Spam returns message SpamData for given msg
-func (l *Locator) Spam(userID int64) (SpamData, bool) {
+func (l *Locator) Spam(ctx context.Context, userID int64) (SpamData, bool) {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
 	var data SpamData
 	var checksStr string
-	err := l.db.QueryRow(`SELECT time, checks FROM spam WHERE user_id = ?`, userID).Scan(&data.Time, &checksStr)
+	err := l.db.QueryRowContext(ctx, `SELECT time, checks FROM spam WHERE user_id = ?`, userID).Scan(&data.Time, &checksStr)
 	if err != nil {
 		return SpamData{}, false
 	}
@@ -212,8 +213,8 @@ func (l *Locator) MsgHash(msg string) string {
 
 // cleanupMessages removes old messages. Messages with expired ttl are removed if the total number of messages exceeds minSize.
 // The reason for minSize is to avoid removing messages on low-traffic chats where admin visits are rare.
-func (l *Locator) cleanupMessages() error {
-	_, err := l.db.Exec(`DELETE FROM messages WHERE time < ? AND (SELECT COUNT(*) FROM messages) > ?`,
+func (l *Locator) cleanupMessages(ctx context.Context) error {
+	_, err := l.db.ExecContext(ctx, `DELETE FROM messages WHERE time < ? AND (SELECT COUNT(*) FROM messages) > ?`,
 		time.Now().Add(-l.ttl), l.minSize)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup messages: %w", err)

@@ -231,7 +231,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	// make locator
-	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDB)
+	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make locator, %w", err)
 	}

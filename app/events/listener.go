@@ -228,10 +228,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo {
 		return nil
 	}
-
+	ctx := context.TODO()
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
 	log.Printf("[DEBUG] incoming msg details: %+v", msg)
-	if err := l.Locator.AddMessage(msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+	if err := l.Locator.AddMessage(ctx, msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 	resp := l.Bot.OnMessage(*msg, false)
@@ -253,7 +253,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
-		if err := l.Locator.AddSpam(msg.From.ID, resp.CheckResults); err != nil {
+		if err := l.Locator.AddSpam(ctx, msg.From.ID, resp.CheckResults); err != nil {
 			log.Printf("[WARN] failed to add spam to locator: %v", err)
 		}
 		banUserStr := l.getBanUsername(resp, update)
@@ -305,7 +305,7 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 
 	member := update.Message.NewChatMembers[0]
 	msg := fmt.Sprintf("new_%d_%d", fromChat, member.ID)
-	if err := l.Locator.AddMessage(msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
+	if err := l.Locator.AddMessage(context.TODO(), msg, fromChat, member.ID, "", update.Message.MessageID); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
 	}
 
@@ -324,7 +324,7 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 		log.Printf("[DEBUG] left chat member is the same as the message sender, ignored")
 		return nil
 	}
-	msg, found := l.Locator.Message(fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
+	msg, found := l.Locator.Message(context.TODO(), fmt.Sprintf("new_%d_%d", fromChat, update.Message.LeftChatMember.ID))
 	if !found {
 		log.Printf("[DEBUG] no new chat member message found for %d in chat %d", update.Message.LeftChatMember.ID, fromChat)
 		return nil
