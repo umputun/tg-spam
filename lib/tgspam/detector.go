@@ -3,6 +3,7 @@ package tgspam
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,16 +47,17 @@ type Detector struct {
 
 // Config is a set of parameters for Detector.
 type Config struct {
-	SimilarityThreshold float64    // threshold for spam similarity, 0.0 - 1.0
-	MinMsgLen           int        // minimum message length to check
-	MaxAllowedEmoji     int        // maximum number of emojis allowed in a message
-	CasAPI              string     // CAS API URL
-	FirstMessageOnly    bool       // if true, only the first message from a user is checked
-	FirstMessagesCount  int        // number of first messages to check for spam
-	HTTPClient          HTTPClient // http client to use for requests
-	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
-	OpenAIVeto          bool       // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
-	MultiLangWords      int        // if true, check for number of multi-lingual words
+	SimilarityThreshold float64       // threshold for spam similarity, 0.0 - 1.0
+	MinMsgLen           int           // minimum message length to check
+	MaxAllowedEmoji     int           // maximum number of emojis allowed in a message
+	CasAPI              string        // CAS API URL
+	FirstMessageOnly    bool          // if true, only the first message from a user is checked
+	FirstMessagesCount  int           // number of first messages to check for spam
+	HTTPClient          HTTPClient    // http client to use for requests
+	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
+	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	MultiLangWords      int           // if true, check for number of multi-lingual words
+	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
@@ -66,9 +68,9 @@ type SampleUpdater interface {
 
 // UserStorage is an interface for approved users storage.
 type UserStorage interface {
-	Read() ([]approved.UserInfo, error) // read approved users from storage
-	Write(au approved.UserInfo) error   // write approved user to storage
-	Delete(id string) error             // delete approved user from storage
+	Read(ctx context.Context) ([]approved.UserInfo, error) // read approved users from storage
+	Write(ctx context.Context, au approved.UserInfo) error // write approved user to storage
+	Delete(ctx context.Context, id string) error           // delete approved user from storage
 }
 
 // HTTPClient is an interface for http client, satisfied by http.Client.
@@ -201,11 +203,14 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+		ctx, cancel := d.ctxWithStoreTimeout()
+		defer cancel()
+
 		au := approved.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
 			UserName: req.UserName, Timestamp: time.Now()}
 		d.approvedUsers[req.UserID] = au
 		if d.userStorage != nil && !req.CheckOnly {
-			_ = d.userStorage.Write(au) // ignore error, failed to write to storage is not critical here
+			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
 		}
 	}
 	return false, cr
@@ -234,7 +239,11 @@ func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	defer d.lock.Unlock()
 	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
 	d.userStorage = storage
-	users, err := d.userStorage.Read()
+
+	ctx, cancel := d.ctxWithStoreTimeout()
+	defer cancel()
+
+	users, err := d.userStorage.Read(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read approved users from storage: %w", err)
 	}
@@ -298,7 +307,9 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 	}
 
 	if d.userStorage != nil {
-		if err := d.userStorage.Write(user); err != nil {
+		ctx, cancel := d.ctxWithStoreTimeout()
+		defer cancel()
+		if err := d.userStorage.Write(ctx, user); err != nil {
 			return fmt.Errorf("failed to write approved user %+v to storage: %w", user, err)
 		}
 	}
@@ -311,7 +322,9 @@ func (d *Detector) RemoveApprovedUser(id string) error {
 	defer d.lock.Unlock()
 	delete(d.approvedUsers, id)
 	if d.userStorage != nil {
-		if err := d.userStorage.Delete(id); err != nil {
+		ctx, cancel := d.ctxWithStoreTimeout()
+		defer cancel()
+		if err := d.userStorage.Delete(ctx, id); err != nil {
 			return fmt.Errorf("failed to delete approved user %s from storage: %w", id, err)
 		}
 	}
@@ -669,4 +682,11 @@ func (d *Detector) cleanText(text string) string {
 		result.WriteRune(r)
 	}
 	return result.String()
+}
+
+func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
+	if d.StorageTimeout == 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), d.StorageTimeout)
 }

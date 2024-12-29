@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		_, err = NewApprovedUsers(db)
+		_, err = NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
 		// check if the table and columns exist
@@ -41,7 +42,7 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		_, err = db.Exec(`CREATE TABLE approved_users (id TEXT PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
 		require.NoError(t, err)
 
-		_, err = NewApprovedUsers(db)
+		_, err = NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
 		// Verify that the existing structure has not changed
@@ -60,7 +61,7 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		_, err = db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
 		require.NoError(t, err)
 
-		_, err = NewApprovedUsers(db)
+		_, err = NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
 		// Verify that the new table is created with TEXT id
@@ -75,7 +76,8 @@ func TestApprovedUsers_Write(t *testing.T) {
 	db, e := sqlx.Open("sqlite", ":memory:")
 	require.NoError(t, e)
 	defer db.Close()
-	au, e := NewApprovedUsers(db)
+	ctx := context.Background()
+	au, e := NewApprovedUsers(ctx, db)
 	require.NoError(t, e)
 
 	t.Run("write new user without timestamp", func(t *testing.T) {
@@ -83,7 +85,7 @@ func TestApprovedUsers_Write(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe"})
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe"})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -96,9 +98,8 @@ func TestApprovedUsers_Write(t *testing.T) {
 	t.Run("write new user with timestamp", func(t *testing.T) {
 		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
-
-		require.NoError(t, err)
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		ctx := context.Background()
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -111,12 +112,12 @@ func TestApprovedUsers_Write(t *testing.T) {
 	t.Run("update existing user", func(t *testing.T) {
 		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
-
+		ctx := context.Background()
 		require.NoError(t, err)
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe Updated"})
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe Updated"})
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -154,20 +155,20 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			expected: []string{"123", "456"},
 		},
 	}
-
+	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := NewSqliteDB(":memory:")
 			require.NoError(t, err)
-			au, err := NewApprovedUsers(db)
+			au, err := NewApprovedUsers(ctx, db)
 			require.NoError(t, err)
 
 			for _, id := range tt.ids {
-				err = au.Write(approved.UserInfo{UserID: id, UserName: "name_" + id})
+				err = au.Write(ctx, approved.UserInfo{UserID: id, UserName: "name_" + id})
 				require.NoError(t, err)
 			}
 
-			res, err := au.Read()
+			res, err := au.Read(ctx)
 			require.NoError(t, err)
 			assert.Equal(t, len(tt.expected), len(res))
 		})
@@ -177,13 +178,14 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 func TestApprovedUsers_Read(t *testing.T) {
 	db, e := NewSqliteDB(":memory:")
 	require.NoError(t, e)
-	au, e := NewApprovedUsers(db)
+	ctx := context.Background()
+	au, e := NewApprovedUsers(ctx, db)
 	require.NoError(t, e)
 
 	t.Run("empty", func(t *testing.T) {
 		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
-		users, err := au.Read()
+		users, err := au.Read(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, []approved.UserInfo{}, users)
 	})
@@ -200,7 +202,7 @@ func TestApprovedUsers_Read(t *testing.T) {
 			"456", "Jane Doe", time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC))
 		require.NoError(t, err)
 
-		users, err := au.Read()
+		users, err := au.Read(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, []approved.UserInfo{
 			{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
@@ -213,13 +215,13 @@ func TestApprovedUsers_Read(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe", Timestamp: time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
-		err = au.Write(approved.UserInfo{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)})
+		err = au.Write(ctx, approved.UserInfo{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 
-		users, err := au.Read()
+		users, err := au.Read(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, []approved.UserInfo{
 			{UserID: "456", UserName: "Jane Doe", Timestamp: time.Date(2023, 10, 3, 0, 0, 0, 0, time.UTC)},
@@ -231,7 +233,8 @@ func TestApprovedUsers_Read(t *testing.T) {
 func TestApprovedUsers_Delete(t *testing.T) {
 	db, e := NewSqliteDB(":memory:")
 	require.NoError(t, e)
-	au, e := NewApprovedUsers(db)
+	ctx := context.Background()
+	au, e := NewApprovedUsers(ctx, db)
 	require.NoError(t, e)
 
 	t.Run("delete existing user", func(t *testing.T) {
@@ -239,10 +242,10 @@ func TestApprovedUsers_Delete(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, err)
-		err = au.Write(approved.UserInfo{UserID: "123", UserName: "John Doe"})
+		err = au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "John Doe"})
 		require.NoError(t, err)
 
-		err = au.Delete("123")
+		err = au.Delete(ctx, "123")
 		require.NoError(t, err)
 
 		var user approvedUsersInfo
@@ -255,7 +258,70 @@ func TestApprovedUsers_Delete(t *testing.T) {
 		_, err := db.Exec("DELETE FROM approved_users")
 		require.NoError(t, err)
 
-		err = au.Delete("123")
+		err = au.Delete(ctx, "123")
 		require.Error(t, err)
+	})
+}
+
+func TestApprovedUsers_ContextCancellation(t *testing.T) {
+	db, err := NewSqliteDB(":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	au, err := NewApprovedUsers(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("new with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := NewApprovedUsers(ctx, db)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+
+	t.Run("read with cancelled context", func(t *testing.T) {
+		// prepare data
+		err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test"})
+		require.NoError(t, err)
+
+		ctxCanceled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err = au.Read(ctxCanceled)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+
+	t.Run("write with cancelled context", func(t *testing.T) {
+		ctxCanceled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := au.Write(ctxCanceled, approved.UserInfo{UserID: "456", UserName: "test"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+
+	t.Run("delete with cancelled context", func(t *testing.T) {
+		// prepare data
+		err := au.Write(ctx, approved.UserInfo{UserID: "789", UserName: "test"})
+		require.NoError(t, err)
+
+		ctxCanceled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err = au.Delete(ctxCanceled, "789")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+
+	t.Run("context timeout", func(t *testing.T) {
+		ctxTimeout, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+		defer cancel()
+		time.Sleep(time.Millisecond)
+
+		err := au.Write(ctxTimeout, approved.UserInfo{UserID: "timeout", UserName: "test"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context deadline exceeded")
 	})
 }

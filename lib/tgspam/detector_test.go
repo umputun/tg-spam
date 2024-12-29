@@ -861,9 +861,11 @@ func TestDetector_FirstMessagesCount(t *testing.T) {
 
 func TestDetector_ApprovedUsers(t *testing.T) {
 	mockUserStore := &mocks.UserStorageMock{
-		ReadFunc:   func() ([]approved.UserInfo, error) { return []approved.UserInfo{{UserID: "123"}, {UserID: "456"}}, nil },
-		WriteFunc:  func(au approved.UserInfo) error { return nil },
-		DeleteFunc: func(id string) error { return nil },
+		ReadFunc: func(context.Context) ([]approved.UserInfo, error) {
+			return []approved.UserInfo{{UserID: "123"}, {UserID: "456"}}, nil
+		},
+		WriteFunc:  func(_ context.Context, au approved.UserInfo) error { return nil },
+		DeleteFunc: func(_ context.Context, id string) error { return nil },
 	}
 
 	t.Run("load with storage", func(t *testing.T) {

@@ -49,6 +49,7 @@ type options struct {
 
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
+	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -212,7 +213,7 @@ func execute(ctx context.Context, opts options) error {
 	log.Printf("[DEBUG] data db: %s", dataFile)
 
 	// make store and load approved users
-	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
+	approvedUsersStore, auErr := storage.NewApprovedUsers(ctx, dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -436,6 +437,9 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.ParanoidMode { // if ParanoidMode is set, FirstMessagesCount is ignored
 		detectorConfig.FirstMessageOnly = false
 		detectorConfig.FirstMessagesCount = 0
+	}
+	if opts.StorageTimeout > 0 { // if StorageTimeout is non-zero, set it. If zero, storage timeout is disabled
+		detectorConfig.StorageTimeout = opts.StorageTimeout
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)

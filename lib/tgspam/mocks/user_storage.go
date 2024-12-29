@@ -4,6 +4,7 @@
 package mocks
 
 import (
+	"context"
 	"github.com/umputun/tg-spam/lib/approved"
 	"sync"
 )
@@ -14,13 +15,13 @@ import (
 //
 //		// make and configure a mocked tgspam.UserStorage
 //		mockedUserStorage := &UserStorageMock{
-//			DeleteFunc: func(id string) error {
+//			DeleteFunc: func(ctx context.Context, id string) error {
 //				panic("mock out the Delete method")
 //			},
-//			ReadFunc: func() ([]approved.UserInfo, error) {
+//			ReadFunc: func(ctx context.Context) ([]approved.UserInfo, error) {
 //				panic("mock out the Read method")
 //			},
-//			WriteFunc: func(au approved.UserInfo) error {
+//			WriteFunc: func(ctx context.Context, au approved.UserInfo) error {
 //				panic("mock out the Write method")
 //			},
 //		}
@@ -31,26 +32,32 @@ import (
 //	}
 type UserStorageMock struct {
 	// DeleteFunc mocks the Delete method.
-	DeleteFunc func(id string) error
+	DeleteFunc func(ctx context.Context, id string) error
 
 	// ReadFunc mocks the Read method.
-	ReadFunc func() ([]approved.UserInfo, error)
+	ReadFunc func(ctx context.Context) ([]approved.UserInfo, error)
 
 	// WriteFunc mocks the Write method.
-	WriteFunc func(au approved.UserInfo) error
+	WriteFunc func(ctx context.Context, au approved.UserInfo) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Delete holds details about calls to the Delete method.
 		Delete []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 			// ID is the id argument value.
 			ID string
 		}
 		// Read holds details about calls to the Read method.
 		Read []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 		}
 		// Write holds details about calls to the Write method.
 		Write []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 			// Au is the au argument value.
 			Au approved.UserInfo
 		}
@@ -61,19 +68,21 @@ type UserStorageMock struct {
 }
 
 // Delete calls DeleteFunc.
-func (mock *UserStorageMock) Delete(id string) error {
+func (mock *UserStorageMock) Delete(ctx context.Context, id string) error {
 	if mock.DeleteFunc == nil {
 		panic("UserStorageMock.DeleteFunc: method is nil but UserStorage.Delete was just called")
 	}
 	callInfo := struct {
-		ID string
+		Ctx context.Context
+		ID  string
 	}{
-		ID: id,
+		Ctx: ctx,
+		ID:  id,
 	}
 	mock.lockDelete.Lock()
 	mock.calls.Delete = append(mock.calls.Delete, callInfo)
 	mock.lockDelete.Unlock()
-	return mock.DeleteFunc(id)
+	return mock.DeleteFunc(ctx, id)
 }
 
 // DeleteCalls gets all the calls that were made to Delete.
@@ -81,10 +90,12 @@ func (mock *UserStorageMock) Delete(id string) error {
 //
 //	len(mockedUserStorage.DeleteCalls())
 func (mock *UserStorageMock) DeleteCalls() []struct {
-	ID string
+	Ctx context.Context
+	ID  string
 } {
 	var calls []struct {
-		ID string
+		Ctx context.Context
+		ID  string
 	}
 	mock.lockDelete.RLock()
 	calls = mock.calls.Delete
@@ -100,16 +111,19 @@ func (mock *UserStorageMock) ResetDeleteCalls() {
 }
 
 // Read calls ReadFunc.
-func (mock *UserStorageMock) Read() ([]approved.UserInfo, error) {
+func (mock *UserStorageMock) Read(ctx context.Context) ([]approved.UserInfo, error) {
 	if mock.ReadFunc == nil {
 		panic("UserStorageMock.ReadFunc: method is nil but UserStorage.Read was just called")
 	}
 	callInfo := struct {
-	}{}
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
 	mock.lockRead.Lock()
 	mock.calls.Read = append(mock.calls.Read, callInfo)
 	mock.lockRead.Unlock()
-	return mock.ReadFunc()
+	return mock.ReadFunc(ctx)
 }
 
 // ReadCalls gets all the calls that were made to Read.
@@ -117,8 +131,10 @@ func (mock *UserStorageMock) Read() ([]approved.UserInfo, error) {
 //
 //	len(mockedUserStorage.ReadCalls())
 func (mock *UserStorageMock) ReadCalls() []struct {
+	Ctx context.Context
 } {
 	var calls []struct {
+		Ctx context.Context
 	}
 	mock.lockRead.RLock()
 	calls = mock.calls.Read
@@ -134,19 +150,21 @@ func (mock *UserStorageMock) ResetReadCalls() {
 }
 
 // Write calls WriteFunc.
-func (mock *UserStorageMock) Write(au approved.UserInfo) error {
+func (mock *UserStorageMock) Write(ctx context.Context, au approved.UserInfo) error {
 	if mock.WriteFunc == nil {
 		panic("UserStorageMock.WriteFunc: method is nil but UserStorage.Write was just called")
 	}
 	callInfo := struct {
-		Au approved.UserInfo
+		Ctx context.Context
+		Au  approved.UserInfo
 	}{
-		Au: au,
+		Ctx: ctx,
+		Au:  au,
 	}
 	mock.lockWrite.Lock()
 	mock.calls.Write = append(mock.calls.Write, callInfo)
 	mock.lockWrite.Unlock()
-	return mock.WriteFunc(au)
+	return mock.WriteFunc(ctx, au)
 }
 
 // WriteCalls gets all the calls that were made to Write.
@@ -154,10 +172,12 @@ func (mock *UserStorageMock) Write(au approved.UserInfo) error {
 //
 //	len(mockedUserStorage.WriteCalls())
 func (mock *UserStorageMock) WriteCalls() []struct {
-	Au approved.UserInfo
+	Ctx context.Context
+	Au  approved.UserInfo
 } {
 	var calls []struct {
-		Au approved.UserInfo
+		Ctx context.Context
+		Au  approved.UserInfo
 	}
 	mock.lockWrite.RLock()
 	calls = mock.calls.Write
