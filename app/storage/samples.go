@@ -168,6 +168,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 }
 
 // Iterator returns an iterator for samples by type and origin
+// Sorts samples by timestamp in descending order, i.e. from the newest to the oldest
 func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -180,10 +181,10 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 	var args []any
 
 	if o == SampleOriginAny {
-		query = `SELECT message FROM samples WHERE type = ?`
+		query = `SELECT message FROM samples WHERE type = ? ORDER BY timestamp DESC`
 		args = []any{t}
 	} else {
-		query = `SELECT message FROM samples WHERE type = ? AND origin = ?`
+		query = `SELECT message FROM samples WHERE type = ? AND origin = ? ORDER BY timestamp DESC`
 		args = []any{t, o}
 	}
 

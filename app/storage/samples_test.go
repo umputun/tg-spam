@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
@@ -522,6 +523,44 @@ func TestSamples_Iterator(t *testing.T) {
 			assert.ElementsMatch(t, tt.expectedMsgs, messages)
 		})
 	}
+}
+
+func TestSamples_IteratorOrder(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	samples, err := NewSamples(db)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Insert test data
+	testData := []struct {
+		sType   SampleType
+		origin  SampleOrigin
+		message string
+	}{
+		{SampleTypeHam, SampleOriginPreset, "ham preset 1"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 2"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 3"},
+	}
+
+	for _, td := range testData {
+		err := samples.Add(ctx, td.sType, td.origin, td.message)
+		require.NoError(t, err)
+		time.Sleep(time.Second) // ensure each message has a unique timestamp
+	}
+
+	iter, err := samples.Iterator(ctx, SampleTypeHam, SampleOriginPreset)
+	require.NoError(t, err)
+	var messages []string
+	for msg := range iter {
+		messages = append(messages, msg)
+	}
+	require.Len(t, messages, 3)
+	assert.Equal(t, "ham preset 3", messages[0])
+	assert.Equal(t, "ham preset 2", messages[1])
+	assert.Equal(t, "ham preset 1", messages[2])
 }
 
 func TestSamples_Import(t *testing.T) {
