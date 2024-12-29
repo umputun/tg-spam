@@ -692,6 +692,116 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 	}
 }
 
+func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.Config.AbnormalSpacing.Enabled = true
+	d.Config.AbnormalSpacing.ShortWordLen = 3
+	d.Config.AbnormalSpacing.ShortWordRatioThreshold = 0.7
+	d.Config.AbnormalSpacing.SpaceRatioThreshold = 0.3
+
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+		details  string
+	}{
+		{
+			name:     "normal text",
+			input:    "This is a normal message with regular spacing between words",
+			expected: false,
+			details:  "normal spacing (ratio: 0.18, short words: 20%)",
+		},
+		{
+			name:     "another normal text",
+			input:    "For structured content, like code or tables, the ratio can vary significantly based on formatting and indentation",
+			expected: false,
+			details:  "normal spacing (ratio: 0.17, short words: 35%)",
+		},
+		{
+			name: "normal text, cyrillic",
+			input: "Если продолжать этот парад благородного безумия, я бы предложил базу имеющихся примеров спама" +
+				" сконвертировать в эмбеддинги и проверять через них после байеса, но до gpt4. Эмбеддинги должны быть" +
+				" устойчивы к разделенным словам и даже переформулировкам, при этом они гораздо дешевле большой модели.",
+			expected: false,
+			details:  "normal spacing (ratio: 0.17, short words: 26%)",
+		},
+		{
+			name:     "suspicious spacing cyrillic",
+			input:    "СРО ЧНО ЭТО КАСА ЕТСЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ",
+			expected: true,
+			details:  "abnormal spacing (ratio: 0.31, short words: 75%)",
+		},
+		{
+			name:     "very suspicious spacing cyrillic",
+			input:    "н а р к о т и к о в, и н в е с т и ц и й",
+			expected: true,
+			details:  "abnormal spacing (ratio: 0.95, short words: 100%)",
+		},
+		{
+			name:     "mixed normal and suspicious",
+			input:    "Hello there к а ж д о г о в э т о й г р у п п е",
+			expected: true,
+			details:  "abnormal spacing (ratio: 0.68, short words: 90%)",
+		},
+		{
+			name:     "short spaced text",
+			input:    "a b c d",
+			expected: false, // too short overall
+			details:  "too short",
+		},
+		{
+			name:     "text with some extra spaces",
+			input:    "This   is    a    message    with    some    extra    spaces",
+			expected: true,
+			details:  "abnormal spacing (ratio: 0.82, short words: 25%)",
+		},
+		{
+			name: "real spam example",
+			input: "СРО ЧНО ЭТО КАСА ЕТСЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ  Строго 20+ В данный момент про ходит обуч ение " +
+				"для нови чков  Сразу говорю - без н а р к о т и к о в, и н в е с т и ц и й и прочей еру нды.  Быстрый старт, " +
+				"при быль вы полу чите уже в пе рвый день раб   Все легально  Для раб оты нужен смарт фон и всего 1 час твоего " +
+				"врем ени в день  Дове дём вас за ру чку до при были Не бер ём н и к а к и х о п л а т от вас, мы ра60таем " +
+				"на % (вы зараба тываете и  только потом делитесь с нами) Кому действ ительно инте ресно " +
+				"пишите в и я обязат ельно тебе отвечу",
+			expected: true,
+			details:  "abnormal spacing (ratio: 0.36, short words: 63%)",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: false,
+			details:  "too short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spam, resp := d.Check(spamcheck.Request{Msg: tt.input})
+			t.Logf("Response: %+v", resp)
+			require.Len(t, resp, 1)
+			assert.Equal(t, tt.expected, spam, "spam detection mismatch")
+			assert.Equal(t, tt.details, resp[0].Details, "details mismatch")
+		})
+	}
+
+	t.Run("disabled short word threshold", func(t *testing.T) {
+		d.Config.AbnormalSpacing.ShortWordLen = 0
+		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
+		t.Logf("Response: %+v", resp)
+		assert.False(t, spam)
+		assert.Equal(t, "normal spacing (ratio: 0.29, short words: 0%)", resp[0].Details)
+	})
+
+	t.Run("enabled short word threshold", func(t *testing.T) {
+		d.Config.AbnormalSpacing.ShortWordLen = 3
+		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
+		t.Logf("Response: %+v", resp)
+		assert.True(t, spam)
+		assert.Equal(t, "abnormal spacing (ratio: 0.29, short words: 80%)", resp[0].Details)
+	})
+
+}
+
 func TestDetector_UpdateSpam(t *testing.T) {
 	upd := &mocks.SampleUpdaterMock{
 		AppendFunc: func(msg string) error {

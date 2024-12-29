@@ -137,6 +137,12 @@ This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
+** Abnormal spacing check**
+
+This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
+- `--space.short-word` (default:3) - the maximum length of a short word
+- `--space.ratio` (default:0.3) -  the ratio of spaces to all characters in the message
+- `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
 
 ### Admin chat/group
 
@@ -239,7 +245,7 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
-      --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
+       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
@@ -293,6 +299,12 @@ openai:
       --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=         openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
+
+space:
+      --space.enabled               enable abnormal words check [$SPACE_ENABLED]
+      --space.short-word=           the length of the word to be considered short (default: 3) [$SPACE_SHORT_WORD]
+      --space.short-ratio=          the ratio of short words to all words in the message (default: 0.7) [$SPACE_SHORT_RATIO]
+      --space.ratio=                the ratio of spaces to all characters in the message (default: 0.3) [$SPACE_RATIO]
 
 files:
       --files.samples=              samples data path (default: data) [$FILES_SAMPLES]

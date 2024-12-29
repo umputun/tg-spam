@@ -80,10 +80,11 @@ type Option struct {
 	// Determines if the option will be always quoted in the INI output
 	iniQuote bool
 
-	tag            multiTag
-	isSet          bool
-	isSetDefault   bool
-	preventDefault bool
+	tag                     multiTag
+	isSet                   bool
+	isSetDefault            bool
+	preventDefault          bool
+	clearReferenceBeforeSet bool
 
 	defaultLiteral string
 }
@@ -238,15 +239,16 @@ func (option *Option) IsSetDefault() bool {
 // Set the value of an option to the specified value. An error will be returned
 // if the specified value could not be converted to the corresponding option
 // value type.
-func (option *Option) set(value *string) error {
+func (option *Option) Set(value *string) error {
 	kind := option.value.Type().Kind()
 
-	if (kind == reflect.Map || kind == reflect.Slice) && !option.isSet {
+	if (kind == reflect.Map || kind == reflect.Slice) && option.clearReferenceBeforeSet {
 		option.empty()
 	}
 
 	option.isSet = true
 	option.preventDefault = true
+	option.clearReferenceBeforeSet = false
 
 	if len(option.Choices) != 0 {
 		found := false
@@ -280,6 +282,21 @@ func (option *Option) set(value *string) error {
 	return convert("", option.value, option.tag)
 }
 
+func (option *Option) setDefault(value *string) error {
+	if option.preventDefault {
+		return nil
+	}
+
+	if err := option.Set(value); err != nil {
+		return err
+	}
+
+	option.isSetDefault = true
+	option.preventDefault = false
+
+	return nil
+}
+
 func (option *Option) showInHelp() bool {
 	return !option.Hidden && (option.ShortName != 0 || len(option.LongName) != 0)
 }
@@ -308,7 +325,11 @@ func (option *Option) empty() {
 	}
 }
 
-func (option *Option) clearDefault() {
+func (option *Option) clearDefault() error {
+	if option.preventDefault {
+		return nil
+	}
+
 	usedDefault := option.Default
 
 	if envKey := option.EnvKeyWithNamespace(); envKey != "" {
@@ -327,8 +348,11 @@ func (option *Option) clearDefault() {
 		option.empty()
 
 		for _, d := range usedDefault {
-			option.set(&d)
-			option.isSetDefault = true
+			err := option.setDefault(&d)
+
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		tp := option.value.Type()
@@ -344,6 +368,8 @@ func (option *Option) clearDefault() {
 			}
 		}
 	}
+
+	return nil
 }
 
 func (option *Option) valueIsDefault() bool {

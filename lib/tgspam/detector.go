@@ -47,17 +47,24 @@ type Detector struct {
 
 // Config is a set of parameters for Detector.
 type Config struct {
-	SimilarityThreshold float64       // threshold for spam similarity, 0.0 - 1.0
-	MinMsgLen           int           // minimum message length to check
-	MaxAllowedEmoji     int           // maximum number of emojis allowed in a message
-	CasAPI              string        // CAS API URL
-	FirstMessageOnly    bool          // if true, only the first message from a user is checked
-	FirstMessagesCount  int           // number of first messages to check for spam
-	HTTPClient          HTTPClient    // http client to use for requests
-	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
-	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
-	MultiLangWords      int           // if true, check for number of multi-lingual words
+	SimilarityThreshold float64    // threshold for spam similarity, 0.0 - 1.0
+	MinMsgLen           int        // minimum message length to check
+	MaxAllowedEmoji     int        // maximum number of emojis allowed in a message
+	CasAPI              string     // CAS API URL
+	FirstMessageOnly    bool       // if true, only the first message from a user is checked
+	FirstMessagesCount  int        // number of first messages to check for spam
+	HTTPClient          HTTPClient // http client to use for requests
+	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
+	OpenAIVeto          bool       // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	MultiLangWords      int        // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
+
+	AbnormalSpacing struct {
+		Enabled                 bool    // if true, enable check for abnormal spacing
+		ShortWordLen            int     // the length of the word to be considered short (in rune characters)
+		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
+		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
+	}
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
@@ -151,6 +158,10 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	if d.MultiLangWords > 0 {
 		cr = append(cr, d.isMultiLang(req.Msg))
+	}
+
+	if d.AbnormalSpacing.Enabled {
+		cr = append(cr, d.isAbnormalSpacing(req.Msg))
 	}
 
 	// check for message length exceed the minimum size, if min message length is set.
@@ -664,6 +675,70 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 		return spamcheck.Response{Name: "multi-lingual", Spam: true, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
 	}
 	return spamcheck.Response{Name: "multi-lingual", Spam: false, Details: fmt.Sprintf("%d/%d", count, d.MultiLangWords)}
+}
+
+// isAbnormalSpacing detects abnormal spacing patterns used to evade filters
+// things like this: "w o r d s p a c i n g some thing he re blah blah"
+func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
+	text := strings.ToUpper(msg)
+
+	// quick check for empty or very short text
+	if len(text) < 10 {
+		return spamcheck.Response{
+			Name:    "word-spacing",
+			Spam:    false,
+			Details: "too short",
+		}
+	}
+
+	words := strings.Fields(text)
+
+	// count letters and spaces in original text
+	var totalChars, spaces int
+	for _, r := range text {
+		if unicode.IsLetter(r) {
+			totalChars++
+		} else if unicode.IsSpace(r) {
+			spaces++
+		}
+	}
+
+	// look for suspicious word lengths and spacing patterns
+	shortWords := 0
+	if d.AbnormalSpacing.ShortWordLen > 0 { // if ShortWordLen is 0, skip short word detection
+		for _, word := range words {
+			wordRunes := []rune(word)
+			if len(wordRunes) <= d.AbnormalSpacing.ShortWordLen && len(wordRunes) > 0 {
+				shortWords++
+			}
+		}
+	}
+
+	// safety check
+	if spaces == 0 || totalChars == 0 {
+		return spamcheck.Response{
+			Name:    "word-spacing",
+			Spam:    false,
+			Details: "no spaces or letters",
+		}
+	}
+
+	// calculate ratios
+	spaceRatio := float64(spaces) / float64(totalChars)
+	shortWordRatio := float64(shortWords) / float64(len(words))
+	if shortWordRatio > d.AbnormalSpacing.ShortWordRatioThreshold || spaceRatio > d.AbnormalSpacing.SpaceRatioThreshold {
+		return spamcheck.Response{
+			Name:    "word-spacing",
+			Spam:    true,
+			Details: fmt.Sprintf("abnormal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+		}
+	}
+
+	return spamcheck.Response{
+		Name:    "word-spacing",
+		Spam:    false,
+		Details: fmt.Sprintf("normal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+	}
 }
 
 // cleanText removes control and format characters from a given text

@@ -22,9 +22,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
+	"github.com/jessevdk/go-flags"
 	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
-	"github.com/umputun/go-flags"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"
@@ -86,6 +86,13 @@ type options struct {
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+
+	AbnormalSpacing struct {
+		Enabled                 bool    `long:"enabled" env:"ENABLED" description:"enable abnormal words check"`
+		SpaceRatioThreshold     float64 `long:"ratio" env:"RATIO" default:"0.3" description:"the ratio of spaces to all characters in the message"`
+		ShortWordRatioThreshold float64 `long:"short-ratio" env:"SHORT_RATIO" default:"0.7" description:"the ratio of short words to all words in the message"`
+		ShortWordLen            int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
+	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path"`
@@ -443,7 +450,6 @@ func makeDetector(opts options) *tgspam.Detector {
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)
-	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 
 	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
 		log.Printf("[WARN] openai enabled")
@@ -463,6 +469,14 @@ func makeDetector(opts options) *tgspam.Detector {
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
+	}
+
+	if opts.AbnormalSpacing.Enabled {
+		log.Printf("[INFO] words spacing check enabled")
+		detector.AbnormalSpacing.Enabled = true
+		detector.AbnormalSpacing.ShortWordLen = opts.AbnormalSpacing.ShortWordLen
+		detector.AbnormalSpacing.ShortWordRatioThreshold = opts.AbnormalSpacing.ShortWordRatioThreshold
+		detector.AbnormalSpacing.SpaceRatioThreshold = opts.AbnormalSpacing.SpaceRatioThreshold
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
@@ -496,6 +510,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	detector.WithHamUpdater(bot.NewSampleUpdater(dynHamFile))
 	log.Printf("[DEBUG] dynamic ham file: %s", dynHamFile)
 
+	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 	return detector
 }
 
