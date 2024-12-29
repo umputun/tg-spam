@@ -310,6 +310,12 @@ type SamplesStats struct {
 	UserHam    int `db:"user_ham_count"`
 }
 
+// String provides a string representation of the statistics
+func (st *SamplesStats) String() string {
+	return fmt.Sprintf("spam: %d, ham: %d, preset spam: %d, preset ham: %d, user spam: %d, user ham: %d",
+		st.TotalSpam, st.TotalHam, st.PresetSpam, st.PresetHam, st.UserSpam, st.UserHam)
+}
+
 // Stats returns statistics about samples
 func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
 	s.lock.RLock()

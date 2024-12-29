@@ -131,7 +131,7 @@ type options struct {
 	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
-// file names
+// default file names
 const (
 	samplesSpamFile   = "spam-samples.txt"
 	samplesHamFile    = "ham-samples.txt"
@@ -150,7 +150,7 @@ func main() {
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
-		if err.(*flags.Error).Type != flags.ErrHelp {
+		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
 		}
 		os.Exit(2)
@@ -299,7 +299,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" suppress: %v, dry: %v, training: %v}",
+	  " suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
@@ -648,6 +648,128 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 		Compress:   true,
 		LocalTime:  true,
 	}, nil
+}
+
+// migrateSamples runs migrations from legacy text files samples to db, if needed
+func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Samples) error {
+	migrateSamples := func(file string, sampleType storage.SampleType, origin storage.SampleOrigin) (*storage.SamplesStats, error) {
+		if _, err := os.Stat(file); err != nil {
+			log.Printf("[DEBUG] samples file %s not found, err: %v, skip", file, err)
+			return &storage.SamplesStats{}, nil
+		}
+		fh, err := os.Open(file) //nolint:gosec // file path is controlled by the app
+		if err != nil {
+			return nil, fmt.Errorf("can't open samples file, %w", err)
+		}
+		defer fh.Close()
+		stats, err := samplesDB.Import(ctx, sampleType, origin, fh, true) // clean records before import
+		if err != nil {
+			return nil, fmt.Errorf("can't load samples, %w", err)
+		}
+		if err := os.Rename(file, file+".loaded"); err != nil {
+			return nil, fmt.Errorf("can't rename samples file, %w", err)
+		}
+		return stats, nil
+	}
+
+	if samplesDB == nil {
+		return errors.New("samples db is nil")
+	}
+
+	// migrate preset spam samples if files exist
+	spamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile)
+	s, err := migrateSamples(spamPresetFile, storage.SampleTypeSpam, storage.SampleOriginPreset)
+	if err != nil {
+		return fmt.Errorf("can't migrate spam preset samples, %w", err)
+	}
+	if s.PresetHam > 0 {
+		log.Printf("[DEBUG] spam preset samples loaded: %s", s)
+	}
+
+	// migrate preset ham samples if files exist
+	hamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesHamFile)
+	s, err = migrateSamples(hamPresetFile, storage.SampleTypeHam, storage.SampleOriginPreset)
+	if err != nil {
+		return fmt.Errorf("can't migrate ham preset samples, %w", err)
+	}
+	if s.PresetHam > 0 {
+		log.Printf("[DEBUG] ham preset samples loaded: %s", s)
+	}
+
+	// migrate dynamic spam samples if files exist
+	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
+	s, err = migrateSamples(dynSpamFile, storage.SampleTypeSpam, storage.SampleOriginUser)
+	if err != nil {
+		return fmt.Errorf("can't migrate spam dynamic samples, %w", err)
+	}
+	if s.UserSpam > 0 {
+		log.Printf("[DEBUG] spam dynamic samples loaded: %s", s)
+	}
+
+	// migrate dynamic ham samples if files exist
+	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
+	s, err = migrateSamples(dynHamFile, storage.SampleTypeHam, storage.SampleOriginUser)
+	if err != nil {
+		return fmt.Errorf("can't migrate ham dynamic samples, %w", err)
+	}
+	if s.UserHam > 0 {
+		log.Printf("[DEBUG] ham dynamic samples loaded: %s", s)
+	}
+
+	if s.TotalHam > 0 || s.TotalSpam > 0 {
+		log.Printf("[INFO] samples migration done: %s", s)
+	}
+	return nil
+}
+
+// migrateDicts runs migrations from legacy dictionary text files to db, if needed
+func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary) error {
+	migrateDict := func(file string, dictType storage.DictionaryType) (*storage.DictionaryStats, error) {
+		if _, err := os.Stat(file); err != nil {
+			log.Printf("[DEBUG] dictionary file %s not found, skip", file)
+			return &storage.DictionaryStats{}, nil
+		}
+		fh, err := os.Open(file) //nolint:gosec // file path is controlled by the app
+		if err != nil {
+			return nil, fmt.Errorf("can't open dictionary file, %w", err)
+		}
+		defer fh.Close()
+		stats, err := dictDB.Import(ctx, dictType, fh, true) // clean records before import
+		if err != nil {
+			return nil, fmt.Errorf("can't load dictionary, %w", err)
+		}
+		if err := os.Rename(file, file+".loaded"); err != nil {
+			return nil, fmt.Errorf("can't rename dictionary file, %w", err)
+		}
+		return stats, nil
+	}
+
+	if dictDB == nil {
+		return errors.New("dictionary db is nil")
+	}
+
+	// migrate stop words if files exist
+	stopWordsFile := filepath.Join(opts.Files.SamplesDataPath, stopWordsFile)
+	s, err := migrateDict(stopWordsFile, storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		return fmt.Errorf("can't migrate stop words, %w", err)
+	}
+	if s.TotalStopPhrases > 0 {
+		log.Printf("[INFO] stop words loaded: %s", s)
+	}
+
+	// migrate excluded tokens if files exist
+	excludeTokensFile := filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile)
+	s, err = migrateDict(excludeTokensFile, storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		return fmt.Errorf("can't migrate excluded tokens, %w", err)
+	}
+	if s.TotalIgnoredWords > 0 {
+		log.Printf("[INFO] excluded tokens loaded: %s", s)
+	}
+
+	log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	return nil
 }
 
 func setupLog(dbg bool, secrets ...string) {

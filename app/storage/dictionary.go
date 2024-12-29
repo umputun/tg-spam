@@ -244,6 +244,11 @@ type DictionaryStats struct {
 	TotalIgnoredWords int `db:"ignored_words_count"`
 }
 
+// String returns a string representation of the stats
+func (d *DictionaryStats) String() string {
+	return fmt.Sprintf("stop phrases: %d, ignored words: %d", d.TotalStopPhrases, d.TotalIgnoredWords)
+}
+
 // Stats returns statistics about dictionary entries
 func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
 	d.lock.RLock()
