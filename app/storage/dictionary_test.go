@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -35,7 +36,7 @@ func TestNewDictionary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d, err := NewDictionary(tt.db)
+			d, err := NewDictionary(context.Background(), tt.db)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, d)
@@ -50,7 +51,7 @@ func TestNewDictionary(t *testing.T) {
 func TestDictionary_AddPhrase(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 	require.NotNil(t, d)
 
@@ -109,7 +110,7 @@ func TestDictionary_AddPhrase(t *testing.T) {
 func TestDictionary_Delete(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -155,7 +156,7 @@ func TestDictionary_Delete(t *testing.T) {
 func TestDictionary_ReadPhrases(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -219,7 +220,7 @@ func TestDictionary_ReadPhrases(t *testing.T) {
 func TestDictionary_Iterator(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -287,7 +288,7 @@ func TestDictionary_Iterator(t *testing.T) {
 func TestDictionary_Stats(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -346,7 +347,7 @@ func TestDictionary_Concurrent(t *testing.T) {
 	require.NotNil(t, db)
 
 	// Initialize dictionary with schema
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 	require.NotNil(t, d)
 
@@ -422,12 +423,12 @@ func TestDictionary_Concurrent(t *testing.T) {
 func TestDictionary_Import(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	d, err := NewDictionary(db)
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 	ctx := context.Background()
 
 	t.Run("basic import with cleanup", func(t *testing.T) {
-		input := strings.NewReader("phrase1\nphrase2\nphrase3")
+		input := strings.NewReader(`phrase1,phrase2,"phrase 3, with comma"`)
 		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
@@ -435,94 +436,57 @@ func TestDictionary_Import(t *testing.T) {
 		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
 		require.NoError(t, err)
 		assert.Equal(t, 3, len(phrases))
+		assert.ElementsMatch(t, []string{"phrase1", "phrase2", "phrase 3, with comma"}, phrases)
 		assert.Equal(t, 3, stats.TotalStopPhrases)
 	})
 
 	t.Run("import without cleanup should append", func(t *testing.T) {
 		// first import
-		input1 := strings.NewReader("existing1\nexisting2")
+		input1 := strings.NewReader(`existing1,"existing 2",existing3`)
 		_, err := d.Import(ctx, DictionaryTypeIgnoredWord, input1, true)
 		require.NoError(t, err)
 
 		// second import without cleanup should append
-		input2 := strings.NewReader("new1\nnew2")
+		input2 := strings.NewReader(`"new phrase 1",new2`)
 		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, input2, false)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
 		phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord)
 		require.NoError(t, err)
-		assert.Equal(t, 4, len(phrases))
-		assert.Equal(t, 4, stats.TotalIgnoredWords)
+		assert.Equal(t, 5, len(phrases))
+		assert.Equal(t, 5, stats.TotalIgnoredWords)
+		assert.ElementsMatch(t, []string{"existing1", "existing 2", "existing3", "new phrase 1", "new2"}, phrases)
 	})
 
-	t.Run("import with cleanup should replace", func(t *testing.T) {
-		// first import
-		input1 := strings.NewReader("old1\nold2\nold3")
-		_, err := d.Import(ctx, DictionaryTypeStopPhrase, input1, true)
-		require.NoError(t, err)
-
-		// second import with cleanup should replace
-		input2 := strings.NewReader("new1\nnew2")
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input2, true)
+	t.Run("import with multiline input", func(t *testing.T) {
+		input := strings.NewReader("stop1,stop2\nstop3,\"stop 4, complex\"\nstop5")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
 		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
 		require.NoError(t, err)
-		assert.Equal(t, 2, len(phrases))
-		assert.Equal(t, 2, stats.TotalStopPhrases)
-		assert.ElementsMatch(t, []string{"new1", "new2"}, phrases)
+		assert.Equal(t, 5, len(phrases))
+		assert.ElementsMatch(t, []string{"stop1", "stop2", "stop3", "stop 4, complex", "stop5"}, phrases)
 	})
 
-	t.Run("different types preserve independence", func(t *testing.T) {
-		// import stop phrases
-		inputStop := strings.NewReader("stop1\nstop2")
-		_, err := d.Import(ctx, DictionaryTypeStopPhrase, inputStop, true)
-		require.NoError(t, err)
-
-		// import ignored words
-		inputIgnored := strings.NewReader("ignored1\nignored2\nignored3")
-		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, inputIgnored, true)
+	t.Run("empty entries should be skipped", func(t *testing.T) {
+		input := strings.NewReader(`phrase1,,phrase2,"",phrase3`)
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		stopPhrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
 		require.NoError(t, err)
-		assert.Equal(t, 2, len(stopPhrases))
-
-		ignoredWords, err := d.Read(ctx, DictionaryTypeIgnoredWord)
-		require.NoError(t, err)
-		assert.Equal(t, 3, len(ignoredWords))
+		assert.Equal(t, 3, len(phrases))
+		assert.ElementsMatch(t, []string{"phrase1", "phrase2", "phrase3"}, phrases)
 	})
 
 	t.Run("invalid type", func(t *testing.T) {
 		input := strings.NewReader("phrase")
 		_, err := d.Import(ctx, "invalid", input, true)
 		assert.Error(t, err)
-	})
-
-	t.Run("empty input", func(t *testing.T) {
-		input := strings.NewReader("")
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-		require.NoError(t, err)
-		assert.Empty(t, phrases)
-	})
-
-	t.Run("input with empty lines", func(t *testing.T) {
-		input := strings.NewReader("phrase1\n\n\nphrase2\n\n")
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-		require.NoError(t, err)
-		assert.Equal(t, 2, len(phrases))
-		assert.ElementsMatch(t, []string{"phrase1", "phrase2"}, phrases)
 	})
 
 	t.Run("nil reader", func(t *testing.T) {
@@ -535,4 +499,92 @@ func TestDictionary_Import(t *testing.T) {
 		_, err := d.Import(ctx, DictionaryTypeStopPhrase, errReader, true)
 		assert.Error(t, err)
 	})
+
+	t.Run("malformed csv", func(t *testing.T) {
+		input := strings.NewReader(`this is "bad csv`)
+		_, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		assert.Error(t, err)
+	})
+}
+
+func TestDictionary_Reader(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*Dictionary)
+		dType   DictionaryType
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "stop phrases",
+			setup: func(d *Dictionary) {
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test2"))
+			},
+			dType:   DictionaryTypeStopPhrase,
+			want:    []string{"test1", "test2"},
+			wantErr: false,
+		},
+		{
+			name: "empty result",
+			setup: func(d *Dictionary) {
+				// no setup needed
+			},
+			dType:   DictionaryTypeIgnoredWord,
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			setup:   nil,
+			dType:   "invalid",
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "mixed entries",
+			setup: func(d *Dictionary) {
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "stop1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored2"))
+			},
+			dType:   DictionaryTypeIgnoredWord,
+			want:    []string{"ignored1", "ignored2"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := sqlx.Open("sqlite", ":memory:")
+			require.NoError(t, err)
+			defer db.Close()
+
+			d, err := NewDictionary(context.Background(), db)
+			require.NoError(t, err)
+
+			if tt.setup != nil {
+				tt.setup(d)
+			}
+
+			r, err := d.Reader(context.Background(), tt.dType)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			defer r.Close()
+
+			data, err := io.ReadAll(r)
+			require.NoError(t, err)
+
+			if len(tt.want) == 0 {
+				assert.Empty(t, string(data))
+				return
+			}
+
+			got := strings.Split(string(data), "\n")
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

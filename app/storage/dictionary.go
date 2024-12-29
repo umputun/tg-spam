@@ -1,11 +1,12 @@
 package storage
 
 import (
-	"bufio"
 	"context"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"iter"
+	"strings"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
@@ -27,7 +28,7 @@ const (
 )
 
 // NewDictionary creates a new Dictionary storage
-func NewDictionary(db *sqlx.DB) (*Dictionary, error) {
+func NewDictionary(ctx context.Context, db *sqlx.DB) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
@@ -55,7 +56,7 @@ func NewDictionary(db *sqlx.DB) (*Dictionary, error) {
         CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
     `
 
-	if _, err = tx.Exec(schema); err != nil {
+	if _, err = tx.ExecContext(ctx, schema); err != nil {
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
@@ -134,6 +135,19 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 	return data, nil
 }
 
+// Reader returns a reader for phrases by type
+func (d *Dictionary) Reader(ctx context.Context, t DictionaryType) (io.ReadCloser, error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	recs, err := d.Read(ctx, t)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read phrases: %w", err)
+	}
+	data := strings.Join(recs, "\n")
+	return io.NopCloser(strings.NewReader(data)), nil
+}
+
 // Iterator returns an iterator for phrases by type
 func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
@@ -165,6 +179,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 
 // Import reads phrases from the reader and imports them into the storage.
 // If withCleanup is true removes all entries with the same type before import.
+// Input format is either a single phrase per line or a CSV file with multiple phrases.
 func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -191,29 +206,40 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 		}
 	}
 
-	// add entries, using INSERT OR REPLACE to handle duplicates
+	// prepare statement for inserts
 	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data) VALUES (?, ?)`)
 	if err != nil {
 		d.lock.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
 	defer insertStmt.Close()
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		data := scanner.Text()
-		if data == "" { // skip empty lines
-			continue
-		}
-		if _, err = insertStmt.ExecContext(ctx, t, data); err != nil {
-			d.lock.Unlock()
-			return nil, fmt.Errorf("failed to add entry: %w", err)
-		}
-	}
 
-	// check for scanner errors after the scan is complete
-	if err = scanner.Err(); err != nil {
-		d.lock.Unlock()
-		return nil, fmt.Errorf("error reading input: %w", err)
+	// use csv reader to handle quoted strings and comma separation properly
+	csvReader := csv.NewReader(r)
+	csvReader.FieldsPerRecord = -1 // allow variable number of fields
+	csvReader.TrimLeadingSpace = true
+
+	for {
+		record, csvErr := csvReader.Read()
+		if csvErr == io.EOF {
+			break
+		}
+		if csvErr != nil {
+			d.lock.Unlock()
+			return nil, fmt.Errorf("error reading input: %w", csvErr)
+		}
+
+		// process each field in the record
+		for _, field := range record {
+			if field == "" { // skip empty entries
+				continue
+			}
+
+			if _, err = insertStmt.ExecContext(ctx, t, field); err != nil {
+				d.lock.Unlock()
+				return nil, fmt.Errorf("failed to add entry: %w", err)
+			}
+		}
 	}
 
 	if err = tx.Commit(); err != nil {

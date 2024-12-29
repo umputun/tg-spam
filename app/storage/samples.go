@@ -38,7 +38,7 @@ const (
 )
 
 // NewSamples creates a new Samples storage
-func NewSamples(db *sqlx.DB) (*Samples, error) {
+func NewSamples(ctx context.Context, db *sqlx.DB) (*Samples, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
@@ -67,7 +67,7 @@ func NewSamples(db *sqlx.DB) (*Samples, error) {
         CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
     `
 
-	if _, err = tx.Exec(schema); err != nil {
+	if _, err = tx.ExecContext(ctx, schema); err != nil {
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
@@ -165,6 +165,37 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 		return nil, fmt.Errorf("failed to get samples: %w", err)
 	}
 	return samples, nil
+}
+
+// Reader returns a reader for samples by type and origin
+// Sorts samples by timestamp in descending order, i.e. from the newest to the oldest
+func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.ReadCloser, error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+
+	var query string
+	var args []any
+
+	if o == SampleOriginAny {
+		query = `SELECT message FROM samples WHERE type = ? ORDER BY timestamp DESC`
+		args = []any{t}
+	} else {
+		query = `SELECT message FROM samples WHERE type = ? AND origin = ? ORDER BY timestamp DESC`
+		args = []any{t, o}
+	}
+
+	s.lock.RLock()
+	rows, err := s.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		s.lock.RUnlock()
+		return nil, fmt.Errorf("failed to query samples: %w", err)
+	}
+
+	return &sampleReader{rows: rows}, nil
 }
 
 // Iterator returns an iterator for samples by type and origin
@@ -336,4 +367,50 @@ func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil
+}
+
+// sampleReader implements io.Reader for database rows and handles partial reads with buffering.
+type sampleReader struct {
+	rows    *sqlx.Rows // database rows iterator
+	buffer  []byte     // partial read buffer for cases when p is smaller than message size
+	current string     // current message from the database
+}
+
+// Read implements io.Reader interface. It reads messages from database rows one by one and
+// handles partial reads by maintaining an internal buffer. If the provided buffer p is smaller
+// than the message size, it will take multiple Read calls to get the complete message.
+// Each message is followed by a newline for proper scanning.
+func (r *sampleReader) Read(p []byte) (n int, err error) {
+	// if buffer is empty, try to get next message from database
+	if len(r.buffer) == 0 {
+		if !r.rows.Next() {
+			if err := r.rows.Err(); err != nil {
+				return 0, fmt.Errorf("rows iteration failed: %w", err)
+			}
+			return 0, io.EOF
+		}
+
+		if err := r.rows.Scan(&r.current); err != nil {
+			return 0, fmt.Errorf("scan failed: %w", err)
+		}
+		// append newline to message for proper scanning
+		r.buffer = []byte(r.current + "\n")
+	}
+
+	// copy as much as we can to the provided buffer
+	n = copy(p, r.buffer)
+	// keep the rest for the next read
+	r.buffer = r.buffer[n:]
+	return n, nil
+}
+
+// Close implements io.Closer interface. Can be called multiple times safely.
+func (r *sampleReader) Close() error {
+	if r.rows != nil {
+		if err := r.rows.Close(); err != nil {
+			return fmt.Errorf("failed to close rows: %w", err)
+		}
+		r.rows = nil // prevent double-close
+	}
+	return nil
 }

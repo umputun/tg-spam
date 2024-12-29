@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -51,7 +52,7 @@ func TestNewSamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s, err := NewSamples(tt.db)
+			s, err := NewSamples(context.Background(), tt.db)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, s)
@@ -66,7 +67,7 @@ func TestNewSamples(t *testing.T) {
 func TestSamples_AddSample(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	s, err := NewSamples(db)
+	s, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -158,7 +159,7 @@ func TestSamples_AddSample(t *testing.T) {
 func TestSamples_RemoveSample(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	s, err := NewSamples(db)
+	s, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -204,7 +205,7 @@ func TestSamples_RemoveSample(t *testing.T) {
 func TestSamples_ReadSamples(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	s, err := NewSamples(db)
+	s, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -280,7 +281,7 @@ func TestSamples_ReadSamples(t *testing.T) {
 func TestSamples_GetStats(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
-	s, err := NewSamples(db)
+	s, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -369,7 +370,7 @@ func TestSamples_Concurrent(t *testing.T) {
 	require.NotNil(t, db)
 
 	// initialize samples with schema
-	s, err := NewSamples(db)
+	s, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -446,7 +447,7 @@ func TestSamples_Iterator(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
 
-	samples, err := NewSamples(db)
+	samples, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -529,7 +530,7 @@ func TestSamples_IteratorOrder(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
 
-	samples, err := NewSamples(db)
+	samples, err := NewSamples(context.Background(), db)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -577,7 +578,7 @@ func TestSamples_Import(t *testing.T) {
 
 	prep := func() (*sqlx.DB, *Samples, func()) {
 		db, teardown := setupTestDB(t)
-		s, err := NewSamples(db)
+		s, err := NewSamples(context.Background(), db)
 		require.NoError(t, err)
 		return db, s, teardown
 	}
@@ -778,6 +779,79 @@ func TestSamples_Import(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2, count)
 	})
+}
+
+func TestSamples_Reader(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(*Samples)
+		sampleType SampleType
+		origin     SampleOrigin
+		want       []string
+		wantErr    bool
+	}{
+		{
+			name: "ham samples",
+			setup: func(s *Samples) {
+				require.NoError(t, s.Add(context.Background(), SampleTypeHam, SampleOriginPreset, "test1"))
+				time.Sleep(time.Second) // ensure each message has a unique timestamp
+				require.NoError(t, s.Add(context.Background(), SampleTypeHam, SampleOriginPreset, "test2"))
+			},
+			sampleType: SampleTypeHam,
+			origin:     SampleOriginPreset,
+			want:       []string{"test2", "test1"}, // ordered by timestamp DESC
+		},
+		{
+			name: "empty result",
+			setup: func(s *Samples) {
+				// no setup needed, db is empty
+			},
+			sampleType: SampleTypeSpam,
+			origin:     SampleOriginUser,
+			want:       []string(nil),
+		},
+		{
+			name:       "invalid type",
+			sampleType: "invalid",
+			origin:     SampleOriginPreset,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := sqlx.Open("sqlite", ":memory:")
+			require.NoError(t, err)
+			defer db.Close()
+
+			s, err := NewSamples(context.Background(), db)
+			require.NoError(t, err)
+
+			if tt.setup != nil {
+				tt.setup(s)
+			}
+
+			r, err := s.Reader(context.Background(), tt.sampleType, tt.origin)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			lines := 0
+			scanner := bufio.NewScanner(r)
+			var got []string
+			for scanner.Scan() {
+				lines++
+				got = append(got, scanner.Text())
+			}
+			require.NoError(t, scanner.Err())
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, len(tt.want), lines)
+
+			assert.NoError(t, r.Close())
+		})
+	}
 }
 
 // errorReader implements io.Reader interface and always returns an error
