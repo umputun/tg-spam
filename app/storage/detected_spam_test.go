@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,11 +13,10 @@ import (
 )
 
 func TestDetectedSpam_NewDetectedSpam(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
 
-	_, err = NewDetectedSpam(context.Background(), db)
+	_, err := NewDetectedSpam(context.Background(), db)
 	require.NoError(t, err)
 
 	var exists int
@@ -28,9 +26,9 @@ func TestDetectedSpam_NewDetectedSpam(t *testing.T) {
 }
 
 func TestDetectedSpam_Write(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 
 	ds, err := NewDetectedSpam(ctx, db)
@@ -61,9 +59,9 @@ func TestDetectedSpam_Write(t *testing.T) {
 }
 
 func TestSetAddedToSamplesFlag(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 
 	ds, err := NewDetectedSpam(ctx, db)
@@ -100,9 +98,9 @@ func TestSetAddedToSamplesFlag(t *testing.T) {
 }
 
 func TestDetectedSpam_Read(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 
 	ds, err := NewDetectedSpam(ctx, db)
@@ -144,9 +142,9 @@ func TestDetectedSpam_Read(t *testing.T) {
 }
 
 func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 
 	ds, err := NewDetectedSpam(ctx, db)
@@ -178,9 +176,9 @@ func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
 }
 
 func TestDetectedSpam_Read_EmptyDB(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 
 	ds, err := NewDetectedSpam(ctx, db)

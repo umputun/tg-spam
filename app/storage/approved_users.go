@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -15,8 +14,7 @@ import (
 
 // ApprovedUsers is a storage for approved users
 type ApprovedUsers struct {
-	db   *sqlx.DB
-	lock *sync.RWMutex
+	db *Engine
 }
 
 type approvedUsersInfo struct {
@@ -26,15 +24,12 @@ type approvedUsersInfo struct {
 }
 
 // NewApprovedUsers creates a new ApprovedUsers storage
-func NewApprovedUsers(ctx context.Context, db *sqlx.DB) (*ApprovedUsers, error) {
+func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
-	if err := setSqlitePragma(db); err != nil {
-		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
-	}
 
-	if err := migrateTable(db); err != nil {
+	if err := migrateTable(&db.DB); err != nil {
 		return nil, err
 	}
 
@@ -47,13 +42,13 @@ func NewApprovedUsers(ctx context.Context, db *sqlx.DB) (*ApprovedUsers, error) 
 		return nil, fmt.Errorf("failed to create approved_users table: %w", err)
 	}
 
-	return &ApprovedUsers{db: db, lock: &sync.RWMutex{}}, nil
+	return &ApprovedUsers{db: db}, nil
 }
 
 // Read returns a list of all approved users
 func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
-	au.lock.RLock()
-	defer au.lock.RUnlock()
+	au.db.RLock()
+	defer au.db.RUnlock()
 
 	users := []approvedUsersInfo{}
 	err := au.db.SelectContext(ctx, &users, "SELECT id, name, timestamp FROM approved_users ORDER BY timestamp DESC")
@@ -75,8 +70,8 @@ func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) 
 
 // Write adds a new approved user
 func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
-	au.lock.Lock()
-	defer au.lock.Unlock()
+	au.db.Lock()
+	defer au.db.Unlock()
 
 	if user.Timestamp.IsZero() {
 		user.Timestamp = time.Now()
@@ -92,8 +87,8 @@ func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) erro
 
 // Delete removes an approved user by its ID
 func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
-	au.lock.Lock()
-	defer au.lock.Unlock()
+	au.db.Lock()
+	defer au.db.Unlock()
 
 	var user approvedUsersInfo
 	err := au.db.GetContext(ctx, &user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", id)

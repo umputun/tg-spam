@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -15,11 +14,10 @@ import (
 
 func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 	t.Run("create new table", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
-		require.NoError(t, err)
-		defer db.Close()
+		db, teardown := setupTestDB(t)
+		defer teardown()
 
-		_, err = NewApprovedUsers(context.Background(), db)
+		_, err := NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
 		// check if the table and columns exist
@@ -34,12 +32,11 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 	})
 
 	t.Run("table already exists", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
-		require.NoError(t, err)
-		defer db.Close()
+		db, teardown := setupTestDB(t)
+		defer teardown()
 
 		// Create table with 'name' column
-		_, err = db.Exec(`CREATE TABLE approved_users (id TEXT PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+		_, err := db.Exec(`CREATE TABLE approved_users (id TEXT PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
 		require.NoError(t, err)
 
 		_, err = NewApprovedUsers(context.Background(), db)
@@ -53,12 +50,11 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 	})
 
 	t.Run("table exists with INTEGER id", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
-		require.NoError(t, err)
-		defer db.Close()
+		db, teardown := setupTestDB(t)
+		defer teardown()
 
 		// Create table with INTEGER id
-		_, err = db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+		_, err := db.Exec(`CREATE TABLE approved_users (id INTEGER PRIMARY KEY, name TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`)
 		require.NoError(t, err)
 
 		_, err = NewApprovedUsers(context.Background(), db)
@@ -73,9 +69,9 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 }
 
 func TestApprovedUsers_Write(t *testing.T) {
-	db, e := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, e)
-	defer db.Close()
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 	au, e := NewApprovedUsers(ctx, db)
 	require.NoError(t, e)

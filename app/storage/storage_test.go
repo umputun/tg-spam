@@ -3,10 +3,12 @@ package storage
 import (
 	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,4 +135,19 @@ func TestSampleUpdater(t *testing.T) {
 		assert.Contains(t, messages, "ham message")
 		assert.NotContains(t, messages, "spam message")
 	})
+}
+
+func setupTestDB(t *testing.T) (res *Engine, teardown func()) {
+	t.Helper()
+	tmpFile := os.TempDir() + "/test.db"
+	db, err := sqlx.Connect("sqlite", tmpFile)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+	engine, err := NewSqliteDB(tmpFile)
+	require.NoError(t, err)
+
+	return engine, func() {
+		db.Close()
+		os.Remove(tmpFile)
+	}
 }

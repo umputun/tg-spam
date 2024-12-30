@@ -7,15 +7,11 @@ import (
 	"io"
 	"iter"
 	"strings"
-	"sync"
-
-	"github.com/jmoiron/sqlx"
 )
 
 // Dictionary is a storage for stop words/phrases and ignored words
 type Dictionary struct {
-	db   *sqlx.DB
-	lock *sync.RWMutex
+	db *Engine
 }
 
 // DictionaryType represents the type of dictionary entry
@@ -28,13 +24,9 @@ const (
 )
 
 // NewDictionary creates a new Dictionary storage
-func NewDictionary(ctx context.Context, db *sqlx.DB) (*Dictionary, error) {
+func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	if err := setSqlitePragma(db); err != nil {
-		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
 	}
 
 	// create schema in a single transaction
@@ -64,7 +56,7 @@ func NewDictionary(ctx context.Context, db *sqlx.DB) (*Dictionary, error) {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return &Dictionary{db: db, lock: &sync.RWMutex{}}, nil
+	return &Dictionary{db: db}, nil
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
@@ -76,8 +68,8 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 		return fmt.Errorf("data cannot be empty")
 	}
 
-	d.lock.Lock()
-	defer d.lock.Unlock()
+	d.db.Lock()
+	defer d.db.Unlock()
 
 	// start transaction
 	tx, err := d.db.BeginTx(ctx, nil)
@@ -100,8 +92,8 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 
 // Delete removes an entry from the dictionary by its ID
 func (d *Dictionary) Delete(ctx context.Context, id int64) error {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+	d.db.Lock()
+	defer d.db.Unlock()
 
 	result, err := d.db.ExecContext(ctx, `DELETE FROM dictionary WHERE id = ?`, id)
 	if err != nil {
@@ -120,8 +112,8 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 
 // Read reads all entries from the dictionary by type
 func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, error) {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
+	d.db.RLock()
+	defer d.db.RUnlock()
 
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -156,9 +148,9 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 
 	query := `SELECT data FROM dictionary WHERE type = ? ORDER BY timestamp`
 
-	d.lock.RLock()
+	d.db.RLock()
 	rows, err := d.db.QueryxContext(ctx, query, t)
-	d.lock.RUnlock()
+	d.db.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query phrases: %w", err)
 	}
@@ -188,12 +180,12 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 		return nil, fmt.Errorf("reader cannot be nil")
 	}
 
-	d.lock.Lock()
+	d.db.Lock()
 
 	// start transaction
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
-		d.lock.Unlock()
+		d.db.Unlock()
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
@@ -201,7 +193,7 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	// remove all entries with the same type if requested
 	if withCleanup {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ?`, t); err != nil {
-			d.lock.Unlock()
+			d.db.Unlock()
 			return nil, fmt.Errorf("failed to remove old entries: %w", err)
 		}
 	}
@@ -209,7 +201,7 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	// prepare statement for inserts
 	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data) VALUES (?, ?)`)
 	if err != nil {
-		d.lock.Unlock()
+		d.db.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
 	defer insertStmt.Close()
@@ -225,7 +217,7 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 			break
 		}
 		if csvErr != nil {
-			d.lock.Unlock()
+			d.db.Unlock()
 			return nil, fmt.Errorf("error reading input: %w", csvErr)
 		}
 
@@ -236,18 +228,18 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 			}
 
 			if _, err = insertStmt.ExecContext(ctx, t, field); err != nil {
-				d.lock.Unlock()
+				d.db.Unlock()
 				return nil, fmt.Errorf("failed to add entry: %w", err)
 			}
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
-		d.lock.Unlock()
+		d.db.Unlock()
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	d.lock.Unlock() // release the lock before getting stats
+	d.db.Unlock() // release the lock before getting stats
 
 	return d.Stats(ctx)
 }
@@ -277,8 +269,8 @@ func (d *DictionaryStats) String() string {
 
 // Stats returns statistics about dictionary entries
 func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
+	d.db.RLock()
+	defer d.db.RUnlock()
 
 	query := `
         SELECT 

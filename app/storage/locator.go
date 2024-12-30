@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -21,8 +19,7 @@ import (
 type Locator struct {
 	ttl     time.Duration
 	minSize int
-	db      *sqlx.DB
-	lock    *sync.RWMutex
+	db      *Engine
 }
 
 // MsgMeta stores message metadata
@@ -41,13 +38,9 @@ type SpamData struct {
 }
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
-func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *sqlx.DB) (*Locator, error) {
+func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *Engine) (*Locator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	if err := setSqlitePragma(db); err != nil {
-		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
 	}
 
 	schema := `
@@ -84,7 +77,7 @@ func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *sqlx.DB
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return &Locator{ttl: ttl, minSize: minSize, db: db, lock: &sync.RWMutex{}}, nil
+	return &Locator{ttl: ttl, minSize: minSize, db: db}, nil
 }
 
 // Close closes the database
@@ -94,8 +87,8 @@ func (l *Locator) Close(_ context.Context) error {
 
 // AddMessage adds messages to the locator and also cleans up old messages.
 func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int64, userName string, msgID int) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.db.Lock()
+	defer l.db.Unlock()
 
 	hash := l.MsgHash(msg)
 	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
@@ -123,8 +116,8 @@ func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int
 
 // AddSpam adds spam data to the locator and also cleans up old spam data.
 func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.Response) error {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+	l.db.Lock()
+	defer l.db.Unlock()
 
 	checksStr, err := json.Marshal(checks)
 	if err != nil {
@@ -146,8 +139,8 @@ func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.
 // Message returns message MsgMeta for given msg
 // this allows to match messages from admin chat (only text available) to the original message
 func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
+	l.db.RLock()
+	defer l.db.RUnlock()
 
 	var meta MsgMeta
 	hash := l.MsgHash(msg)
@@ -161,8 +154,8 @@ func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
 
 // UserNameByID returns username by user id. Returns empty string if not found
 func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
+	l.db.RLock()
+	defer l.db.RUnlock()
 
 	var userName string
 	err := l.db.GetContext(ctx, &userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
@@ -175,8 +168,8 @@ func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
 
 // UserIDByName returns user id by username. Returns 0 if not found
 func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
+	l.db.RLock()
+	defer l.db.RUnlock()
 
 	var userID int64
 	err := l.db.GetContext(ctx, &userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
@@ -189,8 +182,8 @@ func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
 
 // Spam returns message SpamData for given msg
 func (l *Locator) Spam(ctx context.Context, userID int64) (SpamData, bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
+	l.db.RLock()
+	defer l.db.RUnlock()
 
 	var data SpamData
 	var checksStr string

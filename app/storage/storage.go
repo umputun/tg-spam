@@ -1,17 +1,45 @@
+// Package storage provides a storage engine for sql databases.
+// The storage engine is a wrapper around sqlx.DB with additional functionality to work with the varous types of database engines.
+// Each table is represented by a struct, and each struct has a method to work the table with business logic for this data type.
 package storage
 
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 )
 
+// EngineType is a type of database engine
+type EngineType string
+
+// enum of supported database engines
+const (
+	EngineTypeUnknown EngineType = ""
+	EngineTypeSqlite  EngineType = "sqlite"
+)
+
+// Engine is a wrapper for sqlx.DB with type.
+// EngineType allows distinguishing between different database engines.
+type Engine struct {
+	sqlx.DB
+	RWLocker
+	dbType EngineType // type of the database engine
+}
+
 // NewSqliteDB creates a new sqlite database
-func NewSqliteDB(file string) (*sqlx.DB, error) {
-	return sqlx.Connect("sqlite", file)
+func NewSqliteDB(file string) (*Engine, error) {
+	db, err := sqlx.Connect("sqlite", file)
+	if err != nil {
+		return &Engine{}, err
+	}
+	if err := setSqlitePragma(db); err != nil {
+		return &Engine{}, err
+	}
+	return &Engine{DB: *db, dbType: EngineTypeSqlite, RWLocker: &sync.RWMutex{}}, nil
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
@@ -58,4 +86,11 @@ func (u *SampleUpdater) Append(msg string) error {
 func (u *SampleUpdater) Reader() (io.ReadCloser, error) {
 	// we don't want to pass context with timeout here, as it's an async operation
 	return u.SamplesService.Reader(context.Background(), u.SampleType, SampleOriginUser)
+}
+
+// RWLocker is a read-write locker interface
+type RWLocker interface {
+	sync.Locker
+	RLock()
+	RUnlock()
 }

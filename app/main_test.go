@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,7 +25,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
-	db, err := sqlx.Open("sqlite", ":memory:")
+	db, err := storage.NewSqliteDB(":memory:")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -380,7 +379,7 @@ func Test_migrateSamples(t *testing.T) {
 	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = tmpDir, tmpDir
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -428,7 +427,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -452,7 +451,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -478,7 +477,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -503,7 +502,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -537,7 +536,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -571,7 +570,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -592,7 +591,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := sqlx.Open("sqlite", ":memory:")
+		db, err := storage.NewSqliteDB(":memory:")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)

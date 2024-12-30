@@ -23,7 +23,6 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
-	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -352,7 +351,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, dataDB *sqlx.DB) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *storage.Engine) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -367,7 +366,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
+	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, db)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -508,7 +507,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, dataDB *sqlx.DB, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	if dataDB == nil || detector == nil {
 		return nil, errors.New("nil datadb or detector")
 	}
@@ -577,7 +576,7 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(ctx context.Context, wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
+func makeSpamLogger(ctx context.Context, wr io.Writer, dataDB *storage.Engine) (events.SpamLogger, error) {
 	// make store and load approved users
 	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {

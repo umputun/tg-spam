@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/jmoiron/sqlx"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -18,8 +15,7 @@ const maxDetectedSpamEntries = 500
 
 // DetectedSpam is a storage for detected spam entries
 type DetectedSpam struct {
-	db   *sqlx.DB
-	lock *sync.RWMutex
+	db *Engine
 }
 
 // DetectedSpamInfo represents information about a detected spam entry.
@@ -35,12 +31,9 @@ type DetectedSpamInfo struct {
 }
 
 // NewDetectedSpam creates a new DetectedSpam storage
-func NewDetectedSpam(ctx context.Context, db *sqlx.DB) (*DetectedSpam, error) {
+func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
-	}
-	if err := setSqlitePragma(db); err != nil {
-		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
 	}
 
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS detected_spam (
@@ -67,13 +60,13 @@ func NewDetectedSpam(ctx context.Context, db *sqlx.DB) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
 	}
 
-	return &DetectedSpam{db: db, lock: &sync.RWMutex{}}, nil
+	return &DetectedSpam{db: db}, nil
 }
 
 // Write adds a new detected spam entry
 func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, checks []spamcheck.Response) error {
-	ds.lock.Lock()
-	defer ds.lock.Unlock()
+	ds.db.Lock()
+	defer ds.db.Unlock()
 
 	checksJSON, err := json.Marshal(checks)
 	if err != nil {
@@ -91,8 +84,8 @@ func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, check
 
 // SetAddedToSamplesFlag sets the added flag to true for the detected spam entry with the given id
 func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) error {
-	ds.lock.Lock()
-	defer ds.lock.Unlock()
+	ds.db.Lock()
+	defer ds.db.Unlock()
 
 	query := `UPDATE detected_spam SET added = 1 WHERE id = ?`
 	if _, err := ds.db.ExecContext(ctx, query, id); err != nil {
@@ -103,8 +96,8 @@ func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) err
 
 // Read returns all detected spam entries
 func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
-	ds.lock.RLock()
-	defer ds.lock.RUnlock()
+	ds.db.RLock()
+	defer ds.db.RUnlock()
 
 	var entries []DetectedSpamInfo
 	err := ds.db.SelectContext(ctx, &entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)

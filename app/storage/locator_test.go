@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -15,8 +14,9 @@ import (
 )
 
 func TestNewLocator(t *testing.T) {
-	db, err := sqlx.Connect("sqlite", ":memory:")
-	require.NoError(t, err)
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
 	ctx := context.Background()
 	const ttl = 10 * time.Minute
 	const minSize = 1

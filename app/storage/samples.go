@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"sync"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite/lib" // sqlite driver
@@ -14,8 +13,7 @@ import (
 
 // Samples is a storage for samples. It supports both ham and spam, as well as preset samples and user's samples
 type Samples struct {
-	db   *sqlx.DB
-	lock *sync.RWMutex
+	db *Engine
 }
 
 // SampleType represents the type of the sample
@@ -38,13 +36,9 @@ const (
 )
 
 // NewSamples creates a new Samples storage
-func NewSamples(ctx context.Context, db *sqlx.DB) (*Samples, error) {
+func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	if err := setSqlitePragma(db); err != nil {
-		return nil, fmt.Errorf("failed to set sqlite pragma: %w", err)
 	}
 
 	// create schema in a single transaction
@@ -76,7 +70,7 @@ func NewSamples(ctx context.Context, db *sqlx.DB) (*Samples, error) {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return &Samples{db: db, lock: &sync.RWMutex{}}, nil
+	return &Samples{db: db}, nil
 }
 
 // Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
@@ -94,8 +88,8 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 		return fmt.Errorf("message can't be empty")
 	}
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	s.db.Lock()
+	defer s.db.Unlock()
 
 	// start transaction
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -118,8 +112,8 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 
 // Delete removes a sample from the storage by its ID
 func (s *Samples) Delete(ctx context.Context, id int64) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	s.db.Lock()
+	defer s.db.Unlock()
 
 	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE id = ?`, id)
 	if err != nil {
@@ -138,8 +132,8 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 
 // DeleteMessage removes a sample from the storage by its message
 func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	s.db.Lock()
+	defer s.db.Unlock()
 
 	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE message = ?`, message)
 	if err != nil {
@@ -158,8 +152,8 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 
 // Read reads samples from storage by type and origin
 func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]string, error) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	s.db.RLock()
+	defer s.db.RUnlock()
 
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -209,10 +203,10 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 		args = []any{t, o}
 	}
 
-	s.lock.RLock()
+	s.db.RLock()
 	rows, err := s.db.QueryxContext(ctx, query, args...)
 	if err != nil {
-		s.lock.RUnlock()
+		s.db.RUnlock()
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
 
@@ -240,9 +234,9 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 		args = []any{t, o}
 	}
 
-	s.lock.RLock()
+	s.db.RLock()
 	rows, err := s.db.QueryxContext(ctx, query, args...)
-	s.lock.RUnlock()
+	s.db.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
@@ -279,12 +273,12 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 		return nil, fmt.Errorf("reader cannot be nil")
 	}
 
-	s.lock.Lock()
+	s.db.Lock()
 
 	// start transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		s.lock.Unlock()
+		s.db.Unlock()
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
@@ -293,7 +287,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	if withCleanup {
 		query := `DELETE FROM samples WHERE type = ? AND origin = ?`
 		if _, err = tx.ExecContext(ctx, query, t, o); err != nil {
-			s.lock.Unlock()
+			s.db.Unlock()
 			return nil, fmt.Errorf("failed to remove old samples: %w", err)
 		}
 	}
@@ -307,23 +301,23 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 			continue
 		}
 		if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
-			s.lock.Unlock()
+			s.db.Unlock()
 			return nil, fmt.Errorf("failed to add sample: %w", err)
 		}
 	}
 
 	// check for scanner errors after the scan is complete
 	if err = scanner.Err(); err != nil {
-		s.lock.Unlock()
+		s.db.Unlock()
 		return nil, fmt.Errorf("error reading input: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		s.lock.Unlock()
+		s.db.Unlock()
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	s.lock.Unlock() // release the lock before getting stats
+	s.db.Unlock() // release the lock before getting stats
 
 	return s.Stats(ctx)
 }
@@ -370,8 +364,8 @@ func (st *SamplesStats) String() string {
 
 // Stats returns statistics about samples
 func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	s.db.RLock()
+	defer s.db.RUnlock()
 
 	query := `
         SELECT 

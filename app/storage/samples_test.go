@@ -4,30 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-//
-
-func setupTestDB(t *testing.T) (res *sqlx.DB, teardown func()) {
-	t.Helper()
-	tmpFile := os.TempDir() + "/test.db"
-	db, err := sqlx.Connect("sqlite", tmpFile)
-	require.NoError(t, err)
-	require.NotNil(t, db)
-	return db, func() {
-		db.Close()
-		os.Remove(tmpFile)
-	}
-}
 
 func TestNewSamples(t *testing.T) {
 	db, teardown := setupTestDB(t)
@@ -35,7 +19,7 @@ func TestNewSamples(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		db      *sqlx.DB
+		db      *Engine
 		wantErr bool
 	}{
 		{
@@ -673,7 +657,7 @@ func TestSamples_IteratorOrder(t *testing.T) {
 func TestSamples_Import(t *testing.T) {
 	ctx := context.Background()
 
-	countSamples := func(db *sqlx.DB, t SampleType, o SampleOrigin) int {
+	countSamples := func(db *Engine, t SampleType, o SampleOrigin) int {
 		var count int
 		err := db.Get(&count, "SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ?", t, o)
 		if err != nil {
@@ -682,7 +666,7 @@ func TestSamples_Import(t *testing.T) {
 		return count
 	}
 
-	prep := func() (*sqlx.DB, *Samples, func()) {
+	prep := func() (*Engine, *Samples, func()) {
 		db, teardown := setupTestDB(t)
 		s, err := NewSamples(context.Background(), db)
 		require.NoError(t, err)
@@ -926,9 +910,8 @@ func TestSamples_Reader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := sqlx.Open("sqlite", ":memory:")
-			require.NoError(t, err)
-			defer db.Close()
+			db, teardown := setupTestDB(t)
+			defer teardown()
 
 			s, err := NewSamples(context.Background(), db)
 			require.NoError(t, err)

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +18,7 @@ func TestNewDictionary(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		db      *sqlx.DB
+		db      *Engine
 		wantErr bool
 	}{
 		{
@@ -556,9 +555,8 @@ func TestDictionary_Reader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := sqlx.Open("sqlite", ":memory:")
-			require.NoError(t, err)
-			defer db.Close()
+			db, teardown := setupTestDB(t)
+			defer teardown()
 
 			d, err := NewDictionary(context.Background(), db)
 			require.NoError(t, err)
