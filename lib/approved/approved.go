@@ -7,6 +7,7 @@ import (
 
 // UserInfo is a struct for approved user info.
 type UserInfo struct {
+	GroupID   string    `json:"group_id"`
 	UserID    string    `json:"user_id"`
 	UserName  string    `json:"user_name"`
 	Timestamp time.Time `json:"timestamp"`

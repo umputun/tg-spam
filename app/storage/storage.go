@@ -61,31 +61,32 @@ func setSqlitePragma(db *sqlx.DB) error {
 }
 
 // SampleUpdater is a service to update dynamic (user's) samples for detector, either ham or spam.
+// The service is used by the detector to update the samples.
 type SampleUpdater struct {
-	SamplesService *Samples
-	SampleType     SampleType
-	Timeout        time.Duration
+	samplesService *Samples
+	sampleType     SampleType
+	timeout        time.Duration
 }
 
 // NewSampleUpdater creates a new SampleUpdater
 func NewSampleUpdater(samplesService *Samples, sampleType SampleType, timeout time.Duration) *SampleUpdater {
-	return &SampleUpdater{SamplesService: samplesService, SampleType: sampleType, Timeout: timeout}
+	return &SampleUpdater{samplesService: samplesService, sampleType: sampleType, timeout: timeout}
 }
 
 // Append a message to the samples, forcing user origin
 func (u *SampleUpdater) Append(msg string) error {
 	ctx, cancel := context.Background(), func() {}
-	if u.Timeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), u.Timeout)
+	if u.timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), u.timeout)
 	}
 	defer cancel()
-	return u.SamplesService.Add(ctx, u.SampleType, SampleOriginUser, msg)
+	return u.samplesService.Add(ctx, u.sampleType, SampleOriginUser, msg)
 }
 
 // Reader returns a reader for the samples
 func (u *SampleUpdater) Reader() (io.ReadCloser, error) {
 	// we don't want to pass context with timeout here, as it's an async operation
-	return u.SamplesService.Reader(context.Background(), u.SampleType, SampleOriginUser)
+	return u.samplesService.Reader(context.Background(), u.sampleType, SampleOriginUser)
 }
 
 // RWLocker is a read-write locker interface

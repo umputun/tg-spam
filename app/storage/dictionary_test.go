@@ -16,35 +16,17 @@ func TestNewDictionary(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
 
-	tests := []struct {
-		name    string
-		db      *Engine
-		wantErr bool
-	}{
-		{
-			name:    "valid db connection",
-			db:      db,
-			wantErr: false,
-		},
-		{
-			name:    "nil db connection",
-			db:      nil,
-			wantErr: true,
-		},
-	}
+	t.Run("valid db connection", func(t *testing.T) {
+		d, err := NewDictionary(context.Background(), db)
+		assert.NoError(t, err)
+		assert.NotNil(t, d)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d, err := NewDictionary(context.Background(), tt.db)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Nil(t, d)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, d)
-			}
-		})
-	}
+	t.Run("nil db connection", func(t *testing.T) {
+		d, err := NewDictionary(context.Background(), nil)
+		assert.Error(t, err)
+		assert.Nil(t, d)
+	})
 }
 
 func TestDictionary_AddPhrase(t *testing.T) {
@@ -52,58 +34,36 @@ func TestDictionary_AddPhrase(t *testing.T) {
 	defer teardown()
 	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
-	require.NotNil(t, d)
 
 	ctx := context.Background()
 
-	tests := []struct {
-		name    string
-		dType   DictionaryType
-		phrase  string
-		wantErr bool
-	}{
-		{
-			name:    "valid stop phrase",
-			dType:   DictionaryTypeStopPhrase,
-			phrase:  "test stop phrase",
-			wantErr: false,
-		},
-		{
-			name:    "valid ignored word",
-			dType:   DictionaryTypeIgnoredWord,
-			phrase:  "testword",
-			wantErr: false,
-		},
-		{
-			name:    "invalid type",
-			dType:   "invalid",
-			phrase:  "test phrase",
-			wantErr: true,
-		},
-		{
-			name:    "empty phrase",
-			dType:   DictionaryTypeStopPhrase,
-			phrase:  "",
-			wantErr: true,
-		},
-		{
-			name:    "duplicate phrase",
-			dType:   DictionaryTypeStopPhrase,
-			phrase:  "test stop phrase", // Same as first test case
-			wantErr: false,              // Should silently succeed
-		},
-	}
+	t.Run("valid stop phrase with gid", func(t *testing.T) {
+		err := d.Add(ctx, DictionaryTypeStopPhrase, "test stop phrase", "group1")
+		assert.NoError(t, err)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := d.Add(ctx, tt.dType, tt.phrase)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+	t.Run("valid ignored word with gid", func(t *testing.T) {
+		err := d.Add(ctx, DictionaryTypeIgnoredWord, "testword", "group1")
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid type", func(t *testing.T) {
+		err := d.Add(ctx, "invalid", "test phrase", "group1")
+		assert.Error(t, err)
+	})
+
+	t.Run("empty phrase", func(t *testing.T) {
+		err := d.Add(ctx, DictionaryTypeStopPhrase, "", "group1")
+		assert.Error(t, err)
+	})
+
+	t.Run("same phrase different gid", func(t *testing.T) {
+		phrase := "duplicate phrase"
+		err := d.Add(ctx, DictionaryTypeStopPhrase, phrase, "group1")
+		require.NoError(t, err)
+		err = d.Add(ctx, DictionaryTypeStopPhrase, phrase, "group2")
+		assert.NoError(t, err)
+	})
 }
 
 func TestDictionary_Delete(t *testing.T) {
@@ -114,42 +74,264 @@ func TestDictionary_Delete(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Add a test phrase first
-	err = d.Add(ctx, DictionaryTypeStopPhrase, "test phrase")
+	t.Run("delete existing phrase", func(t *testing.T) {
+		err := d.Add(ctx, DictionaryTypeStopPhrase, "test phrase", "group1")
+		require.NoError(t, err)
+
+		var id int64
+		err = db.Get(&id, "SELECT id FROM dictionary WHERE data = ? AND gid = ?", "test phrase", "group1")
+		require.NoError(t, err)
+
+		err = d.Delete(ctx, id)
+		assert.NoError(t, err)
+	})
+
+	t.Run("delete non-existent phrase", func(t *testing.T) {
+		err := d.Delete(ctx, 99999)
+		assert.Error(t, err)
+	})
+}
+
+func TestDictionary_Read(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+	d, err := NewDictionary(context.Background(), db)
 	require.NoError(t, err)
 
-	// Get the ID of the inserted phrase
-	var id int64
-	err = db.Get(&id, "SELECT id FROM dictionary WHERE data = ?", "test phrase")
+	ctx := context.Background()
+
+	// setup test data
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop1", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop2", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeIgnoredWord, "ignored1", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop3", "group2")
 	require.NoError(t, err)
 
-	tests := []struct {
-		name    string
-		id      int64
-		wantErr bool
-	}{
-		{
-			name:    "existing phrase",
-			id:      id,
-			wantErr: false,
-		},
-		{
-			name:    "non-existent phrase",
-			id:      99999,
-			wantErr: true,
-		},
-	}
+	t.Run("read stop phrases group1", func(t *testing.T) {
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase, "group1")
+		assert.NoError(t, err)
+		assert.Len(t, phrases, 2)
+		assert.Contains(t, phrases, "stop1")
+		assert.Contains(t, phrases, "stop2")
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := d.Delete(ctx, tt.id)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+	t.Run("read ignored words group1", func(t *testing.T) {
+		phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord, "group1")
+		assert.NoError(t, err)
+		assert.Len(t, phrases, 1)
+		assert.Contains(t, phrases, "ignored1")
+	})
+
+	t.Run("read non-existent group", func(t *testing.T) {
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase, "nonexistent")
+		assert.NoError(t, err)
+		assert.Empty(t, phrases)
+	})
+
+	t.Run("read with invalid type", func(t *testing.T) {
+		phrases, err := d.Read(ctx, "invalid", "group1")
+		assert.Error(t, err)
+		assert.Nil(t, phrases)
+	})
+}
+
+func TestDictionary_Iterator(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+	d, err := NewDictionary(context.Background(), db)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// setup test data
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop1", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop2", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop3", "group2")
+	require.NoError(t, err)
+
+	t.Run("iterate group1", func(t *testing.T) {
+		iter, err := d.Iterator(ctx, DictionaryTypeStopPhrase, "group1")
+		require.NoError(t, err)
+
+		var phrases []string
+		for phrase := range iter {
+			phrases = append(phrases, phrase)
+		}
+		assert.Len(t, phrases, 2)
+		assert.Contains(t, phrases, "stop1")
+		assert.Contains(t, phrases, "stop2")
+	})
+
+	t.Run("iterate empty group", func(t *testing.T) {
+		iter, err := d.Iterator(ctx, DictionaryTypeStopPhrase, "nonexistent")
+		require.NoError(t, err)
+
+		var phrases []string
+		for phrase := range iter {
+			phrases = append(phrases, phrase)
+		}
+		assert.Empty(t, phrases)
+	})
+
+	t.Run("iterate with invalid type", func(t *testing.T) {
+		iter, err := d.Iterator(ctx, "invalid", "group1")
+		assert.Error(t, err)
+		assert.Nil(t, iter)
+	})
+}
+
+func TestDictionary_Stats(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+	d, err := NewDictionary(context.Background(), db)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// setup test data
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop1", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop2", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop3", "group2")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeIgnoredWord, "ignored1", "group1")
+	require.NoError(t, err)
+	err = d.Add(ctx, DictionaryTypeIgnoredWord, "ignored2", "group2")
+	require.NoError(t, err)
+
+	t.Run("stats for group1", func(t *testing.T) {
+		stats, err := d.Stats(ctx, "group1")
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+		assert.Equal(t, 2, stats.TotalStopPhrases)
+		assert.Equal(t, 1, stats.TotalIgnoredWords)
+	})
+
+	t.Run("stats for group2", func(t *testing.T) {
+		stats, err := d.Stats(ctx, "group2")
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+		assert.Equal(t, 1, stats.TotalStopPhrases)
+		assert.Equal(t, 1, stats.TotalIgnoredWords)
+	})
+
+	t.Run("stats for non-existent group", func(t *testing.T) {
+		stats, err := d.Stats(ctx, "nonexistent")
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+		assert.Equal(t, 0, stats.TotalStopPhrases)
+		assert.Equal(t, 0, stats.TotalIgnoredWords)
+	})
+}
+
+func TestDictionary_Import(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("import with cleanup", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		d, err := NewDictionary(context.Background(), db)
+		require.NoError(t, err)
+
+		input := strings.NewReader(`phrase1,phrase2,"phrase 3, with comma"`)
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, "group1", input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase, "group1")
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(phrases))
+		assert.Contains(t, phrases, "phrase1")
+		assert.Contains(t, phrases, "phrase2")
+		assert.Contains(t, phrases, "phrase 3, with comma")
+	})
+
+	t.Run("import without cleanup", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		d, err := NewDictionary(context.Background(), db)
+		require.NoError(t, err)
+
+		input1 := strings.NewReader(`existing1,"existing 2"`)
+		_, err = d.Import(ctx, DictionaryTypeIgnoredWord, "group1", input1, true)
+		require.NoError(t, err)
+
+		input2 := strings.NewReader(`new1,new2`)
+		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, "group1", input2, false)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord, "group1")
+		require.NoError(t, err)
+		assert.Equal(t, 4, len(phrases))
+	})
+
+	t.Run("import to different gids", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		d, err := NewDictionary(context.Background(), db)
+		require.NoError(t, err)
+
+		// first, add some initial data to both groups
+		input0 := strings.NewReader(`old1,old2`)
+		_, err = d.Import(ctx, DictionaryTypeStopPhrase, "group1", input0, true)
+		require.NoError(t, err)
+		_, err = d.Import(ctx, DictionaryTypeStopPhrase, "group2", input0, true)
+		require.NoError(t, err)
+
+		// verify initial state
+		phrases0, err := d.Read(ctx, DictionaryTypeStopPhrase, "group1")
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(phrases0), "initial group1 count")
+
+		// import new data with cleanup
+		input1 := strings.NewReader(`phrase1,phrase2`)
+		_, err = d.Import(ctx, DictionaryTypeStopPhrase, "group1", input1, true)
+		require.NoError(t, err)
+
+		input2 := strings.NewReader(`phrase3,phrase4`)
+		_, err = d.Import(ctx, DictionaryTypeStopPhrase, "group2", input2, true)
+		require.NoError(t, err)
+
+		// check direct database content for debugging
+		var count1, count2 int
+		err = db.Get(&count1, "SELECT COUNT(*) FROM dictionary WHERE type = ? AND gid = ?",
+			DictionaryTypeStopPhrase, "group1")
+		require.NoError(t, err)
+		err = db.Get(&count2, "SELECT COUNT(*) FROM dictionary WHERE type = ? AND gid = ?",
+			DictionaryTypeStopPhrase, "group2")
+		require.NoError(t, err)
+
+		t.Logf("DB counts - group1: %d, group2: %d", count1, count2)
+
+		// verify final state
+		phrases1, err := d.Read(ctx, DictionaryTypeStopPhrase, "group1")
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(phrases1), "should have 2 phrases in group1")
+		assert.ElementsMatch(t, []string{"phrase1", "phrase2"}, phrases1, "group1 content mismatch")
+
+		phrases2, err := d.Read(ctx, DictionaryTypeStopPhrase, "group2")
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(phrases2), "should have 2 phrases in group2")
+		assert.ElementsMatch(t, []string{"phrase3", "phrase4"}, phrases2, "group2 content mismatch")
+	})
+
+	t.Run("import with invalid input", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		d, err := NewDictionary(context.Background(), db)
+		require.NoError(t, err)
+
+		input := strings.NewReader(`this is "bad csv`)
+		_, err = d.Import(ctx, DictionaryTypeStopPhrase, "group1", input, true)
+		assert.Error(t, err)
+	})
 }
 
 func TestDictionary_ReadPhrases(t *testing.T) {
@@ -172,9 +354,12 @@ func TestDictionary_ReadPhrases(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		err := d.Add(ctx, td.dType, td.phrase)
+		err := d.Add(ctx, td.dType, td.phrase, "group1")
 		require.NoError(t, err)
 	}
+	// add a phrase to a different group
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "stop phrase 3", "group2")
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name          string
@@ -204,7 +389,7 @@ func TestDictionary_ReadPhrases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			phrases, err := d.Read(ctx, tt.dType)
+			phrases, err := d.Read(ctx, tt.dType, "group1")
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, phrases)
@@ -214,107 +399,6 @@ func TestDictionary_ReadPhrases(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDictionary_Iterator(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
-	d, err := NewDictionary(context.Background(), db)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-
-	// Add test phrases
-	testData := []struct {
-		dType  DictionaryType
-		phrase string
-	}{
-		{DictionaryTypeStopPhrase, "stop phrase 1"},
-		{DictionaryTypeStopPhrase, "stop phrase 2"},
-		{DictionaryTypeIgnoredWord, "ignored1"},
-		{DictionaryTypeIgnoredWord, "ignored2"},
-	}
-
-	for _, td := range testData {
-		err := d.Add(ctx, td.dType, td.phrase)
-		require.NoError(t, err)
-	}
-
-	tests := []struct {
-		name          string
-		dType         DictionaryType
-		expectedCount int
-		wantErr       bool
-	}{
-		{
-			name:          "iterate stop phrases",
-			dType:         DictionaryTypeStopPhrase,
-			expectedCount: 2,
-			wantErr:       false,
-		},
-		{
-			name:          "iterate ignored words",
-			dType:         DictionaryTypeIgnoredWord,
-			expectedCount: 2,
-			wantErr:       false,
-		},
-		{
-			name:          "invalid type",
-			dType:         "invalid",
-			expectedCount: 0,
-			wantErr:       true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			iter, err := d.Iterator(ctx, tt.dType)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-
-			var phrases []string
-			for phrase := range iter {
-				phrases = append(phrases, phrase)
-			}
-			assert.Len(t, phrases, tt.expectedCount)
-		})
-	}
-}
-
-func TestDictionary_Stats(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
-	d, err := NewDictionary(context.Background(), db)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-
-	// Add test phrases
-	testData := []struct {
-		dType  DictionaryType
-		phrase string
-	}{
-		{DictionaryTypeStopPhrase, "stop phrase 1"},
-		{DictionaryTypeStopPhrase, "stop phrase 2"},
-		{DictionaryTypeStopPhrase, "stop phrase 3"},
-		{DictionaryTypeIgnoredWord, "ignored1"},
-		{DictionaryTypeIgnoredWord, "ignored2"},
-	}
-
-	for _, td := range testData {
-		err := d.Add(ctx, td.dType, td.phrase)
-		require.NoError(t, err)
-	}
-
-	stats, err := d.Stats(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, stats)
-
-	assert.Equal(t, 3, stats.TotalStopPhrases)
-	assert.Equal(t, 2, stats.TotalIgnoredWords)
 }
 
 func TestDictionaryType_Validate(t *testing.T) {
@@ -352,7 +436,7 @@ func TestDictionary_Concurrent(t *testing.T) {
 
 	// Verify table exists and is accessible
 	ctx := context.Background()
-	err = d.Add(ctx, DictionaryTypeStopPhrase, "test phrase")
+	err = d.Add(ctx, DictionaryTypeStopPhrase, "test phrase", "group1")
 	require.NoError(t, err, "Failed to insert initial test phrase")
 
 	const numWorkers = 10
@@ -367,7 +451,7 @@ func TestDictionary_Concurrent(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < numOps; j++ {
-				if _, err := d.Read(ctx, DictionaryTypeStopPhrase); err != nil {
+				if _, err := d.Read(ctx, DictionaryTypeStopPhrase, "group1"); err != nil {
 					select {
 					case errCh <- fmt.Errorf("reader %d failed: %w", workerID, err):
 					default:
@@ -389,7 +473,7 @@ func TestDictionary_Concurrent(t *testing.T) {
 				if j%2 == 0 {
 					dType = DictionaryTypeIgnoredWord
 				}
-				if err := d.Add(ctx, dType, phrase); err != nil {
+				if err := d.Add(ctx, dType, phrase, "group1"); err != nil {
 					select {
 					case errCh <- fmt.Errorf("writer %d failed: %w", workerID, err):
 					default:
@@ -410,100 +494,13 @@ func TestDictionary_Concurrent(t *testing.T) {
 	}
 
 	// Verify the final state
-	stats, err := d.Stats(ctx)
+	stats, err := d.Stats(ctx, "group1")
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
 	expectedTotal := numWorkers*numOps + 1 // +1 for the initial test phrase
 	actualTotal := stats.TotalStopPhrases + stats.TotalIgnoredWords
 	assert.Equal(t, expectedTotal, actualTotal, "expected %d total phrases, got %d", expectedTotal, actualTotal)
-}
-
-func TestDictionary_Import(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
-	d, err := NewDictionary(context.Background(), db)
-	require.NoError(t, err)
-	ctx := context.Background()
-
-	t.Run("basic import with cleanup", func(t *testing.T) {
-		input := strings.NewReader(`phrase1,phrase2,"phrase 3, with comma"`)
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-		require.NoError(t, err)
-		assert.Equal(t, 3, len(phrases))
-		assert.ElementsMatch(t, []string{"phrase1", "phrase2", "phrase 3, with comma"}, phrases)
-		assert.Equal(t, 3, stats.TotalStopPhrases)
-	})
-
-	t.Run("import without cleanup should append", func(t *testing.T) {
-		// first import
-		input1 := strings.NewReader(`existing1,"existing 2",existing3`)
-		_, err := d.Import(ctx, DictionaryTypeIgnoredWord, input1, true)
-		require.NoError(t, err)
-
-		// second import without cleanup should append
-		input2 := strings.NewReader(`"new phrase 1",new2`)
-		stats, err := d.Import(ctx, DictionaryTypeIgnoredWord, input2, false)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord)
-		require.NoError(t, err)
-		assert.Equal(t, 5, len(phrases))
-		assert.Equal(t, 5, stats.TotalIgnoredWords)
-		assert.ElementsMatch(t, []string{"existing1", "existing 2", "existing3", "new phrase 1", "new2"}, phrases)
-	})
-
-	t.Run("import with multiline input", func(t *testing.T) {
-		input := strings.NewReader("stop1,stop2\nstop3,\"stop 4, complex\"\nstop5")
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-		require.NoError(t, err)
-		assert.Equal(t, 5, len(phrases))
-		assert.ElementsMatch(t, []string{"stop1", "stop2", "stop3", "stop 4, complex", "stop5"}, phrases)
-	})
-
-	t.Run("empty entries should be skipped", func(t *testing.T) {
-		input := strings.NewReader(`phrase1,,phrase2,"",phrase3`)
-		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-		require.NoError(t, err)
-		assert.Equal(t, 3, len(phrases))
-		assert.ElementsMatch(t, []string{"phrase1", "phrase2", "phrase3"}, phrases)
-	})
-
-	t.Run("invalid type", func(t *testing.T) {
-		input := strings.NewReader("phrase")
-		_, err := d.Import(ctx, "invalid", input, true)
-		assert.Error(t, err)
-	})
-
-	t.Run("nil reader", func(t *testing.T) {
-		_, err := d.Import(ctx, DictionaryTypeStopPhrase, nil, true)
-		assert.Error(t, err)
-	})
-
-	t.Run("reader error", func(t *testing.T) {
-		errReader := &errorReader{err: fmt.Errorf("read error")}
-		_, err := d.Import(ctx, DictionaryTypeStopPhrase, errReader, true)
-		assert.Error(t, err)
-	})
-
-	t.Run("malformed csv", func(t *testing.T) {
-		input := strings.NewReader(`this is "bad csv`)
-		_, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-		assert.Error(t, err)
-	})
 }
 
 func TestDictionary_Reader(t *testing.T) {
@@ -517,8 +514,9 @@ func TestDictionary_Reader(t *testing.T) {
 		{
 			name: "stop phrases",
 			setup: func(d *Dictionary) {
-				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test1"))
-				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test2"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test1", "group1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test2", "group1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "test3", "group2"))
 			},
 			dType:   DictionaryTypeStopPhrase,
 			want:    []string{"test1", "test2"},
@@ -543,9 +541,9 @@ func TestDictionary_Reader(t *testing.T) {
 		{
 			name: "mixed entries",
 			setup: func(d *Dictionary) {
-				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored1"))
-				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "stop1"))
-				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored2"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored1", "group1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeStopPhrase, "stop1", "group1"))
+				require.NoError(t, d.Add(context.Background(), DictionaryTypeIgnoredWord, "ignored2", "group1"))
 			},
 			dType:   DictionaryTypeIgnoredWord,
 			want:    []string{"ignored1", "ignored2"},
@@ -565,7 +563,7 @@ func TestDictionary_Reader(t *testing.T) {
 				tt.setup(d)
 			}
 
-			r, err := d.Reader(context.Background(), tt.dType)
+			r, err := d.Reader(context.Background(), tt.dType, "group1")
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

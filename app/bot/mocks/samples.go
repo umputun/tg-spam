@@ -19,10 +19,10 @@ import (
 //			DeleteMessageFunc: func(ctx context.Context, message string) error {
 //				panic("mock out the DeleteMessage method")
 //			},
-//			ReadFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
+//			ReadFunc: func(ctx context.Context, t storage.sampleType, o storage.SampleOrigin) ([]string, error) {
 //				panic("mock out the Read method")
 //			},
-//			ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+//			ReaderFunc: func(ctx context.Context, t storage.sampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 //				panic("mock out the Reader method")
 //			},
 //			StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {

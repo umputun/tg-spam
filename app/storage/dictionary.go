@@ -39,6 +39,7 @@ func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
 	schema := `
         CREATE TABLE IF NOT EXISTS dictionary (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gid TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
             data TEXT NOT NULL UNIQUE
@@ -46,6 +47,7 @@ func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
         CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
         CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
         CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+		CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid);
     `
 
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
@@ -60,7 +62,7 @@ func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
-func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) error {
+func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data, gid string) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -79,8 +81,8 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 	defer tx.Rollback()
 
 	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := `INSERT OR IGNORE INTO dictionary (type, data) VALUES (?, ?)`
-	if _, err = tx.ExecContext(ctx, query, t, data); err != nil {
+	query := `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`
+	if _, err = tx.ExecContext(ctx, query, t, data, gid); err != nil {
 		return fmt.Errorf("failed to add data: %w", err)
 	}
 
@@ -111,7 +113,7 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 }
 
 // Read reads all entries from the dictionary by type
-func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, error) {
+func (d *Dictionary) Read(ctx context.Context, t DictionaryType, gid string) ([]string, error) {
 	d.db.RLock()
 	defer d.db.RUnlock()
 
@@ -120,19 +122,19 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 	}
 
 	var data []string
-	query := `SELECT data FROM dictionary WHERE type = ? ORDER BY timestamp`
-	if err := d.db.SelectContext(ctx, &data, query, t); err != nil {
+	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
+	if err := d.db.SelectContext(ctx, &data, query, t, gid); err != nil {
 		return nil, fmt.Errorf("failed to get data: %w", err)
 	}
 	return data, nil
 }
 
 // Reader returns a reader for phrases by type
-func (d *Dictionary) Reader(ctx context.Context, t DictionaryType) (io.ReadCloser, error) {
+func (d *Dictionary) Reader(ctx context.Context, t DictionaryType, gid string) (io.ReadCloser, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
-	recs, err := d.Read(ctx, t)
+	recs, err := d.Read(ctx, t, gid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read phrases: %w", err)
 	}
@@ -141,15 +143,15 @@ func (d *Dictionary) Reader(ctx context.Context, t DictionaryType) (io.ReadClose
 }
 
 // Iterator returns an iterator for phrases by type
-func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[string], error) {
+func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType, gid string) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
 
-	query := `SELECT data FROM dictionary WHERE type = ? ORDER BY timestamp`
+	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
 
 	d.db.RLock()
-	rows, err := d.db.QueryxContext(ctx, query, t)
+	rows, err := d.db.QueryxContext(ctx, query, t, gid)
 	d.db.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query phrases: %w", err)
@@ -172,7 +174,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 // Import reads phrases from the reader and imports them into the storage.
 // If withCleanup is true removes all entries with the same type before import.
 // Input format is either a single phrase per line or a CSV file with multiple phrases.
-func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
+func (d *Dictionary) Import(ctx context.Context, t DictionaryType, gid string, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -192,14 +194,14 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 
 	// remove all entries with the same type if requested
 	if withCleanup {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ?`, t); err != nil {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ? AND gid = ?`, t, gid); err != nil {
 			d.db.Unlock()
 			return nil, fmt.Errorf("failed to remove old entries: %w", err)
 		}
 	}
 
 	// prepare statement for inserts
-	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data) VALUES (?, ?)`)
+	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`)
 	if err != nil {
 		d.db.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
@@ -227,7 +229,7 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 				continue
 			}
 
-			if _, err = insertStmt.ExecContext(ctx, t, field); err != nil {
+			if _, err = insertStmt.ExecContext(ctx, t, field, gid); err != nil {
 				d.db.Unlock()
 				return nil, fmt.Errorf("failed to add entry: %w", err)
 			}
@@ -241,7 +243,7 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 
 	d.db.Unlock() // release the lock before getting stats
 
-	return d.Stats(ctx)
+	return d.Stats(ctx, gid)
 }
 
 // String implements Stringer interface
@@ -267,19 +269,23 @@ func (d *DictionaryStats) String() string {
 	return fmt.Sprintf("stop phrases: %d, ignored words: %d", d.TotalStopPhrases, d.TotalIgnoredWords)
 }
 
-// Stats returns statistics about dictionary entries
-func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
+// Stats returns statistics about dictionary entries for the given GID
+func (d *Dictionary) Stats(ctx context.Context, gid string) (*DictionaryStats, error) {
 	d.db.RLock()
 	defer d.db.RUnlock()
 
 	query := `
         SELECT 
-            COUNT(CASE WHEN type = 'stop_phrase' THEN 1 END) as stop_phrases_count,
-            COUNT(CASE WHEN type = 'ignored_word' THEN 1 END) as ignored_words_count
-        FROM dictionary`
+            COUNT(CASE WHEN type = ? THEN 1 END) as stop_phrases_count,
+            COUNT(CASE WHEN type = ? THEN 1 END) as ignored_words_count
+        FROM dictionary
+        WHERE gid = ?`
 
 	var stats DictionaryStats
-	if err := d.db.GetContext(ctx, &stats, query); err != nil {
+	if err := d.db.GetContext(ctx, &stats, query,
+		DictionaryTypeStopPhrase,
+		DictionaryTypeIgnoredWord,
+		gid); err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil

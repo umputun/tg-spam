@@ -21,6 +21,7 @@ type DetectedSpam struct {
 // DetectedSpamInfo represents information about a detected spam entry.
 type DetectedSpamInfo struct {
 	ID         int64                `db:"id"`
+	GID        string               `db:"gid"`
 	Text       string               `db:"text"`
 	UserID     int64                `db:"user_id"`
 	UserName   string               `db:"user_name"`
@@ -38,6 +39,7 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS detected_spam (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		gid TEXT NOT NULL DEFAULT '',
 		text TEXT,
 		user_id INTEGER,
 		user_name TEXT,
@@ -49,15 +51,28 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("failed to create detected_spam table: %w", err)
 	}
 
-	_, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`)
-	if err != nil {
+	// add added column if it doesn't exist
+	if _, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
 		}
 	}
+
+	// add gid column if it doesn't exist
+	if _, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
+		}
+	}
+
 	// add index on timestamp
 	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
 		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
+	}
+
+	// add index on gid
+	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`); err != nil {
+		return nil, fmt.Errorf("failed to create index on gid: %w", err)
 	}
 
 	return &DetectedSpam{db: db}, nil
@@ -68,17 +83,21 @@ func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, check
 	ds.db.Lock()
 	defer ds.db.Unlock()
 
+	if entry.GID == "" || entry.Text == "" || entry.UserID == 0 || entry.UserName == "" {
+		return fmt.Errorf("missing required fields")
+	}
+
 	checksJSON, err := json.Marshal(checks)
 	if err != nil {
 		return fmt.Errorf("failed to marshal checks: %w", err)
 	}
 
-	query := `INSERT INTO detected_spam (text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?)`
-	if _, err := ds.db.ExecContext(ctx, query, entry.Text, entry.UserID, entry.UserName, entry.Timestamp, checksJSON); err != nil {
+	query := `INSERT INTO detected_spam (gid, text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?, ?)`
+	if _, err := ds.db.ExecContext(ctx, query, entry.GID, entry.Text, entry.UserID, entry.UserName, entry.Timestamp, checksJSON); err != nil {
 		return fmt.Errorf("failed to insert detected spam entry: %w", err)
 	}
 
-	log.Printf("[INFO] detected spam entry added for user_id:%d, name:%s", entry.UserID, entry.UserName)
+	log.Printf("[INFO] detected spam entry added for gid:%s, user_id:%d, name:%s", entry.GID, entry.UserID, entry.UserName)
 	return nil
 }
 
