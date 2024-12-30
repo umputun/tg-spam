@@ -123,8 +123,9 @@ type options struct {
 		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash for user 'tg-spam'"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
-	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
-	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
+	Training    bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
+	SoftBan     bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
+	ConvertOnly bool `long:"convert-only" description:"convert only mode, convert text samples to db format and exit"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -195,7 +196,7 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
-	if !opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	if !opts.Server.Enabled && !opts.ConvertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
@@ -232,6 +233,10 @@ func execute(ctx context.Context, opts options) error {
 	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
+	}
+	if opts.ConvertOnly {
+		log.Print("[WARN] convert only mode, converting text samples and exit")
+		return nil
 	}
 
 	// make locator

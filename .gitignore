@@ -32,3 +32,4 @@ tg-spam.db-wal
 logs/
 site/public/
 _examples/simplechat/messages.db
+*.loaded
