@@ -403,7 +403,7 @@ func (d *Detector) UpdateSpam(msg string) error { return d.updateSample(msg, d.s
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (d *Detector) UpdateHam(msg string) error { return d.updateSample(msg, d.hamSamplesUpd, "ham") }
 
-// updateSample appends a message to the samples file and updates the classifier
+// updateSample appends a message to the samples store and updates the classifier
 // doesn't reset state, update append samples
 func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) error {
 	d.lock.Lock()
@@ -643,8 +643,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 			if !scriptFound {
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
-				  (r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
-				  (r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
+					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
+					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
 					scripts["Mathematical"] = true
 					if len(scripts) > 1 {
 						return true

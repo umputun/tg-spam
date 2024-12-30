@@ -207,15 +207,15 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
 
+	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
+	dataDB, err := storage.NewSqliteDB(dbFile)
+	if err != nil {
+		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
+	}
+	log.Printf("[DEBUG] data db: %s", dbFile)
+
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
-
-	dataFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	dataDB, err := storage.NewSqliteDB(dataFile)
-	if err != nil {
-		return fmt.Errorf("can't make data db file %s, %w", dataFile, err)
-	}
-	log.Printf("[DEBUG] data db: %s", dataFile)
 
 	// make store and load approved users
 	approvedUsersStore, auErr := storage.NewApprovedUsers(ctx, dataDB)
@@ -227,7 +227,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
-	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
+	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dbFile, count)
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
@@ -301,7 +301,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-	  " suppress: %v, dry: %v, training: %v}",
+		" suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
@@ -504,14 +504,6 @@ func makeDetector(opts options) *tgspam.Detector {
 	}
 	detector.WithMetaChecks(metaChecks...)
 
-	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
-	detector.WithSpamUpdater(bot.NewSampleUpdater(dynSpamFile))
-	log.Printf("[DEBUG] dynamic spam file: %s", dynSpamFile)
-
-	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
-	detector.WithHamUpdater(bot.NewSampleUpdater(dynHamFile))
-	log.Printf("[DEBUG] dynamic ham file: %s", dynHamFile)
-
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 	return detector
 }
@@ -552,6 +544,11 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *sqlx.DB, detector *t
 	if err := spamBot.ReloadSamples(); err != nil {
 		return nil, fmt.Errorf("can't relaod samples, %w", err)
 	}
+
+	// set detector samples updaters
+	detector.WithSpamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeSpam, opts.StorageTimeout))
+	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, opts.StorageTimeout))
+
 	return spamBot, nil
 }
 
