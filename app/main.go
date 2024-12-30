@@ -685,6 +685,9 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 		if err != nil {
 			return nil, fmt.Errorf("can't load samples, %w", err)
 		}
+		if err := fh.Close(); err != nil {
+			return nil, fmt.Errorf("can't close samples file, %w", err)
+		}
 		if err := os.Rename(file, file+".loaded"); err != nil {
 			return nil, fmt.Errorf("can't rename samples file, %w", err)
 		}
@@ -756,6 +759,9 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 		stats, err := dictDB.Import(ctx, dictType, fh, true) // clean records before import
 		if err != nil {
 			return nil, fmt.Errorf("can't load dictionary, %w", err)
+		}
+		if err := fh.Close(); err != nil {
+			return nil, fmt.Errorf("can't close dictionary file, %w", err)
 		}
 		if err := os.Rename(file, file+".loaded"); err != nil {
 			return nil, fmt.Errorf("can't rename dictionary file, %w", err)
