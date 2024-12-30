@@ -101,8 +101,8 @@ type SpamFilter interface {
 	UpdateHam(msg string) error
 	ReloadSamples() (err error)
 	DynamicSamples() (spam, ham []string, err error)
-	RemoveDynamicSpamSample(sample string) (int, error)
-	RemoveDynamicHamSample(sample string) (int, error)
+	RemoveDynamicSpamSample(sample string) error
+	RemoveDynamicHamSample(sample string) error
 }
 
 // Locator is a storage interface used to get user id by name and vice versa.
@@ -340,7 +340,7 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 }
 
 // deleteSampleHandler handles DELETE /samples request. It deletes dynamic samples both for spam and ham.
-func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Msg string `json:"msg"`
@@ -356,8 +356,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 			}
 		}
 
-		count, err := delFn(req.Msg)
-		if err != nil {
+		if err := delFn(req.Msg); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
 			return
@@ -366,7 +365,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 		if isHtmxRequest {
 			s.renderSamples(w, "samples_list")
 		} else {
-			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": count})
+			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": 1})
 		}
 	}
 }

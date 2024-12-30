@@ -205,9 +205,6 @@ func execute(ctx context.Context, opts options) error {
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
-	if err := os.MkdirAll(opts.Files.DynamicDataPath, 0o700); err != nil {
-		return fmt.Errorf("can't make dynamic dir, %w", err)
-	}
 
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
@@ -232,7 +229,7 @@ func execute(ctx context.Context, opts options) error {
 	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
 
 	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, detector)
+	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
@@ -514,20 +511,37 @@ func makeDetector(opts options) *tgspam.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, detector *tgspam.Detector) (*bot.SpamFilter, error) {
-	spamBotParams := bot.SpamConfig{
-		SpamSamplesFile:    filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
-		HamSamplesFile:     filepath.Join(opts.Files.SamplesDataPath, samplesHamFile),
-		StopWordsFile:      filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
-		ExcludedTokensFile: filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
-		SpamDynamicFile:    filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile),
-		HamDynamicFile:     filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile),
-		WatchDelay:         opts.Files.WatchInterval,
-		SpamMsg:            opts.Message.Spam,
-		SpamDryMsg:         opts.Message.Dry,
-		Dry:                opts.Dry,
+func makeSpamBot(ctx context.Context, opts options, dataDB *sqlx.DB, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+	if dataDB == nil || detector == nil {
+		return nil, errors.New("nil datadb or detector")
 	}
-	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
+
+	// make samples store
+	samplesStore, err := storage.NewSamples(ctx, dataDB)
+	if err != nil {
+		return nil, fmt.Errorf("can't make samples store, %w", err)
+	}
+	if err = migrateSamples(ctx, opts, samplesStore); err != nil {
+		return nil, fmt.Errorf("can't migrate samples, %w", err)
+	}
+
+	// make dictionary store
+	dictionaryStore, err := storage.NewDictionary(ctx, dataDB)
+	if err != nil {
+		return nil, fmt.Errorf("can't make dictionary store, %w", err)
+	}
+	if err := migrateDicts(ctx, opts, dictionaryStore); err != nil {
+		return nil, fmt.Errorf("can't migrate dictionary, %w", err)
+	}
+
+	spamBotParams := bot.SpamConfig{
+		SamplesStore: samplesStore,
+		DictStore:    dictionaryStore,
+		SpamMsg:      opts.Message.Spam,
+		SpamDryMsg:   opts.Message.Dry,
+		Dry:          opts.Dry,
+	}
+	spamBot := bot.NewSpamFilter(detector, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {

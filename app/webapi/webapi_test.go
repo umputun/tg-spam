@@ -206,8 +206,8 @@ func TestServer_routes(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{
 		UpdateHamFunc:               func(msg string) error { return nil },
 		UpdateSpamFunc:              func(msg string) error { return nil },
-		RemoveDynamicSpamSampleFunc: func(sample string) (int, error) { return 1, nil },
-		RemoveDynamicHamSampleFunc:  func(sample string) (int, error) { return 1, nil },
+		RemoveDynamicSpamSampleFunc: func(sample string) error { return nil },
+		RemoveDynamicHamSampleFunc:  func(sample string) error { return nil },
 	}
 	locatorMock := &mocks.LocatorMock{
 		UserIDByNameFunc: func(ctx context.Context, userName string) int64 {
@@ -568,7 +568,7 @@ func TestServer_updateSampleHandler(t *testing.T) {
 
 func TestServer_deleteSampleHandler(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{
-		RemoveDynamicHamSampleFunc: func(sample string) (int, error) { return 1, nil },
+		RemoveDynamicHamSampleFunc: func(sample string) error { return nil },
 		DynamicSamplesFunc: func() ([]string, []string, error) {
 			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
 		},
@@ -625,7 +625,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 	})
 
 	t.Run("delete ham sample with error", func(t *testing.T) {
-		spamFilterMock.RemoveDynamicHamSampleFunc = func(sample string) (int, error) { return 0, assert.AnError }
+		spamFilterMock.RemoveDynamicHamSampleFunc = func(sample string) error { return assert.AnError }
 		spamFilterMock.ResetCalls()
 		reqBody, err := json.Marshal(map[string]string{
 			"msg": "test message",

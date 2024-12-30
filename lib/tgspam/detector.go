@@ -39,24 +39,23 @@ type Detector struct {
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
-
-	userStorage UserStorage
+	userStorage    UserStorage
 
 	lock sync.RWMutex
 }
 
 // Config is a set of parameters for Detector.
 type Config struct {
-	SimilarityThreshold float64    // threshold for spam similarity, 0.0 - 1.0
-	MinMsgLen           int        // minimum message length to check
-	MaxAllowedEmoji     int        // maximum number of emojis allowed in a message
-	CasAPI              string     // CAS API URL
-	FirstMessageOnly    bool       // if true, only the first message from a user is checked
-	FirstMessagesCount  int        // number of first messages to check for spam
-	HTTPClient          HTTPClient // http client to use for requests
-	MinSpamProbability  float64    // minimum spam probability to consider a message spam with classifier, if 0 - ignored
-	OpenAIVeto          bool       // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
-	MultiLangWords      int        // if true, check for number of multi-lingual words
+	SimilarityThreshold float64       // threshold for spam similarity, 0.0 - 1.0
+	MinMsgLen           int           // minimum message length to check
+	MaxAllowedEmoji     int           // maximum number of emojis allowed in a message
+	CasAPI              string        // CAS API URL
+	FirstMessageOnly    bool          // if true, only the first message from a user is checked
+	FirstMessagesCount  int           // number of first messages to check for spam
+	HTTPClient          HTTPClient    // http client to use for requests
+	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
+	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 
 	AbnormalSpacing struct {
@@ -644,8 +643,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 			if !scriptFound {
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
-					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
-					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
+				  (r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
+				  (r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
 					scripts["Mathematical"] = true
 					if len(scripts) > 1 {
 						return true

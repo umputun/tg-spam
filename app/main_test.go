@@ -177,26 +177,28 @@ func Test_makeSpamBot(t *testing.T) {
 
 	t.Run("no options", func(t *testing.T) {
 		var opts options
-		_, err := makeSpamBot(ctx, opts, nil)
+		_, err := makeSpamBot(ctx, opts, nil, nil)
 		assert.Error(t, err)
 	})
 
 	t.Run("with valid options", func(t *testing.T) {
 		var opts options
-		tmpDir, err := os.MkdirTemp("", "spambot_main_test")
-		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
-
-		_, err = os.Create(filepath.Join(tmpDir, samplesSpamFile))
-		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, samplesHamFile))
-		require.NoError(t, err)
-		_, err = os.Create(filepath.Join(tmpDir, excludeTokensFile))
-		require.NoError(t, err)
+		tmpDir := t.TempDir()
 
 		opts.Files.SamplesDataPath = tmpDir
 		detector := makeDetector(opts)
-		res, err := makeSpamBot(ctx, opts, detector)
+		db, err := storage.NewSqliteDB("tg-spam.db")
+		require.NoError(t, err)
+		defer db.Close()
+
+		samplesStore, err := storage.NewSamples(ctx, db)
+		require.NoError(t, err)
+		err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+		require.NoError(t, err)
+		err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+		require.NoError(t, err)
+
+		res, err := makeSpamBot(ctx, opts, db, detector)
 		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})
@@ -210,8 +212,18 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.Server.Enabled = true
 	opts.Server.ListenAddr = ":9988"
 	opts.Server.AuthPasswd = "auto"
-	opts.Files.SamplesDataPath = "webapi/testdata"
-	opts.Files.DynamicDataPath = "webapi/testdata"
+
+	opts.Files.SamplesDataPath = t.TempDir()
+	db, err := storage.NewSqliteDB("tg-spam.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	samplesStore, err := storage.NewSamples(ctx, db)
+	require.NoError(t, err)
+	err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+	require.NoError(t, err)
+	err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+	require.NoError(t, err)
 
 	done := make(chan struct{})
 	go func() {
@@ -371,7 +383,7 @@ func Test_migrateSamples(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		store, err := storage.NewSamples(db)
+		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
 		// create new files for migration, all 4 files should be migrated
@@ -419,7 +431,7 @@ func Test_migrateSamples(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		store, err := storage.NewSamples(db)
+		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
 		// create already loaded files
@@ -443,7 +455,7 @@ func Test_migrateSamples(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		store, err := storage.NewSamples(db)
+		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
@@ -469,7 +481,7 @@ func Test_migrateSamples(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		store, err := storage.NewSamples(db)
+		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
 		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0600))
@@ -494,7 +506,7 @@ func Test_migrateDicts(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		dict, err := storage.NewDictionary(db)
+		dict, err := storage.NewDictionary(context.Background(), db)
 		require.NoError(t, err)
 
 		// create new files for migration
@@ -528,7 +540,7 @@ func Test_migrateDicts(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		dict, err := storage.NewDictionary(db)
+		dict, err := storage.NewDictionary(context.Background(), db)
 		require.NoError(t, err)
 
 		// create already loaded files
@@ -562,7 +574,7 @@ func Test_migrateDicts(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		dict, err := storage.NewDictionary(db)
+		dict, err := storage.NewDictionary(context.Background(), db)
 		require.NoError(t, err)
 
 		// create empty files
@@ -583,7 +595,7 @@ func Test_migrateDicts(t *testing.T) {
 		db, err := sqlx.Open("sqlite", ":memory:")
 		require.NoError(t, err)
 		defer db.Close()
-		dict, err := storage.NewDictionary(db)
+		dict, err := storage.NewDictionary(context.Background(), db)
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
