@@ -124,9 +124,10 @@ type options struct {
 		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash for user 'tg-spam'"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
-	Training    bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
-	SoftBan     bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
-	ConvertOnly bool `long:"convert-only" description:"convert only mode, convert text samples to db format and exit"`
+	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
+	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
+
+	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -197,7 +198,8 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
-	if !opts.Server.Enabled && !opts.ConvertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	concertOnly := opts.Convert == "only"
+	if !opts.Server.Enabled && !concertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
@@ -235,7 +237,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
-	if opts.ConvertOnly {
+	if opts.Convert == "only" {
 		log.Print("[WARN] convert only mode, converting text samples and exit")
 		return nil
 	}
@@ -671,6 +673,10 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 
 // migrateSamples runs migrations from legacy text files samples to db, if needed
 func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Samples) error {
+	if opts.Convert == "disabled" {
+		log.Print("[DEBUG] samples migration disabled")
+		return nil
+	}
 	migrateSamples := func(file string, sampleType storage.SampleType, origin storage.SampleOrigin) (*storage.SamplesStats, error) {
 		if _, err := os.Stat(file); err != nil {
 			log.Printf("[DEBUG] samples file %s not found, err: %v, skip", file, err)
