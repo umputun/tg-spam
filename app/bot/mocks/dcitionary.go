@@ -16,7 +16,7 @@ import (
 //
 //		// make and configure a mocked bot.DictStore
 //		mockedDictStore := &DictStoreMock{
-//			ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+//			ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 //				panic("mock out the Reader method")
 //			},
 //		}
@@ -27,7 +27,7 @@ import (
 //	}
 type DictStoreMock struct {
 	// ReaderFunc mocks the Reader method.
-	ReaderFunc func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error)
+	ReaderFunc func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -35,6 +35,8 @@ type DictStoreMock struct {
 		Reader []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Gid is the gid argument value.
+			Gid string
 			// T is the t argument value.
 			T storage.DictionaryType
 		}
@@ -43,21 +45,23 @@ type DictStoreMock struct {
 }
 
 // Reader calls ReaderFunc.
-func (mock *DictStoreMock) Reader(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+func (mock *DictStoreMock) Reader(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 	if mock.ReaderFunc == nil {
 		panic("DictStoreMock.ReaderFunc: method is nil but DictStore.Reader was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
+		Gid string
 		T   storage.DictionaryType
 	}{
 		Ctx: ctx,
+		Gid: gid,
 		T:   t,
 	}
 	mock.lockReader.Lock()
 	mock.calls.Reader = append(mock.calls.Reader, callInfo)
 	mock.lockReader.Unlock()
-	return mock.ReaderFunc(ctx, t)
+	return mock.ReaderFunc(ctx, gid, t)
 }
 
 // ReaderCalls gets all the calls that were made to Reader.
@@ -66,10 +70,12 @@ func (mock *DictStoreMock) Reader(ctx context.Context, t storage.DictionaryType)
 //	len(mockedDictStore.ReaderCalls())
 func (mock *DictStoreMock) ReaderCalls() []struct {
 	Ctx context.Context
+	Gid string
 	T   storage.DictionaryType
 } {
 	var calls []struct {
 		Ctx context.Context
+		Gid string
 		T   storage.DictionaryType
 	}
 	mock.lockReader.RLock()

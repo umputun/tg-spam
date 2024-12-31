@@ -185,6 +185,7 @@ func Test_makeSpamBot(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		opts.Files.SamplesDataPath = tmpDir
+		opts.InstanceID = "gr1"
 		detector := makeDetector(opts)
 		db, err := storage.NewSqliteDB("tg-spam.db")
 		require.NoError(t, err)
@@ -192,9 +193,9 @@ func Test_makeSpamBot(t *testing.T) {
 
 		samplesStore, err := storage.NewSamples(ctx, db)
 		require.NoError(t, err)
-		err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+		err = samplesStore.Add(ctx, "gr1", storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
 		require.NoError(t, err)
-		err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+		err = samplesStore.Add(ctx, "gr1", storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 		require.NoError(t, err)
 
 		res, err := makeSpamBot(ctx, opts, db, detector)
@@ -219,9 +220,9 @@ func Test_activateServerOnly(t *testing.T) {
 
 	samplesStore, err := storage.NewSamples(ctx, db)
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+	err = samplesStore.Add(ctx, "tg-spam", storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+	err = samplesStore.Add(ctx, "tg-spam", storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 	require.NoError(t, err)
 
 	done := make(chan struct{})
@@ -377,6 +378,7 @@ func Test_migrateSamples(t *testing.T) {
 	tmpDir := t.TempDir()
 	opts := options{}
 	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = tmpDir, tmpDir
+	opts.InstanceID = "gr1"
 
 	t.Run("full migration", func(t *testing.T) {
 		db, err := storage.NewSqliteDB(":memory:")
@@ -408,12 +410,12 @@ func Test_migrateSamples(t *testing.T) {
 		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
 		assert.Error(t, err, "original file should be renamed")
 
-		s, err := store.Stats(context.Background())
+		s, err := store.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 6, s.TotalSpam)
 		assert.Equal(t, 4, s.TotalHam)
 
-		res, err := store.Read(context.Background(), storage.SampleTypeSpam, storage.SampleOriginUser)
+		res, err := store.Read(context.Background(), "gr1", storage.SampleTypeSpam, storage.SampleOriginUser)
 		require.NoError(t, err)
 		assert.Equal(t, 3, len(res))
 		assert.Equal(t, "new dspam1", res[0])
@@ -434,8 +436,10 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create already loaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"), []byte("old spam"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"), []byte("old ham"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"),
+			[]byte("old spam"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"),
+			[]byte("old ham"), 0o600))
 
 		err = migrateSamples(context.Background(), opts, store)
 		assert.NoError(t, err)
@@ -470,7 +474,7 @@ func Test_migrateSamples(t *testing.T) {
 		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"))
 		assert.NoError(t, err)
 
-		s, err := store.Stats(context.Background())
+		s, err := store.Stats(context.Background(), "tg-spam")
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalSpam)
 		assert.Equal(t, 1, s.TotalHam)
@@ -495,6 +499,7 @@ func Test_migrateDicts(t *testing.T) {
 	tmpDir := t.TempDir()
 	opts := options{}
 	opts.Files.SamplesDataPath = tmpDir
+	opts.InstanceID = "gr1"
 
 	t.Run("nil dictionary", func(t *testing.T) {
 		err := migrateDicts(context.Background(), opts, nil)
@@ -529,7 +534,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify data imported correctly
-		s, err := dict.Stats(context.Background())
+		s, err := dict.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 3, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)
@@ -558,7 +563,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify import happened correctly
-		s, err := dict.Stats(context.Background())
+		s, err := dict.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 2, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)
@@ -584,7 +589,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify stats
-		s, err := dict.Stats(context.Background())
+		s, err := dict.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalStopPhrases)
 		assert.Equal(t, 0, s.TotalIgnoredWords)
@@ -613,7 +618,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify stats reflect only migrated data
-		s, err := dict.Stats(context.Background())
+		s, err := dict.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)

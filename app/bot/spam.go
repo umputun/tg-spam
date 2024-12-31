@@ -34,8 +34,8 @@ type SpamConfig struct {
 
 	SpamMsg    string
 	SpamDryMsg string
-
-	Dry bool
+	GroupID    string
+	Dry        bool
 }
 
 // Detector is a spam detector interface
@@ -53,15 +53,15 @@ type Detector interface {
 
 // SamplesStore is a storage for spam samples
 type SamplesStore interface {
-	Read(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
-	Reader(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
-	DeleteMessage(ctx context.Context, message string) error
-	Stats(ctx context.Context) (*storage.SamplesStats, error)
+	Read(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
+	Reader(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
+	DeleteMessage(ctx context.Context, gid string, message string) error
+	Stats(ctx context.Context, gid string, ) (*storage.SamplesStats, error)
 }
 
 // DictStore is a storage for dictionaries, i.e. stop words and ignored words
 type DictStore interface {
-	Reader(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error)
+	Reader(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error)
 }
 
 // NewSpamFilter creates new spam filter
@@ -170,9 +170,13 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 
 	var exclReader, spamReader, hamReader, stopWordsReader, spamDynamicReader, hamDynamicReader io.ReadCloser
 	ctx := context.TODO()
+	gid := s.params.GroupID
+	if gid == "" {
+		return fmt.Errorf("group id is not set")
+	}
 
 	// check mandatory data presence
-	st, err := s.params.SamplesStore.Stats(ctx)
+	st, err := s.params.SamplesStore.Stats(ctx, gid)
 	if err != nil {
 		return fmt.Errorf("failed to get samples store stats: %w", err)
 	}
@@ -180,34 +184,34 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 		return fmt.Errorf("no pesistent spam or ham samples found in the store")
 	}
 
-	if spamReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset); err != nil {
+	if spamReader, err = s.params.SamplesStore.Reader(ctx, gid, storage.SampleTypeSpam, storage.SampleOriginPreset); err != nil {
 		return fmt.Errorf("failed to get persistent spam samples: %w", err)
 	}
 	defer spamReader.Close()
 
-	if hamReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeHam, storage.SampleOriginPreset); err != nil {
+	if hamReader, err = s.params.SamplesStore.Reader(ctx, gid, storage.SampleTypeHam, storage.SampleOriginPreset); err != nil {
 		return fmt.Errorf("failed to get persistent ham samples: %w", err)
 	}
 	defer hamReader.Close()
 
-	if spamDynamicReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
+	if spamDynamicReader, err = s.params.SamplesStore.Reader(ctx, gid, storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
 		return fmt.Errorf("failed to get dynamic spam samples: %w", err)
 	}
 	defer spamDynamicReader.Close()
 
-	if hamDynamicReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
+	if hamDynamicReader, err = s.params.SamplesStore.Reader(ctx, gid, storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
 		return fmt.Errorf("failed to get dynamic ham samples: %w", err)
 	}
 	defer hamDynamicReader.Close()
 
 	// stop-words are optional
-	if stopWordsReader, err = s.params.DictStore.Reader(ctx, storage.DictionaryTypeStopPhrase); err != nil {
+	if stopWordsReader, err = s.params.DictStore.Reader(ctx, gid, storage.DictionaryTypeStopPhrase); err != nil {
 		return fmt.Errorf("failed to get stop words: %w", err)
 	}
 	defer stopWordsReader.Close()
 
 	// excluded tokens are optional
-	if exclReader, err = s.params.DictStore.Reader(ctx, storage.DictionaryTypeIgnoredWord); err != nil {
+	if exclReader, err = s.params.DictStore.Reader(ctx, gid, storage.DictionaryTypeIgnoredWord); err != nil {
 		return fmt.Errorf("failed to get excluded tokens: %w", err)
 	}
 	defer exclReader.Close()
@@ -233,12 +237,13 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 // DynamicSamples returns dynamic spam and ham samples. both are optional
 func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 	errs := new(multierror.Error)
+	gid := s.params.GroupID
 
-	if spam, err = s.params.SamplesStore.Read(context.TODO(), storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
+	if spam, err = s.params.SamplesStore.Read(context.TODO(), gid, storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to read dynamic spam samples: %w", err))
 	}
 
-	if ham, err = s.params.SamplesStore.Read(context.TODO(), storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
+	if ham, err = s.params.SamplesStore.Read(context.TODO(), gid, storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to read dynamic ham samples: %w", err))
 	}
 
@@ -249,7 +254,7 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
 	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
 
-	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), sample); err != nil {
+	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), s.params.GroupID, sample); err != nil {
 		return fmt.Errorf("failed to delete message: %w", err)
 	}
 	if err := s.ReloadSamples(); err != nil {
@@ -262,7 +267,7 @@ func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
 func (s *SpamFilter) RemoveDynamicHamSample(sample string) error {
 	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
 
-	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), sample); err != nil {
+	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), s.params.GroupID, sample); err != nil {
 		return fmt.Errorf("failed to delete message: %w", err)
 	}
 	if err := s.ReloadSamples(); err != nil {

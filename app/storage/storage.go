@@ -11,6 +11,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
+
+	"github.com/umputun/tg-spam/lib/approved"
 )
 
 // EngineType is a type of database engine
@@ -95,4 +97,31 @@ type RWLocker interface {
 	sync.Locker
 	RLock()
 	RUnlock()
+}
+
+// PinnedGIDApprovedUsers is a storage for approved users for a given GID
+// needed for consumers without support of per-call gid parameter, like Detector
+type PinnedGIDApprovedUsers struct {
+	au  *ApprovedUsers
+	gid string
+}
+
+// NewPinnedGIDApprovedUsers creates a new PinnedGIDApprovedUsers
+func NewPinnedGIDApprovedUsers(au *ApprovedUsers, gid string) *PinnedGIDApprovedUsers {
+	return &PinnedGIDApprovedUsers{au: au, gid: gid}
+}
+
+// Read returns a list of all approved users for the pinned GID
+func (au *PinnedGIDApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
+	return au.au.Read(ctx, au.gid)
+}
+
+// Write adds a new approved user for the pinned GID
+func (au *PinnedGIDApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
+	return au.au.Write(ctx, user)
+}
+
+// Delete removes an approved user for the pinned GID
+func (au *PinnedGIDApprovedUsers) Delete(ctx context.Context, id string) error {
+	return au.au.Delete(ctx, id)
 }

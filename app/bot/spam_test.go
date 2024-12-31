@@ -255,16 +255,16 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
@@ -272,6 +272,7 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			err := s.UpdateSpam(tc.message)
@@ -282,6 +283,9 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(det.UpdateSpamCalls()))
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateSpamCalls()[0].Msg)
+
+			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
+			assert.Equal(t, "gr1", samplesStore.StatsCalls()[0].Gid)
 		})
 	}
 }
@@ -328,16 +332,16 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
@@ -345,6 +349,7 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			err := s.UpdateHam(tc.message)
@@ -355,6 +360,9 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(det.UpdateHamCalls()))
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateHamCalls()[0].Msg)
+
+			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
+			assert.Equal(t, "gr1", samplesStore.StatsCalls()[0].Gid)
 		})
 	}
 }
@@ -437,16 +445,16 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
@@ -454,6 +462,7 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			var err error
@@ -535,10 +544,10 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 					return tc.statsResult, tc.statsErr
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					if tc.readerErr != nil {
 						return nil, tc.readerErr
 					}
@@ -547,7 +556,7 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("test data")), nil
 				},
 			}
@@ -610,20 +619,20 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				DeleteMessageFunc: func(ctx context.Context, message string) error {
+				DeleteMessageFunc: func(ctx context.Context, gid string, message string) error {
 					assert.Equal(t, tc.sample, message)
 					return tc.deleteErr
 				},
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
@@ -711,7 +720,7 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			samplesStore := &mocks.SamplesStoreMock{
-				ReadFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
+				ReadFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
 					if tc.readErr != nil {
 						return nil, tc.readErr
 					}
@@ -801,20 +810,20 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
-				DeleteMessageFunc: func(ctx context.Context, message string) error {
+				DeleteMessageFunc: func(ctx context.Context, gid string, message string) error {
 					assert.Equal(t, tc.sample, message)
 					return tc.deleteErr
 				},
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context, gid string, ) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
 			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
+				ReaderFunc: func(ctx context.Context, gid string, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}

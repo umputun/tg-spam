@@ -16,16 +16,16 @@ import (
 //
 //		// make and configure a mocked bot.SamplesStore
 //		mockedSamplesStore := &SamplesStoreMock{
-//			DeleteMessageFunc: func(ctx context.Context, message string) error {
+//			DeleteMessageFunc: func(ctx context.Context, gid string, message string) error {
 //				panic("mock out the DeleteMessage method")
 //			},
-//			ReadFunc: func(ctx context.Context, t storage.sampleType, o storage.SampleOrigin) ([]string, error) {
+//			ReadFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
 //				panic("mock out the Read method")
 //			},
-//			ReaderFunc: func(ctx context.Context, t storage.sampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+//			ReaderFunc: func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 //				panic("mock out the Reader method")
 //			},
-//			StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
+//			StatsFunc: func(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 //				panic("mock out the Stats method")
 //			},
 //		}
@@ -36,16 +36,16 @@ import (
 //	}
 type SamplesStoreMock struct {
 	// DeleteMessageFunc mocks the DeleteMessage method.
-	DeleteMessageFunc func(ctx context.Context, message string) error
+	DeleteMessageFunc func(ctx context.Context, gid string, message string) error
 
 	// ReadFunc mocks the Read method.
-	ReadFunc func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
+	ReadFunc func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
 
 	// ReaderFunc mocks the Reader method.
-	ReaderFunc func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
+	ReaderFunc func(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
 
 	// StatsFunc mocks the Stats method.
-	StatsFunc func(ctx context.Context) (*storage.SamplesStats, error)
+	StatsFunc func(ctx context.Context, gid string) (*storage.SamplesStats, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -53,6 +53,8 @@ type SamplesStoreMock struct {
 		DeleteMessage []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Gid is the gid argument value.
+			Gid string
 			// Message is the message argument value.
 			Message string
 		}
@@ -60,6 +62,8 @@ type SamplesStoreMock struct {
 		Read []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Gid is the gid argument value.
+			Gid string
 			// T is the t argument value.
 			T storage.SampleType
 			// O is the o argument value.
@@ -69,6 +73,8 @@ type SamplesStoreMock struct {
 		Reader []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Gid is the gid argument value.
+			Gid string
 			// T is the t argument value.
 			T storage.SampleType
 			// O is the o argument value.
@@ -78,6 +84,8 @@ type SamplesStoreMock struct {
 		Stats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Gid is the gid argument value.
+			Gid string
 		}
 	}
 	lockDeleteMessage sync.RWMutex
@@ -87,21 +95,23 @@ type SamplesStoreMock struct {
 }
 
 // DeleteMessage calls DeleteMessageFunc.
-func (mock *SamplesStoreMock) DeleteMessage(ctx context.Context, message string) error {
+func (mock *SamplesStoreMock) DeleteMessage(ctx context.Context, gid string, message string) error {
 	if mock.DeleteMessageFunc == nil {
 		panic("SamplesStoreMock.DeleteMessageFunc: method is nil but SamplesStore.DeleteMessage was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
+		Gid     string
 		Message string
 	}{
 		Ctx:     ctx,
+		Gid:     gid,
 		Message: message,
 	}
 	mock.lockDeleteMessage.Lock()
 	mock.calls.DeleteMessage = append(mock.calls.DeleteMessage, callInfo)
 	mock.lockDeleteMessage.Unlock()
-	return mock.DeleteMessageFunc(ctx, message)
+	return mock.DeleteMessageFunc(ctx, gid, message)
 }
 
 // DeleteMessageCalls gets all the calls that were made to DeleteMessage.
@@ -110,10 +120,12 @@ func (mock *SamplesStoreMock) DeleteMessage(ctx context.Context, message string)
 //	len(mockedSamplesStore.DeleteMessageCalls())
 func (mock *SamplesStoreMock) DeleteMessageCalls() []struct {
 	Ctx     context.Context
+	Gid     string
 	Message string
 } {
 	var calls []struct {
 		Ctx     context.Context
+		Gid     string
 		Message string
 	}
 	mock.lockDeleteMessage.RLock()
@@ -130,23 +142,25 @@ func (mock *SamplesStoreMock) ResetDeleteMessageCalls() {
 }
 
 // Read calls ReadFunc.
-func (mock *SamplesStoreMock) Read(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
+func (mock *SamplesStoreMock) Read(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
 	if mock.ReadFunc == nil {
 		panic("SamplesStoreMock.ReadFunc: method is nil but SamplesStore.Read was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
+		Gid string
 		T   storage.SampleType
 		O   storage.SampleOrigin
 	}{
 		Ctx: ctx,
+		Gid: gid,
 		T:   t,
 		O:   o,
 	}
 	mock.lockRead.Lock()
 	mock.calls.Read = append(mock.calls.Read, callInfo)
 	mock.lockRead.Unlock()
-	return mock.ReadFunc(ctx, t, o)
+	return mock.ReadFunc(ctx, gid, t, o)
 }
 
 // ReadCalls gets all the calls that were made to Read.
@@ -155,11 +169,13 @@ func (mock *SamplesStoreMock) Read(ctx context.Context, t storage.SampleType, o 
 //	len(mockedSamplesStore.ReadCalls())
 func (mock *SamplesStoreMock) ReadCalls() []struct {
 	Ctx context.Context
+	Gid string
 	T   storage.SampleType
 	O   storage.SampleOrigin
 } {
 	var calls []struct {
 		Ctx context.Context
+		Gid string
 		T   storage.SampleType
 		O   storage.SampleOrigin
 	}
@@ -177,23 +193,25 @@ func (mock *SamplesStoreMock) ResetReadCalls() {
 }
 
 // Reader calls ReaderFunc.
-func (mock *SamplesStoreMock) Reader(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
+func (mock *SamplesStoreMock) Reader(ctx context.Context, gid string, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
 	if mock.ReaderFunc == nil {
 		panic("SamplesStoreMock.ReaderFunc: method is nil but SamplesStore.Reader was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
+		Gid string
 		T   storage.SampleType
 		O   storage.SampleOrigin
 	}{
 		Ctx: ctx,
+		Gid: gid,
 		T:   t,
 		O:   o,
 	}
 	mock.lockReader.Lock()
 	mock.calls.Reader = append(mock.calls.Reader, callInfo)
 	mock.lockReader.Unlock()
-	return mock.ReaderFunc(ctx, t, o)
+	return mock.ReaderFunc(ctx, gid, t, o)
 }
 
 // ReaderCalls gets all the calls that were made to Reader.
@@ -202,11 +220,13 @@ func (mock *SamplesStoreMock) Reader(ctx context.Context, t storage.SampleType, 
 //	len(mockedSamplesStore.ReaderCalls())
 func (mock *SamplesStoreMock) ReaderCalls() []struct {
 	Ctx context.Context
+	Gid string
 	T   storage.SampleType
 	O   storage.SampleOrigin
 } {
 	var calls []struct {
 		Ctx context.Context
+		Gid string
 		T   storage.SampleType
 		O   storage.SampleOrigin
 	}
@@ -224,19 +244,21 @@ func (mock *SamplesStoreMock) ResetReaderCalls() {
 }
 
 // Stats calls StatsFunc.
-func (mock *SamplesStoreMock) Stats(ctx context.Context) (*storage.SamplesStats, error) {
+func (mock *SamplesStoreMock) Stats(ctx context.Context, gid string) (*storage.SamplesStats, error) {
 	if mock.StatsFunc == nil {
 		panic("SamplesStoreMock.StatsFunc: method is nil but SamplesStore.Stats was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
+		Gid string
 	}{
 		Ctx: ctx,
+		Gid: gid,
 	}
 	mock.lockStats.Lock()
 	mock.calls.Stats = append(mock.calls.Stats, callInfo)
 	mock.lockStats.Unlock()
-	return mock.StatsFunc(ctx)
+	return mock.StatsFunc(ctx, gid)
 }
 
 // StatsCalls gets all the calls that were made to Stats.
@@ -245,9 +267,11 @@ func (mock *SamplesStoreMock) Stats(ctx context.Context) (*storage.SamplesStats,
 //	len(mockedSamplesStore.StatsCalls())
 func (mock *SamplesStoreMock) StatsCalls() []struct {
 	Ctx context.Context
+	Gid string
 } {
 	var calls []struct {
 		Ctx context.Context
+		Gid string
 	}
 	mock.lockStats.RLock()
 	calls = mock.calls.Stats
