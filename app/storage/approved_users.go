@@ -47,7 +47,7 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 	}
 
 	var exists int
-	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
+	err := db.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for approved_users table existence: %w", err)
 	}

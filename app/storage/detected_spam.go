@@ -57,7 +57,7 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 	// first check if the table exists. we can't do this in a transaction
 	// because missing columns will cause the transaction to fail
 	var exists int
-	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
+	err := db.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for detected_spam table existence: %w", err)
 	}
