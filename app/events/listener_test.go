@@ -2094,7 +2094,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
 	f, err := os.CreateTemp("", "locator")
 	require.NoError(t, err)
-	db, err := storage.NewSqliteDB(f.Name())
+	db, err := storage.NewSqliteDB(f.Name(), "gr1")
 	require.NoError(t, err)
 
 	loc, err = storage.NewLocator(context.Background(), 10*time.Minute, 100, db)

@@ -75,14 +75,12 @@ func TestApprovedUsers_Write(t *testing.T) {
 			user: approved.UserInfo{
 				UserID:   "123",
 				UserName: "John Doe",
-				GroupID:  "admin",
 			},
 			verify: func(t *testing.T, db *sqlx.DB, user approved.UserInfo) {
 				var saved approvedUsersInfo
-				err := db.Get(&saved, "SELECT uid, gid, name FROM approved_users WHERE uid = ?", user.UserID)
+				err := db.Get(&saved, "SELECT uid, name FROM approved_users WHERE uid = ?", user.UserID)
 				require.NoError(t, err)
 				assert.Equal(t, user.UserName, saved.UserName)
-				assert.Equal(t, user.GroupID, saved.GroupID)
 			},
 		},
 		{
@@ -93,10 +91,9 @@ func TestApprovedUsers_Write(t *testing.T) {
 			},
 			verify: func(t *testing.T, db *sqlx.DB, user approved.UserInfo) {
 				var saved approvedUsersInfo
-				err := db.Get(&saved, "SELECT uid, gid, name FROM approved_users WHERE uid = ?", user.UserID)
+				err := db.Get(&saved, "SELECT uid, name FROM approved_users WHERE uid = ?", user.UserID)
 				require.NoError(t, err)
 				assert.Equal(t, user.UserName, saved.UserName)
-				assert.Equal(t, user.GroupID, saved.GroupID)
 			},
 		},
 	}
@@ -121,7 +118,7 @@ func TestApprovedUsers_Write(t *testing.T) {
 }
 
 func TestApprovedUsers_Read(t *testing.T) {
-	db, e := NewSqliteDB(":memory:")
+	db, e := NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, e)
 	ctx := context.Background()
 	au, e := NewApprovedUsers(ctx, db)
@@ -131,8 +128,8 @@ func TestApprovedUsers_Read(t *testing.T) {
 
 	// write test data
 	users := []approved.UserInfo{
-		{UserID: "123", UserName: "John", GroupID: "gr1", Timestamp: testTime},
-		{UserID: "456", UserName: "Jane", GroupID: "gr2", Timestamp: testTime},
+		{UserID: "123", UserName: "John", Timestamp: testTime},
+		{UserID: "456", UserName: "Jane", Timestamp: testTime},
 	}
 	for _, u := range users {
 		err := au.Write(ctx, u)
@@ -140,28 +137,15 @@ func TestApprovedUsers_Read(t *testing.T) {
 	}
 
 	t.Run("read users with gr1", func(t *testing.T) {
-		users, err := au.Read(ctx, "gr1")
+		users, err := au.Read(ctx)
 		require.NoError(t, err)
-		require.Len(t, users, 1)
+		require.Len(t, users, 2)
 		assert.Equal(t, users[0].UserID, "123")
-	})
-
-	t.Run("read users with gr2", func(t *testing.T) {
-		users, err := au.Read(ctx, "gr2")
-		require.NoError(t, err)
-		require.Len(t, users, 1)
-		assert.Equal(t, users[0].UserID, "456")
-	})
-
-	t.Run("read user from non-existing group", func(t *testing.T) {
-		users, err := au.Read(ctx, "non-existing")
-		require.NoError(t, err)
-		require.Len(t, users, 0)
 	})
 }
 
 func TestApprovedUsers_Delete(t *testing.T) {
-	db, e := NewSqliteDB(":memory:")
+	db, e := NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, e)
 	ctx := context.Background()
 	au, e := NewApprovedUsers(ctx, db)
@@ -174,7 +158,6 @@ func TestApprovedUsers_Delete(t *testing.T) {
 		user := approved.UserInfo{
 			UserID:   "123",
 			UserName: "John",
-			GroupID:  "admin",
 		}
 		err = au.Write(ctx, user)
 		require.NoError(t, err)
@@ -219,17 +202,17 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := NewSqliteDB(":memory:")
+			db, err := NewSqliteDB(":memory:", "gr1")
 			require.NoError(t, err)
 			au, err := NewApprovedUsers(ctx, db)
 			require.NoError(t, err)
 
 			for _, id := range tt.ids {
-				err = au.Write(ctx, approved.UserInfo{UserID: id, UserName: "name_" + id, GroupID: "gr1"})
+				err = au.Write(ctx, approved.UserInfo{UserID: id, UserName: "name_" + id})
 				require.NoError(t, err)
 			}
 
-			res, err := au.Read(ctx, "gr1")
+			res, err := au.Read(ctx)
 			require.NoError(t, err)
 			assert.Equal(t, len(tt.expected), len(res))
 		})
@@ -237,7 +220,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 }
 
 func TestApprovedUsers_ContextCancellation(t *testing.T) {
-	db, err := NewSqliteDB(":memory:")
+	db, err := NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -255,13 +238,13 @@ func TestApprovedUsers_ContextCancellation(t *testing.T) {
 
 	t.Run("read with cancelled context", func(t *testing.T) {
 		// prepare data
-		err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test", GroupID: "gr1"})
+		err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test"})
 		require.NoError(t, err)
 
 		ctxCanceled, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err = au.Read(ctxCanceled, "gr1")
+		_, err = au.Read(ctxCanceled)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "context canceled")
 	})
@@ -302,7 +285,7 @@ func TestApprovedUsers_ContextCancellation(t *testing.T) {
 func TestApprovedUsers_Migrate(t *testing.T) {
 
 	t.Run("migrate from old schema with string id", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:")
+		db, err := NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -363,7 +346,7 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 	})
 
 	t.Run("migration not needed", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:")
+		db, err := NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 

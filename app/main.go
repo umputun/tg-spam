@@ -209,7 +209,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	dataDB, err := storage.NewSqliteDB(dbFile)
+	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
 	if err != nil {
 		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
 	}
@@ -224,7 +224,7 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
 
-	count, err := detector.WithUserStorage(storage.NewPinnedGIDApprovedUsers(approvedUsersStore, opts.InstanceID))
+	count, err := detector.WithUserStorage(approvedUsersStore)
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
@@ -548,8 +548,8 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, dete
 	}
 
 	// set detector samples updaters
-	detector.WithSpamUpdater(storage.NewSampleUpdater(opts.InstanceID, samplesStore, storage.SampleTypeSpam, opts.StorageTimeout))
-	detector.WithHamUpdater(storage.NewSampleUpdater(opts.InstanceID, samplesStore, storage.SampleTypeHam, opts.StorageTimeout))
+	detector.WithSpamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeSpam, opts.StorageTimeout))
+	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, opts.StorageTimeout))
 
 	return spamBot, nil
 }
@@ -681,7 +681,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 			return nil, fmt.Errorf("can't open samples file, %w", err)
 		}
 		defer fh.Close()
-		stats, err := samplesDB.Import(ctx, opts.InstanceID, sampleType, origin, fh, true) // clean records before import
+		stats, err := samplesDB.Import(ctx, sampleType, origin, fh, true) // clean records before import
 		if err != nil {
 			return nil, fmt.Errorf("can't load samples, %w", err)
 		}
@@ -756,7 +756,7 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 			return nil, fmt.Errorf("can't open dictionary file, %w", err)
 		}
 		defer fh.Close()
-		stats, err := dictDB.Import(ctx, opts.InstanceID, dictType, fh, true) // clean records before import
+		stats, err := dictDB.Import(ctx, dictType, fh, true) // clean records before import
 		if err != nil {
 			return nil, fmt.Errorf("can't load dictionary, %w", err)
 		}

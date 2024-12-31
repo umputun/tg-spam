@@ -61,7 +61,6 @@ func TestSamples_AddSample(t *testing.T) {
 		name    string
 		sType   SampleType
 		origin  SampleOrigin
-		groupID string
 		message string
 		wantErr bool
 	}{
@@ -70,15 +69,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeHam,
 			origin:  SampleOriginPreset,
 			message: "test ham message",
-			groupID: "group1",
-			wantErr: false,
-		},
-		{
-			name:    "valid ham preset, different group",
-			sType:   SampleTypeHam,
-			origin:  SampleOriginPreset,
-			message: "test ham message2",
-			groupID: "group2",
 			wantErr: false,
 		},
 		{
@@ -86,7 +76,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeSpam,
 			origin:  SampleOriginUser,
 			message: "test spam message",
-			groupID: "group1",
 			wantErr: false,
 		},
 		{
@@ -94,7 +83,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   "invalid",
 			origin:  SampleOriginPreset,
 			message: "test message",
-			groupID: "group1",
 			wantErr: true,
 		},
 		{
@@ -102,7 +90,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeHam,
 			origin:  "invalid",
 			message: "test message",
-			groupID: "group1",
 			wantErr: true,
 		},
 		{
@@ -110,7 +97,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeHam,
 			origin:  SampleOriginPreset,
 			message: "",
-			groupID: "group1",
 			wantErr: true,
 		},
 		{
@@ -118,7 +104,6 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeHam,
 			origin:  SampleOriginAny,
 			message: "test message",
-			groupID: "group1",
 			wantErr: true,
 		},
 		{
@@ -126,38 +111,28 @@ func TestSamples_AddSample(t *testing.T) {
 			sType:   SampleTypeHam,
 			origin:  SampleOriginPreset,
 			message: "test ham message", // Same as first test case
-			groupID: "group1",
-			wantErr: false, // Should succeed and replace
-		},
-		{
-			name:    "duplicate message same type and origin, different group",
-			sType:   SampleTypeHam,
-			origin:  SampleOriginPreset,
-			message: "test ham message", // Same as the first test case
-			groupID: "group11",
-			wantErr: false,
+			wantErr: false,              // Should succeed and replace
 		},
 		{
 			name:    "duplicate message different type",
 			sType:   SampleTypeSpam,
 			origin:  SampleOriginPreset,
 			message: "test ham message", // Same message, different type
-			groupID: "group1",
-			wantErr: false, // Should succeed and replace
+			wantErr: false,              // Should succeed and replace
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := s.Add(ctx, tt.groupID, tt.sType, tt.origin, tt.message)
+			err := s.Add(ctx, tt.sType, tt.origin, tt.message)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 				// verify message exists and has correct type and origin
 				var count int
-				err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ? AND type = ? AND origin = ? AND gid = ?",
-					tt.message, tt.sType, tt.origin, tt.groupID)
+				err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ? AND type = ? AND origin = ?",
+					tt.message, tt.sType, tt.origin)
 				require.NoError(t, err)
 				assert.Equal(t, 1, count)
 			}
@@ -174,7 +149,7 @@ func TestSamples_DeleteSample(t *testing.T) {
 	ctx := context.Background()
 
 	// add a sample first
-	err = s.Add(ctx, "group1", SampleTypeHam, SampleOriginPreset, "test message")
+	err = s.Add(ctx, SampleTypeHam, SampleOriginPreset, "test message")
 	require.NoError(t, err)
 
 	// get the ID of the inserted sample
@@ -219,80 +194,83 @@ func TestSamples_DeleteMessage(t *testing.T) {
 
 	ctx := context.Background()
 
-	// add test samples with different groups
-	samples := []struct {
-		gid     string
+	// add test samples
+	testData := []struct {
 		sType   SampleType
 		origin  SampleOrigin
 		message string
 	}{
-		{"gr1", SampleTypeHam, SampleOriginPreset, "msg1"},
-		{"gr2", SampleTypeHam, SampleOriginPreset, "msg1"}, // same message, different group
-		{"gr1", SampleTypeSpam, SampleOriginUser, "msg2"},
-		{"gr2", SampleTypeSpam, SampleOriginUser, "msg2"}, // same message, different group
+		{SampleTypeHam, SampleOriginPreset, "message to delete"},
+		{SampleTypeSpam, SampleOriginUser, "message to keep"},
+		{SampleTypeHam, SampleOriginUser, "another message"},
 	}
 
-	for _, smpl := range samples {
-		err := s.Add(ctx, smpl.gid, smpl.sType, smpl.origin, smpl.message)
+	for _, td := range testData {
+		err := s.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
-	t.Run("delete msg1 from gr1", func(t *testing.T) {
-		err := s.DeleteMessage(ctx, "gr1", "msg1")
-		assert.NoError(t, err)
+	tests := []struct {
+		name    string
+		message string
+		wantErr bool
+	}{
+		{
+			name:    "existing message",
+			message: "message to delete",
+			wantErr: false,
+		},
+		{
+			name:    "non-existent message",
+			message: "no such message",
+			wantErr: true,
+		},
+		{
+			name:    "empty message",
+			message: "",
+			wantErr: true,
+		},
+	}
 
-		// Verify message was deleted from gr1
-		var count int
-		err = db.Get(&count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, "gr1", "msg1")
-		require.NoError(t, err)
-		assert.Equal(t, 0, count)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := s.DeleteMessage(ctx, tt.message)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 
-		// Verify message still exists in gr2
-		err = db.Get(&count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, "gr2", "msg1")
-		require.NoError(t, err)
-		assert.Equal(t, 1, count)
-	})
+				// verify message no longer exists
+				var count int
+				err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ?", tt.message)
+				require.NoError(t, err)
+				assert.Equal(t, 0, count)
 
-	t.Run("delete msg2 from gr2", func(t *testing.T) {
-		err := s.DeleteMessage(ctx, "gr2", "msg2")
-		assert.NoError(t, err)
-
-		// Verify message was deleted from gr2
-		var count int
-		err = db.Get(&count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, "gr2", "msg2")
-		require.NoError(t, err)
-		assert.Equal(t, 0, count)
-
-		// Verify message still exists in gr1
-		err = db.Get(&count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, "gr1", "msg2")
-		require.NoError(t, err)
-		assert.Equal(t, 1, count)
-	})
-
-	t.Run("delete from non-existent group", func(t *testing.T) {
-		err := s.DeleteMessage(ctx, "gr3", "msg1")
-		assert.Error(t, err)
-	})
-
-	t.Run("delete non-existent message", func(t *testing.T) {
-		err := s.DeleteMessage(ctx, "gr1", "msg-none")
-		assert.Error(t, err)
-	})
+				// verify other messages still exist
+				var totalCount int
+				err = db.Get(&totalCount, "SELECT COUNT(*) FROM samples")
+				require.NoError(t, err)
+				assert.Equal(t, len(testData)-1, totalCount)
+			}
+		})
+	}
 
 	t.Run("concurrent delete", func(t *testing.T) {
-		const msg = "concurrent-msg"
-		err := s.Add(ctx, "gr1", SampleTypeHam, SampleOriginPreset, msg)
+		// add a message that will be deleted concurrently
+		msg := "concurrent delete message"
+		err := s.Add(ctx, SampleTypeHam, SampleOriginPreset, msg)
 		require.NoError(t, err)
 
+		const numWorkers = 10
 		var wg sync.WaitGroup
-		const workers = 10
-		errCh := make(chan error, workers)
+		errCh := make(chan error, numWorkers)
 
-		for i := 0; i < workers; i++ {
+		// start multiple goroutines trying to delete the same message
+		for i := 0; i < numWorkers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := s.DeleteMessage(ctx, "gr1", msg); err != nil && !strings.Contains(err.Error(), "not found") {
+				if err := s.DeleteMessage(ctx, msg); err != nil && !strings.Contains(err.Error(), "not found") {
 					errCh <- err
 				}
 			}()
@@ -301,13 +279,14 @@ func TestSamples_DeleteMessage(t *testing.T) {
 		wg.Wait()
 		close(errCh)
 
+		// check for unexpected errors
 		for err := range errCh {
-			assert.NoError(t, err)
+			t.Errorf("concurrent delete failed: %v", err)
 		}
 
-		// Verify message was deleted
+		// verify message was deleted
 		var count int
-		err = db.Get(&count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, "gr1", msg)
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE message = ?", msg)
 		require.NoError(t, err)
 		assert.Equal(t, 0, count)
 	})
@@ -325,18 +304,16 @@ func TestSamples_ReadSamples(t *testing.T) {
 	testData := []struct {
 		sType   SampleType
 		origin  SampleOrigin
-		groupID string
 		message string
 	}{
-		{SampleTypeHam, SampleOriginPreset, "gr1", "ham preset 1"},
-		{SampleTypeHam, SampleOriginUser, "gr1", "ham user 1"},
-		{SampleTypeSpam, SampleOriginPreset, "gr1", "spam preset 1"},
-		{SampleTypeSpam, SampleOriginUser, "gr1", "spam user 1"},
-		{SampleTypeSpam, SampleOriginUser, "gr2", "spam user 12"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 1"},
+		{SampleTypeHam, SampleOriginUser, "ham user 1"},
+		{SampleTypeSpam, SampleOriginPreset, "spam preset 1"},
+		{SampleTypeSpam, SampleOriginUser, "spam user 1"},
 	}
 
 	for _, td := range testData {
-		err := s.Add(ctx, td.groupID, td.sType, td.origin, td.message)
+		err := s.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
@@ -379,7 +356,7 @@ func TestSamples_ReadSamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			samples, err := s.Read(ctx, "gr1", tt.sType, tt.origin)
+			samples, err := s.Read(ctx, tt.sType, tt.origin)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, samples)
@@ -401,63 +378,33 @@ func TestSamples_GetStats(t *testing.T) {
 
 	// add test samples
 	testData := []struct {
-		gid     string
 		sType   SampleType
 		origin  SampleOrigin
 		message string
 	}{
-		{"group1", SampleTypeHam, SampleOriginPreset, "ham preset 1"},
-		{"group1", SampleTypeHam, SampleOriginPreset, "ham preset 2"},
-		{"group1", SampleTypeHam, SampleOriginUser, "ham user 1"},
-		{"group2", SampleTypeHam, SampleOriginPreset, "ham preset 3"},
-		{"group1", SampleTypeSpam, SampleOriginPreset, "spam preset 1"},
-		{"group1", SampleTypeSpam, SampleOriginUser, "spam user 1"},
-		{"group1", SampleTypeSpam, SampleOriginUser, "spam user 2"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 1"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 2"},
+		{SampleTypeHam, SampleOriginUser, "ham user 1"},
+		{SampleTypeSpam, SampleOriginPreset, "spam preset 1"},
+		{SampleTypeSpam, SampleOriginUser, "spam user 1"},
+		{SampleTypeSpam, SampleOriginUser, "spam user 2"},
 	}
 
 	for _, td := range testData {
-		err := s.Add(ctx, td.gid, td.sType, td.origin, td.message)
+		err := s.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
-	t.Run("stats for group1", func(t *testing.T) {
-		stats, err := s.Stats(ctx, "group1")
-		require.NoError(t, err)
-		require.NotNil(t, stats)
+	stats, err := s.Stats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 
-		assert.Equal(t, 3, stats.TotalSpam)
-		assert.Equal(t, 3, stats.TotalHam)
-		assert.Equal(t, 1, stats.PresetSpam)
-		assert.Equal(t, 2, stats.PresetHam)
-		assert.Equal(t, 2, stats.UserSpam)
-		assert.Equal(t, 1, stats.UserHam)
-	})
-
-	t.Run("stats for group2", func(t *testing.T) {
-		stats, err := s.Stats(ctx, "group2")
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		assert.Equal(t, 0, stats.TotalSpam)
-		assert.Equal(t, 1, stats.TotalHam)
-		assert.Equal(t, 0, stats.PresetSpam)
-		assert.Equal(t, 1, stats.PresetHam)
-		assert.Equal(t, 0, stats.UserSpam)
-		assert.Equal(t, 0, stats.UserHam)
-	})
-
-	t.Run("stats for empty group", func(t *testing.T) {
-		stats, err := s.Stats(ctx, "nonexistent")
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-
-		assert.Equal(t, 0, stats.TotalSpam)
-		assert.Equal(t, 0, stats.TotalHam)
-		assert.Equal(t, 0, stats.PresetSpam)
-		assert.Equal(t, 0, stats.PresetHam)
-		assert.Equal(t, 0, stats.UserSpam)
-		assert.Equal(t, 0, stats.UserHam)
-	})
+	assert.Equal(t, 3, stats.TotalSpam)
+	assert.Equal(t, 3, stats.TotalHam)
+	assert.Equal(t, 1, stats.PresetSpam)
+	assert.Equal(t, 2, stats.PresetHam)
+	assert.Equal(t, 2, stats.UserSpam)
+	assert.Equal(t, 1, stats.UserHam)
 }
 
 func TestSampleType_Validate(t *testing.T) {
@@ -519,7 +466,7 @@ func TestSamples_Concurrent(t *testing.T) {
 
 	// Verify table exists and is accessible
 	ctx := context.Background()
-	err = s.Add(ctx, "gr1", SampleTypeHam, SampleOriginPreset, "test message")
+	err = s.Add(ctx, SampleTypeHam, SampleOriginPreset, "test message")
 	require.NoError(t, err, "Failed to insert initial test record")
 
 	const numWorkers = 10
@@ -534,7 +481,7 @@ func TestSamples_Concurrent(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < numOps; j++ {
-				if _, err := s.Read(ctx, "gr1", SampleTypeHam, SampleOriginAny); err != nil {
+				if _, err := s.Read(ctx, SampleTypeHam, SampleOriginAny); err != nil {
 					select {
 					case errCh <- fmt.Errorf("reader %d failed: %w", workerID, err):
 					default:
@@ -556,7 +503,7 @@ func TestSamples_Concurrent(t *testing.T) {
 				if j%2 == 0 {
 					sType = SampleTypeSpam
 				}
-				if err := s.Add(ctx, "gr1", sType, SampleOriginUser, msg); err != nil {
+				if err := s.Add(ctx, sType, SampleOriginUser, msg); err != nil {
 					select {
 					case errCh <- fmt.Errorf("writer %d failed: %w", workerID, err):
 					default:
@@ -577,7 +524,7 @@ func TestSamples_Concurrent(t *testing.T) {
 	}
 
 	// verify the final state
-	stats, err := s.Stats(ctx, "gr1")
+	stats, err := s.Stats(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
@@ -599,18 +546,16 @@ func TestSamples_Iterator(t *testing.T) {
 	testData := []struct {
 		sType   SampleType
 		origin  SampleOrigin
-		groupID string
 		message string
 	}{
-		{SampleTypeHam, SampleOriginPreset, "gr1", "ham preset 1"},
-		{SampleTypeHam, SampleOriginUser, "gr1", "ham user 1"},
-		{SampleTypeSpam, SampleOriginPreset, "gr1", "spam preset 1"},
-		{SampleTypeSpam, SampleOriginUser, "gr1", "spam user 1"},
-		{SampleTypeSpam, SampleOriginUser, "gr2", "spam user 2"},
+		{SampleTypeHam, SampleOriginPreset, "ham preset 1"},
+		{SampleTypeHam, SampleOriginUser, "ham user 1"},
+		{SampleTypeSpam, SampleOriginPreset, "spam preset 1"},
+		{SampleTypeSpam, SampleOriginUser, "spam user 1"},
 	}
 
 	for _, td := range testData {
-		err := samples.Add(ctx, td.groupID, td.sType, td.origin, td.message)
+		err := samples.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 	}
 
@@ -654,7 +599,7 @@ func TestSamples_Iterator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			iter, err := samples.Iterator(ctx, "gr1", tt.sType, tt.origin)
+			iter, err := samples.Iterator(ctx, tt.sType, tt.origin)
 			if tt.expectErr {
 				assert.Error(t, err)
 				return
@@ -692,12 +637,12 @@ func TestSamples_IteratorOrder(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		err := samples.Add(ctx, "gr1", td.sType, td.origin, td.message)
+		err := samples.Add(ctx, td.sType, td.origin, td.message)
 		require.NoError(t, err)
 		time.Sleep(time.Second) // ensure each message has a unique timestamp
 	}
 
-	iter, err := samples.Iterator(ctx, "gr1", SampleTypeHam, SampleOriginPreset)
+	iter, err := samples.Iterator(ctx, SampleTypeHam, SampleOriginPreset)
 	require.NoError(t, err)
 	var messages []string
 	for msg := range iter {
@@ -712,9 +657,9 @@ func TestSamples_IteratorOrder(t *testing.T) {
 func TestSamples_Import(t *testing.T) {
 	ctx := context.Background()
 
-	countSamples := func(db *Engine, gid string, t SampleType, o SampleOrigin) int {
+	countSamples := func(db *Engine, t SampleType, o SampleOrigin) int {
 		var count int
-		err := db.Get(&count, "SELECT COUNT(*) FROM samples WHERE gid = ? AND type = ? AND origin = ?", gid, t, o)
+		err := db.Get(&count, "SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ?", t, o)
 		if err != nil {
 			return -1
 		}
@@ -733,11 +678,11 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("sample1\nsample2\nsample3")
-		stats, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, input, true)
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		assert.Equal(t, 3, countSamples(db, "group1", SampleTypeHam, SampleOriginPreset))
+		assert.Equal(t, 3, countSamples(db, SampleTypeHam, SampleOriginPreset))
 		assert.Equal(t, 3, stats.PresetHam)
 	})
 
@@ -747,21 +692,21 @@ func TestSamples_Import(t *testing.T) {
 
 		// first import
 		input1 := strings.NewReader("existing1\nexisting2")
-		_, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginPreset, input1, true)
+		_, err := s.Import(ctx, SampleTypeSpam, SampleOriginPreset, input1, true)
 		require.NoError(t, err)
-		assert.Equal(t, 2, countSamples(db, "group1", SampleTypeSpam, SampleOriginPreset))
+		assert.Equal(t, 2, countSamples(db, SampleTypeSpam, SampleOriginPreset))
 
 		// second import without cleanup should append
 		input2 := strings.NewReader("new1\nnew2")
-		stats, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginPreset, input2, false)
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginPreset, input2, false)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		assert.Equal(t, 4, countSamples(db, "group1", SampleTypeSpam, SampleOriginPreset))
+		assert.Equal(t, 4, countSamples(db, SampleTypeSpam, SampleOriginPreset))
 		assert.Equal(t, 4, stats.PresetSpam)
 
 		// verify content includes all samples
-		samples, err := s.Read(ctx, "group1", SampleTypeSpam, SampleOriginPreset)
+		samples, err := s.Read(ctx, SampleTypeSpam, SampleOriginPreset)
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"existing1", "existing2", "new1", "new2"}, samples)
 	})
@@ -772,48 +717,23 @@ func TestSamples_Import(t *testing.T) {
 
 		// first import
 		input1 := strings.NewReader("old1\nold2\nold3")
-		_, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginUser, input1, true)
+		_, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, input1, true)
 		require.NoError(t, err)
-		assert.Equal(t, 3, countSamples(db, "group1", SampleTypeSpam, SampleOriginUser))
+		assert.Equal(t, 3, countSamples(db, SampleTypeSpam, SampleOriginUser))
 
 		// second import with cleanup should replace
 		input2 := strings.NewReader("new1\nnew2")
-		stats, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginUser, input2, true)
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, input2, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		assert.Equal(t, 2, countSamples(db, "group1", SampleTypeSpam, SampleOriginUser))
+		assert.Equal(t, 2, countSamples(db, SampleTypeSpam, SampleOriginUser))
 		assert.Equal(t, 2, stats.UserSpam)
 
 		// verify content was replaced
-		samples, err := s.Read(ctx, "group1", SampleTypeSpam, SampleOriginUser)
+		samples, err := s.Read(ctx, SampleTypeSpam, SampleOriginUser)
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"new1", "new2"}, samples)
-	})
-
-	t.Run("import to different groups", func(t *testing.T) {
-		db, s, teardown := prep()
-		defer teardown()
-
-		input1 := strings.NewReader("sample1\nsample2")
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, input1, true)
-		require.NoError(t, err)
-		assert.Equal(t, 2, countSamples(db, "group1", SampleTypeHam, SampleOriginPreset), "imported 2 samples to group1")
-
-		input2 := strings.NewReader("sample1\nsample2\nsample3")
-		_, err = s.Import(ctx, "group2", SampleTypeHam, SampleOriginPreset, input2, true)
-		require.NoError(t, err)
-		assert.Equal(t, 3, countSamples(db, "group2", SampleTypeHam, SampleOriginPreset), "imported 3 samples to group2")
-
-		assert.Equal(t, 2, countSamples(db, "group1", SampleTypeHam, SampleOriginPreset), "group1 samples unchanged")
-
-		// verify cleanup only affects target group
-		input3 := strings.NewReader("sample3")
-		_, err = s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, input3, true)
-		require.NoError(t, err)
-
-		assert.Equal(t, 1, countSamples(db, "group1", SampleTypeHam, SampleOriginPreset))
-		assert.Equal(t, 3, countSamples(db, "group2", SampleTypeHam, SampleOriginPreset))
 	})
 
 	t.Run("different types preserve independence", func(t *testing.T) {
@@ -822,17 +742,17 @@ func TestSamples_Import(t *testing.T) {
 
 		// import ham samples
 		inputHam := strings.NewReader("ham1\nham2")
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginUser, inputHam, true)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, inputHam, true)
 		require.NoError(t, err)
 
 		// import spam samples
 		inputSpam := strings.NewReader("spam1\nspam2\nspam3")
-		stats, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginUser, inputSpam, true)
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, inputSpam, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		assert.Equal(t, 2, countSamples(db, "group1", SampleTypeHam, SampleOriginUser))
-		assert.Equal(t, 3, countSamples(db, "group1", SampleTypeSpam, SampleOriginUser))
+		assert.Equal(t, 2, countSamples(db, SampleTypeHam, SampleOriginUser))
+		assert.Equal(t, 3, countSamples(db, SampleTypeSpam, SampleOriginUser))
 	})
 
 	t.Run("invalid type", func(t *testing.T) {
@@ -840,7 +760,7 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("sample")
-		_, err := s.Import(ctx, "group1", "invalid", SampleOriginPreset, input, true)
+		_, err := s.Import(ctx, "invalid", SampleOriginPreset, input, true)
 		assert.Error(t, err)
 	})
 
@@ -849,7 +769,7 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("sample")
-		_, err := s.Import(ctx, "group1", SampleTypeHam, "invalid", input, true)
+		_, err := s.Import(ctx, SampleTypeHam, "invalid", input, true)
 		assert.Error(t, err)
 	})
 
@@ -858,7 +778,7 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("sample")
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginAny, input, true)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginAny, input, true)
 		assert.Error(t, err)
 	})
 
@@ -867,10 +787,10 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("")
-		stats, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, input, true)
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
-		assert.Equal(t, 0, countSamples(db, "group1", SampleTypeHam, SampleOriginPreset))
+		assert.Equal(t, 0, countSamples(db, SampleTypeHam, SampleOriginPreset))
 	})
 
 	t.Run("input with empty lines", func(t *testing.T) {
@@ -878,11 +798,11 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		input := strings.NewReader("sample1\n\n\nsample2\n\n")
-		stats, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, input, true)
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
-		samples, err := s.Read(ctx, "group1", SampleTypeHam, SampleOriginPreset)
+		samples, err := s.Read(ctx, SampleTypeHam, SampleOriginPreset)
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"sample1", "sample2"}, samples)
 	})
@@ -891,7 +811,7 @@ func TestSamples_Import(t *testing.T) {
 		_, s, teardown := prep()
 		defer teardown()
 
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, nil, true)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, nil, true)
 		assert.Error(t, err)
 	})
 
@@ -900,7 +820,7 @@ func TestSamples_Import(t *testing.T) {
 		defer teardown()
 
 		errReader := &errorReader{err: fmt.Errorf("read error")}
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginPreset, errReader, true)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginPreset, errReader, true)
 		assert.Error(t, err)
 	})
 
@@ -910,25 +830,24 @@ func TestSamples_Import(t *testing.T) {
 
 		// import ham samples
 		inputHam := strings.NewReader("message1\nmessage2")
-		_, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginUser, inputHam, true)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, inputHam, true)
 		require.NoError(t, err)
 
 		// import spam samples with same messages
 		inputSpam := strings.NewReader("message1\nmessage2\nmessage3")
-		stats, err := s.Import(ctx, "group1", SampleTypeSpam, SampleOriginUser, inputSpam, false)
+		stats, err := s.Import(ctx, SampleTypeSpam, SampleOriginUser, inputSpam, false)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
 		// verify only new messages are added, duplicates replaced
 		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE gid = ?", "group1")
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples")
 		require.NoError(t, err)
 		assert.Equal(t, 3, count)
 
 		// verify type is updated for duplicates
 		var spamCount int
-		err = db.Get(&spamCount, "SELECT COUNT(*) FROM samples WHERE gid = ? AND type = ?",
-			"group1", SampleTypeSpam)
+		err = db.Get(&spamCount, "SELECT COUNT(*) FROM samples WHERE type = ?", SampleTypeSpam)
 		require.NoError(t, err)
 		assert.Equal(t, 3, spamCount)
 	})
@@ -936,16 +855,17 @@ func TestSamples_Import(t *testing.T) {
 	t.Run("duplicate message within import", func(t *testing.T) {
 		db, s, teardown := prep()
 		defer teardown()
+		ctx := context.Background()
 
 		// import with duplicate messages
 		input := strings.NewReader("message1\nmessage2\nmessage1")
-		stats, err := s.Import(ctx, "group1", SampleTypeHam, SampleOriginUser, input, true)
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 
 		// verify only unique messages are stored
 		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM samples WHERE gid = ?", "group1")
+		err = db.Get(&count, "SELECT COUNT(*) FROM samples")
 		require.NoError(t, err)
 		assert.Equal(t, 2, count)
 	})
@@ -963,9 +883,9 @@ func TestSamples_Reader(t *testing.T) {
 		{
 			name: "ham samples",
 			setup: func(s *Samples) {
-				require.NoError(t, s.Add(context.Background(), "gr1", SampleTypeHam, SampleOriginPreset, "test1"))
+				require.NoError(t, s.Add(context.Background(), SampleTypeHam, SampleOriginPreset, "test1"))
 				time.Sleep(time.Second) // ensure each message has a unique timestamp
-				require.NoError(t, s.Add(context.Background(), "gr1", SampleTypeHam, SampleOriginPreset, "test2"))
+				require.NoError(t, s.Add(context.Background(), SampleTypeHam, SampleOriginPreset, "test2"))
 			},
 			sampleType: SampleTypeHam,
 			origin:     SampleOriginPreset,
@@ -1000,7 +920,7 @@ func TestSamples_Reader(t *testing.T) {
 				tt.setup(s)
 			}
 
-			r, err := s.Reader(context.Background(), "gr1", tt.sampleType, tt.origin)
+			r, err := s.Reader(context.Background(), tt.sampleType, tt.origin)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

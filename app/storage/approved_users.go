@@ -61,7 +61,7 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	if err := migrateTable(&db.DB, "gr1"); err != nil {
+	if err := migrateTable(&db.DB, db.GID()); err != nil {
 		return nil, err
 	}
 
@@ -69,11 +69,12 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 }
 
 // Read returns a list of all approved users
-func (au *ApprovedUsers) Read(ctx context.Context, gid string) ([]approved.UserInfo, error) {
+func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
 	au.db.RLock()
 	defer au.db.RUnlock()
 
 	users := []approvedUsersInfo{}
+	gid := au.db.GID()
 	err := au.db.SelectContext(ctx, &users, "SELECT uid, gid, name, timestamp FROM approved_users WHERE gid=? ORDER BY uid ASC", gid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approved users: %w", err)
@@ -83,7 +84,6 @@ func (au *ApprovedUsers) Read(ctx context.Context, gid string) ([]approved.UserI
 	for i, u := range users {
 		res[i] = approved.UserInfo{
 			UserID:    u.UserID,
-			GroupID:   u.GroupID,
 			UserName:  u.UserName,
 			Timestamp: u.Timestamp,
 		}
@@ -102,7 +102,7 @@ func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) erro
 	}
 
 	query := "INSERT OR IGNORE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)"
-	if _, err := au.db.ExecContext(ctx, query, user.UserID, user.GroupID, user.UserName, user.Timestamp); err != nil {
+	if _, err := au.db.ExecContext(ctx, query, user.UserID, au.db.GID(), user.UserName, user.Timestamp); err != nil {
 		return fmt.Errorf("failed to insert user %+v: %w", user, err)
 	}
 	log.Printf("[INFO] user %s added to approved users", user.String())
@@ -115,18 +115,20 @@ func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
 	defer au.db.Unlock()
 
 	var user approvedUsersInfo
-	err := au.db.GetContext(ctx, &user, "SELECT uid, gid, name, timestamp FROM approved_users WHERE uid = ?", id)
+	err := au.db.GetContext(ctx, &user, "SELECT uid, gid, name, timestamp FROM approved_users WHERE uid = ? AND gid = ?",
+		id, au.db.GID())
 	if err != nil {
 		return fmt.Errorf("failed to get approved user for id %s: %w", id, err)
 	}
 
-	if _, err := au.db.ExecContext(ctx, "DELETE FROM approved_users WHERE uid = ?", id); err != nil {
+	if _, err := au.db.ExecContext(ctx, "DELETE FROM approved_users WHERE uid = ? AND gid = ?", id, au.db.GID()); err != nil {
 		return fmt.Errorf("failed to delete id %s: %w", id, err)
 	}
 
 	log.Printf("[INFO] user %q (%s) deleted from approved users", user.UserName, id)
 	return nil
 }
+
 func migrateTable(db *sqlx.DB, gid string) error {
 	var exists int
 	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")

@@ -144,7 +144,7 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 }
 
 func newTestLocator(t *testing.T) *Locator {
-	db, err := NewSqliteDB(":memory:")
+	db, err := NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, err)
 	ctx := context.Background()
 	const ttl = 10 * time.Minute

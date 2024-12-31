@@ -25,7 +25,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
-	db, err := storage.NewSqliteDB(":memory:")
+	db, err := storage.NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -187,15 +187,15 @@ func Test_makeSpamBot(t *testing.T) {
 		opts.Files.SamplesDataPath = tmpDir
 		opts.InstanceID = "gr1"
 		detector := makeDetector(opts)
-		db, err := storage.NewSqliteDB("tg-spam.db")
+		db, err := storage.NewSqliteDB("tg-spam.db", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
 		samplesStore, err := storage.NewSamples(ctx, db)
 		require.NoError(t, err)
-		err = samplesStore.Add(ctx, "gr1", storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+		err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
 		require.NoError(t, err)
-		err = samplesStore.Add(ctx, "gr1", storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+		err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 		require.NoError(t, err)
 
 		res, err := makeSpamBot(ctx, opts, db, detector)
@@ -215,15 +215,15 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.InstanceID = "gr1"
 
 	opts.Files.SamplesDataPath = t.TempDir()
-	db, err := storage.NewSqliteDB("tg-spam.db")
+	db, err := storage.NewSqliteDB("tg-spam.db", "gr1")
 	require.NoError(t, err)
 	defer db.Close()
 
 	samplesStore, err := storage.NewSamples(ctx, db)
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, "tg-spam", storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+	err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, "tg-spam", storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+	err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 	require.NoError(t, err)
 
 	done := make(chan struct{})
@@ -382,7 +382,7 @@ func Test_migrateSamples(t *testing.T) {
 	opts.InstanceID = "gr1"
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -411,12 +411,12 @@ func Test_migrateSamples(t *testing.T) {
 		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
 		assert.Error(t, err, "original file should be renamed")
 
-		s, err := store.Stats(context.Background(), "gr1")
+		s, err := store.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 6, s.TotalSpam)
 		assert.Equal(t, 4, s.TotalHam)
 
-		res, err := store.Read(context.Background(), "gr1", storage.SampleTypeSpam, storage.SampleOriginUser)
+		res, err := store.Read(context.Background(), storage.SampleTypeSpam, storage.SampleOriginUser)
 		require.NoError(t, err)
 		assert.Equal(t, 3, len(res))
 		assert.Equal(t, "new dspam1", res[0])
@@ -430,7 +430,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -456,7 +456,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -475,14 +475,14 @@ func Test_migrateSamples(t *testing.T) {
 		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"))
 		assert.NoError(t, err)
 
-		s, err := store.Stats(context.Background(), "gr1")
+		s, err := store.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalSpam)
 		assert.Equal(t, 1, s.TotalHam)
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -508,7 +508,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -535,14 +535,14 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify data imported correctly
-		s, err := dict.Stats(context.Background(), "gr1")
+		s, err := dict.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 3, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -564,7 +564,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify import happened correctly
-		s, err := dict.Stats(context.Background(), "gr1")
+		s, err := dict.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 2, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)
@@ -576,7 +576,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -590,14 +590,14 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify stats
-		s, err := dict.Stats(context.Background(), "gr1")
+		s, err := dict.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalStopPhrases)
 		assert.Equal(t, 0, s.TotalIgnoredWords)
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:")
+		db, err := storage.NewSqliteDB(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -619,7 +619,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.NoError(t, err)
 
 		// verify stats reflect only migrated data
-		s, err := dict.Stats(context.Background(), "gr1")
+		s, err := dict.Stats(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)

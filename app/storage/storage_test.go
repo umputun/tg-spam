@@ -22,7 +22,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		updater := NewSampleUpdater("gr1", samples, SampleTypeSpam, time.Second)
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
 		require.NoError(t, updater.Append("test spam message"))
 
 		reader, err := updater.Reader()
@@ -41,7 +41,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		updater := NewSampleUpdater("gr1", samples, SampleTypeHam, 1*time.Second)
+		updater := NewSampleUpdater(samples, SampleTypeHam, 1*time.Second)
 
 		messages := []string{"msg1", "msg2", "msg3"}
 		for _, msg := range messages {
@@ -69,7 +69,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		updater := NewSampleUpdater("gr1", samples, SampleTypeSpam, time.Nanosecond)
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
 		time.Sleep(time.Microsecond)
 		err = updater.Append("timeout message")
 		require.Error(t, err)
@@ -83,7 +83,7 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		updater := NewSampleUpdater("gr1", samples, SampleTypeSpam, 1)
+		updater := NewSampleUpdater(samples, SampleTypeSpam, 1)
 		assert.Error(t, updater.Append("test message"))
 	})
 
@@ -94,17 +94,17 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		updater := NewSampleUpdater("gr1", samples, SampleTypeSpam, time.Second)
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
 		require.NoError(t, updater.Append("test message"))
 
 		// verify the message was stored with user origin
 		ctx := context.Background()
-		messages, err := samples.Read(ctx, "gr1", SampleTypeSpam, SampleOriginUser)
+		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
 		require.NoError(t, err)
 		assert.Contains(t, messages, "test message")
 
 		// verify it's not in preset origin
-		messages, err = samples.Read(ctx, "gr1", SampleTypeSpam, SampleOriginPreset)
+		messages, err = samples.Read(ctx, SampleTypeSpam, SampleOriginPreset)
 		require.NoError(t, err)
 		assert.NotContains(t, messages, "test message")
 	})
@@ -116,8 +116,8 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
-		spamUpdater := NewSampleUpdater("gr1", samples, SampleTypeSpam, time.Second)
-		hamUpdater := NewSampleUpdater("gr1", samples, SampleTypeHam, time.Second)
+		spamUpdater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+		hamUpdater := NewSampleUpdater(samples, SampleTypeHam, time.Second)
 
 		require.NoError(t, spamUpdater.Append("spam message"))
 		require.NoError(t, hamUpdater.Append("ham message"))
@@ -125,13 +125,13 @@ func TestSampleUpdater(t *testing.T) {
 		ctx := context.Background()
 
 		// verify spam messages
-		messages, err := samples.Read(ctx, "gr1", SampleTypeSpam, SampleOriginUser)
+		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
 		require.NoError(t, err)
 		assert.Contains(t, messages, "spam message")
 		assert.NotContains(t, messages, "ham message")
 
 		// verify ham messages
-		messages, err = samples.Read(ctx, "gr1", SampleTypeHam, SampleOriginUser)
+		messages, err = samples.Read(ctx, SampleTypeHam, SampleOriginUser)
 		require.NoError(t, err)
 		assert.Contains(t, messages, "ham message")
 		assert.NotContains(t, messages, "spam message")
@@ -145,7 +145,7 @@ func setupTestDB(t *testing.T) (res *Engine, teardown func()) {
 	db, err := sqlx.Connect("sqlite", tmpFile)
 	require.NoError(t, err)
 	require.NotNil(t, db)
-	engine, err := NewSqliteDB(tmpFile)
+	engine, err := NewSqliteDB(tmpFile, "gr1")
 	require.NoError(t, err)
 
 	return engine, func() {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -31,13 +33,8 @@ type DetectedSpamInfo struct {
 	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB directly, for db it uses ChecksJSON
 }
 
-// NewDetectedSpam creates a new DetectedSpam storage
-func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
-	if db == nil {
-		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS detected_spam (
+var detectedSpamSchema = `
+	CREATE TABLE IF NOT EXISTS detected_spam (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		gid TEXT NOT NULL DEFAULT '',
 		text TEXT,
@@ -46,33 +43,33 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		added BOOLEAN DEFAULT 0,
 		checks TEXT
-	)`)
+	);
+	CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)
+`
+
+// NewDetectedSpam creates a new DetectedSpam storage
+func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db connection is nil")
+	}
+
+	tx, err := db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create detected_spam table: %w", err)
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err = tx.ExecContext(ctx, detectedSpamSchema); err != nil {
+		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// add added column if it doesn't exist
-	if _, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN added BOOLEAN DEFAULT 0`); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column name") {
-			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
-		}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// add gid column if it doesn't exist
-	if _, err = db.ExecContext(ctx, `ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''`); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column name") {
-			return nil, fmt.Errorf("failed to alter detected_spam table: %w", err)
-		}
-	}
-
-	// add index on timestamp
-	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp)`); err != nil {
-		return nil, fmt.Errorf("failed to create index on timestamp: %w", err)
-	}
-
-	// add index on gid
-	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`); err != nil {
-		return nil, fmt.Errorf("failed to create index on gid: %w", err)
+	if err := migrateDetectedSpam(&db.DB, db.GID()); err != nil {
+		return nil, fmt.Errorf("failed to migrate detected_spam: %w", err)
 	}
 
 	return &DetectedSpam{db: db}, nil
@@ -133,4 +130,31 @@ func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
 		entries[i].Timestamp = entry.Timestamp.Local()
 	}
 	return entries, nil
+}
+
+func migrateDetectedSpam(db *sqlx.DB, gid string) error {
+	var exists int
+	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
+	if err != nil {
+		return fmt.Errorf("failed to check for detected_spam table existence: %w", err)
+	}
+
+	if exists == 0 {
+		return nil
+	}
+
+	// add gid column if it doesn't exist
+	if _, err = db.Exec(`ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("failed to alter detected_spam table: %w", err)
+		}
+	}
+
+	// update existing records with the provided gid
+	if _, err = db.Exec("UPDATE detected_spam SET gid = ? WHERE gid = ''", gid); err != nil {
+		return fmt.Errorf("failed to update gid for existing records: %w", err)
+	}
+
+	log.Printf("[DEBUG] detected_spam table migrated, gid updated to %q", gid)
+	return nil
 }
