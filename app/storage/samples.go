@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite/lib" // sqlite driver
@@ -49,17 +50,19 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 	defer tx.Rollback()
 
 	schema := `
-        CREATE TABLE IF NOT EXISTS samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            type TEXT CHECK (type IN ('ham', 'spam')),
-            origin TEXT CHECK (origin IN ('preset', 'user')),
-            message NOT NULL UNIQUE
-        );
-        CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-        CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
-		CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message);
+		CREATE TABLE IF NOT EXISTS samples (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			gid TEXT NOT NULL,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+			type TEXT CHECK (type IN ('ham', 'spam')),
+			origin TEXT CHECK (origin IN ('preset', 'user')),
+			message TEXT NOT NULL,
+			UNIQUE(gid, message)
+		);
+		CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+		CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+		CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
     `
 
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
@@ -74,12 +77,15 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 }
 
 // Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
-func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
+func (s *Samples) Add(ctx context.Context, gid string, t SampleType, o SampleOrigin, message string) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
 	if err := o.Validate(); err != nil {
 		return err
+	}
+	if gid == "" {
+		return fmt.Errorf("gid can't be empty")
 	}
 	if o == SampleOriginAny {
 		return fmt.Errorf("can't add sample with origin 'any'")
@@ -99,8 +105,8 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 	defer tx.Rollback()
 
 	// add new sample, replace if exists
-	query := `INSERT OR REPLACE INTO samples (type, origin, message) VALUES (?, ?, ?)`
-	if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
+	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
+	if _, err = tx.ExecContext(ctx, query, gid, t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
 
@@ -131,11 +137,20 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 }
 
 // DeleteMessage removes a sample from the storage by its message
-func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
+func (s *Samples) DeleteMessage(ctx context.Context, gid, message string) error {
 	s.db.Lock()
 	defer s.db.Unlock()
 
-	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE message = ?`, message)
+	// First verify the message exists in this group
+	var count int
+	if err := s.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, gid, message); err != nil {
+		return fmt.Errorf("failed to check sample existence: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("sample not found: gid=%s, message=%s", gid, message)
+	}
+
+	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE gid = ? AND message = ?`, gid, message)
 	if err != nil {
 		return fmt.Errorf("failed to remove sample: %w", err)
 	}
@@ -145,13 +160,13 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 		return fmt.Errorf("failed to get affected rows: %w", err)
 	}
 	if affected == 0 {
-		return fmt.Errorf("sample not found: %s", message)
+		return fmt.Errorf("failed to delete sample: gid=%s, message=%s", gid, message)
 	}
 	return nil
 }
 
 // Read reads samples from storage by type and origin
-func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]string, error) {
+func (s *Samples) Read(ctx context.Context, gid string, t SampleType, o SampleOrigin) ([]string, error) {
 	s.db.RLock()
 	defer s.db.RUnlock()
 
@@ -169,11 +184,11 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 	)
 
 	if o == SampleOriginAny {
-		query = `SELECT message FROM samples WHERE type = ?`
-		args = []any{t}
+		query = `SELECT message FROM samples WHERE gid = ? AND type = ?`
+		args = []any{gid, t}
 	} else {
-		query = `SELECT message FROM samples WHERE type = ? AND origin = ?`
-		args = []any{t, o}
+		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ?`
+		args = []any{gid, t, o}
 	}
 
 	if err := s.db.SelectContext(ctx, &samples, query, args...); err != nil {
@@ -184,7 +199,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 
 // Reader returns a reader for samples by type and origin
 // Sorts samples by timestamp in descending order, i.e. from the newest to the oldest
-func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.ReadCloser, error) {
+func (s *Samples) Reader(ctx context.Context, gid string, t SampleType, o SampleOrigin) (io.ReadCloser, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -196,11 +211,11 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 	var args []any
 
 	if o == SampleOriginAny {
-		query = `SELECT message FROM samples WHERE type = ? ORDER BY timestamp DESC`
-		args = []any{t}
+		query = `SELECT message FROM samples WHERE gid = ? AND  type = ? ORDER BY timestamp DESC`
+		args = []any{gid, t}
 	} else {
-		query = `SELECT message FROM samples WHERE type = ? AND origin = ? ORDER BY timestamp DESC`
-		args = []any{t, o}
+		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ? ORDER BY timestamp DESC`
+		args = []any{gid, t, o}
 	}
 
 	s.db.RLock()
@@ -215,7 +230,7 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 
 // Iterator returns an iterator for samples by type and origin
 // Sorts samples by timestamp in descending order, i.e. from the newest to the oldest
-func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (iter.Seq[string], error) {
+func (s *Samples) Iterator(ctx context.Context, gid string, t SampleType, o SampleOrigin) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -227,11 +242,11 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 	var args []any
 
 	if o == SampleOriginAny {
-		query = `SELECT message FROM samples WHERE type = ? ORDER BY timestamp DESC`
-		args = []any{t}
+		query = `SELECT message FROM samples WHERE gid = ? AND type = ? ORDER BY timestamp DESC`
+		args = []any{gid, t}
 	} else {
-		query = `SELECT message FROM samples WHERE type = ? AND origin = ? ORDER BY timestamp DESC`
-		args = []any{t, o}
+		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ? ORDER BY timestamp DESC`
+		args = []any{gid, t, o}
 	}
 
 	s.db.RLock()
@@ -259,7 +274,7 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 // Import reads samples from the reader and imports them into the storage.
 // Returns statistics about imported samples.
 // If withCleanup is true removes all samples with the same type and origin before import.
-func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, withCleanup bool) (*SamplesStats, error) {
+func (s *Samples) Import(ctx context.Context, gid string, t SampleType, o SampleOrigin, r io.Reader, cleanup bool) (*SamplesStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -284,23 +299,29 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	defer tx.Rollback()
 
 	// remove all samples with the same type and origin if requested
-	if withCleanup {
-		query := `DELETE FROM samples WHERE type = ? AND origin = ?`
-		if _, err = tx.ExecContext(ctx, query, t, o); err != nil {
+	if cleanup {
+		query := `DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`
+		result, errDel := tx.ExecContext(ctx, query, gid, t, o)
+		if errDel != nil {
 			s.db.Unlock()
-			return nil, fmt.Errorf("failed to remove old samples: %w", err)
+			return nil, fmt.Errorf("failed to remove old samples: %w", errDel)
 		}
+		affected, errCount := result.RowsAffected()
+		if errCount != nil {
+			return nil, fmt.Errorf("failed to get affected rows: %w", errCount)
+		}
+		log.Printf("[DEBUG] removed %d old samples: gid=%s, type=%s, origin=%s", affected, gid, t, o)
 	}
 
 	// add samples
-	query := `INSERT OR REPLACE INTO samples (type, origin, message) VALUES (?, ?, ?)`
+	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		message := scanner.Text()
 		if message == "" { // skip empty lines
 			continue
 		}
-		if _, err = tx.ExecContext(ctx, query, t, o, message); err != nil {
+		if _, err = tx.ExecContext(ctx, query, gid, t, o, message); err != nil {
 			s.db.Unlock()
 			return nil, fmt.Errorf("failed to add sample: %w", err)
 		}
@@ -319,7 +340,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 
 	s.db.Unlock() // release the lock before getting stats
 
-	return s.Stats(ctx)
+	return s.Stats(ctx, gid)
 }
 
 // String implements Stringer interface
@@ -363,7 +384,7 @@ func (st *SamplesStats) String() string {
 }
 
 // Stats returns statistics about samples
-func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
+func (s *Samples) Stats(ctx context.Context, gid string) (*SamplesStats, error) {
 	s.db.RLock()
 	defer s.db.RUnlock()
 
@@ -375,10 +396,11 @@ func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
             COUNT(CASE WHEN type = 'ham' AND origin = 'preset' THEN 1 END) as preset_ham_count,
             COUNT(CASE WHEN type = 'spam' AND origin = 'user' THEN 1 END) as user_spam_count,
             COUNT(CASE WHEN type = 'ham' AND origin = 'user' THEN 1 END) as user_ham_count
-        FROM samples`
+        FROM samples 
+        WHERE gid = ?`
 
 	var stats SamplesStats
-	if err := s.db.GetContext(ctx, &stats, query); err != nil {
+	if err := s.db.GetContext(ctx, &stats, query, gid); err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil

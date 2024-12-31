@@ -28,7 +28,7 @@ type DetectedSpamInfo struct {
 	Timestamp  time.Time            `db:"timestamp"`
 	Added      bool                 `db:"added"`  // added to samples
 	ChecksJSON string               `db:"checks"` // Store as JSON
-	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB
+	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB directly, for db it uses ChecksJSON
 }
 
 // NewDetectedSpam creates a new DetectedSpam storage

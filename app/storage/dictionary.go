@@ -42,7 +42,8 @@ func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
             gid TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
-            data TEXT NOT NULL UNIQUE
+            data TEXT NOT NULL,
+            UNIQUE(gid, data)
         );
         CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
         CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
@@ -62,7 +63,7 @@ func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
-func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data, gid string) error {
+func (d *Dictionary) Add(ctx context.Context, gid string, t DictionaryType, data string) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 }
 
 // Read reads all entries from the dictionary by type
-func (d *Dictionary) Read(ctx context.Context, t DictionaryType, gid string) ([]string, error) {
+func (d *Dictionary) Read(ctx context.Context, gid string, t DictionaryType) ([]string, error) {
 	d.db.RLock()
 	defer d.db.RUnlock()
 
@@ -130,11 +131,11 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType, gid string) ([]
 }
 
 // Reader returns a reader for phrases by type
-func (d *Dictionary) Reader(ctx context.Context, t DictionaryType, gid string) (io.ReadCloser, error) {
+func (d *Dictionary) Reader(ctx context.Context, gid string, t DictionaryType) (io.ReadCloser, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
-	recs, err := d.Read(ctx, t, gid)
+	recs, err := d.Read(ctx, gid, t)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read phrases: %w", err)
 	}
@@ -143,7 +144,7 @@ func (d *Dictionary) Reader(ctx context.Context, t DictionaryType, gid string) (
 }
 
 // Iterator returns an iterator for phrases by type
-func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType, gid string) (iter.Seq[string], error) {
+func (d *Dictionary) Iterator(ctx context.Context, gid string, t DictionaryType) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -174,7 +175,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType, gid string)
 // Import reads phrases from the reader and imports them into the storage.
 // If withCleanup is true removes all entries with the same type before import.
 // Input format is either a single phrase per line or a CSV file with multiple phrases.
-func (d *Dictionary) Import(ctx context.Context, t DictionaryType, gid string, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
+func (d *Dictionary) Import(ctx context.Context, gid string, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}

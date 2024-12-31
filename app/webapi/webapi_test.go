@@ -194,7 +194,9 @@ func TestServer_routes(t *testing.T) {
 			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
 		ApprovedUsersFunc: func() []approved.UserInfo {
-			return []approved.UserInfo{{UserID: "user1", UserName: "name1"}, {UserID: "user2", UserName: "name2"}}
+			return []approved.UserInfo{
+				{UserID: "user1", UserName: "name1", GroupID: "gr1"},
+				{UserID: "user2", UserName: "name2", GroupID: "gr1"}}
 		},
 		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			return nil
@@ -385,7 +387,7 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, 1, len(detectorMock.ApprovedUsersCalls()))
 		respBody, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, `{"user_ids":[{"user_id":"user1","user_name":"name1","timestamp":"0001-01-01T00:00:00Z"},{"user_id":"user2","user_name":"name2","timestamp":"0001-01-01T00:00:00Z"}]}`+"\n", string(respBody))
+		assert.Equal(t, `{"user_ids":[{"group_id":"gr1","user_id":"user1","user_name":"name1","timestamp":"0001-01-01T00:00:00Z"},{"group_id":"gr1","user_id":"user2","user_name":"name2","timestamp":"0001-01-01T00:00:00Z"}]}`+"\n", string(respBody))
 	})
 
 	t.Run("get settings", func(t *testing.T) {

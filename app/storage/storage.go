@@ -1,5 +1,5 @@
 // Package storage provides a storage engine for sql databases.
-// The storage engine is a wrapper around sqlx.DB with additional functionality to work with the varous types of database engines.
+// The storage engine is a wrapper around sqlx.DB with additional functionality to work with the various types of database engines.
 // Each table is represented by a struct, and each struct has a method to work the table with business logic for this data type.
 package storage
 
@@ -66,11 +66,12 @@ type SampleUpdater struct {
 	samplesService *Samples
 	sampleType     SampleType
 	timeout        time.Duration
+	gid            string
 }
 
 // NewSampleUpdater creates a new SampleUpdater
-func NewSampleUpdater(samplesService *Samples, sampleType SampleType, timeout time.Duration) *SampleUpdater {
-	return &SampleUpdater{samplesService: samplesService, sampleType: sampleType, timeout: timeout}
+func NewSampleUpdater(gid string, samplesService *Samples, sampleType SampleType, timeout time.Duration) *SampleUpdater {
+	return &SampleUpdater{gid: gid, samplesService: samplesService, sampleType: sampleType, timeout: timeout}
 }
 
 // Append a message to the samples, forcing user origin
@@ -80,13 +81,13 @@ func (u *SampleUpdater) Append(msg string) error {
 		ctx, cancel = context.WithTimeout(context.Background(), u.timeout)
 	}
 	defer cancel()
-	return u.samplesService.Add(ctx, u.sampleType, SampleOriginUser, msg)
+	return u.samplesService.Add(ctx, u.gid, u.sampleType, SampleOriginUser, msg)
 }
 
 // Reader returns a reader for the samples
 func (u *SampleUpdater) Reader() (io.ReadCloser, error) {
 	// we don't want to pass context with timeout here, as it's an async operation
-	return u.samplesService.Reader(context.Background(), u.sampleType, SampleOriginUser)
+	return u.samplesService.Reader(context.Background(), u.gid, u.sampleType, SampleOriginUser)
 }
 
 // RWLocker is a read-write locker interface

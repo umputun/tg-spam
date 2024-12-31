@@ -129,52 +129,35 @@ func TestApprovedUsers_Read(t *testing.T) {
 
 	testTime := time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC)
 
-	tests := []struct {
-		name     string
-		setup    func(t *testing.T, db *sqlx.DB)
-		expected []approved.UserInfo
-	}{
-		{
-			name: "read users with groups",
-			setup: func(t *testing.T, db *sqlx.DB) {
-				_, err := db.Exec("DELETE FROM approved_users")
-				require.NoError(t, err)
-
-				users := []approved.UserInfo{
-					{UserID: "123", UserName: "John", GroupID: "admin", Timestamp: testTime},
-					{UserID: "456", UserName: "Jane", GroupID: "user", Timestamp: testTime},
-				}
-				for _, u := range users {
-					err := au.Write(ctx, u)
-					require.NoError(t, err)
-				}
-			},
-			expected: []approved.UserInfo{
-				{UserID: "123", UserName: "John", GroupID: "admin", Timestamp: testTime},
-				{UserID: "456", UserName: "Jane", GroupID: "user", Timestamp: testTime},
-			},
-		},
-		{
-			name: "empty table",
-			setup: func(t *testing.T, db *sqlx.DB) {
-				_, err := db.Exec("DELETE FROM approved_users")
-				require.NoError(t, err)
-			},
-			expected: []approved.UserInfo{},
-		},
+	// write test data
+	users := []approved.UserInfo{
+		{UserID: "123", UserName: "John", GroupID: "gr1", Timestamp: testTime},
+		{UserID: "456", UserName: "Jane", GroupID: "gr2", Timestamp: testTime},
+	}
+	for _, u := range users {
+		err := au.Write(ctx, u)
+		require.NoError(t, err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.setup != nil {
-				tt.setup(t, &db.DB)
-			}
+	t.Run("read users with gr1", func(t *testing.T) {
+		users, err := au.Read(ctx, "gr1")
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, users[0].UserID, "123")
+	})
 
-			users, err := au.Read(ctx)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, users)
-		})
-	}
+	t.Run("read users with gr2", func(t *testing.T) {
+		users, err := au.Read(ctx, "gr2")
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, users[0].UserID, "456")
+	})
+
+	t.Run("read user from non-existing group", func(t *testing.T) {
+		users, err := au.Read(ctx, "non-existing")
+		require.NoError(t, err)
+		require.Len(t, users, 0)
+	})
 }
 
 func TestApprovedUsers_Delete(t *testing.T) {
@@ -242,11 +225,11 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, id := range tt.ids {
-				err = au.Write(ctx, approved.UserInfo{UserID: id, UserName: "name_" + id})
+				err = au.Write(ctx, approved.UserInfo{UserID: id, UserName: "name_" + id, GroupID: "gr1"})
 				require.NoError(t, err)
 			}
 
-			res, err := au.Read(ctx)
+			res, err := au.Read(ctx, "gr1")
 			require.NoError(t, err)
 			assert.Equal(t, len(tt.expected), len(res))
 		})
@@ -272,13 +255,13 @@ func TestApprovedUsers_ContextCancellation(t *testing.T) {
 
 	t.Run("read with cancelled context", func(t *testing.T) {
 		// prepare data
-		err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test"})
+		err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test", GroupID: "gr1"})
 		require.NoError(t, err)
 
 		ctxCanceled, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err = au.Read(ctxCanceled)
+		_, err = au.Read(ctxCanceled, "gr1")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "context canceled")
 	})

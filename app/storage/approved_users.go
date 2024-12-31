@@ -31,7 +31,8 @@ var approvedUsersSchema = `
 			uid TEXT,
 			gid TEXT DEFAULT '',
 			name TEXT,
-			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        	UNIQUE(gid, uid)                              
         );
         CREATE INDEX IF NOT EXISTS idx_approved_users_uid ON approved_users(uid);
         CREATE INDEX IF NOT EXISTS idx_approved_users_gid ON approved_users(gid);
@@ -68,12 +69,12 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 }
 
 // Read returns a list of all approved users
-func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
+func (au *ApprovedUsers) Read(ctx context.Context, gid string) ([]approved.UserInfo, error) {
 	au.db.RLock()
 	defer au.db.RUnlock()
 
 	users := []approvedUsersInfo{}
-	err := au.db.SelectContext(ctx, &users, "SELECT uid, gid, name, timestamp FROM approved_users ORDER BY uid ASC")
+	err := au.db.SelectContext(ctx, &users, "SELECT uid, gid, name, timestamp FROM approved_users WHERE gid=? ORDER BY uid ASC", gid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approved users: %w", err)
 	}
