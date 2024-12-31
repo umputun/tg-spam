@@ -10,11 +10,11 @@ WORKDIR /build
 RUN go version
 
 RUN \
-    if [ -z "$CI" ] ; then \
-    echo "runs outside of CI" && version=$(git rev-parse --abbrev-ref HEAD)-$(git log -1 --format=%h)-$(date +%Y%m%dT%H:%M:%S); \
-    else version=${GIT_BRANCH}-${GITHUB_SHA:0:7}-$(date +%Y%m%dT%H:%M:%S); fi && \
-    echo "version=$version" && \
-    cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
+ if [ -z "$CI" ] ; then \
+ echo "runs outside of CI" && version=$(git rev-parse --abbrev-ref HEAD)-$(git log -1 --format=%h)-$(date +%Y%m%dT%H:%M:%S); \
+ else version=${GIT_BRANCH}-${GITHUB_SHA:0:7}-$(date +%Y%m%dT%H:%M:%S); fi && \
+ echo "version=$version" && \
+ cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
 
 
 FROM alpine:3.21
@@ -28,20 +28,29 @@ COPY data /srv/preset
 COPY data/.not_mounted /srv/data/.not_mounted
 
 RUN \
-    adduser -s /bin/sh -D -u 1000 app && chown -R app:app /home/app && \
-    chown -R app:app /srv/preset /srv/data && \
-    chmod -R 775 /srv/preset /srv/data && \
-    ls -la /srv/preset
+ adduser -s /bin/sh -D -u 1000 app && chown -R app:app /home/app && \
+ chown -R app:app /srv/preset /srv/data && \
+ chmod -R 775 /srv/preset /srv/data && \
+ ls -la /srv/preset
+
+RUN \
+ echo "#!/bin/sh" > /srv/entry.sh && \
+ echo "echo start tg-spam" >> /srv/entry.sh && \
+ echo "if [ ! -f /srv/data/tg-spam.db ]; then cp -r /srv/preset/* /srv/data; fi" >> /srv/entry.sh && \
+ echo "echo content of /srv/data" >> /srv/entry.sh && \
+ echo "ls -la /srv/data" >> /srv/entry.sh && \
+ echo "/srv/tg-spam" >> /srv/entry.sh && \
+ chmod +x /srv/entry.sh
 
 USER app
 WORKDIR /srv
 
 RUN \
-    /srv/tg-spam --convert=only --files.dynamic=/srv/preset --files.samples=/srv/preset && \
-    rm -vf /srv/preset/*.loaded && \
-    echo "preset files converted" && \
-    ls -la /srv/preset && \
-    ls -la /srv/data
+ /srv/tg-spam --convert=only --files.dynamic=/srv/preset --files.samples=/srv/preset && \
+ rm -vf /srv/preset/*.loaded && \
+ echo "preset files converted" && \
+ ls -la /srv/preset && \
+ ls -la /srv/data
 
 EXPOSE 8080
-ENTRYPOINT ["/srv/tg-spam"]
+ENTRYPOINT ["/srv/entry.sh"]
