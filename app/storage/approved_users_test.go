@@ -321,7 +321,7 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 		require.NoError(t, err)
 
 		// run migration
-		err = migrateTable(&db.DB)
+		err = migrateTable(&db.DB, "gr1")
 		require.NoError(t, err)
 
 		// verify structure
@@ -355,11 +355,11 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 
 		assert.Equal(t, "user1", users[0].UID)
 		assert.Equal(t, "John", users[0].Name)
-		assert.Equal(t, "", users[0].GID)
+		assert.Equal(t, "gr1", users[0].GID)
 
 		assert.Equal(t, "user2", users[1].UID)
 		assert.Equal(t, "Jane", users[1].Name)
-		assert.Equal(t, "", users[1].GID)
+		assert.Equal(t, "gr1", users[1].GID)
 	})
 
 	t.Run("migration not needed", func(t *testing.T) {
@@ -372,7 +372,7 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 		require.NoError(t, err)
 
 		// run migration
-		err = migrateTable(&db.DB)
+		err = migrateTable(&db.DB, "gr1")
 		require.NoError(t, err)
 
 		// verify structure

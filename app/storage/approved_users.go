@@ -61,7 +61,7 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	if err := migrateTable(&db.DB); err != nil {
+	if err := migrateTable(&db.DB, "gr1"); err != nil {
 		return nil, err
 	}
 
@@ -127,7 +127,7 @@ func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
 	log.Printf("[INFO] user %q (%s) deleted from approved users", user.UserName, id)
 	return nil
 }
-func migrateTable(db *sqlx.DB) error {
+func migrateTable(db *sqlx.DB, gid string) error {
 	var exists int
 	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
 	if err != nil {
@@ -195,8 +195,8 @@ func migrateTable(db *sqlx.DB) error {
 	// restore data
 	for _, r := range rows {
 		_, err = tx.Exec(
-			"INSERT INTO approved_users (uid, name, timestamp) VALUES (?, ?, ?)",
-			r.ID, r.Name, r.Timestamp,
+			"INSERT INTO approved_users (gid, uid, name, timestamp) VALUES (?, ?, ?, ?)",
+			gid, r.ID, r.Name, r.Timestamp,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to restore data: %w", err)
