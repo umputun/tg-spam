@@ -564,6 +564,7 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			err := s.ReloadSamples()
@@ -640,6 +641,7 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			err := s.RemoveDynamicSpamSample(tc.sample)
@@ -831,6 +833,7 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
 				DictStore:    dictStore,
+				GroupID:      "gr1",
 			})
 
 			var err error

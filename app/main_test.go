@@ -29,7 +29,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	logger, err := makeSpamLogger(context.Background(), file, db)
+	logger, err := makeSpamLogger(context.Background(), "gr1", file, db)
 	require.NoError(t, err)
 
 	msg := &bot.Message{
@@ -212,6 +212,7 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.Server.Enabled = true
 	opts.Server.ListenAddr = ":9988"
 	opts.Server.AuthPasswd = "auto"
+	opts.InstanceID = "gr1"
 
 	opts.Files.SamplesDataPath = t.TempDir()
 	db, err := storage.NewSqliteDB("tg-spam.db")
@@ -474,7 +475,7 @@ func Test_migrateSamples(t *testing.T) {
 		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"))
 		assert.NoError(t, err)
 
-		s, err := store.Stats(context.Background(), "tg-spam")
+		s, err := store.Stats(context.Background(), "gr1")
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalSpam)
 		assert.Equal(t, 1, s.TotalHam)
