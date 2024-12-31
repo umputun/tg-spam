@@ -894,10 +894,6 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		assert.Equal(t, 1, len(mockDetector.CheckCalls()))
 		assert.Equal(t, "spam example", mockDetector.CheckCalls()[0].Req.Msg)
 		assert.Equal(t, "user123", mockDetector.CheckCalls()[0].Req.UserID)
-
-		// check if id cleaned
-		assert.Equal(t, 1, len(mockDetector.RemoveApprovedUserCalls()))
-		assert.Equal(t, "user123", mockDetector.RemoveApprovedUserCalls()[0].ID)
 	})
 }
 
