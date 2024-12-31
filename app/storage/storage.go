@@ -27,7 +27,6 @@ const (
 // EngineType allows distinguishing between different database engines.
 type Engine struct {
 	sqlx.DB
-	RWLocker
 	gid    string     // group id, to allow per-group storage in the same database
 	dbType EngineType // type of the database engine
 }
@@ -41,7 +40,7 @@ func NewSqliteDB(file, gid string) (*Engine, error) {
 	if err := setSqlitePragma(db); err != nil {
 		return &Engine{}, err
 	}
-	return &Engine{DB: *db, gid: gid, dbType: EngineTypeSqlite, RWLocker: &sync.RWMutex{}}, nil
+	return &Engine{DB: *db, gid: gid, dbType: EngineTypeSqlite}, nil
 }
 
 // GID returns the group id
@@ -52,6 +51,14 @@ func (e *Engine) GID() string {
 // Type returns the database engine type
 func (e *Engine) Type() EngineType {
 	return e.dbType
+}
+
+// MakeLock creates a new lock for the database engine
+func (e *Engine) MakeLock() RWLocker {
+	if e.dbType == EngineTypeSqlite {
+		return &sync.RWMutex{} // sqlite need locking
+	}
+	return &NoopLocker{} // other engines don't need locking
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
@@ -107,3 +114,18 @@ type RWLocker interface {
 	RLock()
 	RUnlock()
 }
+
+// NoopLocker is a no-op locker
+type NoopLocker struct{}
+
+// Lock is a no-op
+func (NoopLocker) Lock() {}
+
+// Unlock is a no-op
+func (NoopLocker) Unlock() {}
+
+// RLock is a no-op
+func (NoopLocker) RLock() {}
+
+// RUnlock is a no-op
+func (NoopLocker) RUnlock() {}

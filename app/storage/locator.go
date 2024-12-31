@@ -20,6 +20,7 @@ type Locator struct {
 	ttl     time.Duration
 	minSize int
 	db      *Engine
+	RWLocker
 }
 
 // MsgMeta stores message metadata
@@ -77,7 +78,7 @@ func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *Engine)
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return &Locator{ttl: ttl, minSize: minSize, db: db}, nil
+	return &Locator{ttl: ttl, minSize: minSize, db: db, RWLocker: db.MakeLock()}, nil
 }
 
 // Close closes the database
@@ -87,8 +88,8 @@ func (l *Locator) Close(_ context.Context) error {
 
 // AddMessage adds messages to the locator and also cleans up old messages.
 func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int64, userName string, msgID int) error {
-	l.db.Lock()
-	defer l.db.Unlock()
+	l.Lock()
+	defer l.Unlock()
 
 	hash := l.MsgHash(msg)
 	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
@@ -116,8 +117,8 @@ func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int
 
 // AddSpam adds spam data to the locator and also cleans up old spam data.
 func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.Response) error {
-	l.db.Lock()
-	defer l.db.Unlock()
+	l.Lock()
+	defer l.Unlock()
 
 	checksStr, err := json.Marshal(checks)
 	if err != nil {
@@ -139,8 +140,8 @@ func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.
 // Message returns message MsgMeta for given msg
 // this allows to match messages from admin chat (only text available) to the original message
 func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
-	l.db.RLock()
-	defer l.db.RUnlock()
+	l.RLock()
+	defer l.RUnlock()
 
 	var meta MsgMeta
 	hash := l.MsgHash(msg)
@@ -154,8 +155,8 @@ func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
 
 // UserNameByID returns username by user id. Returns empty string if not found
 func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
-	l.db.RLock()
-	defer l.db.RUnlock()
+	l.RLock()
+	defer l.RUnlock()
 
 	var userName string
 	err := l.db.GetContext(ctx, &userName, `SELECT user_name FROM messages WHERE user_id = ? LIMIT 1`, userID)
@@ -168,8 +169,8 @@ func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
 
 // UserIDByName returns user id by username. Returns 0 if not found
 func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
-	l.db.RLock()
-	defer l.db.RUnlock()
+	l.RLock()
+	defer l.RUnlock()
 
 	var userID int64
 	err := l.db.GetContext(ctx, &userID, `SELECT user_id FROM messages WHERE user_name = ? LIMIT 1`, userName)
@@ -182,8 +183,8 @@ func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
 
 // Spam returns message SpamData for given msg
 func (l *Locator) Spam(ctx context.Context, userID int64) (SpamData, bool) {
-	l.db.RLock()
-	defer l.db.RUnlock()
+	l.RLock()
+	defer l.RUnlock()
 
 	var data SpamData
 	var checksStr string

@@ -18,6 +18,7 @@ const maxDetectedSpamEntries = 500
 // DetectedSpam is a storage for detected spam entries
 type DetectedSpam struct {
 	db *Engine
+	RWLocker
 }
 
 // DetectedSpamInfo represents information about a detected spam entry.
@@ -83,13 +84,13 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("failed to migrate detected_spam: %w", err)
 	}
 
-	return &DetectedSpam{db: db}, nil
+	return &DetectedSpam{db: db, RWLocker: db.MakeLock()}, nil
 }
 
 // Write adds a new detected spam entry
 func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, checks []spamcheck.Response) error {
-	ds.db.Lock()
-	defer ds.db.Unlock()
+	ds.Lock()
+	defer ds.Unlock()
 
 	if entry.GID == "" || entry.Text == "" || entry.UserID == 0 || entry.UserName == "" {
 		return fmt.Errorf("missing required fields")
@@ -111,8 +112,8 @@ func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, check
 
 // SetAddedToSamplesFlag sets the added flag to true for the detected spam entry with the given id
 func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) error {
-	ds.db.Lock()
-	defer ds.db.Unlock()
+	ds.Lock()
+	defer ds.Unlock()
 
 	query := `UPDATE detected_spam SET added = 1 WHERE id = ?`
 	if _, err := ds.db.ExecContext(ctx, query, id); err != nil {
@@ -123,8 +124,8 @@ func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) err
 
 // Read returns all detected spam entries
 func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
-	ds.db.RLock()
-	defer ds.db.RUnlock()
+	ds.RLock()
+	defer ds.RUnlock()
 
 	var entries []DetectedSpamInfo
 	err := ds.db.SelectContext(ctx, &entries, "SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?", maxDetectedSpamEntries)

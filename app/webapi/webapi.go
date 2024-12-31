@@ -228,7 +228,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 
 	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
-	req := spamcheck.Request{}
+	req := spamcheck.Request{CheckOnly: true}
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

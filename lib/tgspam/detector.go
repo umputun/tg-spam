@@ -329,8 +329,9 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 // RemoveApprovedUser removes approved user for given IDs
 func (d *Detector) RemoveApprovedUser(id string) error {
 	d.lock.Lock()
-	defer d.lock.Unlock()
 	delete(d.approvedUsers, id)
+	d.lock.Unlock()
+
 	if d.userStorage != nil {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
@@ -643,8 +644,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 			if !scriptFound {
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
-					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
-					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
+				  (r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
+				  (r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
 					scripts["Mathematical"] = true
 					if len(scripts) > 1 {
 						return true

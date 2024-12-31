@@ -15,6 +15,7 @@ import (
 // ApprovedUsers is a storage for approved users
 type ApprovedUsers struct {
 	db *Engine
+	RWLocker
 }
 
 // approvedUsersInfo is a struct to store approved user info in the database
@@ -73,13 +74,13 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 		return nil, err
 	}
 
-	return &ApprovedUsers{db: db}, nil
+	return &ApprovedUsers{db: db, RWLocker: db.MakeLock()}, nil
 }
 
 // Read returns a list of all approved users
 func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
-	au.db.RLock()
-	defer au.db.RUnlock()
+	au.RLock()
+	defer au.RUnlock()
 
 	users := []approvedUsersInfo{}
 	gid := au.db.GID()
@@ -102,8 +103,8 @@ func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) 
 
 // Write adds a new approved user
 func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
-	au.db.Lock()
-	defer au.db.Unlock()
+	au.Lock()
+	defer au.Unlock()
 
 	if user.Timestamp.IsZero() {
 		user.Timestamp = time.Now()
@@ -119,8 +120,8 @@ func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) erro
 
 // Delete removes an approved user by its ID
 func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
-	au.db.Lock()
-	defer au.db.Unlock()
+	au.Lock()
+	defer au.Unlock()
 
 	var user approvedUsersInfo
 	err := au.db.GetContext(ctx, &user, "SELECT uid, gid, name, timestamp FROM approved_users WHERE uid = ? AND gid = ?",
