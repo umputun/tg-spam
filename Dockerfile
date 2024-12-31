@@ -26,21 +26,14 @@ COPY --from=build /build/tg-spam /srv/tg-spam
 
 COPY data /srv/preset
 COPY data/.not_mounted /srv/data/.not_mounted
+COPY entrypoint.sh /srv/entrypoint.sh
 
 RUN \
  adduser -s /bin/sh -D -u 1000 app && chown -R app:app /home/app && \
  chown -R app:app /srv/preset /srv/data && \
  chmod -R 775 /srv/preset /srv/data && \
+ chmod +x /srv/entrypoint.sh && \
  ls -la /srv/preset
-
-RUN \
- echo "#!/bin/sh" > /srv/entry.sh && \
- echo "echo start tg-spam" >> /srv/entry.sh && \
- echo "if [ ! -f /srv/data/tg-spam.db ]; then cp -r /srv/preset/* /srv/data; fi" >> /srv/entry.sh && \
- echo "echo content of /srv/data" >> /srv/entry.sh && \
- echo "ls -la /srv/data" >> /srv/entry.sh && \
- echo "/srv/tg-spam" >> /srv/entry.sh && \
- chmod +x /srv/entry.sh
 
 USER app
 WORKDIR /srv
@@ -53,4 +46,4 @@ RUN \
  ls -la /srv/data
 
 EXPOSE 8080
-ENTRYPOINT ["/srv/entry.sh"]
+ENTRYPOINT ["/srv/entrypoint.sh"]
