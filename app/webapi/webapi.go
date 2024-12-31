@@ -268,11 +268,6 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
 	}
-
-	// the successful check may add user to the approved list. we want to avoid it
-	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
-		log.Printf("[DEBUG] failed to clenaup after check: %v", err)
-	}
 }
 
 // getDynamicSamplesHandler handles GET /samples request. It returns dynamic samples both for spam and ham.
