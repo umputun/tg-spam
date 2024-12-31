@@ -198,8 +198,8 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
-	concertOnly := opts.Convert == "only"
-	if !opts.Server.Enabled && !concertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	convertOnly := opts.Convert == "only"
+	if !opts.Server.Enabled && !convertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
@@ -220,6 +220,16 @@ func execute(ctx context.Context, opts options) error {
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
 
+	// make spam bot
+	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
+	if err != nil {
+		return fmt.Errorf("can't make spam bot, %w", err)
+	}
+	if opts.Convert == "only" {
+		log.Print("[WARN] convert only mode, converting text samples and exit")
+		return nil
+	}
+
 	// make store and load approved users
 	approvedUsersStore, auErr := storage.NewApprovedUsers(ctx, dataDB)
 	if auErr != nil {
@@ -231,16 +241,6 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
 	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dbFile, count)
-
-	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
-	if err != nil {
-		return fmt.Errorf("can't make spam bot, %w", err)
-	}
-	if opts.Convert == "only" {
-		log.Print("[WARN] convert only mode, converting text samples and exit")
-		return nil
-	}
 
 	// make locator
 	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
@@ -370,9 +370,9 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, db)
-	if auErr != nil {
-		return fmt.Errorf("can't make approved users store, %w", auErr)
+	detectedSpamStore, dsErr := storage.NewDetectedSpam(ctx, db)
+	if dsErr != nil {
+		return fmt.Errorf("can't make detected spam store, %w", dsErr)
 	}
 
 	settings := webapi.Settings{

@@ -54,20 +54,31 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 		return nil, fmt.Errorf("db connection is nil")
 	}
 
-	tx, err := db.Begin()
+	// first check if the table exists. we can't do this in a transaction
+	// because missing columns will cause the transaction to fail
+	var exists int
+	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	if _, err = tx.ExecContext(ctx, detectedSpamSchema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+		return nil, fmt.Errorf("failed to check for detected_spam table existence: %w", err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	if exists == 0 { // table does not exist, create it
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, fmt.Errorf("failed to start transaction: %w", err)
+		}
+		defer tx.Rollback()
+
+		if _, err = tx.ExecContext(ctx, detectedSpamSchema); err != nil {
+			return nil, fmt.Errorf("failed to create schema: %w", err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		}
 	}
 
+	// migrate detected_spam table
 	if err := migrateDetectedSpam(&db.DB, db.GID()); err != nil {
 		return nil, fmt.Errorf("failed to migrate detected_spam: %w", err)
 	}
@@ -151,10 +162,15 @@ func migrateDetectedSpam(db *sqlx.DB, gid string) error {
 	}
 
 	// update existing records with the provided gid
-	if _, err = db.Exec("UPDATE detected_spam SET gid = ? WHERE gid = ''", gid); err != nil {
+	res, err := db.Exec("UPDATE detected_spam SET gid = ? WHERE gid = ''", gid)
+	if err != nil {
 		return fmt.Errorf("failed to update gid for existing records: %w", err)
 	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
 
-	log.Printf("[DEBUG] detected_spam table migrated, gid updated to %q", gid)
+	log.Printf("[DEBUG] detected_spam table migrated, gid updated to %q, records: %d", gid, rowsAffected)
 	return nil
 }

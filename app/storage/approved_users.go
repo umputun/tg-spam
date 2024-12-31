@@ -46,19 +46,27 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 		return nil, fmt.Errorf("db connection is nil")
 	}
 
-	// create schema in a single transaction
-	tx, err := db.Begin()
+	var exists int
+	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	if _, err = tx.ExecContext(ctx, approvedUsersSchema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+		return nil, fmt.Errorf("failed to check for approved_users table existence: %w", err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	// create schema in a single transaction if the table does not exist
+	if exists == 0 {
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, fmt.Errorf("failed to start transaction: %w", err)
+		}
+		defer tx.Rollback()
+
+		if _, err = tx.ExecContext(ctx, approvedUsersSchema); err != nil {
+			return nil, fmt.Errorf("failed to create schema: %w", err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		}
 	}
 
 	if err := migrateTable(&db.DB, db.GID()); err != nil {
@@ -208,7 +216,7 @@ func migrateTable(db *sqlx.DB, gid string) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migration: %w", err)
 	}
-	log.Printf("[DEBUG] approved_users table migrated")
+	log.Printf("[DEBUG] approved_users table migrated, records: %d", len(rows))
 
 	return nil
 }
