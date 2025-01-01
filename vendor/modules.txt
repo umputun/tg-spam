@@ -38,8 +38,8 @@ github.com/go-pkgz/expirable-cache/v3
 # github.com/go-pkgz/lgr v0.11.1
 ## explicit; go 1.20
 github.com/go-pkgz/lgr
-# github.com/go-pkgz/rest v1.20.1
-## explicit; go 1.23
+# github.com/go-pkgz/rest v1.20.2
+## explicit; go 1.21
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
@@ -87,7 +87,7 @@ github.com/samber/lo/internal/rand
 # github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
 ## explicit; go 1.18
 github.com/sandwich-go/gpt3-encoder
-# github.com/sashabaranov/go-openai v1.36.0
+# github.com/sashabaranov/go-openai v1.36.1
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
@@ -163,7 +163,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.8.0
 ## explicit; go 1.18
 modernc.org/memory
-# modernc.org/sqlite v1.34.2
+# modernc.org/sqlite v1.34.4
 ## explicit; go 1.21
 modernc.org/sqlite
 modernc.org/sqlite/lib

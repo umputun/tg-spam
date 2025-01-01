@@ -10,15 +10,15 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-pkgz/lgr v0.11.1
-	github.com/go-pkgz/rest v1.20.1
+	github.com/go-pkgz/rest v1.20.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
-	github.com/sashabaranov/go-openai v1.36.0
+	github.com/sashabaranov/go-openai v1.36.1
 	github.com/stretchr/testify v1.10.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.34.2
+	modernc.org/sqlite v1.34.4
 )
 
 require (
