@@ -376,6 +376,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	settings := webapi.Settings{
+		InstanceID:              opts.InstanceID,
 		PrimaryGroup:            opts.Telegram.Group,
 		AdminGroup:              opts.AdminGroup,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,

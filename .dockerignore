@@ -3,3 +3,4 @@ data/spam-dynamic.txt
 data/tg-spam.db*
 docker-compose*.yml
 var/
+logs/

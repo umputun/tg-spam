@@ -59,6 +59,7 @@ type Config struct {
 
 // Settings contains all application settings
 type Settings struct {
+	InstanceID              string   `json:"instance_id"`
 	PrimaryGroup            string   `json:"primary_group"`
 	AdminGroup              string   `json:"admin_group"`
 	DisableAdminSpamForward bool     `json:"disable_admin_spam_forward"`

@@ -319,6 +319,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	// add samples
 	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
 	scanner := bufio.NewScanner(r)
+	added := 0
 	for scanner.Scan() {
 		message := scanner.Text()
 		if message == "" { // skip empty lines
@@ -328,6 +329,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 			s.Unlock()
 			return nil, fmt.Errorf("failed to add sample: %w", err)
 		}
+		added++
 	}
 
 	// check for scanner errors after the scan is complete
@@ -340,9 +342,8 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 		s.Unlock()
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
 	s.Unlock() // release the lock before getting stats
-
+	log.Printf("[DEBUG] imported %d samples: gid=%s, type=%s, origin=%s", added, gid, t, o)
 	return s.Stats(ctx)
 }
 

@@ -6,7 +6,7 @@ echo "start tg-spam"
 if [ -z "$FILES_DYNAMIC" ]; then
   echo "FILES_DYNAMIC is not set"
 else
-  # ensure directory exists before attempting to copy
+  # ensure tg-spam.db doesn't exists before attempting to copy
   if [ ! -f "$FILES_DYNAMIC/tg-spam.db" ]; then
     echo "tg-spam.db not found, copying preset files to $FILES_DYNAMIC"
     cp -r /srv/preset/* "$FILES_DYNAMIC"
@@ -15,4 +15,4 @@ else
   ls -la "$FILES_DYNAMIC"
 fi
 
-exec /srv/tg-spam
+exec /srv/tg-spam "$@"
