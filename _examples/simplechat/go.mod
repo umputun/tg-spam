@@ -3,8 +3,8 @@ module github.com/umputun/tg-spam/_examples/simplechat
 go 1.23
 
 require (
-	github.com/umputun/tg-spam v1.14.3
-	modernc.org/sqlite v1.34.2
+	github.com/umputun/tg-spam v1.15.0
+	modernc.org/sqlite v1.34.4
 )
 
 require (
