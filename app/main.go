@@ -754,6 +754,10 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 // migrateDicts runs migrations from legacy dictionary text files to db, if needed
 func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary) error {
 	migrateDict := func(file string, dictType storage.DictionaryType) (*storage.DictionaryStats, error) {
+		if opts.Convert == "disabled" {
+			log.Print("[DEBUG] dictionary migration disabled")
+			return &storage.DictionaryStats{}, nil
+		}
 		if _, err := os.Stat(file); err != nil {
 			log.Printf("[DEBUG] dictionary file %s not found, skip", file)
 			return &storage.DictionaryStats{}, nil
@@ -780,7 +784,7 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 		return errors.New("dictionary db is nil")
 	}
 
-	// migrate stop words if files exist
+	// migrate stop-words if files exist
 	stopWordsFile := filepath.Join(opts.Files.SamplesDataPath, stopWordsFile)
 	s, err := migrateDict(stopWordsFile, storage.DictionaryTypeStopPhrase)
 	if err != nil {
@@ -800,7 +804,9 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 		log.Printf("[INFO] excluded tokens loaded: %s", s)
 	}
 
-	log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	if s.TotalIgnoredWords > 0 || s.TotalStopPhrases > 0 {
+		log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	}
 	return nil
 }
 
