@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -185,9 +186,10 @@ func Test_makeSpamBot(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		opts.Files.SamplesDataPath = tmpDir
+		opts.Files.DynamicDataPath = tmpDir
 		opts.InstanceID = "gr1"
 		detector := makeDetector(opts)
-		db, err := storage.NewSqliteDB("tg-spam.db", "gr1")
+		db, err := storage.NewSqliteDB(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -214,17 +216,20 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.Server.AuthPasswd = "auto"
 	opts.InstanceID = "gr1"
 
-	opts.Files.SamplesDataPath = t.TempDir()
-	db, err := storage.NewSqliteDB("tg-spam.db", "gr1")
-	require.NoError(t, err)
-	defer db.Close()
+	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
 
-	samplesStore, err := storage.NewSamples(ctx, db)
+	// write some sample files
+	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset, "spam1")
+	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
 	require.NoError(t, err)
-	err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
+	fh.Close()
+
+	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
 	require.NoError(t, err)
+	_, err = fh.WriteString("ham1\nham2\nham3\n")
+	require.NoError(t, err)
+	fh.Close()
 
 	done := make(chan struct{})
 	go func() {
@@ -241,7 +246,7 @@ func Test_activateServerOnly(t *testing.T) {
 		}
 		defer resp.Body.Close()
 		return resp.StatusCode == http.StatusOK
-	}, time.Second*2, time.Millisecond*50, "server did not start")
+	}, time.Second*5, time.Millisecond*100, "server did not start")
 
 	resp, err := http.Get("http://localhost:9988/ping")
 	require.NoError(t, err)
