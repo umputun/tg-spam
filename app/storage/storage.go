@@ -62,12 +62,12 @@ func (e *Engine) MakeLock() RWLocker {
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
-	// set pragmas for better concurrency support
+	// set pragmas for sqlite
 	pragmas := map[string]string{
-		"journal_mode": "WAL",
-		"synchronous":  "NORMAL",
-		"busy_timeout": "5000",
-		"foreign_keys": "ON",
+		// "journal_mode": "WAL",
+		// "synchronous":  "NORMAL",
+		// "busy_timeout": "5000",
+		// "foreign_keys": "ON",
 	}
 
 	// set pragma

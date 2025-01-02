@@ -680,7 +680,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 	}
 	migrateSamples := func(file string, sampleType storage.SampleType, origin storage.SampleOrigin) (*storage.SamplesStats, error) {
 		if _, err := os.Stat(file); err != nil {
-			log.Printf("[DEBUG] samples file %s not found, err: %v, skip", file, err)
+			log.Printf("[DEBUG] samples file %s not found, skip", file)
 			return &storage.SamplesStats{}, nil
 		}
 		fh, err := os.Open(file) //nolint:gosec // file path is controlled by the app
