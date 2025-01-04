@@ -92,30 +92,51 @@ func TestLocator_CleanupLogic(t *testing.T) {
 
 	oldTime := time.Now().Add(-2 * ttl) // ensure this is older than the ttl
 
-	// add two of each, we have minSize = 1, so we should have 2 to allow cleanup
-	_, err := locator.db.Exec(`INSERT INTO messages (hash, time, chat_id, user_id, user_name, msg_id) VALUES (?, ?, ?, ?, ?, ?)`,
-		"old_hash1", oldTime, int64(111), int64(222), "old_user", 333)
+	// add two of each to both groups, we have minSize = 1, so we should have 2 to allow cleanup
+	_, err := locator.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"old_hash1", locator.db.GID(), oldTime, int64(111), int64(222), "old_user", 333)
 	require.NoError(t, err)
-	_, err = locator.db.Exec(`INSERT INTO messages (hash, time, chat_id, user_id, user_name, msg_id) VALUES (?, ?, ?, ?, ?, ?)`,
-		"old_hash2", oldTime, int64(111), int64(222), "old_user", 333)
+	_, err = locator.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"old_hash2", locator.db.GID(), oldTime, int64(111), int64(222), "old_user", 333)
 	require.NoError(t, err)
 
-	_, err = locator.db.Exec(`INSERT INTO spam (user_id, time, checks) VALUES (?, ?, ?)`,
-		int64(222), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
+	_, err = locator.db.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
+		int64(222), locator.db.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
 	require.NoError(t, err)
-	_, err = locator.db.Exec(`INSERT INTO spam (user_id, time, checks) VALUES (?, ?, ?)`,
-		int64(223), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
+	_, err = locator.db.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
+		int64(223), locator.db.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
 	require.NoError(t, err)
 
 	require.NoError(t, locator.cleanupMessages(ctx))
 	require.NoError(t, locator.cleanupSpam())
 
 	var msgCountAfter, spamCountAfter int
-	locator.db.Get(&msgCountAfter, `SELECT COUNT(*) FROM messages`)
-	locator.db.Get(&spamCountAfter, `SELECT COUNT(*) FROM spam`)
+	err = locator.db.Get(&msgCountAfter, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator.db.GID())
+	require.NoError(t, err)
+	err = locator.db.Get(&spamCountAfter, `SELECT COUNT(*) FROM spam WHERE gid = ?`, locator.db.GID())
+	require.NoError(t, err)
 
-	assert.Equal(t, 0, msgCountAfter)
-	assert.Equal(t, 0, spamCountAfter)
+	assert.Equal(t, 0, msgCountAfter, "messages should be cleaned up")
+	assert.Equal(t, 0, spamCountAfter, "spam should be cleaned up")
+
+	// verify cleanup respects gid
+	db2, err := NewSqliteDB(":memory:", "gr2")
+	require.NoError(t, err)
+	locator2, err := NewLocator(ctx, ttl, 1, db2)
+	require.NoError(t, err)
+	defer db2.Close()
+
+	_, err = locator2.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"gr2_hash", locator2.db.GID(), oldTime, int64(111), int64(222), "gr2_user", 333)
+	require.NoError(t, err)
+
+	var gr2Count int
+	err = locator2.db.Get(&gr2Count, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator2.db.GID())
+	require.NoError(t, err)
+	assert.Equal(t, 1, gr2Count, "messages in gr2 should remain")
 }
 
 func TestLocator_RetrieveNonExistentMessage(t *testing.T) {
@@ -141,6 +162,124 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 	// Attempt to retrieve the spam data, which should fail during unmarshalling
 	_, found := locator.Spam(ctx, userID)
 	assert.False(t, found, "expected to not find valid data due to unmarshalling failure")
+}
+
+func TestLocator_Migration(t *testing.T) {
+	t.Run("migrate from old schema", func(t *testing.T) {
+		db, err := NewSqliteDB(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// setup old schema without gid
+		_, err = db.Exec(`
+            CREATE TABLE messages (
+                hash TEXT PRIMARY KEY,
+                time TIMESTAMP,
+                chat_id INTEGER,
+                user_id INTEGER,
+                user_name TEXT,
+                msg_id INTEGER
+            );
+            CREATE TABLE spam (
+                user_id INTEGER PRIMARY KEY,
+                time TIMESTAMP,
+                checks TEXT
+            )
+        `)
+		require.NoError(t, err)
+
+		// insert test data in old format
+		_, err = db.Exec(`INSERT INTO messages (hash, time, chat_id, user_id, user_name, msg_id)
+            VALUES ('hash1', ?, 1, 100, 'user1', 1)`, time.Now())
+		require.NoError(t, err)
+
+		checksJSON := `[{"Name":"test","Spam":true,"Details":"test"}]`
+		_, err = db.Exec(`INSERT INTO spam (user_id, time, checks)
+            VALUES (100, ?, ?)`, time.Now(), checksJSON)
+		require.NoError(t, err)
+
+		// run migration through NewLocator
+		locator, err := NewLocator(context.Background(), 10*time.Minute, 1, db)
+		require.NoError(t, err)
+		defer locator.Close(context.Background())
+
+		// verify structure
+		var msgCols, spamCols []struct {
+			CID       int     `db:"cid"`
+			Name      string  `db:"name"`
+			Type      string  `db:"type"`
+			NotNull   bool    `db:"notnull"`
+			DfltValue *string `db:"dflt_value"`
+			PK        bool    `db:"pk"`
+		}
+		err = db.Select(&msgCols, "PRAGMA table_info(messages)")
+		require.NoError(t, err)
+		err = db.Select(&spamCols, "PRAGMA table_info(spam)")
+		require.NoError(t, err)
+
+		msgColMap := make(map[string]string)
+		for _, col := range msgCols {
+			msgColMap[col.Name] = col.Type
+		}
+		assert.Equal(t, "TEXT", msgColMap["gid"])
+
+		spamColMap := make(map[string]string)
+		for _, col := range spamCols {
+			spamColMap[col.Name] = col.Type
+		}
+		assert.Equal(t, "TEXT", spamColMap["gid"])
+
+		// verify data migrated correctly
+		var msgGID, spamGID string
+		err = db.Get(&msgGID, "SELECT gid FROM messages WHERE hash = 'hash1'")
+		require.NoError(t, err)
+		assert.Equal(t, "gr1", msgGID)
+
+		err = db.Get(&spamGID, "SELECT gid FROM spam WHERE user_id = 100")
+		require.NoError(t, err)
+		assert.Equal(t, "gr1", spamGID)
+	})
+
+	t.Run("migration idempotency", func(t *testing.T) {
+		// create a new db connection for this test
+		db, err := NewSqliteDB(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// create schema with new tables including gid
+		_, err = db.Exec(locatorSchema)
+		require.NoError(t, err)
+
+		// create first locator which should trigger migration
+		locator, err := NewLocator(context.Background(), 10*time.Minute, 1, db)
+		require.NoError(t, err)
+		defer locator.Close(context.Background())
+
+		// create second locator which should trigger migration again
+		locator2, err := NewLocator(context.Background(), 10*time.Minute, 1, db)
+		require.NoError(t, err)
+		defer locator2.Close(context.Background())
+
+		// verify structure remained the same
+		var msgCols []struct {
+			CID       int     `db:"cid"`
+			Name      string  `db:"name"`
+			Type      string  `db:"type"`
+			NotNull   bool    `db:"notnull"`
+			DfltValue *string `db:"dflt_value"`
+			PK        bool    `db:"pk"`
+		}
+		err = db.Select(&msgCols, "PRAGMA table_info(messages)")
+		require.NoError(t, err)
+
+		gidColCount := 0
+		for _, col := range msgCols {
+			if col.Name == "gid" {
+				gidColCount++
+			}
+		}
+		assert.Equal(t, 1, gidColCount, "should have exactly one gid column")
+	})
 }
 
 func newTestLocator(t *testing.T) *Locator {
