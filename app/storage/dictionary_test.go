@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -485,4 +486,271 @@ func TestDictionary_Reader(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestDictionary_ImportEdgeCases(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	d, err := NewDictionary(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("import with quoted strings and special chars", func(t *testing.T) {
+		input := strings.NewReader(`"phrase with, comma",simple phrase,"quoted ""special"" chars"`)
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		require.Len(t, phrases, 3)
+		assert.Contains(t, phrases, `phrase with, comma`)
+		assert.Contains(t, phrases, `simple phrase`)
+		assert.Contains(t, phrases, `quoted "special" chars`)
+	})
+
+	t.Run("import duplicate phrases", func(t *testing.T) {
+		input := strings.NewReader("phrase1,phrase1,phrase1")
+		stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
+
+		phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		assert.Len(t, phrases, 1)
+	})
+}
+
+func TestDictionary_StrictGroupIsolation(t *testing.T) {
+	db1, err := NewSqliteDB(":memory:", "gr1")
+	require.NoError(t, err)
+	defer db1.Close()
+
+	db2, err := NewSqliteDB(":memory:", "gr2")
+	require.NoError(t, err)
+	defer db2.Close()
+
+	ctx := context.Background()
+	d1, err := NewDictionary(ctx, db1)
+	require.NoError(t, err)
+
+	d2, err := NewDictionary(ctx, db2)
+	require.NoError(t, err)
+
+	// add same phrases to both dictionaries
+	commonPhrases := []struct {
+		text  string
+		dType DictionaryType
+	}{
+		{"stop phrase", DictionaryTypeStopPhrase},
+		{"ignored word", DictionaryTypeIgnoredWord},
+	}
+
+	for _, p := range commonPhrases {
+		require.NoError(t, d1.Add(ctx, p.dType, p.text))
+		require.NoError(t, d2.Add(ctx, p.dType, p.text))
+	}
+
+	// verify each dictionary only sees its own entries
+	verifyDictionary := func(t *testing.T, d *Dictionary, db *Engine) {
+		for _, p := range commonPhrases {
+			phrases, err := d.Read(ctx, p.dType)
+			require.NoError(t, err)
+			require.Len(t, phrases, 1)
+			assert.Equal(t, p.text, phrases[0])
+		}
+
+		// verify data directly in DB
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM dictionary WHERE gid = ?", db.GID())
+		require.NoError(t, err)
+		assert.Equal(t, len(commonPhrases), count)
+	}
+
+	t.Run("verify gr1", func(t *testing.T) {
+		verifyDictionary(t, d1, db1)
+	})
+
+	t.Run("verify gr2", func(t *testing.T) {
+		verifyDictionary(t, d2, db2)
+	})
+
+	// delete from one dictionary shouldn't affect other
+	t.Run("verify deletion isolation", func(t *testing.T) {
+		var id int64
+		err := db1.Get(&id, "SELECT id FROM dictionary WHERE gid = ? LIMIT 1", "gr1")
+		require.NoError(t, err)
+
+		require.NoError(t, d1.Delete(ctx, id))
+
+		// verify gr1 has one less entry
+		var count int
+		err = db1.Get(&count, "SELECT COUNT(*) FROM dictionary WHERE gid = ?", "gr1")
+		require.NoError(t, err)
+		assert.Equal(t, len(commonPhrases)-1, count)
+
+		// verify gr2 still has all entries
+		err = db2.Get(&count, "SELECT COUNT(*) FROM dictionary WHERE gid = ?", "gr2")
+		require.NoError(t, err)
+		assert.Equal(t, len(commonPhrases), count)
+	})
+}
+
+func TestDictionary_ReaderErrorHandling(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	d, err := NewDictionary(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("read with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		r, err := d.Reader(ctx, DictionaryTypeStopPhrase)
+		assert.Error(t, err)
+		assert.Nil(t, r)
+	})
+
+	t.Run("read after close", func(t *testing.T) {
+		r, err := d.Reader(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+		require.NoError(t, r.Close())
+
+		// second close should not error
+		assert.NoError(t, r.Close())
+	})
+
+	t.Run("concurrent reads and close", func(t *testing.T) {
+		phrase := "test phrase"
+		require.NoError(t, d.Add(ctx, DictionaryTypeStopPhrase, phrase))
+
+		r, err := d.Reader(ctx, DictionaryTypeStopPhrase)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		errs := make(chan error, 2)
+
+		// start reader
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, 1024)
+			for {
+				_, err := r.Read(buf)
+				if err == io.EOF {
+					return
+				}
+				if err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+
+		// close while reading
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(time.Millisecond) // give reader a chance to start
+			if err := r.Close(); err != nil {
+				errs <- err
+			}
+		}()
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			assert.NoError(t, err)
+		}
+	})
+}
+
+func TestDictionary_ComplexConcurrentOperations(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	d, err := NewDictionary(ctx, db)
+	require.NoError(t, err)
+
+	const numWorkers = 10
+	const opsPerWorker = 100
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, numWorkers*3) // for read, write and delete operations
+
+	// prepare some initial data
+	for i := 0; i < 10; i++ {
+		require.NoError(t, d.Add(ctx, DictionaryTypeStopPhrase, fmt.Sprintf("initial phrase %d", i)))
+	}
+
+	// concurrent reads, writes and deletes
+	for i := 0; i < numWorkers; i++ {
+		// writer
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < opsPerWorker; j++ {
+				phrase := fmt.Sprintf("phrase %d-%d", workerID, j)
+				if err := d.Add(ctx, DictionaryTypeStopPhrase, phrase); err != nil {
+					errCh <- fmt.Errorf("write failed: %w", err)
+					return
+				}
+			}
+		}(i)
+
+		// reader
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < opsPerWorker; j++ {
+				if _, err := d.Read(ctx, DictionaryTypeStopPhrase); err != nil {
+					errCh <- fmt.Errorf("read failed: %w", err)
+					return
+				}
+			}
+		}(i)
+
+		// iterator
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < opsPerWorker/10; j++ { // fewer iterations for iterator
+				iter, err := d.Iterator(ctx, DictionaryTypeStopPhrase)
+				if err != nil {
+					errCh <- fmt.Errorf("iterator creation failed: %w", err)
+					return
+				}
+				count := 0
+				for range iter {
+					count++
+				}
+				if count == 0 {
+					errCh <- fmt.Errorf("iterator returned no results")
+					return
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	var errors []error
+	for err := range errCh {
+		errors = append(errors, err)
+	}
+	assert.Empty(t, errors)
+
+	// verify final state
+	phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+	require.NoError(t, err)
+	assert.NotEmpty(t, phrases)
+
+	stats, err := d.Stats(ctx)
+	require.NoError(t, err)
+	assert.NotZero(t, stats.TotalStopPhrases)
 }

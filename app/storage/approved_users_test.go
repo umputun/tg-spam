@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -376,5 +377,238 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 		}
 		assert.Equal(t, "TEXT", colMap["uid"])
 		assert.Equal(t, "TEXT", colMap["gid"])
+	})
+}
+
+func TestApprovedUsers_TimestampHandling(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	au, err := NewApprovedUsers(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("custom timestamp", func(t *testing.T) {
+		customTime := time.Now().Add(-24 * time.Hour)
+		user := approved.UserInfo{
+			UserID:    "123",
+			UserName:  "test",
+			Timestamp: customTime,
+		}
+		err := au.Write(ctx, user)
+		require.NoError(t, err)
+
+		users, err := au.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, customTime.UTC(), users[0].Timestamp.UTC())
+	})
+
+	t.Run("zero timestamp should be replaced", func(t *testing.T) {
+		user := approved.UserInfo{
+			UserID:   "456",
+			UserName: "test2",
+		}
+		err := au.Write(ctx, user)
+		require.NoError(t, err)
+
+		users, err := au.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, users, 2)
+		for _, u := range users {
+			if u.UserID == "456" {
+				assert.False(t, u.Timestamp.IsZero())
+				assert.True(t, time.Since(u.Timestamp) < time.Minute)
+			}
+		}
+	})
+}
+
+func TestApprovedUsers_DetailedGroupIsolation(t *testing.T) {
+	ctx := context.Background()
+
+	db1, err := NewSqliteDB(":memory:", "gr1")
+	require.NoError(t, err)
+	defer db1.Close()
+
+	db2, err := NewSqliteDB(":memory:", "gr2")
+	require.NoError(t, err)
+	defer db2.Close()
+
+	au1, err := NewApprovedUsers(ctx, db1)
+	require.NoError(t, err)
+	au2, err := NewApprovedUsers(ctx, db2)
+	require.NoError(t, err)
+
+	// Add user to both groups
+	user := approved.UserInfo{
+		UserID:   "123",
+		UserName: "test_user",
+	}
+	err = au1.Write(ctx, user)
+	require.NoError(t, err)
+	err = au2.Write(ctx, user)
+	require.NoError(t, err)
+
+	// Verify data in databases directly
+	var data1, data2 []struct {
+		UID  string `db:"uid"`
+		GID  string `db:"gid"`
+		Name string `db:"name"`
+	}
+
+	err = db1.Select(&data1, "SELECT uid, gid, name FROM approved_users WHERE gid = ?", "gr1")
+	require.NoError(t, err)
+	t.Logf("DB1 data: %+v", data1)
+	err = db2.Select(&data2, "SELECT uid, gid, name FROM approved_users WHERE gid = ?", "gr2")
+	require.NoError(t, err)
+	t.Logf("DB2 data: %+v", data2)
+
+	// Modify in first group
+	user.UserName = "modified"
+	err = au1.Write(ctx, user)
+	require.NoError(t, err)
+
+	// Check raw data again
+	err = db1.Select(&data1, "SELECT uid, gid, name FROM approved_users WHERE gid = ?", "gr1")
+	require.NoError(t, err)
+	t.Logf("DB1 data after modification: %+v", data1)
+	err = db2.Select(&data2, "SELECT uid, gid, name FROM approved_users WHERE gid = ?", "gr2")
+	require.NoError(t, err)
+	t.Logf("DB2 data after modification: %+v", data2)
+
+	// Final verification through the API
+	users1, err := au1.Read(ctx)
+	require.NoError(t, err)
+	t.Logf("API read from group1: %+v", users1)
+	users2, err := au2.Read(ctx)
+	require.NoError(t, err)
+	t.Logf("API read from group2: %+v", users2)
+
+	require.Len(t, users1, 1)
+	require.Len(t, users2, 1)
+	assert.Equal(t, "modified", users1[0].UserName)
+	assert.Equal(t, "test_user", users2[0].UserName)
+}
+
+func TestApprovedUsers_ErrorCases(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	au, err := NewApprovedUsers(ctx, db)
+	require.NoError(t, err)
+
+	clearDB := func() {
+		_, err := db.Exec("DELETE FROM approved_users")
+		require.NoError(t, err)
+	}
+
+	t.Run("empty user id", func(t *testing.T) {
+		clearDB()
+		user := approved.UserInfo{
+			UserName: "test",
+		}
+		err := au.Write(ctx, user)
+		require.Error(t, err)
+		assert.Equal(t, "user id can't be empty", err.Error())
+	})
+
+	t.Run("empty username should be valid", func(t *testing.T) {
+		clearDB()
+		user := approved.UserInfo{
+			UserID: "123",
+		}
+		err := au.Write(ctx, user)
+		require.NoError(t, err)
+	})
+
+	t.Run("delete non-existent", func(t *testing.T) {
+		clearDB()
+		err := au.Delete(ctx, "non-existent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get approved user")
+	})
+
+	t.Run("delete empty id", func(t *testing.T) {
+		clearDB()
+		err := au.Delete(ctx, "")
+		require.Error(t, err)
+		assert.Equal(t, "user id can't be empty", err.Error())
+	})
+
+	t.Run("concurrent write same user", func(t *testing.T) {
+		clearDB()
+		user := approved.UserInfo{
+			UserID:    "456",
+			UserName:  "test",
+			Timestamp: time.Now(),
+		}
+
+		var wg sync.WaitGroup
+		errCh := make(chan error, 2)
+
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := au.Write(ctx, user); err != nil {
+					errCh <- err
+				}
+			}()
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		// collect any errors
+		var errs []error
+		for err := range errCh {
+			errs = append(errs, err)
+		}
+		assert.Empty(t, errs)
+
+		// verify only one record exists
+		users, err := au.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, users, 1, "should only have one user record")
+		assert.Equal(t, user.UserID, users[0].UserID)
+		assert.Equal(t, user.UserName, users[0].UserName)
+	})
+}
+
+func TestApprovedUsers_Cleanup(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	au, err := NewApprovedUsers(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("cleanup on migration", func(t *testing.T) {
+		// insert some data with invalid format
+		_, err := db.Exec("INSERT INTO approved_users (uid, name) VALUES (?, ?)", "", "invalid")
+		require.NoError(t, err)
+
+		// trigger migration
+		au2, err := NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		// verify invalid data is not visible
+		users, err := au2.Read(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, users)
+	})
+
+	t.Run("handle invalid data in read", func(t *testing.T) {
+		// insert invalid timestamp
+		_, err := db.Exec("INSERT INTO approved_users (uid, name, timestamp) VALUES (?, ?, ?)",
+			"123", "test", "invalid-time")
+		require.NoError(t, err)
+
+		// reading should skip invalid entries
+		users, err := au.Read(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, users)
 	})
 }

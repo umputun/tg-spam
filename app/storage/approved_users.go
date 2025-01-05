@@ -100,9 +100,11 @@ func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) 
 	log.Printf("[DEBUG] read %d approved users", len(res))
 	return res, nil
 }
-
-// Write adds a new approved user
 func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
+	if user.UserID == "" {
+		return fmt.Errorf("user id can't be empty")
+	}
+
 	au.Lock()
 	defer au.Unlock()
 
@@ -110,16 +112,20 @@ func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) erro
 		user.Timestamp = time.Now()
 	}
 
-	query := "INSERT OR IGNORE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)"
+	query := "INSERT OR REPLACE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)"
 	if _, err := au.db.ExecContext(ctx, query, user.UserID, au.db.GID(), user.UserName, user.Timestamp); err != nil {
 		return fmt.Errorf("failed to insert user %+v: %w", user, err)
 	}
-	log.Printf("[INFO] user %s added to approved users", user.String())
+	log.Printf("[INFO] user %q (%s) added to approved users", user.UserName, user.UserID)
 	return nil
 }
 
-// Delete removes an approved user by its ID
+// Delete removes a user from the approved list
 func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("user id can't be empty")
+	}
+
 	au.Lock()
 	defer au.Unlock()
 

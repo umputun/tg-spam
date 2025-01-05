@@ -79,7 +79,7 @@ func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
 		}
 	}
 
-	// migrate detected_spam table
+	// migrate detected_spam table if needed
 	if err := migrateDetectedSpam(&db.DB, db.GID()); err != nil {
 		return nil, fmt.Errorf("failed to migrate detected_spam: %w", err)
 	}
@@ -160,6 +160,7 @@ func migrateDetectedSpam(db *sqlx.DB, gid string) error {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("failed to alter detected_spam table: %w", err)
 		}
+		return nil // column already exists, no need to update
 	}
 
 	// update existing records with the provided gid

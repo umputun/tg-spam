@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -939,6 +940,283 @@ func TestSamples_Reader(t *testing.T) {
 			assert.Equal(t, len(tt.want), lines)
 
 			assert.NoError(t, r.Close())
+		})
+	}
+}
+
+func TestSamples_ReaderEdgeCases(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("large message handling", func(t *testing.T) {
+		largeMsg := strings.Repeat("a", 1024*1024) // 1MB message
+		err := s.Add(ctx, SampleTypeHam, SampleOriginUser, largeMsg)
+		require.NoError(t, err)
+
+		reader, err := s.Reader(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+		defer reader.Close()
+
+		// read in small chunks
+		buf := make([]byte, 1024)
+		total := 0
+		for {
+			n, err := reader.Read(buf)
+			total += n
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+		}
+		assert.Equal(t, len(largeMsg)+1, total) // +1 for newline
+	})
+
+	t.Run("multiple close calls", func(t *testing.T) {
+		reader, err := s.Reader(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+
+		require.NoError(t, reader.Close())
+		require.NoError(t, reader.Close()) // second close should be safe
+		require.NoError(t, reader.Close()) // multiple closes should be safe
+	})
+
+	t.Run("read after close", func(t *testing.T) {
+		reader, err := s.Reader(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+
+		require.NoError(t, reader.Close())
+
+		buf := make([]byte, 1024)
+		n, err := reader.Read(buf)
+		assert.Equal(t, 0, n)
+		assert.Error(t, err)
+	})
+}
+
+func TestSamples_ImportEdgeCases(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("import very long lines", func(t *testing.T) {
+		longLine := strings.Repeat("a", 1024*1024) // 1MB line
+		input := strings.NewReader(longLine)
+		_, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
+		require.Error(t, err)
+	})
+
+	t.Run("import with unicode", func(t *testing.T) {
+		unicodeText := "привет\n你好\nこんにちは\n"
+		input := strings.NewReader(unicodeText)
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
+		require.NoError(t, err)
+		assert.Equal(t, 3, stats.UserHam)
+
+		// verify content
+		samples, err := s.Read(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+		assert.Contains(t, samples, "привет")
+		assert.Contains(t, samples, "你好")
+		assert.Contains(t, samples, "こんにちは")
+	})
+
+	t.Run("zero byte reader", func(t *testing.T) {
+		input := strings.NewReader("")
+		stats, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
+		require.NoError(t, err)
+		assert.Equal(t, 0, stats.UserHam)
+	})
+}
+
+func TestSamples_IteratorBehavior(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("early termination", func(t *testing.T) {
+		// add test data
+		for i := 0; i < 10; i++ {
+			err := s.Add(ctx, SampleTypeHam, SampleOriginUser, fmt.Sprintf("msg%d", i))
+			require.NoError(t, err)
+		}
+
+		iter, err := s.Iterator(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+
+		count := 0
+		for msg := range iter {
+			count++
+			if count == 5 {
+				break // early termination
+			}
+			_ = msg
+		}
+		assert.Equal(t, 5, count)
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		iter, err := s.Iterator(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+
+		count := 0
+		done := make(chan bool)
+		go func() {
+			for msg := range iter {
+				count++
+				if count == 2 {
+					cancel()
+				}
+				_ = msg
+			}
+			done <- true
+		}()
+
+		select {
+		case <-done:
+			assert.Less(t, count, 10)
+		case <-time.After(time.Second):
+			t.Fatal("iterator did not terminate after context cancellation")
+		}
+	})
+}
+
+func TestSamples_Validation(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("unicode sample type validation", func(t *testing.T) {
+		err := s.Add(ctx, SampleType("спам"), SampleOriginUser, "test")
+		assert.Error(t, err)
+	})
+
+	t.Run("unicode origin validation", func(t *testing.T) {
+		err := s.Add(ctx, SampleTypeHam, SampleOrigin("用户"), "test")
+		assert.Error(t, err)
+	})
+
+	t.Run("emoji in message", func(t *testing.T) {
+		msg := "test 👍 message 🚀"
+		err := s.Add(ctx, SampleTypeHam, SampleOriginUser, msg)
+		require.NoError(t, err)
+
+		samples, err := s.Read(ctx, SampleTypeHam, SampleOriginUser)
+		require.NoError(t, err)
+		assert.Contains(t, samples, msg)
+	})
+}
+
+func TestSamples_DatabaseErrors(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("transaction rollback", func(t *testing.T) {
+		// force table drop to simulate error
+		_, err := db.Exec("DROP TABLE samples")
+		require.NoError(t, err)
+
+		err = s.Add(ctx, SampleTypeHam, SampleOriginUser, "test")
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid sql", func(t *testing.T) {
+		// corrupt database schema
+		_, err := db.Exec("CREATE TABLE samples (invalid)")
+		require.NoError(t, err)
+
+		stats, err := s.Stats(ctx)
+		assert.Error(t, err)
+		assert.Nil(t, stats)
+	})
+}
+
+func TestSamples_ImportSizeLimits(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		input    string
+		wantErr  bool
+		expected int // expected number of samples
+	}{
+		{
+			name:     "small lines",
+			input:    "short line 1\nshort line 2\n",
+			wantErr:  false,
+			expected: 2,
+		},
+		{
+			name:     "64k-1 line",
+			input:    strings.Repeat("a", 64*1024-1) + "\n",
+			wantErr:  false,
+			expected: 1,
+		},
+		{
+			name:     "64k line fails by default",
+			input:    strings.Repeat("a", 64*1024) + "\n",
+			wantErr:  true,
+			expected: 1,
+		},
+		{
+			name:     "1MB line fails by default",
+			input:    strings.Repeat("a", 1024*1024) + "\n",
+			wantErr:  true,
+			expected: 0,
+		},
+		{
+			name:     "empty lines",
+			input:    "\n\n\n",
+			wantErr:  false,
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stats, err := s.Import(ctx, SampleTypeHam, SampleOriginUser, strings.NewReader(tt.input), true)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, stats.UserHam)
+
+			// verify content for successful cases
+			if !tt.wantErr {
+				samples, err := s.Read(ctx, SampleTypeHam, SampleOriginUser)
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, len(samples))
+
+				// verify each non-empty line was imported
+				for _, line := range strings.Split(strings.TrimSpace(tt.input), "\n") {
+					if line != "" {
+						assert.Contains(t, samples, line)
+					}
+				}
+			}
 		})
 	}
 }

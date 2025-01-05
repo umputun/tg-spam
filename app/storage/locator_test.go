@@ -282,6 +282,105 @@ func TestLocator_Migration(t *testing.T) {
 	})
 }
 
+func TestLocator_HashCollisions(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	_, err := NewLocator(ctx, time.Hour, 1000, db)
+	require.NoError(t, err)
+
+	// force hash collision by manually inserting with same hash
+	hash := "collision_hash"
+	msg1 := MsgMeta{
+		ChatID:   100,
+		UserID:   1,
+		UserName: "user1",
+		MsgID:    1,
+		Time:     time.Now(),
+	}
+	msg2 := MsgMeta{
+		ChatID:   200,
+		UserID:   2,
+		UserName: "user2",
+		MsgID:    2,
+		Time:     time.Now(),
+	}
+
+	// insert first message
+	_, err = db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		hash, db.GID(), msg1.Time, msg1.ChatID, msg1.UserID, msg1.UserName, msg1.MsgID)
+	require.NoError(t, err)
+
+	// try to insert second message with same hash
+	_, err = db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		hash, db.GID(), msg2.Time, msg2.ChatID, msg2.UserID, msg2.UserName, msg2.MsgID)
+	// should fail due to hash being primary key
+	assert.Error(t, err)
+
+	// verify only first message exists
+	var count int
+	err = db.Get(&count, "SELECT COUNT(*) FROM messages WHERE hash = ? AND gid = ?", hash, db.GID())
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestLocator_GIDIsolation(t *testing.T) {
+	db1, err := NewSqliteDB(":memory:", "gr1")
+	require.NoError(t, err)
+	defer db1.Close()
+
+	db2, err := NewSqliteDB(":memory:", "gr2")
+	require.NoError(t, err)
+	defer db2.Close()
+
+	ctx := context.Background()
+
+	locator1, err := NewLocator(ctx, time.Hour, 5, db1)
+	require.NoError(t, err)
+
+	locator2, err := NewLocator(ctx, time.Hour, 5, db2)
+	require.NoError(t, err)
+
+	// add same message to both locators
+	msg := "test message"
+	err = locator1.AddMessage(ctx, msg, 100, 1, "user1", 1)
+	require.NoError(t, err)
+	err = locator2.AddMessage(ctx, msg, 200, 2, "user2", 2)
+	require.NoError(t, err)
+
+	// verify messages are isolated
+	meta1, found := locator1.Message(ctx, msg)
+	require.True(t, found)
+	assert.Equal(t, int64(100), meta1.ChatID)
+	assert.Equal(t, "user1", meta1.UserName)
+
+	meta2, found := locator2.Message(ctx, msg)
+	require.True(t, found)
+	assert.Equal(t, int64(200), meta2.ChatID)
+	assert.Equal(t, "user2", meta2.UserName)
+
+	// verify spam data isolation
+	checks1 := []spamcheck.Response{{Name: "test1", Spam: true}}
+	checks2 := []spamcheck.Response{{Name: "test2", Spam: false}}
+
+	err = locator1.AddSpam(ctx, 1, checks1)
+	require.NoError(t, err)
+	err = locator2.AddSpam(ctx, 1, checks2)
+	require.NoError(t, err)
+
+	// verify spam data is isolated
+	spam1, found := locator1.Spam(ctx, 1)
+	require.True(t, found)
+	assert.True(t, spam1.Checks[0].Spam)
+
+	spam2, found := locator2.Spam(ctx, 1)
+	require.True(t, found)
+	assert.False(t, spam2.Checks[0].Spam)
+}
+
 func newTestLocator(t *testing.T) *Locator {
 	db, err := NewSqliteDB(":memory:", "gr1")
 	require.NoError(t, err)

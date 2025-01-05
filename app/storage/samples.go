@@ -229,8 +229,9 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 	return &sampleReader{rows: rows}, nil
 }
 
-// Iterator returns an iterator for samples by type and origin
-// Sorts samples by timestamp in descending order, i.e. from the newest to the oldest
+// Iterator returns an iterator for samples by type and origin.
+// Sorts samples by timestamp in descending order, i.e. from the newest to the oldest.
+// The iterator respects context cancellation.
 func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (iter.Seq[string], error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -258,17 +259,36 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
 
-	// create an iterator getting rows from the database
 	return func(yield func(string) bool) {
 		defer rows.Close()
 		for rows.Next() {
+			// check context before each row
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			var message string
 			if err := rows.Scan(&message); err != nil {
-				return // terminate iteration on scan error
+				log.Printf("[ERROR] scan failed: %v", err)
+				return
 			}
+
+			// check context after scan but before yield
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			if !yield(message) {
-				return // stop iteration if `yield` returns false
+				return
 			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[ERROR] rows iteration failed: %v", err)
+			return
 		}
 	}, nil
 }
@@ -276,7 +296,7 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 // Import reads samples from the reader and imports them into the storage.
 // Returns statistics about imported samples.
 // If withCleanup is true removes all samples with the same type and origin before import.
-func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, cleanup bool) (*SamplesStats, error) {
+func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, withCleanup bool) (*SamplesStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -302,7 +322,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	defer tx.Rollback()
 
 	// remove all samples with the same type and origin if requested
-	if cleanup {
+	if withCleanup {
 		query := `DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`
 		result, errDel := tx.ExecContext(ctx, query, gid, t, o)
 		if errDel != nil {
@@ -319,6 +339,11 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	// add samples
 	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
 	scanner := bufio.NewScanner(r)
+	// Set custom buffer size and max token size for large lines
+	const maxScanTokenSize = 64 * 1024 // 64KB max line length
+	buf := make([]byte, maxScanTokenSize)
+	scanner.Buffer(buf, maxScanTokenSize)
+
 	added := 0
 	for scanner.Scan() {
 		message := scanner.Text()
@@ -415,6 +440,7 @@ type sampleReader struct {
 	rows    *sqlx.Rows // database rows iterator
 	buffer  []byte     // partial read buffer for cases when p is smaller than message size
 	current string     // current message from the database
+	closed  bool       // indicates if the reader has been closed
 }
 
 // Read implements io.Reader interface. It reads messages from database rows one by one and
@@ -422,11 +448,15 @@ type sampleReader struct {
 // than the message size, it will take multiple Read calls to get the complete message.
 // Each message is followed by a newline for proper scanning.
 func (r *sampleReader) Read(p []byte) (n int, err error) {
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+
 	// if buffer is empty, try to get next message from database
 	if len(r.buffer) == 0 {
-		if !r.rows.Next() {
-			if err := r.rows.Err(); err != nil {
-				return 0, fmt.Errorf("rows iteration failed: %w", err)
+		if r.rows == nil || !r.rows.Next() {
+			if r.rows != nil && r.rows.Err() != nil {
+				return 0, fmt.Errorf("rows iteration failed: %w", r.rows.Err())
 			}
 			return 0, io.EOF
 		}
@@ -447,6 +477,10 @@ func (r *sampleReader) Read(p []byte) (n int, err error) {
 
 // Close implements io.Closer interface. Can be called multiple times safely.
 func (r *sampleReader) Close() error {
+	if r.closed {
+		return nil
+	}
+	r.closed = true
 	if r.rows != nil {
 		if err := r.rows.Close(); err != nil {
 			return fmt.Errorf("failed to close rows: %w", err)

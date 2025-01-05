@@ -291,8 +291,9 @@ func migrateLocator(db *sqlx.DB, gid string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get spam affected rows: %w", err)
 	}
+	if messagesAffected > 0 || spamAffected > 0 {
+		log.Printf("[DEBUG] locator tables migrated, gid updated to %q, messages: %d, spam: %d", gid, messagesAffected, spamAffected)
+	}
 
-	log.Printf("[DEBUG] locator tables migrated, gid updated to %q, messages: %d, spam: %d",
-		gid, messagesAffected, spamAffected)
 	return nil
 }
