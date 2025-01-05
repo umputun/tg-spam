@@ -317,7 +317,7 @@ func TestDetectedSpam_Read_LimitAndOrder(t *testing.T) {
 
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-			entries[i-1].Timestamp.Equal(entries[i].Timestamp))
+		  entries[i-1].Timestamp.Equal(entries[i].Timestamp))
 	}
 }
 
@@ -606,5 +606,345 @@ func TestDetectedSpam_ValidationAndEdgeCases(t *testing.T) {
 			require.NotEmpty(t, entries)
 			assert.Equal(t, tt.entry.Text, entries[0].Text)
 		})
+	}
+}
+
+func TestDetectedSpam_ComplexMigration(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	// create old schema without gid
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS detected_spam (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			text TEXT,
+			user_id INTEGER,
+			user_name TEXT,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+			added BOOLEAN DEFAULT 0,
+			checks TEXT
+		)
+	`)
+	require.NoError(t, err)
+
+	// insert test data
+	testData := []struct {
+		text     string
+		userID   int64
+		userName string
+		checks   string
+	}{
+		{"spam1", 1, "user1", `[{"Name":"test1","Spam":true}]`},
+		{"spam2", 2, "user2", `[{"Name":"test2","Spam":true}]`},
+	}
+
+	for _, td := range testData {
+		_, err = db.Exec(`
+			INSERT INTO detected_spam (text, user_id, user_name, checks)
+			VALUES (?, ?, ?, ?)`,
+			td.text, td.userID, td.userName, td.checks)
+		require.NoError(t, err)
+	}
+
+	// create instance to trigger migration
+	ctx := context.Background()
+	ds, err := NewDetectedSpam(ctx, db)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+
+	// verify migration results
+	var entries []struct {
+		Text     string `db:"text"`
+		UserID   int64  `db:"user_id"`
+		UserName string `db:"user_name"`
+		GID      string `db:"gid"`
+		Checks   string `db:"checks"`
+	}
+
+	err = db.Select(&entries, "SELECT text, user_id, user_name, gid, checks FROM detected_spam")
+	require.NoError(t, err)
+	assert.Len(t, entries, len(testData))
+
+	for _, entry := range entries {
+		assert.Equal(t, db.GID(), entry.GID)
+		assert.NotEmpty(t, entry.Text)
+		assert.NotZero(t, entry.UserID)
+		assert.NotEmpty(t, entry.UserName)
+		assert.NotEmpty(t, entry.Checks)
+	}
+}
+
+func TestDetectedSpam_MigrationEdgeCases(t *testing.T) {
+	t.Run("migration with empty table", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		// create empty table
+		_, err := db.Exec(`
+            CREATE TABLE IF NOT EXISTS detected_spam (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT,
+                user_id INTEGER,
+                user_name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                added BOOLEAN DEFAULT 0,
+                checks TEXT
+            )
+        `)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+
+		// verify migration didn't affect empty table
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM detected_spam")
+		require.NoError(t, err)
+		assert.Zero(t, count)
+	})
+
+	t.Run("migration with existing gid column", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		// create schema with gid already present
+		_, err := db.Exec(detectedSpamSchema)
+		require.NoError(t, err)
+
+		// insert test data with existing gid
+		_, err = db.Exec(`
+            INSERT INTO detected_spam (text, user_id, user_name, gid, checks)
+            VALUES (?, ?, ?, ?, ?)`,
+			"spam", 1, "user1", "existing_gid", `[{"Name":"test","Spam":true}]`)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+
+		// verify existing gid wasn't changed
+		var gid string
+		err = db.Get(&gid, "SELECT gid FROM detected_spam WHERE user_id = 1")
+		require.NoError(t, err)
+		assert.Equal(t, "existing_gid", gid)
+	})
+}
+
+func TestDetectedSpam_ValidationAndConstraints(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	ds, err := NewDetectedSpam(ctx, db)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name    string
+		entry   DetectedSpamInfo
+		checks  []spamcheck.Response
+		wantErr bool
+	}{
+		{
+			name: "valid entry",
+			entry: DetectedSpamInfo{
+				GID:       "group1",
+				Text:      "spam",
+				UserID:    1,
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			},
+			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
+			wantErr: false,
+		},
+		{
+			name: "missing gid",
+			entry: DetectedSpamInfo{
+				Text:      "spam",
+				UserID:    1,
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			},
+			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
+			wantErr: true,
+		},
+		{
+			name: "empty text",
+			entry: DetectedSpamInfo{
+				GID:       "group1",
+				UserID:    1,
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			},
+			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
+			wantErr: true,
+		},
+		{
+			name: "zero user id",
+			entry: DetectedSpamInfo{
+				GID:       "group1",
+				Text:      "spam",
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			},
+			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
+			wantErr: true,
+		},
+		{
+			name: "empty username",
+			entry: DetectedSpamInfo{
+				GID:       "group1",
+				Text:      "spam",
+				UserID:    1,
+				Timestamp: time.Now(),
+			},
+			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ds.Write(ctx, tc.entry, tc.checks)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+
+			entries, err := ds.Read(ctx)
+			require.NoError(t, err)
+			require.NotEmpty(t, entries)
+			assert.Equal(t, tc.entry.Text, entries[0].Text)
+			assert.Equal(t, tc.entry.UserID, entries[0].UserID)
+			assert.Equal(t, tc.entry.UserName, entries[0].UserName)
+			assert.Equal(t, tc.entry.GID, entries[0].GID)
+		})
+	}
+}
+
+func TestDetectedSpam_ConcurrentWrites(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	ds, err := NewDetectedSpam(ctx, db)
+	require.NoError(t, err)
+
+	const workers = 10
+	const entriesPerWorker = 10
+
+	// create a buffered channel large enough to avoid blocking
+	errCh := make(chan error, workers*entriesPerWorker)
+	var wg sync.WaitGroup
+	var mu sync.Mutex                   // protect log spam check
+	spamMap := make(map[int64]struct{}) // track used IDs
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		workerID := w + 1 // ensure non-zero worker ID
+		go func(workerID int) {
+			defer wg.Done()
+
+			for i := 0; i < entriesPerWorker; i++ {
+				userID := int64((workerID * 100) + i + 1) // ensure non-zero user ID
+
+				mu.Lock()
+				if _, exists := spamMap[userID]; exists {
+					mu.Unlock()
+					errCh <- fmt.Errorf("duplicate user ID: %d", userID)
+					continue
+				}
+				spamMap[userID] = struct{}{}
+				mu.Unlock()
+
+				entry := DetectedSpamInfo{
+					GID:       "group1",
+					Text:      fmt.Sprintf("spam message from worker %d-%d", workerID, i),
+					UserID:    userID,
+					UserName:  fmt.Sprintf("user%d-%d", workerID, i),
+					Timestamp: time.Now(),
+				}
+				checks := []spamcheck.Response{{
+					Name:    fmt.Sprintf("check%d-%d", workerID, i),
+					Spam:    true,
+					Details: "test details",
+				}}
+
+				if err := ds.Write(ctx, entry, checks); err != nil {
+					errCh <- fmt.Errorf("worker %d failed to write entry: %w", workerID, err)
+				}
+
+				// small sleep to avoid too much contention
+				time.Sleep(time.Millisecond)
+			}
+		}(workerID)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// Collect all errors
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+	require.Empty(t, errs, "should not have any errors from workers: %v", errs)
+
+	// verify entries
+	entries, err := ds.Read(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+	assert.LessOrEqual(t, len(entries), maxDetectedSpamEntries)
+
+	// verify entry formats and uniqueness
+	seenIDs := make(map[int64]bool)
+	for _, entry := range entries {
+		assert.NotEmpty(t, entry.GID)
+		assert.NotEmpty(t, entry.Text)
+		assert.NotZero(t, entry.UserID)
+		assert.NotEmpty(t, entry.UserName)
+		assert.NotEmpty(t, entry.ChecksJSON)
+		assert.NotEmpty(t, entry.Checks)
+		assert.False(t, seenIDs[entry.UserID], "duplicate UserID found: %d", entry.UserID)
+		seenIDs[entry.UserID] = true
+	}
+}
+
+func TestDetectedSpam_ReadAfterCleanup(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	ds, err := NewDetectedSpam(ctx, db)
+	require.NoError(t, err)
+
+	// add more entries than maxDetectedSpamEntries
+	for i := 0; i < maxDetectedSpamEntries+10; i++ {
+		entry := DetectedSpamInfo{
+			GID:       "group1",
+			Text:      fmt.Sprintf("spam message %d", i),
+			UserID:    int64(i + 1), // ensure non-zero
+			UserName:  fmt.Sprintf("user%d", i),
+			Timestamp: time.Now().Add(time.Duration(-i) * time.Hour),
+		}
+		checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+		err := ds.Write(ctx, entry, checks)
+		require.NoError(t, err)
+	}
+
+	// read and verify
+	entries, err := ds.Read(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, maxDetectedSpamEntries, len(entries), "should have exactly maxDetectedSpamEntries entries")
+
+	// verify order (newest first)
+	for i := 1; i < len(entries); i++ {
+		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
+		  entries[i-1].Timestamp.Equal(entries[i].Timestamp),
+			"entries should be ordered by timestamp descending")
 	}
 }
