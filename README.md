@@ -35,6 +35,8 @@ TG-Spam can also run as a server, providing a simple HTTP API to check messages 
 - Binary releases are also available on the [releases page](https://github.com/umputun/tg-spam/releases/latest).
 - TG-Spam can be installed by cloning the repository and building the binary from source by running `make build`.
 - It can also be installed using `brew tap umputun/apps && brew install umputun/apps/tg-spam` on macOS.
+- Deploy TG-Spam to the DigitalOcean App Platform with just one click:
+  [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/slyapustin/tg-spam/tree/do-deployment-button&refcode=08ce1ee690de)
 
 **Install guide for non-technical users is available [here](/INSTALL.md)**
 
