@@ -194,7 +194,9 @@ func TestServer_routes(t *testing.T) {
 			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
 		ApprovedUsersFunc: func() []approved.UserInfo {
-			return []approved.UserInfo{{UserID: "user1", UserName: "name1"}, {UserID: "user2", UserName: "name2"}}
+			return []approved.UserInfo{
+				{UserID: "user1", UserName: "name1"},
+				{UserID: "user2", UserName: "name2"}}
 		},
 		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			return nil

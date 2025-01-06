@@ -412,7 +412,6 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
-
 	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err == nil && cleanMsg != "" {
 		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
 			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)

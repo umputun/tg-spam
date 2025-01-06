@@ -30,3 +30,5 @@ tg-spam.db
 logs/
 site/public/
 _examples/simplechat/messages.db
+*.loaded
+var/

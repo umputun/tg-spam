@@ -11,12 +11,12 @@ import (
 	"github.com/umputun/tg-spam/lib/approved"
 )
 
-// ApprovedUsers is a storage for approved users ids
+// ApprovedUsers is a storage for approved users
 type ApprovedUsers struct {
 	db *sqlx.DB
 }
 
-// ApprovedUsersInfo represents information about an approved user.
+// approvedUsersInfo is a struct to store approved user info in the database
 type approvedUsersInfo struct {
 	UserID    string    `db:"id"`
 	UserName  string    `db:"name"`
@@ -44,13 +44,14 @@ func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
 	return &ApprovedUsers{db: db}, nil
 }
 
-// Read returns all approved users.
+// Read returns a list of all approved users
 func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
 	users := []approvedUsersInfo{}
 	err := au.db.Select(&users, "SELECT id, name, timestamp FROM approved_users ORDER BY timestamp DESC")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approved users: %w", err)
 	}
+
 	res := make([]approved.UserInfo, len(users))
 	for i, u := range users {
 		res[i] = approved.UserInfo{
@@ -77,7 +78,7 @@ func (au *ApprovedUsers) Write(user approved.UserInfo) error {
 	return nil
 }
 
-// Delete deletes the given id from the storage
+// Delete removes a user from the approved list
 func (au *ApprovedUsers) Delete(id string) error {
 	var user approvedUsersInfo
 
@@ -96,7 +97,6 @@ func (au *ApprovedUsers) Delete(id string) error {
 }
 
 func migrateTable(db *sqlx.DB) error {
-	// Check if the table exists
 	var exists int
 	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
 	if err != nil {
@@ -104,10 +104,10 @@ func migrateTable(db *sqlx.DB) error {
 	}
 
 	if exists == 0 {
-		return nil // Table does not exist, no need to migrate
+		return nil
 	}
 
-	// Get column info for 'id' column
+	// get current columns
 	var cols []struct {
 		CID       int     `db:"cid"`
 		Name      string  `db:"name"`

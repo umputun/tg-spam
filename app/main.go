@@ -130,7 +130,7 @@ type options struct {
 	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
-// file names
+// default file names
 const (
 	samplesSpamFile   = "spam-samples.txt"
 	samplesHamFile    = "ham-samples.txt"
@@ -149,7 +149,7 @@ func main() {
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
-		if err.(*flags.Error).Type != flags.ErrHelp {
+		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
 		}
 		os.Exit(2)

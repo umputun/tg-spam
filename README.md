@@ -141,7 +141,7 @@ Using words that mix characters from multiple languages is a common spam techniq
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
 - `--space.short-word` (default:3) - the maximum length of a short word
-- `--space.ratio` (default:0.3) -  the ratio of spaces to all characters in the message
+- `--space.ratio` (default:0.3) - the ratio of spaces to all characters in the message
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
 
 ### Admin chat/group
