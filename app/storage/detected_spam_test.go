@@ -317,7 +317,7 @@ func TestDetectedSpam_Read_LimitAndOrder(t *testing.T) {
 
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-		  entries[i-1].Timestamp.Equal(entries[i].Timestamp))
+			entries[i-1].Timestamp.Equal(entries[i].Timestamp))
 	}
 }
 
@@ -944,7 +944,7 @@ func TestDetectedSpam_ReadAfterCleanup(t *testing.T) {
 	// verify order (newest first)
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-		  entries[i-1].Timestamp.Equal(entries[i].Timestamp),
+			entries[i-1].Timestamp.Equal(entries[i].Timestamp),
 			"entries should be ordered by timestamp descending")
 	}
 }

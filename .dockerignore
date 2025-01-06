@@ -4,3 +4,4 @@ data/tg-spam.db*
 docker-compose*.yml
 var/
 logs/
+data/tg-spam.db

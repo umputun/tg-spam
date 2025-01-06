@@ -153,8 +153,9 @@ func main() {
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
-		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
+		if !errors.Is(err, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
+			os.Exit(1)
 		}
 		os.Exit(2)
 	}
@@ -304,7 +305,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-	  " suppress: %v, dry: %v, training: %v}",
+		" suppress: %v, dry: %v, training: %v}",
 		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
 		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)

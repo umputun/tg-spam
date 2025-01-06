@@ -45,6 +45,7 @@ linters:
     - nakedret
     - gosimple
     - prealloc
+    - gofmt
   fast: false
   disable-all: true
 

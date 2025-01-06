@@ -11,7 +11,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
-
 )
 
 // EngineType is a type of database engine

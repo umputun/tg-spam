@@ -814,7 +814,7 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 					assert.Equal(t, tc.sample, message)
 					return tc.deleteErr
 				},
-				StatsFunc: func(ctx context.Context, ) (*storage.SamplesStats, error) {
+				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
 					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
 				},
 				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {

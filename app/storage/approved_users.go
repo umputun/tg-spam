@@ -100,6 +100,8 @@ func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) 
 	log.Printf("[DEBUG] read %d approved users", len(res))
 	return res, nil
 }
+
+// Write adds a user to the approved list
 func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
 	if user.UserID == "" {
 		return fmt.Errorf("user id can't be empty")

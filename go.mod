@@ -8,7 +8,6 @@ require (
 	github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
 	github.com/fatih/color v1.18.0
 	github.com/go-chi/chi/v5 v5.2.0
-	github.com/go-pkgz/fileutils v0.2.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.20.2
 	github.com/hashicorp/go-multierror v1.1.1
