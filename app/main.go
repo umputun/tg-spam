@@ -127,7 +127,7 @@ type options struct {
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
 
-	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode"`
+	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -673,7 +673,7 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 	}, nil
 }
 
-// migrateSamples runs migrations from legacy text files samples to db, if needed
+// migrateSamples runs migrations from legacy text files samples to db, if such files found
 func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Samples) error {
 	if opts.Convert == "disabled" {
 		log.Print("[DEBUG] samples migration disabled")
@@ -754,11 +754,12 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 
 // migrateDicts runs migrations from legacy dictionary text files to db, if needed
 func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary) error {
+	if opts.Convert == "disabled" {
+		log.Print("[DEBUG] dictionary migration disabled")
+		return nil
+	}
+
 	migrateDict := func(file string, dictType storage.DictionaryType) (*storage.DictionaryStats, error) {
-		if opts.Convert == "disabled" {
-			log.Print("[DEBUG] dictionary migration disabled")
-			return &storage.DictionaryStats{}, nil
-		}
 		if _, err := os.Stat(file); err != nil {
 			log.Printf("[DEBUG] dictionary file %s not found, skip", file)
 			return &storage.DictionaryStats{}, nil

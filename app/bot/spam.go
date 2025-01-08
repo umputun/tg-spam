@@ -18,7 +18,7 @@ import (
 
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
 //go:generate moq --out mocks/samples.go --pkg mocks --skip-ensure --with-resets . SamplesStore
-//go:generate moq --out mocks/dcitionary.go --pkg mocks --skip-ensure --with-resets . DictStore
+//go:generate moq --out mocks/dictionary.go --pkg mocks --skip-ensure --with-resets . DictStore
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.

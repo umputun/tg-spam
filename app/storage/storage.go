@@ -61,7 +61,8 @@ func (e *Engine) MakeLock() RWLocker {
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
-	// set pragmas for sqlite
+	// Set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
+	// to make sure if it is worth having 2 more DB-related files for WAL and SHM.
 	pragmas := map[string]string{
 		// "journal_mode": "WAL",
 		// "synchronous":  "NORMAL",
