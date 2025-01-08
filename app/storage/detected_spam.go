@@ -51,39 +51,10 @@ var detectedSpamSchema = `
 
 // NewDetectedSpam creates a new DetectedSpam storage
 func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
-	if db == nil {
-		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	// first check if the table exists. we can't do this in a transaction
-	// because missing columns will cause the transaction to fail
-	var exists int
-	err := db.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
+	err := initDB(ctx, db, "detected_spam", detectedSpamSchema, migrateDetectedSpamTx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check for detected_spam table existence: %w", err)
+		return nil, err
 	}
-
-	if exists == 0 { // table does not exist, create it
-		tx, err := db.Begin()
-		if err != nil {
-			return nil, fmt.Errorf("failed to start transaction: %w", err)
-		}
-		defer tx.Rollback()
-
-		if _, err = tx.ExecContext(ctx, detectedSpamSchema); err != nil {
-			return nil, fmt.Errorf("failed to create schema: %w", err)
-		}
-
-		if err = tx.Commit(); err != nil {
-			return nil, fmt.Errorf("failed to commit transaction: %w", err)
-		}
-	}
-
-	// migrate detected_spam table if needed
-	if err := migrateDetectedSpam(&db.DB, db.GID()); err != nil {
-		return nil, fmt.Errorf("failed to migrate detected_spam: %w", err)
-	}
-
 	return &DetectedSpam{db: db, RWLocker: db.MakeLock()}, nil
 }
 
@@ -144,35 +115,43 @@ func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
 	return entries, nil
 }
 
-func migrateDetectedSpam(db *sqlx.DB, gid string) error {
-	var exists int
-	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
-	if err != nil {
-		return fmt.Errorf("failed to check for detected_spam table existence: %w", err)
+func migrateDetectedSpamTx(ctx context.Context, tx *sqlx.Tx, gid string) error {
+	// check if gid column exists
+	var cols []struct {
+		CID       int     `db:"cid"`
+		Name      string  `db:"name"`
+		Type      string  `db:"type"`
+		NotNull   bool    `db:"notnull"`
+		DfltValue *string `db:"dflt_value"`
+		PK        bool    `db:"pk"`
+	}
+	if err := tx.Select(&cols, "PRAGMA table_info(detected_spam)"); err != nil {
+		return fmt.Errorf("failed to get table info: %w", err)
 	}
 
-	if exists == 0 {
-		return nil
-	}
-
-	// add gid column if it doesn't exist
-	if _, err = db.Exec(`ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''`); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column name") {
-			return fmt.Errorf("failed to alter detected_spam table: %w", err)
+	hasGID := false
+	for _, col := range cols {
+		if col.Name == "gid" {
+			hasGID = true
+			break
 		}
-		return nil // column already exists, no need to update
 	}
 
-	// update existing records with the provided gid
-	res, err := db.Exec("UPDATE detected_spam SET gid = ? WHERE gid = ''", gid)
-	if err != nil {
-		return fmt.Errorf("failed to update gid for existing records: %w", err)
-	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+	if !hasGID {
+		if _, err := tx.ExecContext(ctx, "ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''"); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("failed to add gid column: %w", err)
+			}
+			return nil
+		}
+
+		// update existing records
+		if _, err := tx.ExecContext(ctx, "UPDATE detected_spam SET gid = ? WHERE gid = ''", gid); err != nil {
+			return fmt.Errorf("failed to update gid for existing records: %w", err)
+		}
+
+		log.Printf("[DEBUG] detected_spam table migrated, gid column added")
 	}
 
-	log.Printf("[DEBUG] detected_spam table migrated, gid updated to %q, records: %d", gid, rowsAffected)
 	return nil
 }

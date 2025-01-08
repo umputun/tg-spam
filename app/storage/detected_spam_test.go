@@ -14,17 +14,97 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-func TestDetectedSpam_NewDetectedSpam(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
+func TestNewDetectedSpam(t *testing.T) {
+	t.Run("with empty database", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
 
-	_, err := NewDetectedSpam(context.Background(), db)
-	require.NoError(t, err)
+		ctx := context.Background()
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
 
-	var exists int
-	err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
-	require.NoError(t, err)
-	assert.Equal(t, 1, exists)
+		// verify table exists with correct schema
+		var cols []struct {
+			CID       int     `db:"cid"`
+			Name      string  `db:"name"`
+			Type      string  `db:"type"`
+			NotNull   bool    `db:"notnull"`
+			DfltValue *string `db:"dflt_value"`
+			PK        bool    `db:"pk"`
+		}
+		err = db.Select(&cols, "PRAGMA table_info(detected_spam)")
+		require.NoError(t, err)
+
+		colMap := make(map[string]string)
+		for _, col := range cols {
+			colMap[col.Name] = col.Type
+		}
+
+		assert.Equal(t, "TEXT", colMap["gid"])
+		assert.Equal(t, "TEXT", colMap["text"])
+		assert.Equal(t, "INTEGER", colMap["user_id"])
+		assert.Equal(t, "TEXT", colMap["user_name"])
+	})
+
+	t.Run("with existing old schema", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		// create old schema
+		_, err := db.Exec(`
+			CREATE TABLE detected_spam (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				text TEXT,
+				user_id INTEGER,
+				user_name TEXT,
+				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+				added BOOLEAN DEFAULT 0,
+				checks TEXT
+			)
+		`)
+		require.NoError(t, err)
+
+		// insert test data
+		_, err = db.Exec(`
+			INSERT INTO detected_spam (text, user_id, user_name, checks)
+			VALUES (?, ?, ?, ?)`,
+			"test spam", 123, "test_user", `[{"Name":"test","Spam":true}]`)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+
+		// verify data was preserved and migrated
+		entries, err := ds.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+
+		assert.Equal(t, db.GID(), entries[0].GID)
+		assert.Equal(t, "test spam", entries[0].Text)
+		assert.Equal(t, int64(123), entries[0].UserID)
+		assert.Equal(t, "test_user", entries[0].UserName)
+	})
+
+	t.Run("with nil db", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := NewDetectedSpam(ctx, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db connection is nil")
+	})
+
+	t.Run("with cancelled context", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := NewDetectedSpam(ctx, db)
+		require.Error(t, err)
+	})
 }
 
 func TestDetectedSpam_Write(t *testing.T) {
@@ -317,7 +397,7 @@ func TestDetectedSpam_Read_LimitAndOrder(t *testing.T) {
 
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-			entries[i-1].Timestamp.Equal(entries[i].Timestamp))
+		  entries[i-1].Timestamp.Equal(entries[i].Timestamp))
 	}
 }
 
@@ -944,7 +1024,7 @@ func TestDetectedSpam_ReadAfterCleanup(t *testing.T) {
 	// verify order (newest first)
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-			entries[i-1].Timestamp.Equal(entries[i].Timestamp),
+		  entries[i-1].Timestamp.Equal(entries[i].Timestamp),
 			"entries should be ordered by timestamp descending")
 	}
 }

@@ -43,40 +43,10 @@ var approvedUsersSchema = `
 
 // NewApprovedUsers creates a new ApprovedUsers storage
 func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
-	if db == nil {
-		return nil, fmt.Errorf("db connection is nil")
-	}
-
-	tx, err := db.Beginx()
+	err := initDB(ctx, db, "approved_users", approvedUsersSchema, migrateTableTx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		return nil, err
 	}
-	defer tx.Rollback()
-
-	var exists int
-	err = tx.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for approved_users table existence: %w", err)
-	}
-
-	if exists == 0 {
-		// table didn't exist before, no migration needed
-		if _, err = tx.ExecContext(ctx, approvedUsersSchema); err != nil {
-			return nil, fmt.Errorf("failed to create schema: %w", err)
-		}
-	}
-
-	if exists > 0 {
-		// migrate existing table
-		if err = migrateTableTx(ctx, tx, db.GID()); err != nil {
-			return nil, fmt.Errorf("failed to migrate table: %w", err)
-		}
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return &ApprovedUsers{db: db, RWLocker: db.MakeLock()}, nil
 }
 

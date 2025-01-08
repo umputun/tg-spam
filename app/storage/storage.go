@@ -5,6 +5,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -129,3 +130,42 @@ func (NoopLocker) RLock() {}
 
 // RUnlock is a no-op
 func (NoopLocker) RUnlock() {}
+
+// initDB initializes db table with a schema and handles migration in a transaction
+func initDB(ctx context.Context, db *Engine, tableName, schema string, migrateFn func(context.Context, *sqlx.Tx, string) error) error {
+	if db == nil {
+		return fmt.Errorf("db connection is nil")
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var exists int
+	err = tx.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
+	if err != nil {
+		return fmt.Errorf("failed to check for %s table existence: %w", tableName, err)
+	}
+
+	if exists == 0 {
+		// create schema if it doesn't exist, no migration needed
+		if _, err = tx.ExecContext(ctx, schema); err != nil {
+			return fmt.Errorf("failed to create schema: %w", err)
+		}
+	}
+
+	if exists > 0 {
+		// migrate existing table
+		if err = migrateFn(ctx, tx, db.GID()); err != nil {
+			return fmt.Errorf("failed to migrate %s: %w", tableName, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
