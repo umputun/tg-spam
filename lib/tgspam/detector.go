@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"log"
 	"math"
 	"net/http"
@@ -355,14 +356,14 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	d.classifier.reset()
 
 	// excluded tokens should be loaded before spam samples to exclude them from spam tokenization
-	for t := range d.tokenChan(exclReader) {
+	for t := range d.tokenIterator(exclReader) {
 		d.excludedTokens = append(d.excludedTokens, strings.ToLower(t))
 	}
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
 	docs := []document{}
-	for token := range d.tokenChan(spamReaders...) {
+	for token := range d.tokenIterator(spamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
 		tokens := make([]string, 0, len(tokenizedSpam))
@@ -374,7 +375,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	}
 
 	// load ham samples and update the classifier with them
-	for token := range d.tokenChan(hamReaders...) {
+	for token := range d.tokenIterator(hamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSpam))
 		for token := range tokenizedSpam {
@@ -394,7 +395,7 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	defer d.lock.Unlock()
 
 	d.stopWords = []string{}
-	for t := range d.tokenChan(readers...) {
+	for t := range d.tokenIterator(readers...) {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
 	return LoadResult{StopWords: len(d.stopWords)}, nil
@@ -423,7 +424,7 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 
 	// load samples and update the classifier with them
 	docs := []document{}
-	for token := range d.tokenChan(bytes.NewBufferString(msg)) {
+	for token := range d.tokenIterator(bytes.NewBufferString(msg)) {
 		tokenizedSample := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSample))
 		for token := range tokenizedSample {
@@ -435,14 +436,10 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 	return nil
 }
 
-// tokenChan parses readers and returns a channel of tokens.
+// tokenIterator parses readers and returns an iterator of tokens.
 // A line per-token or comma-separated "tokens" supported
-func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
-	resCh := make(chan string)
-
-	go func() {
-		defer close(resCh)
-
+func (d *Detector) tokenIterator(readers ...io.Reader) iter.Seq[string] {
+	return func(yield func(string) bool) {
 		for _, reader := range readers {
 			scanner := bufio.NewScanner(reader)
 			for scanner.Scan() {
@@ -453,15 +450,19 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 					for _, token := range lineTokens {
 						cleanToken := strings.Trim(token, " \"\n\r\t")
 						if cleanToken != "" {
-							resCh <- cleanToken
+							if !yield(cleanToken) {
+								return
+							}
 						}
 					}
-					continue
-				}
-				// each line with a single token
-				cleanToken := strings.Trim(line, " \n\r\t")
-				if cleanToken != "" {
-					resCh <- cleanToken
+				} else {
+					// each line with a single token
+					cleanToken := strings.Trim(line, " \n\r\t")
+					if cleanToken != "" {
+						if !yield(cleanToken) {
+							return
+						}
+					}
 				}
 			}
 
@@ -469,9 +470,7 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 				log.Printf("[WARN] failed to read tokens, error=%v", err)
 			}
 		}
-	}()
-
-	return resCh
+	}
 }
 
 // tokenize takes a string and returns a map where the keys are unique words (tokens)
