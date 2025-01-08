@@ -56,7 +56,7 @@ func (e *Engine) Type() EngineType {
 // MakeLock creates a new lock for the database engine
 func (e *Engine) MakeLock() RWLocker {
 	if e.dbType == EngineTypeSqlite {
-		return &sync.RWMutex{} // sqlite need locking
+		return new(sync.RWMutex) // sqlite need locking
 	}
 	return &NoopLocker{} // other engines don't need locking
 }

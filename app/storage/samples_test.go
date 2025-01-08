@@ -1221,6 +1221,39 @@ func TestSamples_ImportSizeLimits(t *testing.T) {
 	}
 }
 
+func TestSamples_ReaderUnlock(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	s, err := NewSamples(ctx, db)
+	require.NoError(t, err)
+
+	// initial message
+	err = s.Add(ctx, SampleTypeSpam, SampleOriginUser, "test message 1")
+	require.NoError(t, err)
+
+	// first read
+	r1, err := s.Reader(ctx, SampleTypeSpam, SampleOriginUser)
+	require.NoError(t, err)
+	data, err := io.ReadAll(r1)
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+	r1.Close()
+
+	// should be able to add after read
+	err = s.Add(ctx, SampleTypeSpam, SampleOriginUser, "test message 2")
+	require.NoError(t, err)
+
+	// should be able to read again
+	r2, err := s.Reader(ctx, SampleTypeSpam, SampleOriginUser)
+	require.NoError(t, err)
+	data, err = io.ReadAll(r2)
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+	r2.Close()
+}
+
 // errorReader implements io.Reader interface and always returns an error
 type errorReader struct {
 	err error

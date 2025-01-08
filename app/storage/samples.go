@@ -96,22 +96,12 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 	s.Lock()
 	defer s.Unlock()
 
-	// start transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// add new sample, replace if exists
+	// try to insert, if it fails due to UNIQUE constraint - that's ok
 	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
-	if _, err = tx.ExecContext(ctx, query, s.db.GID(), t, o, message); err != nil {
+	if _, err := s.db.ExecContext(ctx, query, s.db.GID(), t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
 	return nil
 }
 
@@ -220,9 +210,9 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 	}
 
 	s.RLock()
+	defer s.RUnlock()
 	rows, err := s.db.QueryxContext(ctx, query, args...)
 	if err != nil {
-		s.RUnlock()
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
 
@@ -312,11 +302,11 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	gid := s.db.GID()
 
 	s.Lock()
+	defer s.Unlock()
 
 	// start transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		s.Unlock()
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
@@ -326,7 +316,6 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 		query := `DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`
 		result, errDel := tx.ExecContext(ctx, query, gid, t, o)
 		if errDel != nil {
-			s.Unlock()
 			return nil, fmt.Errorf("failed to remove old samples: %w", errDel)
 		}
 		affected, errCount := result.RowsAffected()
@@ -351,7 +340,6 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 			continue
 		}
 		if _, err = tx.ExecContext(ctx, query, gid, t, o, message); err != nil {
-			s.Unlock()
 			return nil, fmt.Errorf("failed to add sample: %w", err)
 		}
 		added++
@@ -359,17 +347,14 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 
 	// check for scanner errors after the scan is complete
 	if err = scanner.Err(); err != nil {
-		s.Unlock()
 		return nil, fmt.Errorf("error reading input: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		s.Unlock()
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	s.Unlock() // release the lock before getting stats
 	log.Printf("[DEBUG] imported %d samples: gid=%s, type=%s, origin=%s", added, gid, t, o)
-	return s.Stats(ctx)
+	return s.stats(ctx)
 }
 
 // String implements Stringer interface
@@ -416,7 +401,11 @@ func (st *SamplesStats) String() string {
 func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
 	s.RLock()
 	defer s.RUnlock()
+	return s.stats(ctx)
+}
 
+// stats returns statistics about samples without locking
+func (s *Samples) stats(ctx context.Context) (*SamplesStats, error) {
 	query := `
         SELECT 
             COUNT(CASE WHEN type = 'spam' THEN 1 END) as spam_count,
