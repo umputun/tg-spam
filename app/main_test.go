@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -628,5 +629,176 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 0, s.TotalStopPhrases)
 		assert.Equal(t, 2, s.TotalIgnoredWords)
+	})
+}
+
+func TestBackupDB(t *testing.T) {
+	// helper functions
+	fileSize := func(t *testing.T, path string) int64 {
+		t.Helper()
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		return info.Size()
+	}
+
+	readFile := func(t *testing.T, path string) string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		return string(data)
+	}
+
+	t.Run("no backup if max 0", func(t *testing.T) {
+		dir := t.TempDir()
+		dbFile := filepath.Join(dir, "test.db")
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+
+		err := backupDB(dbFile, "v1", 0)
+		require.NoError(t, err)
+		files, err := filepath.Glob(dbFile + ".*")
+		require.NoError(t, err)
+		require.Empty(t, files)
+	})
+
+	t.Run("skip existing backup", func(t *testing.T) {
+		dir := t.TempDir()
+		dbFile := filepath.Join(dir, "test.db")
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+
+		backupFile := dbFile + ".master-123-20250108T00:01:26"
+		require.NoError(t, os.WriteFile(backupFile, []byte("old backup"), 0600))
+		origSize := fileSize(t, backupFile)
+
+		err := backupDB(dbFile, "master-123-20250108T00:01:26", 1)
+		require.NoError(t, err)
+
+		newSize := fileSize(t, backupFile)
+		require.Equal(t, origSize, newSize, "backup file should not be modified")
+	})
+
+	t.Run("make new backup and cleanup", func(t *testing.T) {
+		dir := t.TempDir()
+		dbFile := filepath.Join(dir, "test.db")
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+
+		// create some old backups
+		oldBackups := []string{
+			"master-111-20250108T00:01:26",
+			"master-222-20250108T00:02:26",
+			"master-333-20250108T00:03:26",
+		}
+		for _, v := range oldBackups {
+			require.NoError(t, os.WriteFile(dbFile+"."+v, []byte("old"), 0600))
+		}
+
+		// make new backup with maxBackups=2
+		newVer := "master-444-20250108T00:04:26"
+		err := backupDB(dbFile, newVer, 2)
+		require.NoError(t, err)
+
+		// check files
+		files, err := filepath.Glob(dbFile + ".*")
+		require.NoError(t, err)
+		require.Len(t, files, 2)
+
+		// verify correct files remain (2 newest)
+		sort.Strings(files) // sort for stable test
+		for _, f := range files {
+			base := filepath.Base(f)
+			require.True(t, strings.HasSuffix(base, oldBackups[2]) || strings.HasSuffix(base, newVer),
+				"unexpected file: %s", base)
+		}
+
+		content := readFile(t, dbFile+"."+newVer)
+		require.Equal(t, "test data", string(content))
+	})
+
+	t.Run("mixed_timestamp_formats", func(t *testing.T) {
+		dir := t.TempDir()
+		dbFile := filepath.Join(dir, "test.db")
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+
+		baseTime := time.Now().Add(-24 * time.Hour) // start from 24 hours ago
+		// create backups files in chronological order
+		backups := []struct {
+			name    string
+			content string
+			modTime time.Time
+		}{
+			{dbFile + ".backup1", "old1", baseTime}, // oldest by mod time
+			{dbFile + ".master-123abc-20250108T00:01:26", "old2", time.Time{}},
+			{dbFile + ".backup2", "old3", baseTime.Add(23 * time.Hour)}, // much newer than backup1
+			{dbFile + ".master-456def-20250108T00:02:26", "old4", time.Time{}},
+		}
+
+		// create all files first, then set mod times to avoid any timing issues
+		for _, b := range backups {
+			require.NoError(t, os.WriteFile(b.name, []byte(b.content), 0600))
+		}
+
+		// set mod times after all files created
+		for _, b := range backups {
+			if !b.modTime.IsZero() {
+				require.NoError(t, os.Chtimes(b.name, b.modTime, b.modTime))
+			}
+		}
+
+		// make new backup with maxBackups=3
+		newVer := "master-789ghi-20250108T00:03:26"
+		err := backupDB(dbFile, newVer, 3)
+		require.NoError(t, err)
+
+		// check remaining files
+		files, err := filepath.Glob(dbFile + ".*")
+		require.NoError(t, err)
+		require.Len(t, files, 3)
+
+		// verify the oldest file was removed
+		_, err = os.Stat(backups[0].name)
+		require.True(t, os.IsNotExist(err), "oldest file (backup1) should be removed")
+
+		// dump all files and their mod times for debugging
+		for _, f := range files {
+			info, _ := os.Stat(f)
+			t.Logf("file: %s, mod time: %v", filepath.Base(f), info.ModTime())
+		}
+
+		// verify remaining files
+		foundFiles := make(map[string]bool)
+		for _, f := range files {
+			foundFiles[filepath.Base(f)] = true
+		}
+
+		require.True(t, foundFiles["test.db.master-456def-20250108T00:02:26"], "should have middle versioned backup")
+		require.True(t, foundFiles["test.db.master-789ghi-20250108T00:03:26"], "should have newest backup")
+		require.True(t, foundFiles["test.db.backup2"], "should have newer non-versioned backup")
+	})
+
+	t.Run("version with dots", func(t *testing.T) {
+		dir := t.TempDir()
+		dbFile := filepath.Join(dir, "test.db")
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+
+		version := "master-123-1.2.3-20250108T00:01:26"
+		err := backupDB(dbFile, version, 1)
+		require.NoError(t, err)
+
+		expectedBackup := dbFile + "." + strings.ReplaceAll(version, ".", "_")
+		_, err = os.Stat(expectedBackup)
+		require.NoError(t, err)
+
+		content := readFile(t, expectedBackup)
+		require.Equal(t, "test data", string(content))
+
+		require.Contains(t, expectedBackup, "master-123-1_2_3-20250108T00:01:26")
+		require.NotContains(t, expectedBackup, "master-123-1.2.3-20250108T00:01:26")
+	})
+
+	t.Run("backup with errors", func(t *testing.T) {
+		dir := t.TempDir()
+		nonExistentFile := filepath.Join(dir, "non-existent.db")
+		err := backupDB(nonExistentFile, "v1", 1)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to copy db file")
 	})
 }

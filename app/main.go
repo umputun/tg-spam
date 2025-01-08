@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/fatih/color"
+	"github.com/go-pkgz/fileutils"
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
@@ -129,6 +131,11 @@ type options struct {
 
 	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
 
+	BackupVer struct {
+		Enabled    bool `long:"enabled" env:"ENABLED" description:"enable backup on version change"`
+		MaxBackups int  `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep"`
+	} `group:"backup-ver" namespace:"backup-ver" env-namespace:"BACKUP_VER"`
+
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
@@ -212,11 +219,19 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
+	log.Printf("[DEBUG] data db: %s", dbFile)
+
+	// make backup of db on version change
+	if opts.BackupVer.Enabled {
+		if err := backupDB(dbFile, revision, opts.BackupVer.MaxBackups); err != nil {
+			return fmt.Errorf("backup on version change failed, %w", err)
+		}
+	}
+
 	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
 	if err != nil {
 		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
 	}
-	log.Printf("[DEBUG] data db: %s", dbFile)
 
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
@@ -808,6 +823,71 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 
 	if s.TotalIgnoredWords > 0 || s.TotalStopPhrases > 0 {
 		log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	}
+	return nil
+}
+
+// backupDB creates a backup of the db file if the version has changed. It copies the db file to a new db file
+// named as the original file with a version suffix, e.g., tg-spam.db.master-77e0bfd-20250107T23:17:34.
+// The file is created only if the version has changed and a backup file with the name tg-spam.db.<version> does not exist.
+// It keeps up to maxBackups files; if maxBackups is 0, no backups are made.
+// Files are removed based on the final part of the version, i.e., 20250107T23:17:34, with the oldest backups removed first.
+// If the backup file extension suffix with the timestamp is not found, the modification time of the file is used instead.
+func backupDB(dbFile, version string, maxBackups int) error {
+	if maxBackups == 0 {
+		return nil
+	}
+	backupFile := dbFile + "." + strings.ReplaceAll(version, ".", "_")
+	if _, err := os.Stat(backupFile); err == nil {
+		// backup file for the version already exists, no need to make it again
+		return nil
+	}
+
+	log.Printf("[DEBUG] db backup: %s -> %s", dbFile, backupFile)
+	// copy current db to the backup file
+	if err := fileutils.CopyFile(dbFile, backupFile); err != nil {
+		return fmt.Errorf("failed to copy db file: %w", err)
+	}
+	log.Printf("[INFO] db backup created: %s", backupFile)
+
+	// cleanup old backups if needed
+	files, err := filepath.Glob(dbFile + ".*")
+	if err != nil {
+		return fmt.Errorf("failed to list backup files: %w", err)
+	}
+
+	if len(files) <= maxBackups {
+		return nil
+	}
+
+	// sort files by timestamp in version suffix or mod time if suffix not formatted as timestamp
+	sort.Slice(files, func(i, j int) bool {
+		getTime := func(f string) time.Time {
+			base := filepath.Base(f) // get just the filename part
+			// try to get timestamp from branch-HASH-TIMESTAMP pattern
+			parts := strings.Split(base, "-")
+			if len(parts) >= 3 {
+				suffix := parts[len(parts)-1]
+				if t, err := time.Parse("20060102T15:04:05", suffix); err == nil {
+					return t
+				}
+			}
+			// fallback to modification time
+			fi, err := os.Stat(f)
+			if err != nil {
+				return time.Time{} // return zero time for failed stats
+			}
+			return fi.ModTime()
+		}
+		return getTime(files[i]).Before(getTime(files[j]))
+	})
+
+	// remove oldest files
+	for i := 0; i < len(files)-maxBackups; i++ {
+		if err := os.Remove(files[i]); err != nil {
+			return fmt.Errorf("failed to remove old backup %s: %w", files[i], err)
+		}
+		log.Printf("[DEBUG] db backup removed: %s", files[i])
 	}
 	return nil
 }
