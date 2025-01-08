@@ -1262,3 +1262,59 @@ func TestCleanText(t *testing.T) {
 		})
 	}
 }
+
+//nolint:stylecheck // it has unicode symbols purposely
+func Test_countEmoji(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		count int
+	}{
+		{"NoEmoji", "Hello, world!", 0},
+		{"OneEmoji", "Hi there 👋", 1},
+		{"DupEmoji", "️‍🌈Hi 👋there 👋", 3},
+		{"TwoEmojis", "Good morning 🌞🌻", 2},
+		{"Mixed", "👨‍👩👦 Family emoji", 3},
+		{"TextAfterEmoji", "😊 Have a nice day!", 1},
+		{"OnlyEmojis", "😁🐶🍕", 3},
+		{"WithCyrillic", "Привет 🌞 🍕 мир! 👋", 3},
+		{"real1", "❗️НУЖЕН 1 ЧЕЛОВЕК НА ДИСТАНЦИОННУЮ РАБОТУ❗️", 2},
+		{"real2", "⏰💯⚡️💯🤝🤝🤝🤝🤝🤝🤝🤝  ❗️HУЖHЫ OТВЕТCТВЕHHЫЕ ЛЮДИ❗️              🔤🔤  ➡️@yyyyy🥢" +
+			"  ⚡️(OТ 2️⃣1️⃣ ВOЗРАCТ)🟢 🔋OHЛАЙH ЗАРАБOТOК 🟢 ✅COПРOВOЖДЕHИЕ🟢 ❗1-2 ЧАCА В ДЕHЬ 🟢   👍1️⃣2️⃣0️⃣0️⃣💸" +
+			"➕в неделю🟢 ПИCАТЬ ✉️@xxxxxx✉️", 38},
+		{"real3", "‼️СРОЧНО‼️  ‼️ЭТО КАСАЕТСЯ КАЖДОГО В ЭТОЙ ГРУППЕ‼️  🔥Строго 20+  В данный момент проходит обучение " +
+			"для новичков 🔥 Сразу говорю - без наркотиков, инвестиций и прочей ерунды. 🔥 Быстрый старт, прибыль вы получите" +
+			" уже в первый день работы 🔥 Все легально 🔥 Для работы нужен смартфон и всего 1 час твоего времени" +
+			" в день 🔥 Доведём вас за ручку до прибыли ‼️", 11},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.count, countEmoji(tt.input))
+		})
+	}
+}
+
+//nolint:stylecheck // it has unicode symbols purposely
+func Test_cleanEmoji(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		clean string
+	}{
+		{"NoEmoji", "Hello, world!", "Hello, world!"},
+		{"OneEmoji", "Hi there 👋", "Hi there "},
+		{"TwoEmojis", "Good morning 🌞🌻", "Good morning "},
+		{"Mixed", "👨‍👩‍👧‍👦 Family emoji", " Family emoji"},
+		{"EmojiSequences", "🏳️‍🌈 Rainbow flag", " Rainbow flag"},
+		{"TextAfterEmoji", "😊 Have a nice day!", " Have a nice day!"},
+		{"OnlyEmojis", "😁🐶🍕", ""},
+		{"WithCyrillic", "Привет 🌞 🍕 мир! 👋", "Привет   мир! "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.clean, cleanEmoji(tt.input))
+		})
+	}
+}

@@ -17,6 +17,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/forPelevin/gomoji"
+
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -764,4 +766,12 @@ func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
 		return context.Background(), func() {}
 	}
 	return context.WithTimeout(context.Background(), d.StorageTimeout)
+}
+
+func cleanEmoji(s string) string {
+	return gomoji.RemoveEmojis(s)
+}
+
+func countEmoji(s string) int {
+	return len(gomoji.CollectAll(s))
 }
