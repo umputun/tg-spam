@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -11,46 +12,56 @@ import (
 	"github.com/umputun/tg-spam/lib/approved"
 )
 
-// ApprovedUsers is a storage for approved users ids
+// ApprovedUsers is a storage for approved users
 type ApprovedUsers struct {
-	db *sqlx.DB
+	db *Engine
+	RWLocker
 }
 
-// ApprovedUsersInfo represents information about an approved user.
+// approvedUsersInfo is a struct to store approved user info in the database
 type approvedUsersInfo struct {
-	UserID    string    `db:"id"`
+	UserID    string    `db:"uid"`
+	GroupID   string    `db:"gid"`
 	UserName  string    `db:"name"`
 	Timestamp time.Time `db:"timestamp"`
 }
 
+var approvedUsersSchema = `
+        CREATE TABLE IF NOT EXISTS approved_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uid TEXT,
+			gid TEXT DEFAULT '',
+			name TEXT,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        	UNIQUE(gid, uid)                              
+        );
+        CREATE INDEX IF NOT EXISTS idx_approved_users_uid ON approved_users(uid);
+        CREATE INDEX IF NOT EXISTS idx_approved_users_gid ON approved_users(gid);
+        CREATE INDEX IF NOT EXISTS idx_approved_users_name ON approved_users(name);
+        CREATE INDEX IF NOT EXISTS idx_approved_users_timestamp ON approved_users(timestamp)
+`
+
 // NewApprovedUsers creates a new ApprovedUsers storage
-func NewApprovedUsers(db *sqlx.DB) (*ApprovedUsers, error) {
-	// migrate the table if necessary
-	err := migrateTable(db)
+func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
+	err := initDB(ctx, db, "approved_users", approvedUsersSchema, migrateTableTx)
 	if err != nil {
 		return nil, err
 	}
-
-	// create the table if it doesn't exist
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS approved_users (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create approved_users table: %w", err)
-	}
-
-	return &ApprovedUsers{db: db}, nil
+	return &ApprovedUsers{db: db, RWLocker: db.MakeLock()}, nil
 }
 
-// Read returns all approved users.
-func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
+// Read returns a list of all approved users
+func (au *ApprovedUsers) Read(ctx context.Context) ([]approved.UserInfo, error) {
+	au.RLock()
+	defer au.RUnlock()
+
 	users := []approvedUsersInfo{}
-	err := au.db.Select(&users, "SELECT id, name, timestamp FROM approved_users ORDER BY timestamp DESC")
+	gid := au.db.GID()
+	err := au.db.SelectContext(ctx, &users, "SELECT uid, gid, name, timestamp FROM approved_users WHERE gid=? ORDER BY uid ASC", gid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approved users: %w", err)
 	}
+
 	res := make([]approved.UserInfo, len(users))
 	for i, u := range users {
 		res[i] = approved.UserInfo{
@@ -63,31 +74,44 @@ func (au *ApprovedUsers) Read() ([]approved.UserInfo, error) {
 	return res, nil
 }
 
-// Write writes new user info to the storage
-func (au *ApprovedUsers) Write(user approved.UserInfo) error {
+// Write adds a user to the approved list
+func (au *ApprovedUsers) Write(ctx context.Context, user approved.UserInfo) error {
+	if user.UserID == "" {
+		return fmt.Errorf("user id can't be empty")
+	}
+
+	au.Lock()
+	defer au.Unlock()
+
 	if user.Timestamp.IsZero() {
 		user.Timestamp = time.Now()
 	}
-	// Prepare the query to insert a new record, ignoring if it already exists
-	query := "INSERT OR IGNORE INTO approved_users (id, name, timestamp) VALUES (?, ?, ?)"
-	if _, err := au.db.Exec(query, user.UserID, user.UserName, user.Timestamp); err != nil {
+
+	query := "INSERT OR REPLACE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)"
+	if _, err := au.db.ExecContext(ctx, query, user.UserID, au.db.GID(), user.UserName, user.Timestamp); err != nil {
 		return fmt.Errorf("failed to insert user %+v: %w", user, err)
 	}
-	log.Printf("[INFO] user %s added to approved users", user.String())
+	log.Printf("[INFO] user %q (%s) added to approved users", user.UserName, user.UserID)
 	return nil
 }
 
-// Delete deletes the given id from the storage
-func (au *ApprovedUsers) Delete(id string) error {
-	var user approvedUsersInfo
+// Delete removes a user from the approved list
+func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("user id can't be empty")
+	}
 
-	// retrieve the user's name and timestamp for logging purposes
-	err := au.db.Get(&user, "SELECT id, name, timestamp FROM approved_users WHERE id = ?", id)
+	au.Lock()
+	defer au.Unlock()
+
+	var user approvedUsersInfo
+	err := au.db.GetContext(ctx, &user, "SELECT uid, gid, name, timestamp FROM approved_users WHERE uid = ? AND gid = ?",
+		id, au.db.GID())
 	if err != nil {
 		return fmt.Errorf("failed to get approved user for id %s: %w", id, err)
 	}
 
-	if _, err := au.db.Exec("DELETE FROM approved_users WHERE id = ?", id); err != nil {
+	if _, err := au.db.ExecContext(ctx, "DELETE FROM approved_users WHERE uid = ? AND gid = ?", id, au.db.GID()); err != nil {
 		return fmt.Errorf("failed to delete id %s: %w", id, err)
 	}
 
@@ -95,19 +119,8 @@ func (au *ApprovedUsers) Delete(id string) error {
 	return nil
 }
 
-func migrateTable(db *sqlx.DB) error {
-	// Check if the table exists
-	var exists int
-	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
-	if err != nil {
-		return fmt.Errorf("failed to check for approved_users table existence: %w", err)
-	}
-
-	if exists == 0 {
-		return nil // Table does not exist, no need to migrate
-	}
-
-	// Get column info for 'id' column
+func migrateTableTx(ctx context.Context, tx *sqlx.Tx, gid string) error {
+	// get current columns
 	var cols []struct {
 		CID       int     `db:"cid"`
 		Name      string  `db:"name"`
@@ -116,22 +129,47 @@ func migrateTable(db *sqlx.DB) error {
 		DfltValue *string `db:"dflt_value"`
 		PK        bool    `db:"pk"`
 	}
-	err = db.Select(&cols, "PRAGMA table_info(approved_users)")
-	if err != nil {
-		return fmt.Errorf("failed to get table info for approved_users: %w", err)
+	if err := tx.Select(&cols, "PRAGMA table_info(approved_users)"); err != nil {
+		return fmt.Errorf("failed to get table info: %w", err)
 	}
 
-	// Check if 'id' column is INTEGER
+	// check if already migrated
 	for _, col := range cols {
-		if col.Name == "id" && col.Type == "INTEGER" {
-			// Drop the table if 'id' is of type INTEGER
-			_, err = db.Exec("DROP TABLE approved_users")
-			if err != nil {
-				return fmt.Errorf("failed to drop old approved_users table: %w", err)
-			}
-			break
+		if col.Name == "uid" {
+			log.Printf("[DEBUG] approved_users table already migrated")
+			return nil
 		}
 	}
 
+	// backup data
+	var rows []struct {
+		ID        string    `db:"id"`
+		Name      string    `db:"name"`
+		Timestamp time.Time `db:"timestamp"`
+	}
+	if err := tx.SelectContext(ctx, &rows, "SELECT id, name, timestamp FROM approved_users"); err != nil {
+		return fmt.Errorf("failed to backup data: %w", err)
+	}
+
+	// drop old table and create new one
+	if _, err := tx.ExecContext(ctx, "DROP TABLE approved_users"); err != nil {
+		return fmt.Errorf("failed to drop old table: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, approvedUsersSchema); err != nil {
+		return fmt.Errorf("failed to create new schema: %w", err)
+	}
+
+	// restore data
+	for _, r := range rows {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO approved_users (gid, uid, name, timestamp) VALUES (?, ?, ?, ?)",
+			gid, r.ID, r.Name, r.Timestamp,
+		); err != nil {
+			return fmt.Errorf("failed to restore data: %w", err)
+		}
+	}
+
+	log.Printf("[DEBUG] approved_users table migrated, records: %d", len(rows))
 	return nil
 }

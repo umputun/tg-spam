@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -88,7 +89,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	// it would be nice to ban this user right away, but we don't have forwarded user ID here due to tg privacy limitation.
 	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
-	info, ok := a.locator.Message(msgTxt)
+	info, ok := a.locator.Message(context.TODO(), msgTxt)
 	if !ok {
 		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
 	}
@@ -412,7 +413,6 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
-
 	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err == nil && cleanMsg != "" {
 		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
 			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
@@ -506,7 +506,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	if !strings.Contains(query.Message.Text, "spam detection results") && userID != 0 {
 		spamInfoText := []string{"\n\n**original detection results**\n"}
 
-		info, found := a.locator.Spam(userID)
+		info, found := a.locator.Spam(context.TODO(), userID)
 		if found {
 			for _, check := range info.Checks {
 				spamInfoText = append(spamInfoText, "- "+escapeMarkDownV1Text(check.String()))
@@ -574,7 +574,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 
 	// collect spam detection details
 	if userID != 0 {
-		info, found := a.locator.Spam(userID)
+		info, found := a.locator.Spam(context.TODO(), userID)
 		if found {
 			for _, check := range info.Checks {
 				spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
@@ -603,7 +603,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 // deleteAndBan deletes the message and bans the user
 func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int) error {
 	errs := new(multierror.Error)
-	userName := a.locator.UserNameByID(userID)
+	userName := a.locator.UserNameByID(context.TODO(), userID)
 	banReq := banRequest{
 		duration: bot.PermanentBanDuration,
 		userID:   userID,

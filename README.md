@@ -141,8 +141,41 @@ Using words that mix characters from multiple languages is a common spam techniq
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
 - `--space.short-word` (default:3) - the maximum length of a short word
-- `--space.ratio` (default:0.3) -  the ratio of spaces to all characters in the message
+- `--space.ratio` (default:0.3) - the ratio of spaces to all characters in the message
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
+
+### Database Migration for samples (spam and ham), stop words and exclude tokens, after version (v1.16.0+)
+
+Starting from version 1.16.0, the bot has transitioned from using multiple text files to a fully database-driven architecture. Previously separate files for spam/ham samples, stop words, and excluded tokens are now stored directly in the database alongside other bot data.
+
+#### Migration Control
+
+The migration process can be controlled using the `--convert` parameter, which accepts the following values:
+- `enabled` (default): Performs migration during startup if needed, then continues normal operation
+- `disabled`: Skips all migration, requires data to be already present in the database
+- `only`: Performs migration and exits immediately after completion, useful for maintenance tasks
+
+#### Migration Process
+
+During the first startup after upgrading to v1.16.0, the bot automatically:
+1. Migrates all existing data from text files to the database.
+2. Renames the processed files to `*.loaded` to prevent duplicate loading.
+3. Continues operation using only the database for all data access.
+
+New installations come with all necessary samples and configuration preloaded in the database, eliminating the need for separate text files.
+
+If a user renames any `*.loaded` files back to their original `.txt` extension, the bot will detect them during the next startup and perform a fresh migration. This process:
+1. Clears the corresponding dataset in the database (e.g., spam samples, stop words).
+2. Loads the content from the renamed files.
+3. Renames the files to `*.loaded` again.
+
+This behavior allows resetting and reloading specific datasets if needed while maintaining database consistency.
+
+The database-driven architecture offers several benefits:
+-  Simplified data management through a single storage solution.
+-  Improved performance with optimized database access.
+-  Enhanced reliability by eliminating file I/O operations.
+   Easier system migration and backup by transferring a single `tg-spam.db` file.
 
 ### Admin chat/group
 

@@ -552,7 +552,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
 	defer cancel()
 
-	err := l.Locator.AddMessage("text 123", 123, 88, "user", 999999) // add message to locator
+	err := l.Locator.AddMessage(ctx, "text 123", 123, 88, "user", 999999) // add message to locator
 	assert.NoError(t, err)
 
 	updMsg := tbapi.Update{
@@ -1337,7 +1337,7 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 	close(updChan)
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
-	err := l.Locator.AddSpam(999, []spamcheck.Response{{Name: "rule1", Spam: true, Details: "details1"},
+	err := l.Locator.AddSpam(ctx, 999, []spamcheck.Response{{Name: "rule1", Spam: true, Details: "details1"},
 		{Name: "rule2", Spam: true, Details: "details2"}})
 	assert.NoError(t, err)
 
@@ -1399,7 +1399,7 @@ func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 	err := l.Do(ctx)
 	assert.EqualError(t, err, "telegram update chan closed")
 
-	meta, found := l.Locator.Message("new_123_321")
+	meta, found := l.Locator.Message(ctx, "new_123_321")
 	assert.True(t, found)
 	assert.Equal(t, int64(321), meta.UserID)
 	assert.Equal(t, 22, meta.MsgID)
@@ -1498,7 +1498,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 			},
 		}
 
-		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		err := locator.AddMessage(ctx, "new_123_321", 123, 321, "", 21)
 		require.NoError(t, err)
 
 		updChan := make(chan tbapi.Update, 1)
@@ -1532,7 +1532,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 		}()
 		l.SuppressJoinMessage = false
 
-		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		err := locator.AddMessage(ctx, "new_123_321", 123, 321, "", 21)
 		require.NoError(t, err)
 
 		updChan := make(chan tbapi.Update, 1)
@@ -1559,7 +1559,7 @@ func TestTelegramListener_DoWithProcLeftChatMemberMessage(t *testing.T) {
 			},
 		}
 
-		err := locator.AddMessage("new_123_321", 123, 321, "", 21)
+		err := locator.AddMessage(ctx, "new_123_321", 123, 321, "", 21)
 		require.NoError(t, err)
 
 		updChan := make(chan tbapi.Update, 1)
@@ -1941,7 +1941,7 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 			}
 
 			for _, args := range tt.expectedAddMessageArgs {
-				msgMeta, found := l.Locator.Message(args.Msg)
+				msgMeta, found := l.Locator.Message(context.Background(), args.Msg)
 				assert.True(t, found)
 				assert.Equal(t, args.ChatID, msgMeta.ChatID)
 				assert.Equal(t, args.UserID, msgMeta.UserID)
@@ -2070,7 +2070,8 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 
 			if tt.expectedDeleteMessageArgs.ChatID != 0 && tt.expectedDeleteMessageArgs.MsgID != 0 {
 				msg := fmt.Sprintf("new_%d_%d", tt.expectedDeleteMessageArgs.ChatID, tt.update.Message.LeftChatMember.ID)
-				err := l.Locator.AddMessage(msg, tt.expectedDeleteMessageArgs.ChatID, tt.update.Message.LeftChatMember.ID, "", tt.expectedDeleteMessageArgs.MsgID)
+				err := l.Locator.AddMessage(context.Background(), msg, tt.expectedDeleteMessageArgs.ChatID,
+					tt.update.Message.LeftChatMember.ID, "", tt.expectedDeleteMessageArgs.MsgID)
 				require.NoError(t, err)
 			}
 
@@ -2093,10 +2094,10 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
 	f, err := os.CreateTemp("", "locator")
 	require.NoError(t, err)
-	db, err := storage.NewSqliteDB(f.Name())
+	db, err := storage.NewSqliteDB(f.Name(), "gr1")
 	require.NoError(t, err)
 
-	loc, err = storage.NewLocator(10*time.Minute, 100, db)
+	loc, err = storage.NewLocator(context.Background(), 10*time.Minute, 100, db)
 	require.NoError(t, err)
 	return loc, func() {
 		_ = os.Remove(f.Name())

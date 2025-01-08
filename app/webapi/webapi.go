@@ -59,6 +59,7 @@ type Config struct {
 
 // Settings contains all application settings
 type Settings struct {
+	InstanceID              string   `json:"instance_id"`
 	PrimaryGroup            string   `json:"primary_group"`
 	AdminGroup              string   `json:"admin_group"`
 	DisableAdminSpamForward bool     `json:"disable_admin_spam_forward"`
@@ -101,20 +102,20 @@ type SpamFilter interface {
 	UpdateHam(msg string) error
 	ReloadSamples() (err error)
 	DynamicSamples() (spam, ham []string, err error)
-	RemoveDynamicSpamSample(sample string) (int, error)
-	RemoveDynamicHamSample(sample string) (int, error)
+	RemoveDynamicSpamSample(sample string) error
+	RemoveDynamicHamSample(sample string) error
 }
 
 // Locator is a storage interface used to get user id by name and vice versa.
 type Locator interface {
-	UserIDByName(userName string) int64
-	UserNameByID(userID int64) string
+	UserIDByName(ctx context.Context, userName string) int64
+	UserNameByID(ctx context.Context, userID int64) string
 }
 
 // DetectedSpam is a storage interface used to get detected spam messages and set added flag.
 type DetectedSpam interface {
-	Read() ([]storage.DetectedSpamInfo, error)
-	SetAddedToSamplesFlag(id int64) error
+	Read(ctx context.Context) ([]storage.DetectedSpamInfo, error)
+	SetAddedToSamplesFlag(ctx context.Context, id int64) error
 }
 
 // NewServer creates a new web API server.
@@ -228,7 +229,7 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 
 	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
-	req := spamcheck.Request{}
+	req := spamcheck.Request{CheckOnly: true}
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -267,11 +268,6 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[WARN] can't execute result template: %v", err)
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
-	}
-
-	// the successful check may add user to the approved list. we want to avoid it
-	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
-		log.Printf("[DEBUG] failed to clenaup after check: %v", err)
 	}
 }
 
@@ -340,7 +336,7 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 }
 
 // deleteSampleHandler handles DELETE /samples request. It deletes dynamic samples both for spam and ham.
-func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Msg string `json:"msg"`
@@ -356,8 +352,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 			}
 		}
 
-		count, err := delFn(req.Msg)
-		if err != nil {
+		if err := delFn(req.Msg); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
 			return
@@ -366,7 +361,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 		if isHtmxRequest {
 			s.renderSamples(w, "samples_list")
 		} else {
-			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": count})
+			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": 1})
 		}
 	}
 }
@@ -399,7 +394,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 
 		// try to get userID from request and fallback to userName lookup if it's empty
 		if req.UserID == "" {
-			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(req.UserName), 10)
+			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(r.Context(), req.UserName), 10)
 		}
 
 		if req.UserID == "" || req.UserID == "0" {
@@ -491,8 +486,8 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 }
 
-func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
-	ds, err := s.DetectedSpam.Read()
+func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	ds, err := s.DetectedSpam.Read(r.Context())
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -545,7 +540,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		return
 
 	}
-	if err := s.DetectedSpam.SetAddedToSamplesFlag(id); err != nil {
+	if err := s.DetectedSpam.SetAddedToSamplesFlag(r.Context(), id); err != nil {
 		log.Printf("[WARN] failed to update detected spam: %v", err)
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return

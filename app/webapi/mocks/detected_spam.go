@@ -4,6 +4,7 @@
 package mocks
 
 import (
+	"context"
 	"github.com/umputun/tg-spam/app/storage"
 	"sync"
 )
@@ -14,10 +15,10 @@ import (
 //
 //		// make and configure a mocked webapi.DetectedSpam
 //		mockedDetectedSpam := &DetectedSpamMock{
-//			ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
+//			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
 //				panic("mock out the Read method")
 //			},
-//			SetAddedToSamplesFlagFunc: func(id int64) error {
+//			SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
 //				panic("mock out the SetAddedToSamplesFlag method")
 //			},
 //		}
@@ -28,18 +29,22 @@ import (
 //	}
 type DetectedSpamMock struct {
 	// ReadFunc mocks the Read method.
-	ReadFunc func() ([]storage.DetectedSpamInfo, error)
+	ReadFunc func(ctx context.Context) ([]storage.DetectedSpamInfo, error)
 
 	// SetAddedToSamplesFlagFunc mocks the SetAddedToSamplesFlag method.
-	SetAddedToSamplesFlagFunc func(id int64) error
+	SetAddedToSamplesFlagFunc func(ctx context.Context, id int64) error
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Read holds details about calls to the Read method.
 		Read []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 		}
 		// SetAddedToSamplesFlag holds details about calls to the SetAddedToSamplesFlag method.
 		SetAddedToSamplesFlag []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 			// ID is the id argument value.
 			ID int64
 		}
@@ -49,16 +54,19 @@ type DetectedSpamMock struct {
 }
 
 // Read calls ReadFunc.
-func (mock *DetectedSpamMock) Read() ([]storage.DetectedSpamInfo, error) {
+func (mock *DetectedSpamMock) Read(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
 	if mock.ReadFunc == nil {
 		panic("DetectedSpamMock.ReadFunc: method is nil but DetectedSpam.Read was just called")
 	}
 	callInfo := struct {
-	}{}
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
 	mock.lockRead.Lock()
 	mock.calls.Read = append(mock.calls.Read, callInfo)
 	mock.lockRead.Unlock()
-	return mock.ReadFunc()
+	return mock.ReadFunc(ctx)
 }
 
 // ReadCalls gets all the calls that were made to Read.
@@ -66,8 +74,10 @@ func (mock *DetectedSpamMock) Read() ([]storage.DetectedSpamInfo, error) {
 //
 //	len(mockedDetectedSpam.ReadCalls())
 func (mock *DetectedSpamMock) ReadCalls() []struct {
+	Ctx context.Context
 } {
 	var calls []struct {
+		Ctx context.Context
 	}
 	mock.lockRead.RLock()
 	calls = mock.calls.Read
@@ -83,19 +93,21 @@ func (mock *DetectedSpamMock) ResetReadCalls() {
 }
 
 // SetAddedToSamplesFlag calls SetAddedToSamplesFlagFunc.
-func (mock *DetectedSpamMock) SetAddedToSamplesFlag(id int64) error {
+func (mock *DetectedSpamMock) SetAddedToSamplesFlag(ctx context.Context, id int64) error {
 	if mock.SetAddedToSamplesFlagFunc == nil {
 		panic("DetectedSpamMock.SetAddedToSamplesFlagFunc: method is nil but DetectedSpam.SetAddedToSamplesFlag was just called")
 	}
 	callInfo := struct {
-		ID int64
+		Ctx context.Context
+		ID  int64
 	}{
-		ID: id,
+		Ctx: ctx,
+		ID:  id,
 	}
 	mock.lockSetAddedToSamplesFlag.Lock()
 	mock.calls.SetAddedToSamplesFlag = append(mock.calls.SetAddedToSamplesFlag, callInfo)
 	mock.lockSetAddedToSamplesFlag.Unlock()
-	return mock.SetAddedToSamplesFlagFunc(id)
+	return mock.SetAddedToSamplesFlagFunc(ctx, id)
 }
 
 // SetAddedToSamplesFlagCalls gets all the calls that were made to SetAddedToSamplesFlag.
@@ -103,10 +115,12 @@ func (mock *DetectedSpamMock) SetAddedToSamplesFlag(id int64) error {
 //
 //	len(mockedDetectedSpam.SetAddedToSamplesFlagCalls())
 func (mock *DetectedSpamMock) SetAddedToSamplesFlagCalls() []struct {
-	ID int64
+	Ctx context.Context
+	ID  int64
 } {
 	var calls []struct {
-		ID int64
+		Ctx context.Context
+		ID  int64
 	}
 	mock.lockSetAddedToSamplesFlag.RLock()
 	calls = mock.calls.SetAddedToSamplesFlag

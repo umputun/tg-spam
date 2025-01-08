@@ -194,7 +194,9 @@ func TestServer_routes(t *testing.T) {
 			return false, []spamcheck.Response{{Details: "not spam"}}
 		},
 		ApprovedUsersFunc: func() []approved.UserInfo {
-			return []approved.UserInfo{{UserID: "user1", UserName: "name1"}, {UserID: "user2", UserName: "name2"}}
+			return []approved.UserInfo{
+				{UserID: "user1", UserName: "name1"},
+				{UserID: "user2", UserName: "name2"}}
 		},
 		AddApprovedUserFunc: func(user approved.UserInfo) error {
 			return nil
@@ -206,11 +208,11 @@ func TestServer_routes(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{
 		UpdateHamFunc:               func(msg string) error { return nil },
 		UpdateSpamFunc:              func(msg string) error { return nil },
-		RemoveDynamicSpamSampleFunc: func(sample string) (int, error) { return 1, nil },
-		RemoveDynamicHamSampleFunc:  func(sample string) (int, error) { return 1, nil },
+		RemoveDynamicSpamSampleFunc: func(sample string) error { return nil },
+		RemoveDynamicHamSampleFunc:  func(sample string) error { return nil },
 	}
 	locatorMock := &mocks.LocatorMock{
-		UserIDByNameFunc: func(userName string) int64 {
+		UserIDByNameFunc: func(ctx context.Context, userName string) int64 {
 			if userName == "user1" {
 				return 12345
 			}
@@ -568,7 +570,7 @@ func TestServer_updateSampleHandler(t *testing.T) {
 
 func TestServer_deleteSampleHandler(t *testing.T) {
 	spamFilterMock := &mocks.SpamFilterMock{
-		RemoveDynamicHamSampleFunc: func(sample string) (int, error) { return 1, nil },
+		RemoveDynamicHamSampleFunc: func(sample string) error { return nil },
 		DynamicSamplesFunc: func() ([]string, []string, error) {
 			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
 		},
@@ -625,7 +627,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 	})
 
 	t.Run("delete ham sample with error", func(t *testing.T) {
-		spamFilterMock.RemoveDynamicHamSampleFunc = func(sample string) (int, error) { return 0, assert.AnError }
+		spamFilterMock.RemoveDynamicHamSampleFunc = func(sample string) error { return assert.AnError }
 		spamFilterMock.ResetCalls()
 		reqBody, err := json.Marshal(map[string]string{
 			"msg": "test message",
@@ -655,7 +657,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		},
 	}
 	locatorMock := &mocks.LocatorMock{
-		UserIDByNameFunc: func(userName string) int64 {
+		UserIDByNameFunc: func(ctx context.Context, userName string) int64 {
 			if userName == "user1" {
 				return 12345
 			}
@@ -763,7 +765,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 	calls := 0
 	ds := &mocks.DetectedSpamMock{
-		ReadFunc: func() ([]storage.DetectedSpamInfo, error) {
+		ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
 			calls++
 			if calls > 1 {
 				return nil, errors.New("test error")
@@ -816,7 +818,7 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 
 func TestServer_htmlAddDetectedSpamHandler(t *testing.T) {
 	ds := &mocks.DetectedSpamMock{
-		SetAddedToSamplesFlagFunc: func(id int64) error {
+		SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
 			return nil
 		},
 	}
@@ -892,10 +894,6 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		assert.Equal(t, 1, len(mockDetector.CheckCalls()))
 		assert.Equal(t, "spam example", mockDetector.CheckCalls()[0].Req.Msg)
 		assert.Equal(t, "user123", mockDetector.CheckCalls()[0].Req.UserID)
-
-		// check if id cleaned
-		assert.Equal(t, 1, len(mockDetector.RemoveApprovedUserCalls()))
-		assert.Equal(t, "user123", mockDetector.RemoveApprovedUserCalls()[0].ID)
 	})
 }
 

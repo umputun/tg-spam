@@ -24,10 +24,6 @@ github.com/dustin/go-humanize
 # github.com/fatih/color v1.18.0
 ## explicit; go 1.17
 github.com/fatih/color
-# github.com/fsnotify/fsnotify v1.8.0
-## explicit; go 1.17
-github.com/fsnotify/fsnotify
-github.com/fsnotify/fsnotify/internal
 # github.com/go-chi/chi/v5 v5.2.0
 ## explicit; go 1.14
 github.com/go-chi/chi/v5

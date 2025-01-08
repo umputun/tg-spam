@@ -23,7 +23,6 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
-	"github.com/jmoiron/sqlx"
 	"github.com/sashabaranov/go-openai"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -35,6 +34,8 @@ import (
 )
 
 type options struct {
+	InstanceID string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
 		Group        string        `long:"group" env:"GROUP" description:"group name/id"`
@@ -49,6 +50,7 @@ type options struct {
 
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
+	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -125,12 +127,14 @@ type options struct {
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
 
+	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
+
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
-// file names
+// default file names
 const (
 	samplesSpamFile   = "spam-samples.txt"
 	samplesHamFile    = "ham-samples.txt"
@@ -149,8 +153,9 @@ func main() {
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
-		if err.(*flags.Error).Type != flags.ErrHelp {
+		if !errors.Is(err, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
+			os.Exit(1)
 		}
 		os.Exit(2)
 	}
@@ -194,7 +199,8 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
-	if !opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	convertOnly := opts.Convert == "only"
+	if !opts.Server.Enabled && !convertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
@@ -204,22 +210,29 @@ func execute(ctx context.Context, opts options) error {
 	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
-	if err := os.MkdirAll(opts.Files.DynamicDataPath, 0o700); err != nil {
-		return fmt.Errorf("can't make dynamic dir, %w", err)
+
+	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
+	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
+	if err != nil {
+		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
 	}
+	log.Printf("[DEBUG] data db: %s", dbFile)
 
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
 
-	dataFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	dataDB, err := storage.NewSqliteDB(dataFile)
+	// make spam bot
+	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
 	if err != nil {
-		return fmt.Errorf("can't make data db file %s, %w", dataFile, err)
+		return fmt.Errorf("can't make spam bot, %w", err)
 	}
-	log.Printf("[DEBUG] data db: %s", dataFile)
+	if opts.Convert == "only" {
+		log.Print("[WARN] convert only mode, converting text samples and exit")
+		return nil
+	}
 
 	// make store and load approved users
-	approvedUsersStore, auErr := storage.NewApprovedUsers(dataDB)
+	approvedUsersStore, auErr := storage.NewApprovedUsers(ctx, dataDB)
 	if auErr != nil {
 		return fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -228,16 +241,10 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
-	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dataFile, count)
-
-	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, detector)
-	if err != nil {
-		return fmt.Errorf("can't make spam bot, %w", err)
-	}
+	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dbFile, count)
 
 	// make locator
-	locator, err := storage.NewLocator(opts.HistoryDuration, opts.HistoryMinSize, dataDB)
+	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
@@ -271,7 +278,7 @@ func execute(ctx context.Context, opts options) error {
 	defer loggerWr.Close()
 
 	// make spam logger
-	spamLogger, err := makeSpamLogger(loggerWr, dataDB)
+	spamLogger, err := makeSpamLogger(ctx, opts.InstanceID, loggerWr, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make spam logger, %w", err)
 	}
@@ -349,7 +356,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, dataDB *sqlx.DB) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *storage.Engine) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -364,12 +371,13 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
-	if auErr != nil {
-		return fmt.Errorf("can't make approved users store, %w", auErr)
+	detectedSpamStore, dsErr := storage.NewDetectedSpam(ctx, db)
+	if dsErr != nil {
+		return fmt.Errorf("can't make detected spam store, %w", dsErr)
 	}
 
 	settings := webapi.Settings{
+		InstanceID:              opts.InstanceID,
 		PrimaryGroup:            opts.Telegram.Group,
 		AdminGroup:              opts.AdminGroup,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
@@ -444,6 +452,9 @@ func makeDetector(opts options) *tgspam.Detector {
 		detectorConfig.FirstMessageOnly = false
 		detectorConfig.FirstMessagesCount = 0
 	}
+	if opts.StorageTimeout > 0 { // if StorageTimeout is non-zero, set it. If zero, storage timeout is disabled
+		detectorConfig.StorageTimeout = opts.StorageTimeout
+	}
 
 	detector := tgspam.NewDetector(detectorConfig)
 
@@ -498,37 +509,52 @@ func makeDetector(opts options) *tgspam.Detector {
 	}
 	detector.WithMetaChecks(metaChecks...)
 
-	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
-	detector.WithSpamUpdater(bot.NewSampleUpdater(dynSpamFile))
-	log.Printf("[DEBUG] dynamic spam file: %s", dynSpamFile)
-
-	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
-	detector.WithHamUpdater(bot.NewSampleUpdater(dynHamFile))
-	log.Printf("[DEBUG] dynamic ham file: %s", dynHamFile)
-
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, detector *tgspam.Detector) (*bot.SpamFilter, error) {
-	spamBotParams := bot.SpamConfig{
-		SpamSamplesFile:    filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
-		HamSamplesFile:     filepath.Join(opts.Files.SamplesDataPath, samplesHamFile),
-		StopWordsFile:      filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
-		ExcludedTokensFile: filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
-		SpamDynamicFile:    filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile),
-		HamDynamicFile:     filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile),
-		WatchDelay:         opts.Files.WatchInterval,
-		SpamMsg:            opts.Message.Spam,
-		SpamDryMsg:         opts.Message.Dry,
-		Dry:                opts.Dry,
+func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+	if dataDB == nil || detector == nil {
+		return nil, errors.New("nil datadb or detector")
 	}
-	spamBot := bot.NewSpamFilter(ctx, detector, spamBotParams)
+
+	// make samples store
+	samplesStore, err := storage.NewSamples(ctx, dataDB)
+	if err != nil {
+		return nil, fmt.Errorf("can't make samples store, %w", err)
+	}
+	if err = migrateSamples(ctx, opts, samplesStore); err != nil {
+		return nil, fmt.Errorf("can't migrate samples, %w", err)
+	}
+
+	// make dictionary store
+	dictionaryStore, err := storage.NewDictionary(ctx, dataDB)
+	if err != nil {
+		return nil, fmt.Errorf("can't make dictionary store, %w", err)
+	}
+	if err := migrateDicts(ctx, opts, dictionaryStore); err != nil {
+		return nil, fmt.Errorf("can't migrate dictionary, %w", err)
+	}
+
+	spamBotParams := bot.SpamConfig{
+		GroupID:      opts.InstanceID,
+		SamplesStore: samplesStore,
+		DictStore:    dictionaryStore,
+		SpamMsg:      opts.Message.Spam,
+		SpamDryMsg:   opts.Message.Dry,
+		Dry:          opts.Dry,
+	}
+	spamBot := bot.NewSpamFilter(detector, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {
 		return nil, fmt.Errorf("can't relaod samples, %w", err)
 	}
+
+	// set detector samples updaters
+	detector.WithSpamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeSpam, opts.StorageTimeout))
+	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, opts.StorageTimeout))
+
 	return spamBot, nil
 }
 
@@ -557,9 +583,9 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
+func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *storage.Engine) (events.SpamLogger, error) {
 	// make store and load approved users
-	detectedSpamStore, auErr := storage.NewDetectedSpam(dataDB)
+	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {
 		return nil, fmt.Errorf("can't make approved users store, %w", auErr)
 	}
@@ -597,8 +623,9 @@ func makeSpamLogger(wr io.Writer, dataDB *sqlx.DB) (events.SpamLogger, error) {
 			UserID:    msg.From.ID,
 			UserName:  msg.From.Username,
 			Timestamp: time.Now().In(time.Local),
+			GID:       gid,
 		}
-		if err := detectedSpamStore.Write(rec, response.CheckResults); err != nil {
+		if err := detectedSpamStore.Write(ctx, rec, response.CheckResults); err != nil {
 			log.Printf("[WARN] can't write to db, %v", err)
 		}
 	})
@@ -644,6 +671,145 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 		Compress:   true,
 		LocalTime:  true,
 	}, nil
+}
+
+// migrateSamples runs migrations from legacy text files samples to db, if such files found
+func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Samples) error {
+	if opts.Convert == "disabled" {
+		log.Print("[DEBUG] samples migration disabled")
+		return nil
+	}
+	migrateSamples := func(file string, sampleType storage.SampleType, origin storage.SampleOrigin) (*storage.SamplesStats, error) {
+		if _, err := os.Stat(file); err != nil {
+			log.Printf("[DEBUG] samples file %s not found, skip", file)
+			return &storage.SamplesStats{}, nil
+		}
+		fh, err := os.Open(file) //nolint:gosec // file path is controlled by the app
+		if err != nil {
+			return nil, fmt.Errorf("can't open samples file, %w", err)
+		}
+		defer fh.Close()
+		stats, err := samplesDB.Import(ctx, sampleType, origin, fh, true) // clean records before import
+		if err != nil {
+			return nil, fmt.Errorf("can't load samples, %w", err)
+		}
+		if err := fh.Close(); err != nil {
+			return nil, fmt.Errorf("can't close samples file, %w", err)
+		}
+		if err := os.Rename(file, file+".loaded"); err != nil {
+			return nil, fmt.Errorf("can't rename samples file, %w", err)
+		}
+		return stats, nil
+	}
+
+	if samplesDB == nil {
+		return errors.New("samples db is nil")
+	}
+
+	// migrate preset spam samples if files exist
+	spamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile)
+	s, err := migrateSamples(spamPresetFile, storage.SampleTypeSpam, storage.SampleOriginPreset)
+	if err != nil {
+		return fmt.Errorf("can't migrate spam preset samples, %w", err)
+	}
+	if s.PresetHam > 0 {
+		log.Printf("[DEBUG] spam preset samples loaded: %s", s)
+	}
+
+	// migrate preset ham samples if files exist
+	hamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesHamFile)
+	s, err = migrateSamples(hamPresetFile, storage.SampleTypeHam, storage.SampleOriginPreset)
+	if err != nil {
+		return fmt.Errorf("can't migrate ham preset samples, %w", err)
+	}
+	if s.PresetHam > 0 {
+		log.Printf("[DEBUG] ham preset samples loaded: %s", s)
+	}
+
+	// migrate dynamic spam samples if files exist
+	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
+	s, err = migrateSamples(dynSpamFile, storage.SampleTypeSpam, storage.SampleOriginUser)
+	if err != nil {
+		return fmt.Errorf("can't migrate spam dynamic samples, %w", err)
+	}
+	if s.UserSpam > 0 {
+		log.Printf("[DEBUG] spam dynamic samples loaded: %s", s)
+	}
+
+	// migrate dynamic ham samples if files exist
+	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
+	s, err = migrateSamples(dynHamFile, storage.SampleTypeHam, storage.SampleOriginUser)
+	if err != nil {
+		return fmt.Errorf("can't migrate ham dynamic samples, %w", err)
+	}
+	if s.UserHam > 0 {
+		log.Printf("[DEBUG] ham dynamic samples loaded: %s", s)
+	}
+
+	if s.TotalHam > 0 || s.TotalSpam > 0 {
+		log.Printf("[INFO] samples migration done: %s", s)
+	}
+	return nil
+}
+
+// migrateDicts runs migrations from legacy dictionary text files to db, if needed
+func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary) error {
+	if opts.Convert == "disabled" {
+		log.Print("[DEBUG] dictionary migration disabled")
+		return nil
+	}
+
+	migrateDict := func(file string, dictType storage.DictionaryType) (*storage.DictionaryStats, error) {
+		if _, err := os.Stat(file); err != nil {
+			log.Printf("[DEBUG] dictionary file %s not found, skip", file)
+			return &storage.DictionaryStats{}, nil
+		}
+		fh, err := os.Open(file) //nolint:gosec // file path is controlled by the app
+		if err != nil {
+			return nil, fmt.Errorf("can't open dictionary file, %w", err)
+		}
+		defer fh.Close()
+		stats, err := dictDB.Import(ctx, dictType, fh, true) // clean records before import
+		if err != nil {
+			return nil, fmt.Errorf("can't load dictionary, %w", err)
+		}
+		if err := fh.Close(); err != nil {
+			return nil, fmt.Errorf("can't close dictionary file, %w", err)
+		}
+		if err := os.Rename(file, file+".loaded"); err != nil {
+			return nil, fmt.Errorf("can't rename dictionary file, %w", err)
+		}
+		return stats, nil
+	}
+
+	if dictDB == nil {
+		return errors.New("dictionary db is nil")
+	}
+
+	// migrate stop-words if files exist
+	stopWordsFile := filepath.Join(opts.Files.SamplesDataPath, stopWordsFile)
+	s, err := migrateDict(stopWordsFile, storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		return fmt.Errorf("can't migrate stop words, %w", err)
+	}
+	if s.TotalStopPhrases > 0 {
+		log.Printf("[INFO] stop words loaded: %s", s)
+	}
+
+	// migrate excluded tokens if files exist
+	excludeTokensFile := filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile)
+	s, err = migrateDict(excludeTokensFile, storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		return fmt.Errorf("can't migrate excluded tokens, %w", err)
+	}
+	if s.TotalIgnoredWords > 0 {
+		log.Printf("[INFO] excluded tokens loaded: %s", s)
+	}
+
+	if s.TotalIgnoredWords > 0 || s.TotalStopPhrases > 0 {
+		log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	}
+	return nil
 }
 
 func setupLog(dbg bool, secrets ...string) {
