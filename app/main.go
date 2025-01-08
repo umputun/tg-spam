@@ -160,7 +160,7 @@ func main() {
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
 	if _, err := p.Parse(); err != nil {
-		if !errors.Is(err, flags.ErrHelp) {
+		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
 			os.Exit(1)
 		}
