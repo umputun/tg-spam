@@ -215,6 +215,21 @@ Both dynamic spam and ham files are located in the directory set by `--files.dyn
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
 
+### Automatic backup on version upgrade
+
+`tg-spam` includes an automatic backup mechanism that triggers when a version upgrade is detected. This feature helps protect against potential data loss or corruption that could occur during version upgrades, particularly when database schema changes are involved. If you need to rollback to a previous version, having these backups ensures you can restore your data to a compatible state.
+
+When enabled (disabled by default), the system:
+- Creates a backup of the database file before any version-related changes
+- Names the backup with a timestamp suffix for easy identification (e.g., tg-spam.db.v1_2_3-77e0bfd-20250107T23:17:34)
+- Maintains only the specified number of most recent backups to avoid excessive disk usage
+- Removes older backups automatically based on either file name's timestamp of file creation time
+
+This feature can be controlled with two parameters:
+- `--backup-ver.enabled` - enables automatic backup on version changes
+- `--backup-ver.max-backups` - sets the maximum number of backups to keep (default: 10)
+
+
 ## Setting up the telegram bot
 
 #### Getting the token
