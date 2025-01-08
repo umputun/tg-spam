@@ -591,6 +591,10 @@ func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *stora
 	}
 
 	logWr := events.SpamLoggerFunc(func(msg *bot.Message, response *bot.Response) {
+		userName := msg.From.Username
+		if userName == "" {
+			userName = msg.From.DisplayName
+		}
 		// write to log file
 		text := strings.ReplaceAll(msg.Text, "\n", " ")
 		text = strings.TrimSpace(text)
@@ -621,7 +625,7 @@ func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *stora
 		rec := storage.DetectedSpamInfo{
 			Text:      text,
 			UserID:    msg.From.ID,
-			UserName:  msg.From.Username,
+			UserName:  userName,
 			Timestamp: time.Now().In(time.Local),
 			GID:       gid,
 		}
