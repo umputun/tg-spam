@@ -366,7 +366,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.R
 	}
 }
 
-// reloadDynamicSamplesHandler handles PUT /samples request. It reloads dynamic samples from files
+// reloadDynamicSamplesHandler handles PUT /samples request. It reloads dynamic samples from db storage.
 func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

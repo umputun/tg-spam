@@ -218,7 +218,6 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 		name        string
 		message     string
 		updateErr   error
-		reloadErr   error
 		expectError bool
 	}{
 		{
@@ -232,37 +231,15 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 			updateErr:   errors.New("update error"),
 			expectError: true,
 		},
-		{
-			name:        "reload error",
-			message:     "spam",
-			reloadErr:   errors.New("reload error"),
-			expectError: true,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			det := &mocks.DetectorMock{
-				UpdateSpamFunc: func(msg string) error {
-					return tc.updateErr
-				},
-				LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, tc.reloadErr
-				},
-				LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, nil
-				},
+				UpdateSpamFunc: func(msg string) error { return tc.updateErr },
 			}
 
-			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
-					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
-				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
-					return io.NopCloser(strings.NewReader("")), nil
-				},
-			}
-
+			samplesStore := &mocks.SamplesStoreMock{}
 			dictStore := &mocks.DictStoreMock{
 				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
@@ -283,8 +260,6 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(det.UpdateSpamCalls()))
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateSpamCalls()[0].Msg)
-
-			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
 		})
 	}
 }
@@ -294,7 +269,6 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 		name        string
 		message     string
 		updateErr   error
-		reloadErr   error
 		expectError bool
 	}{
 		{
@@ -308,37 +282,15 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 			updateErr:   errors.New("update error"),
 			expectError: true,
 		},
-		{
-			name:        "reload error",
-			message:     "ham",
-			reloadErr:   errors.New("reload error"),
-			expectError: true,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			det := &mocks.DetectorMock{
-				UpdateHamFunc: func(msg string) error {
-					return tc.updateErr
-				},
-				LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, tc.reloadErr
-				},
-				LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, nil
-				},
+				UpdateHamFunc: func(msg string) error { return tc.updateErr },
 			}
 
-			samplesStore := &mocks.SamplesStoreMock{
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
-					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
-				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
-					return io.NopCloser(strings.NewReader("")), nil
-				},
-			}
-
+			samplesStore := &mocks.SamplesStoreMock{}
 			dictStore := &mocks.DictStoreMock{
 				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), nil
@@ -359,8 +311,6 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(det.UpdateHamCalls()))
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateHamCalls()[0].Msg)
-
-			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
 		})
 	}
 }
@@ -372,7 +322,6 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 		userName     string
 		operation    string // "add" or "remove"
 		operationErr error
-		reloadErr    error
 		expectError  bool
 	}{
 		{
@@ -389,14 +338,6 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 			operation:    "add",
 			operationErr: errors.New("operation failed"),
 			expectError:  true,
-		},
-		{
-			name:        "add user reload error",
-			userID:      123,
-			userName:    "test_user",
-			operation:   "add",
-			reloadErr:   errors.New("reload failed"),
-			expectError: true,
 		},
 		{
 			name:        "remove user success",
@@ -430,12 +371,6 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 					}
 					assert.Equal(t, strconv.FormatInt(tc.userID, 10), id)
 					return nil
-				},
-				LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, tc.reloadErr
-				},
-				LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, nil
 				},
 				IsApprovedUserFunc: func(userID string) bool {
 					return userID == strconv.FormatInt(tc.userID, 10)

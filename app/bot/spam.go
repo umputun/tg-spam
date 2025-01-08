@@ -116,9 +116,6 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 	if err := s.Detector.UpdateSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("can't reload samples: %w", err)
-	}
 	return nil
 }
 
@@ -128,9 +125,6 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 	log.Printf("[DEBUG] update ham samples with %q", cleanMsg)
 	if err := s.Detector.UpdateHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
-	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("can't reload samples: %w", err)
 	}
 	return nil
 }
@@ -146,9 +140,6 @@ func (s *SpamFilter) AddApprovedUser(id int64, name string) error {
 	if err := s.Detector.AddApprovedUser(approved.UserInfo{UserID: fmt.Sprintf("%d", id), UserName: name}); err != nil {
 		return fmt.Errorf("failed to write approved user to storage: %w", err)
 	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("failed to reload samples: %w", err)
-	}
 	return nil
 }
 
@@ -157,9 +148,6 @@ func (s *SpamFilter) RemoveApprovedUser(id int64) error {
 	log.Printf("[INFO] remove aproved user: %d", id)
 	if err := s.Detector.RemoveApprovedUser(fmt.Sprintf("%d", id)); err != nil {
 		return fmt.Errorf("failed to delete approved user from storage: %w", err)
-	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("failed to reload samples: %w", err)
 	}
 	return nil
 }
