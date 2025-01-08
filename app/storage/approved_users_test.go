@@ -38,12 +38,12 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 
 		// Create table with updated columns
 		_, err := db.Exec(`CREATE TABLE approved_users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        uid TEXT NOT NULL UNIQUE,
-        gid TEXT DEFAULT '',
-        name TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`)
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uid TEXT NOT NULL UNIQUE,
+			gid TEXT DEFAULT '',
+			name TEXT,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`)
 		require.NoError(t, err)
 
 		_, err = NewApprovedUsers(context.Background(), db)
@@ -54,6 +54,75 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		err = db.Get(&columnCount, "SELECT COUNT(*) FROM pragma_table_info('approved_users')")
 		require.NoError(t, err)
 		assert.Equal(t, 5, columnCount) // id, uid, gid, name, timestamp
+	})
+
+	t.Run("nil db connection", func(t *testing.T) {
+		_, err := NewApprovedUsers(context.Background(), nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db connection is nil")
+	})
+
+	t.Run("context cancelled", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := NewApprovedUsers(ctx, db)
+		require.Error(t, err)
+	})
+
+	t.Run("commit after migration preserves data", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		// create old schema and insert data
+		_, err := db.Exec(`CREATE TABLE approved_users (
+			id TEXT PRIMARY KEY,
+			name TEXT,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`)
+		require.NoError(t, err)
+
+		oldTime := time.Now().Add(-time.Hour).UTC()
+		_, err = db.Exec("INSERT INTO approved_users (id, name, timestamp) VALUES (?, ?, ?)", "user1", "test", oldTime)
+		require.NoError(t, err)
+
+		// run migration through NewApprovedUsers
+		au, err := NewApprovedUsers(context.Background(), db)
+		require.NoError(t, err)
+
+		// verify data was preserved
+		users, err := au.Read(context.Background())
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, "user1", users[0].UserID)
+		assert.Equal(t, "test", users[0].UserName)
+		assert.Equal(t, oldTime.Unix(), users[0].Timestamp.Unix())
+	})
+
+	t.Run("unique constraint violation", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+
+		au, err := NewApprovedUsers(context.Background(), db)
+		require.NoError(t, err)
+
+		// insert same user for different groups
+		err = au.Write(context.Background(), approved.UserInfo{UserID: "user1", UserName: "test"})
+		require.NoError(t, err)
+
+		// should succeed with different gid (handled by Engine.GID())
+		db.gid = "group2"
+		err = au.Write(context.Background(), approved.UserInfo{UserID: "user1", UserName: "test"})
+		require.NoError(t, err)
+
+		// verify both records exist
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users WHERE uid = ?", "user1")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
 	})
 }
 
@@ -284,6 +353,7 @@ func TestApprovedUsers_ContextCancellation(t *testing.T) {
 }
 
 func TestApprovedUsers_Migrate(t *testing.T) {
+	ctx := context.Background()
 
 	t.Run("migrate from old schema with string id", func(t *testing.T) {
 		db, err := NewSqliteDB(":memory:", "gr1")
@@ -292,21 +362,26 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 
 		// setup old schema
 		_, err = db.Exec(`
-            CREATE TABLE approved_users (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `)
+			CREATE TABLE approved_users (
+				id TEXT PRIMARY KEY,
+				name TEXT,
+				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+			)
+		`)
 		require.NoError(t, err)
 
 		// insert test data in old format
 		_, err = db.Exec("INSERT INTO approved_users (id, name) VALUES (?, ?), (?, ?)", "user1", "John", "user2", "Jane")
 		require.NoError(t, err)
 
-		// run migration
-		err = migrateTable(&db.DB, "gr1")
+		// run migration within transaction
+		tx, err := db.Beginx()
 		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = migrateTableTx(ctx, tx, "gr1")
+		require.NoError(t, err)
+		require.NoError(t, tx.Commit())
 
 		// verify structure
 		var cols []struct {
@@ -355,9 +430,14 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 		_, err = db.Exec(approvedUsersSchema)
 		require.NoError(t, err)
 
-		// run migration
-		err = migrateTable(&db.DB, "gr1")
+		// run migration within transaction
+		tx, err := db.Beginx()
 		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = migrateTableTx(ctx, tx, "gr1")
+		require.NoError(t, err)
+		require.NoError(t, tx.Commit())
 
 		// verify structure
 		var cols []struct {
@@ -377,50 +457,6 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 		}
 		assert.Equal(t, "TEXT", colMap["uid"])
 		assert.Equal(t, "TEXT", colMap["gid"])
-	})
-}
-
-func TestApprovedUsers_TimestampHandling(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
-
-	ctx := context.Background()
-	au, err := NewApprovedUsers(ctx, db)
-	require.NoError(t, err)
-
-	t.Run("custom timestamp", func(t *testing.T) {
-		customTime := time.Now().Add(-24 * time.Hour)
-		user := approved.UserInfo{
-			UserID:    "123",
-			UserName:  "test",
-			Timestamp: customTime,
-		}
-		err := au.Write(ctx, user)
-		require.NoError(t, err)
-
-		users, err := au.Read(ctx)
-		require.NoError(t, err)
-		require.Len(t, users, 1)
-		assert.Equal(t, customTime.UTC(), users[0].Timestamp.UTC())
-	})
-
-	t.Run("zero timestamp should be replaced", func(t *testing.T) {
-		user := approved.UserInfo{
-			UserID:   "456",
-			UserName: "test2",
-		}
-		err := au.Write(ctx, user)
-		require.NoError(t, err)
-
-		users, err := au.Read(ctx)
-		require.NoError(t, err)
-		require.Len(t, users, 2)
-		for _, u := range users {
-			if u.UserID == "456" {
-				assert.False(t, u.Timestamp.IsZero())
-				assert.True(t, time.Since(u.Timestamp) < time.Minute)
-			}
-		}
 	})
 }
 

@@ -47,31 +47,34 @@ func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
 		return nil, fmt.Errorf("db connection is nil")
 	}
 
+	tx, err := db.Beginx()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	var exists int
-	err := db.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
+	err = tx.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for approved_users table existence: %w", err)
 	}
 
-	// create schema in a single transaction if the table does not exist
 	if exists == 0 {
-		tx, err := db.Begin()
-		if err != nil {
-			return nil, fmt.Errorf("failed to start transaction: %w", err)
-		}
-		defer tx.Rollback()
-
+		// table didn't exist before, no migration needed
 		if _, err = tx.ExecContext(ctx, approvedUsersSchema); err != nil {
 			return nil, fmt.Errorf("failed to create schema: %w", err)
 		}
+	}
 
-		if err = tx.Commit(); err != nil {
-			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	if exists > 0 {
+		// migrate existing table
+		if err = migrateTableTx(ctx, tx, db.GID()); err != nil {
+			return nil, fmt.Errorf("failed to migrate table: %w", err)
 		}
 	}
 
-	if err := migrateTable(&db.DB, db.GID()); err != nil {
-		return nil, err
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &ApprovedUsers{db: db, RWLocker: db.MakeLock()}, nil
@@ -146,18 +149,7 @@ func (au *ApprovedUsers) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func migrateTable(db *sqlx.DB, gid string) error {
-	var exists int
-	err := db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
-	if err != nil {
-		return fmt.Errorf("failed to check for approved_users table existence: %w", err)
-	}
-
-	if exists == 0 {
-		return nil
-	}
-	log.Printf("[DEBUG] approved_users table migration")
-
+func migrateTableTx(ctx context.Context, tx *sqlx.Tx, gid string) error {
 	// get current columns
 	var cols []struct {
 		CID       int     `db:"cid"`
@@ -167,29 +159,17 @@ func migrateTable(db *sqlx.DB, gid string) error {
 		DfltValue *string `db:"dflt_value"`
 		PK        bool    `db:"pk"`
 	}
-	err = db.Select(&cols, "PRAGMA table_info(approved_users)")
-	if err != nil {
-		return fmt.Errorf("failed to get table info for approved_users: %w", err)
+	if err := tx.Select(&cols, "PRAGMA table_info(approved_users)"); err != nil {
+		return fmt.Errorf("failed to get table info: %w", err)
 	}
 
 	// check if already migrated
-	hasUID := false
 	for _, col := range cols {
 		if col.Name == "uid" {
-			hasUID = true
-			break
+			log.Printf("[DEBUG] approved_users table already migrated")
+			return nil
 		}
 	}
-	if hasUID {
-		log.Printf("[DEBUG] approved_users table already migrated")
-		return nil
-	}
-
-	tx, err := db.Beginx()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	// backup data
 	var rows []struct {
@@ -197,35 +177,29 @@ func migrateTable(db *sqlx.DB, gid string) error {
 		Name      string    `db:"name"`
 		Timestamp time.Time `db:"timestamp"`
 	}
-	if err = tx.Select(&rows, "SELECT id, name, timestamp FROM approved_users"); err != nil {
+	if err := tx.SelectContext(ctx, &rows, "SELECT id, name, timestamp FROM approved_users"); err != nil {
 		return fmt.Errorf("failed to backup data: %w", err)
 	}
 
-	// drop old table
-	if _, err = tx.Exec("DROP TABLE approved_users"); err != nil {
+	// drop old table and create new one
+	if _, err := tx.ExecContext(ctx, "DROP TABLE approved_users"); err != nil {
 		return fmt.Errorf("failed to drop old table: %w", err)
 	}
 
-	// create new table with updated schema
-	if _, err = tx.Exec(approvedUsersSchema); err != nil {
+	if _, err := tx.ExecContext(ctx, approvedUsersSchema); err != nil {
 		return fmt.Errorf("failed to create new schema: %w", err)
 	}
 
 	// restore data
 	for _, r := range rows {
-		_, err = tx.Exec(
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO approved_users (gid, uid, name, timestamp) VALUES (?, ?, ?, ?)",
 			gid, r.ID, r.Name, r.Timestamp,
-		)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("failed to restore data: %w", err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit migration: %w", err)
-	}
 	log.Printf("[DEBUG] approved_users table migrated, records: %d", len(rows))
-
 	return nil
 }

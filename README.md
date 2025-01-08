@@ -175,7 +175,7 @@ The database-driven architecture offers several benefits:
 -  Simplified data management through a single storage solution.
 -  Improved performance with optimized database access.
 -  Enhanced reliability by eliminating file I/O operations.
--  Easier system migration by transferring a single `tg-spam.db` file.
+   Easier system migration and backup by transferring a single `tg-spam.db` file.
 
 ### Admin chat/group
 
