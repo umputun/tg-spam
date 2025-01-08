@@ -7,6 +7,7 @@ require (
 	github.com/didip/tollbooth/v7 v7.0.2
 	github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
 	github.com/fatih/color v1.18.0
+	github.com/forPelevin/gomoji v1.2.0
 	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.20.2
@@ -33,6 +34,7 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/samber/lo v1.47.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
