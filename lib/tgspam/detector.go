@@ -38,7 +38,7 @@ type Detector struct {
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
-	excludedTokens []string
+	excludedTokens map[string]struct{}
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
@@ -235,7 +235,7 @@ func (d *Detector) Reset() {
 	defer d.lock.Unlock()
 
 	d.tokenizedSpam = []map[string]int{}
-	d.excludedTokens = []string{}
+	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
 	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
@@ -352,12 +352,12 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	defer d.lock.Unlock()
 
 	d.tokenizedSpam = []map[string]int{}
-	d.excludedTokens = []string{}
+	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
 
 	// excluded tokens should be loaded before spam samples to exclude them from spam tokenization
 	for t := range d.tokenIterator(exclReader) {
-		d.excludedTokens = append(d.excludedTokens, strings.ToLower(t))
+		d.excludedTokens[strings.ToLower(t)] = struct{}{}
 	}
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
@@ -478,10 +478,8 @@ func (d *Detector) tokenIterator(readers ...io.Reader) iter.Seq[string] {
 // exclude tokens representing common words.
 func (d *Detector) tokenize(inp string) map[string]int {
 	isExcludedToken := func(token string) bool {
-		for _, w := range d.excludedTokens {
-			if strings.EqualFold(token, w) {
-				return true
-			}
+		if _, ok := d.excludedTokens[strings.ToLower(token)]; ok {
+			return true
 		}
 		return false
 	}

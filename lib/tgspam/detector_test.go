@@ -1208,7 +1208,14 @@ func TestDetector_LoadSamples(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, 3, lr.ExcludedTokens)
-		assert.Equal(t, d.excludedTokens, []string{"xy", "z", "the"})
+
+		exTkns := []string{}
+		for k := range d.excludedTokens {
+			exTkns = append(exTkns, k)
+		}
+		sort.Strings(exTkns)
+
+		assert.Equal(t, []string{"the", "xy", "z"}, exTkns)
 		assert.Equal(t, 2, lr.SpamSamples)
 		assert.Equal(t, 5, lr.HamSamples)
 		t.Logf("Learning results: %+v", d.classifier.learningResults)
@@ -1235,9 +1242,7 @@ func TestDetector_tokenize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := Detector{
-				excludedTokens: []string{"the", "she"},
-			}
+			d := Detector{excludedTokens: map[string]struct{}{"the": {}, "she": {}}}
 			assert.Equal(t, tt.expected, d.tokenize(tt.input))
 		})
 	}
@@ -1399,7 +1404,7 @@ func Test_cleanEmoji(t *testing.T) {
 
 func BenchmarkTokenize(b *testing.B) {
 	d := &Detector{
-		excludedTokens: []string{"the", "and", "or", "but", "in", "on", "at", "to"},
+		excludedTokens: map[string]struct{}{"the": {}, "and": {}, "or": {}, "but": {}, "in": {}, "on": {}, "at": {}, "to": {}},
 	}
 
 	tests := []struct {
