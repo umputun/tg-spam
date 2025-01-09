@@ -15,6 +15,9 @@ import (
 //
 //		// make and configure a mocked webapi.DetectedSpam
 //		mockedDetectedSpam := &DetectedSpamMock{
+//			FindByUserIDFunc: func(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error) {
+//				panic("mock out the FindByUserID method")
+//			},
 //			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
 //				panic("mock out the Read method")
 //			},
@@ -28,6 +31,9 @@ import (
 //
 //	}
 type DetectedSpamMock struct {
+	// FindByUserIDFunc mocks the FindByUserID method.
+	FindByUserIDFunc func(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
+
 	// ReadFunc mocks the Read method.
 	ReadFunc func(ctx context.Context) ([]storage.DetectedSpamInfo, error)
 
@@ -36,6 +42,13 @@ type DetectedSpamMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// FindByUserID holds details about calls to the FindByUserID method.
+		FindByUserID []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// UserID is the userID argument value.
+			UserID int64
+		}
 		// Read holds details about calls to the Read method.
 		Read []struct {
 			// Ctx is the ctx argument value.
@@ -49,8 +62,52 @@ type DetectedSpamMock struct {
 			ID int64
 		}
 	}
+	lockFindByUserID          sync.RWMutex
 	lockRead                  sync.RWMutex
 	lockSetAddedToSamplesFlag sync.RWMutex
+}
+
+// FindByUserID calls FindByUserIDFunc.
+func (mock *DetectedSpamMock) FindByUserID(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error) {
+	if mock.FindByUserIDFunc == nil {
+		panic("DetectedSpamMock.FindByUserIDFunc: method is nil but DetectedSpam.FindByUserID was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		UserID int64
+	}{
+		Ctx:    ctx,
+		UserID: userID,
+	}
+	mock.lockFindByUserID.Lock()
+	mock.calls.FindByUserID = append(mock.calls.FindByUserID, callInfo)
+	mock.lockFindByUserID.Unlock()
+	return mock.FindByUserIDFunc(ctx, userID)
+}
+
+// FindByUserIDCalls gets all the calls that were made to FindByUserID.
+// Check the length with:
+//
+//	len(mockedDetectedSpam.FindByUserIDCalls())
+func (mock *DetectedSpamMock) FindByUserIDCalls() []struct {
+	Ctx    context.Context
+	UserID int64
+} {
+	var calls []struct {
+		Ctx    context.Context
+		UserID int64
+	}
+	mock.lockFindByUserID.RLock()
+	calls = mock.calls.FindByUserID
+	mock.lockFindByUserID.RUnlock()
+	return calls
+}
+
+// ResetFindByUserIDCalls reset all the calls that were made to FindByUserID.
+func (mock *DetectedSpamMock) ResetFindByUserIDCalls() {
+	mock.lockFindByUserID.Lock()
+	mock.calls.FindByUserID = nil
+	mock.lockFindByUserID.Unlock()
 }
 
 // Read calls ReadFunc.
@@ -137,6 +194,10 @@ func (mock *DetectedSpamMock) ResetSetAddedToSamplesFlagCalls() {
 
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *DetectedSpamMock) ResetCalls() {
+	mock.lockFindByUserID.Lock()
+	mock.calls.FindByUserID = nil
+	mock.lockFindByUserID.Unlock()
+
 	mock.lockRead.Lock()
 	mock.calls.Read = nil
 	mock.lockRead.Unlock()

@@ -914,3 +914,128 @@ func TestDetectedSpam_ReadAfterCleanup(t *testing.T) {
 			"entries should be ordered by timestamp descending")
 	}
 }
+
+func TestDetectedSpam_FindByUserID(t *testing.T) {
+	db, teardown := setupTestDB(t)
+	defer teardown()
+
+	ctx := context.Background()
+	ds, err := NewDetectedSpam(ctx, db)
+	require.NoError(t, err)
+
+	t.Run("user not found", func(t *testing.T) {
+		entry, err := ds.FindByUserID(ctx, 123)
+		require.NoError(t, err)
+		assert.Nil(t, entry)
+	})
+
+	t.Run("basic case", func(t *testing.T) {
+		ts := time.Now().Truncate(time.Second)
+		expected := DetectedSpamInfo{
+			GID:       db.GID(),
+			Text:      "test spam",
+			UserID:    456,
+			UserName:  "spammer",
+			Timestamp: ts,
+		}
+		checks := []spamcheck.Response{{
+			Name:    "test",
+			Spam:    true,
+			Details: "test details",
+		}}
+
+		err := ds.Write(ctx, expected, checks)
+		require.NoError(t, err)
+
+		entry, err := ds.FindByUserID(ctx, 456)
+		require.NoError(t, err)
+		require.NotNil(t, entry)
+		assert.Equal(t, expected.GID, entry.GID)
+		assert.Equal(t, expected.Text, entry.Text)
+		assert.Equal(t, expected.UserID, entry.UserID)
+		assert.Equal(t, expected.UserName, entry.UserName)
+		assert.Equal(t, checks, entry.Checks)
+		assert.Equal(t, ts.Local(), entry.Timestamp)
+	})
+
+	t.Run("multiple entries", func(t *testing.T) {
+		// write two entries for same user
+		for i := 0; i < 2; i++ {
+			entry := DetectedSpamInfo{
+				GID:       db.GID(),
+				Text:      fmt.Sprintf("spam %d", i),
+				UserID:    789,
+				UserName:  "spammer",
+				Timestamp: time.Now().Add(time.Duration(i) * time.Hour),
+			}
+			checks := []spamcheck.Response{{Name: fmt.Sprintf("check%d", i), Spam: true}}
+			err := ds.Write(ctx, entry, checks)
+			require.NoError(t, err)
+		}
+
+		// should get the latest one
+		entry, err := ds.FindByUserID(ctx, 789)
+		require.NoError(t, err)
+		require.NotNil(t, entry)
+		assert.Equal(t, "spam 1", entry.Text)
+		assert.Equal(t, "check1", entry.Checks[0].Name)
+	})
+
+	t.Run("invalid checks json", func(t *testing.T) {
+		// insert invalid json directly to db
+		_, err := db.Exec(`INSERT INTO detected_spam 
+			(gid, text, user_id, user_name, timestamp, checks) 
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			db.GID(), "test", 999, "test", time.Now(), "{invalid}")
+		require.NoError(t, err)
+
+		entry, err := ds.FindByUserID(ctx, 999)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to unmarshal checks")
+		assert.Nil(t, entry)
+	})
+
+	t.Run("gid isolation", func(t *testing.T) {
+		// create another db instance with different gid
+		db2, err := NewSqliteDB(":memory:", "other_gid")
+		require.NoError(t, err)
+		defer db2.Close()
+
+		ds2, err := NewDetectedSpam(ctx, db2)
+		require.NoError(t, err)
+
+		entry1 := DetectedSpamInfo{
+			GID:      db.GID(),
+			Text:     "spam1",
+			UserID:   111,
+			UserName: "spammer1",
+		}
+		entry2 := DetectedSpamInfo{
+			GID:      "other_gid",
+			Text:     "spam2",
+			UserID:   111,
+			UserName: "spammer2",
+		}
+		checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+		// write different entries to each db
+		err = ds.Write(ctx, entry1, checks)
+		require.NoError(t, err)
+		err = ds2.Write(ctx, entry2, checks)
+		require.NoError(t, err)
+
+		// first db should not find entry with other gid
+		res1, err := ds.FindByUserID(ctx, 111)
+		require.NoError(t, err)
+		require.NotNil(t, res1)
+		assert.Equal(t, "spam1", res1.Text)
+		assert.Equal(t, db.GID(), res1.GID)
+
+		// second db should find its own entry
+		res2, err := ds2.FindByUserID(ctx, 111)
+		require.NoError(t, err)
+		require.NotNil(t, res2)
+		assert.Equal(t, "spam2", res2.Text)
+		assert.Equal(t, "other_gid", res2.GID)
+	})
+}

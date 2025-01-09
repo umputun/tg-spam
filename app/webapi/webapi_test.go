@@ -205,6 +205,22 @@ func TestServer_routes(t *testing.T) {
 			return nil
 		},
 	}
+	detectedSpamMock := &mocks.DetectedSpamMock{
+		FindByUserIDFunc: func(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error) {
+			if userID == 123 {
+				return &storage.DetectedSpamInfo{
+					ID:        123,
+					GID:       "gid123",
+					Text:      "spam example",
+					UserID:    123,
+					UserName:  "user",
+					Checks:    []spamcheck.Response{{Spam: true, Name: "test", Details: "this was spam"}},
+					Timestamp: time.Date(2025, 1, 25, 10, 0, 0, 0, time.UTC),
+				}, nil
+			}
+			return nil, nil // not found
+		},
+	}
 	spamFilterMock := &mocks.SpamFilterMock{
 		UpdateHamFunc:               func(msg string) error { return nil },
 		UpdateSpamFunc:              func(msg string) error { return nil },
@@ -220,7 +236,12 @@ func TestServer_routes(t *testing.T) {
 		},
 	}
 
-	server := NewServer(Config{Detector: detectorMock, SpamFilter: spamFilterMock, Locator: locatorMock})
+	server := NewServer(Config{
+		Detector:     detectorMock,
+		SpamFilter:   spamFilterMock,
+		Locator:      locatorMock,
+		DetectedSpam: detectedSpamMock,
+	})
 	ts := httptest.NewServer(server.routes(chi.NewRouter()))
 	defer ts.Close()
 
@@ -238,6 +259,38 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, 1, len(detectorMock.CheckCalls()))
 		assert.Equal(t, "spam example", detectorMock.CheckCalls()[0].Req.Msg)
 		assert.Equal(t, "user123", detectorMock.CheckCalls()[0].Req.UserID)
+	})
+
+	t.Run("check by id found", func(t *testing.T) {
+		detectedSpamMock.ResetCalls()
+		resp, err := http.Get(ts.URL + "/check/123")
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Equal(t, 1, len(detectedSpamMock.FindByUserIDCalls()))
+		assert.Equal(t, int64(123), detectedSpamMock.FindByUserIDCalls()[0].UserID)
+		assert.Equal(t, `{"status":"spam","info":{"user_name":"user","message":"spam example","timestamp":"2025-01-25T10:00:00Z","checks":[{"name":"test","spam":true,"details":"this was spam"}]}}`+"\n", string(body))
+	})
+
+	t.Run("check by id not found", func(t *testing.T) {
+		detectedSpamMock.ResetCalls()
+		resp, err := http.Get(ts.URL + "/check/456")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Equal(t, 1, len(detectedSpamMock.FindByUserIDCalls()))
+		assert.Equal(t, int64(456), detectedSpamMock.FindByUserIDCalls()[0].UserID)
+		assert.Equal(t, `{"status":"ham"}`+"\n", string(body))
 	})
 
 	t.Run("update spam", func(t *testing.T) {
@@ -428,7 +481,7 @@ func TestServer_checkHandler(t *testing.T) {
 		assert.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.checkHandler)
+		handler := http.HandlerFunc(server.checkMsgHandler)
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
@@ -454,7 +507,7 @@ func TestServer_checkHandler(t *testing.T) {
 		assert.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.checkHandler)
+		handler := http.HandlerFunc(server.checkMsgHandler)
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
@@ -476,7 +529,7 @@ func TestServer_checkHandler(t *testing.T) {
 		req.Body.Close()
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.checkHandler)
+		handler := http.HandlerFunc(server.checkMsgHandler)
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "handler returned wrong status code")
@@ -882,7 +935,7 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		req.Header.Add("HX-Request", "true") // Simulating HTMX request
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.checkHandler)
+		handler := http.HandlerFunc(server.checkMsgHandler)
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
@@ -1172,9 +1225,7 @@ func TestServer_renderSamples(t *testing.T) {
 		},
 	}
 
-	server := NewServer(Config{
-		SpamFilter: mockSpamFilter,
-	})
+	server := NewServer(Config{SpamFilter: mockSpamFilter})
 	w := httptest.NewRecorder()
 	server.renderSamples(w, "samples_list")
 	assert.Equal(t, http.StatusOK, w.Code)
