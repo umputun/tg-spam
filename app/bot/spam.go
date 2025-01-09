@@ -57,7 +57,6 @@ type Detector interface {
 type SamplesStore interface {
 	Read(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
 	Reader(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
-	// DeleteMessage(ctx context.Context, message string) error
 	Stats(ctx context.Context) (*storage.SamplesStats, error)
 }
 
@@ -114,7 +113,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
 func (s *SpamFilter) UpdateSpam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[DEBUG] update spam samples with %q", cleanMsg)
+	log.Printf("[INFO] update spam samples with %q", cleanMsg)
 	if err := s.Detector.UpdateSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
@@ -124,7 +123,7 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (s *SpamFilter) UpdateHam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[DEBUG] update ham samples with %q", cleanMsg)
+	log.Printf("[INFO] update ham samples with %q", cleanMsg)
 	if err := s.Detector.UpdateHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
@@ -238,7 +237,7 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
 	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
-	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
+	log.Printf("[INFO] remove dynamic spam sample: %q", sample)
 	if err := s.Detector.RemoveSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't remove spam sample %q: %w", sample, err)
 	}
@@ -248,7 +247,7 @@ func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
 // RemoveDynamicHamSample removes a sample from the ham dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicHamSample(sample string) error {
 	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
-	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
+	log.Printf("[INFO] remove dynamic ham sample: %q", sample)
 	if err := s.Detector.RemoveHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't remove hma sample %q: %w", sample, err)
 	}
