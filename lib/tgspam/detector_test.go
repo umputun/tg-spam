@@ -1402,6 +1402,73 @@ func Test_cleanEmoji(t *testing.T) {
 	}
 }
 
+func TestDetector_RemoveSpamHam(t *testing.T) {
+	updSpam := &mocks.SampleUpdaterMock{
+		RemoveFunc: func(msg string) error {
+			return nil
+		},
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.WithSpamUpdater(updSpam)
+
+	// load initial samples WITHOUT the test message
+	spamSamples := strings.NewReader("lottery prize xyz")
+	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
+	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 1, HamSamples: 3}, lr)
+
+	// add our test message separately
+	spamMsg := "win free iPhone"
+	err = d.UpdateSpam(spamMsg)
+	require.NoError(t, err)
+
+	t.Run("initially classified as spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "win free iPhone hello world"})
+		t.Logf("%+v", cr)
+		require.True(t, spam, "should initially be classified as spam")
+		require.NotEmpty(t, cr, "should have classification results")
+		assert.Equal(t, "classifier", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+	})
+
+	err = d.RemoveSpam(spamMsg)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(updSpam.RemoveCalls()))
+	assert.Equal(t, spamMsg, updSpam.RemoveCalls()[0].Msg)
+
+	t.Run("after removing spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "win free iPhone hello world"})
+		t.Logf("%+v", cr)
+		require.NotEmpty(t, cr, "should have classification results")
+		assert.Equal(t, "classifier", cr[0].Name)
+		assert.False(t, spam, "should no longer be classified as spam")
+		assert.False(t, cr[0].Spam)
+	})
+
+	t.Run("error on updater", func(t *testing.T) {
+		failingUpd := &mocks.SampleUpdaterMock{
+			RemoveFunc: func(msg string) error {
+				return fmt.Errorf("remove error")
+			},
+		}
+		d.WithSpamUpdater(failingUpd)
+		err := d.RemoveSpam(spamMsg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "can't unlearn spam samples")
+	})
+
+	t.Run("error on non-existent message", func(t *testing.T) {
+		err := d.RemoveSpam("not-learned-message")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "can't unlearn spam samples")
+	})
+}
+
 func BenchmarkTokenize(b *testing.B) {
 	d := &Detector{
 		excludedTokens: map[string]struct{}{"the": {}, "and": {}, "or": {}, "but": {}, "in": {}, "on": {}, "at": {}, "to": {}},

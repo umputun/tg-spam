@@ -132,8 +132,16 @@ func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
 
 		// initial learning
 		c.learn(doc1, doc2)
+
+		// verify good class
 		class, prob, certain := c.classify("nice", "friendly")
 		assert.Equal(good, class)
+		assert.True(certain)
+		assert.InDelta(80., prob, 0.01)
+
+		// verify bad class
+		class, prob, certain = c.classify("mean", "unfriendly")
+		assert.Equal(bad, class)
 		assert.True(certain)
 		assert.InDelta(80., prob, 0.01)
 
@@ -181,28 +189,43 @@ func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
 }
 
 func TestClassifier_ProbabilityConsistency(t *testing.T) {
-	t.Run("probability is between 0 and 100", func(t *testing.T) {
-		c := newClassifier()
-		c.learn(
-			newDocument(good, "a", "b"),
-			newDocument(bad, "c", "d"),
-		)
+	c := newClassifier()
+	c.learn(
+		newDocument(good, "something", "very", "good"),
+		newDocument(bad, "free", "iphone"),
+	)
 
-		// check good class tokens
-		_, prob, _ := c.classify("a", "b")
-		assert.Greater(t, prob, 50.0, "good class should have higher probability for its tokens")
-		assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
+	// check good class tokens
+	sc, prob, certain := c.classify("something", "good")
+	t.Logf("probability: %v", prob)
+	assert.Greater(t, prob, 70.0, "good class should have higher probability for its tokens")
+	assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
+	assert.Equal(t, good, sc)
+	assert.True(t, certain)
 
-		// check bad class tokens
-		_, prob, _ = c.classify("c", "d")
-		assert.Greater(t, prob, 50.0, "bad class should have higher probability for its tokens")
-		assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
+	// check bad class tokens
+	sc, prob, certain = c.classify("free", "iphone")
+	t.Logf("probability: %v", prob)
+	assert.Greater(t, prob, 70.0, "bad class should have higher probability for its tokens")
+	assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
+	assert.Equal(t, bad, sc)
+	assert.True(t, certain)
 
-		// check mixed tokens
-		_, prob, _ = c.classify("a", "d")
-		assert.Greater(t, prob, 0.0, "probability should be positive")
-		assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
-	})
+	// check missed tokens
+	sc, prob, certain = c.classify("abc", "defg")
+	t.Logf("probability: %v", prob)
+	assert.Greater(t, prob, 50.0, "probability should be positive")
+	assert.LessOrEqual(t, prob, 70.0, "probability should not exceed 100")
+	assert.Equal(t, bad, sc)
+	assert.True(t, certain)
+
+	// check mixed tokens
+	sc, prob, _ = c.classify("something", "very", "good", "free")
+	t.Logf("probability: %v", prob)
+	assert.Greater(t, prob, 60.0, "probability should be positive")
+	assert.LessOrEqual(t, prob, 100.0, "probability should not exceed 100")
+	assert.Equal(t, good, sc)
+	assert.True(t, certain)
 }
 
 func TestClassifier_Reset(t *testing.T) {

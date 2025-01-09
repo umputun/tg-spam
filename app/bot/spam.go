@@ -45,6 +45,8 @@ type Detector interface {
 	LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
+	RemoveHam(msg string) error
+	RemoveSpam(msg string) error
 	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
@@ -55,7 +57,7 @@ type Detector interface {
 type SamplesStore interface {
 	Read(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
 	Reader(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
-	DeleteMessage(ctx context.Context, message string) error
+	// DeleteMessage(ctx context.Context, message string) error
 	Stats(ctx context.Context) (*storage.SamplesStats, error)
 }
 
@@ -235,26 +237,20 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
+	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
 	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
-
-	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), sample); err != nil {
-		return fmt.Errorf("failed to delete message: %w", err)
-	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("failed to reload samples: %w", err)
+	if err := s.Detector.RemoveSpam(cleanMsg); err != nil {
+		return fmt.Errorf("can't remove spam sample %q: %w", sample, err)
 	}
 	return nil
 }
 
 // RemoveDynamicHamSample removes a sample from the ham dynamic samples file and reloads samples after this
 func (s *SpamFilter) RemoveDynamicHamSample(sample string) error {
+	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
 	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
-
-	if err := s.params.SamplesStore.DeleteMessage(context.TODO(), sample); err != nil {
-		return fmt.Errorf("failed to delete message: %w", err)
-	}
-	if err := s.ReloadSamples(); err != nil {
-		return fmt.Errorf("failed to reload samples: %w", err)
+	if err := s.Detector.RemoveHam(cleanMsg); err != nil {
+		return fmt.Errorf("can't remove hma sample %q: %w", sample, err)
 	}
 	return nil
 }
