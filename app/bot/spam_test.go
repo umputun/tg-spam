@@ -533,12 +533,6 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 			deleteErr:   errors.New("delete error"),
 			expectError: true,
 		},
-		{
-			name:        "reload error",
-			sample:      "spam message",
-			loadErr:     errors.New("reload error"),
-			expectError: true,
-		},
 	}
 
 	for _, tc := range tests {
@@ -550,18 +544,20 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 				LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
 					return tgspam.LoadResult{}, nil
 				},
+				RemoveSpamFunc: func(msg string) error {
+					assert.Equal(t, tc.sample, msg)
+					return tc.deleteErr
+				},
+				RemoveHamFunc: func(msg string) error {
+					assert.Equal(t, tc.sample, msg)
+					return tc.deleteErr
+				},
 			}
 
 			samplesStore := &mocks.SamplesStoreMock{
 				DeleteMessageFunc: func(ctx context.Context, message string) error {
 					assert.Equal(t, tc.sample, message)
 					return tc.deleteErr
-				},
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
-					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
-				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
-					return io.NopCloser(strings.NewReader("")), nil
 				},
 			}
 
@@ -583,8 +579,8 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			assert.Equal(t, 1, len(samplesStore.DeleteMessageCalls()))
-			assert.Equal(t, tc.sample, samplesStore.DeleteMessageCalls()[0].Message)
+			assert.Len(t, det.RemoveSpamCalls(), 1)
+			assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)
 		})
 	}
 }
@@ -682,7 +678,7 @@ func TestSpamFilter_DynamicSamples(t *testing.T) {
 
 			// verify all Read calls were made
 			calls := samplesStore.ReadCalls()
-			require.Equal(t, 2, len(calls))
+			require.Len(t, calls, 2)
 			assert.Equal(t, storage.SampleTypeSpam, calls[0].T)
 			assert.Equal(t, storage.SampleTypeHam, calls[1].T)
 			assert.Equal(t, storage.SampleOriginUser, calls[0].O)
@@ -697,7 +693,6 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 		sample      string
 		sampleType  string // "spam" or "ham"
 		deleteErr   error
-		reloadErr   error
 		expectError bool
 	}{
 		{
@@ -710,13 +705,6 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 			sample:      "spam sample",
 			sampleType:  "spam",
 			deleteErr:   errors.New("delete error"),
-			expectError: true,
-		},
-		{
-			name:        "remove spam reload error",
-			sample:      "spam sample",
-			sampleType:  "spam",
-			reloadErr:   errors.New("reload error"),
 			expectError: true,
 		},
 		{
@@ -736,11 +724,13 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			det := &mocks.DetectorMock{
-				LoadSamplesFunc: func(exclReader io.Reader, spamReaders []io.Reader, hamReaders []io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, tc.reloadErr
+				RemoveHamFunc: func(msg string) error {
+					assert.Equal(t, tc.sample, msg)
+					return tc.deleteErr
 				},
-				LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
-					return tgspam.LoadResult{}, nil
+				RemoveSpamFunc: func(msg string) error {
+					assert.Equal(t, tc.sample, msg)
+					return tc.deleteErr
 				},
 			}
 
@@ -749,19 +739,9 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 					assert.Equal(t, tc.sample, message)
 					return tc.deleteErr
 				},
-				StatsFunc: func(ctx context.Context) (*storage.SamplesStats, error) {
-					return &storage.SamplesStats{PresetSpam: 1, PresetHam: 1}, nil
-				},
-				ReaderFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error) {
-					return io.NopCloser(strings.NewReader("")), nil
-				},
 			}
 
-			dictStore := &mocks.DictStoreMock{
-				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
-					return io.NopCloser(strings.NewReader("")), nil
-				},
-			}
+			dictStore := &mocks.DictStoreMock{}
 
 			s := NewSpamFilter(det, SpamConfig{
 				SamplesStore: samplesStore,
@@ -782,16 +762,14 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-
-			// verify DeleteMessage was called
-			calls := samplesStore.DeleteMessageCalls()
-			require.Equal(t, 1, len(calls))
-			assert.Equal(t, tc.sample, calls[0].Message)
-
-			// verify stats and reload happened
-			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
-			assert.Equal(t, 1, len(det.LoadSamplesCalls()))
-			assert.Equal(t, 1, len(det.LoadStopWordsCalls()))
+			if tc.sampleType == "spam" {
+				assert.Len(t, det.RemoveSpamCalls(), 1)
+				assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)
+			}
+			if tc.sampleType == "ham" {
+				assert.Len(t, det.RemoveHamCalls(), 1)
+				assert.Equal(t, tc.sample, det.RemoveHamCalls()[0].Msg)
+			}
 		})
 	}
 }

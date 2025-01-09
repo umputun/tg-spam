@@ -72,6 +72,7 @@ type Config struct {
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
 type SampleUpdater interface {
 	Append(msg string) error        // append a message to the samples storage
+	Remove(msg string) error        // remove a message from the samples storage
 	Reader() (io.ReadCloser, error) // return a reader for the samples storage
 }
 
@@ -407,6 +408,12 @@ func (d *Detector) UpdateSpam(msg string) error { return d.updateSample(msg, d.s
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (d *Detector) UpdateHam(msg string) error { return d.updateSample(msg, d.hamSamplesUpd, "ham") }
 
+// RemoveSpam removes a message from the spam samples file and updates the classifier by unlearning
+func (d *Detector) RemoveSpam(msg string) error { return d.removeSample(msg, d.spamSamplesUpd, "spam") }
+
+// RemoveHam removes a message from the ham samples file and updates the classifier by unlearning
+func (d *Detector) RemoveHam(msg string) error { return d.removeSample(msg, d.hamSamplesUpd, "ham") }
+
 // updateSample appends a message to the samples store and updates the classifier
 // doesn't reset state, update append samples
 func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) error {
@@ -423,6 +430,38 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 	}
 
 	// load samples and update the classifier with them
+	docs := d.buildDocs(msg, sc)
+	d.classifier.learn(docs...)
+	return nil
+}
+
+// removeSample removes a message from the spam samples file and updates the classifier by unlearning
+func (d *Detector) removeSample(msg string, upd SampleUpdater, sc spamClass) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	if upd == nil {
+		return nil
+	}
+
+	// first validate that we can unlearn this sample
+	docs := d.buildDocs(msg, sc)
+	if err := d.classifier.unlearn(docs...); err != nil {
+		return fmt.Errorf("can't unlearn %s samples: %w", sc, err)
+	}
+
+	// if unlearn succeeded, remove from storage
+	if err := upd.Remove(msg); err != nil {
+		// try to relearn since storage update failed
+		d.classifier.learn(docs...)
+		return fmt.Errorf("can't remove %s samples: %w", sc, err)
+	}
+
+	return nil
+}
+
+// buildDocs builds a list of classifier documents from a message
+func (d *Detector) buildDocs(msg string, sc spamClass) []document {
 	docs := []document{}
 	for token := range d.tokenIterator(bytes.NewBufferString(msg)) {
 		tokenizedSample := d.tokenize(token)
@@ -432,8 +471,7 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 		}
 		docs = append(docs, document{spamClass: sc, tokens: tokens})
 	}
-	d.classifier.learn(docs...)
-	return nil
+	return docs
 }
 
 // tokenIterator parses readers and returns an iterator of tokens.

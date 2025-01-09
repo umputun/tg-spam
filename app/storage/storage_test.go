@@ -287,6 +287,52 @@ func TestSampleUpdater(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "test\n", string(data[:n]))
 	})
+
+	t.Run("remove message", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		samples, err := NewSamples(context.Background(), db)
+		require.NoError(t, err)
+		defer db.Close()
+
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+		require.NoError(t, updater.Append("test message"))
+		require.NoError(t, updater.Remove("test message"))
+
+		reader, err := updater.Reader()
+		require.NoError(t, err)
+		defer reader.Close()
+
+		data, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		assert.Empty(t, string(data))
+	})
+
+	t.Run("remove with timeout", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		samples, err := NewSamples(context.Background(), db)
+		require.NoError(t, err)
+		defer db.Close()
+
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
+		time.Sleep(time.Microsecond)
+		err = updater.Remove("test message")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context deadline exceeded")
+	})
+
+	t.Run("remove non-existent", func(t *testing.T) {
+		db, teardown := setupTestDB(t)
+		defer teardown()
+		samples, err := NewSamples(context.Background(), db)
+		require.NoError(t, err)
+		defer db.Close()
+
+		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+		err = updater.Remove("non-existent message")
+		require.Error(t, err)
+	})
 }
 
 func setupTestDB(t *testing.T) (res *Engine, teardown func()) {
