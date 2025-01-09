@@ -63,8 +63,8 @@ func (ds *DetectedSpam) Write(ctx context.Context, entry DetectedSpamInfo, check
 	ds.Lock()
 	defer ds.Unlock()
 
-	if entry.GID == "" || entry.Text == "" || entry.UserID == 0 || entry.UserName == "" {
-		return fmt.Errorf("missing required fields")
+	if entry.GID == "" {
+		return fmt.Errorf("missing required GID field")
 	}
 
 	checksJSON, err := json.Marshal(checks)

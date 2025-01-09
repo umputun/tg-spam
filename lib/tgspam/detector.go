@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"log"
 	"math"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/forPelevin/gomoji"
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -35,7 +38,7 @@ type Detector struct {
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
-	excludedTokens []string
+	excludedTokens map[string]struct{}
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
@@ -232,7 +235,7 @@ func (d *Detector) Reset() {
 	defer d.lock.Unlock()
 
 	d.tokenizedSpam = []map[string]int{}
-	d.excludedTokens = []string{}
+	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
 	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
@@ -349,18 +352,18 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	defer d.lock.Unlock()
 
 	d.tokenizedSpam = []map[string]int{}
-	d.excludedTokens = []string{}
+	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
 
 	// excluded tokens should be loaded before spam samples to exclude them from spam tokenization
-	for t := range d.tokenChan(exclReader) {
-		d.excludedTokens = append(d.excludedTokens, strings.ToLower(t))
+	for t := range d.tokenIterator(exclReader) {
+		d.excludedTokens[strings.ToLower(t)] = struct{}{}
 	}
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
 	docs := []document{}
-	for token := range d.tokenChan(spamReaders...) {
+	for token := range d.tokenIterator(spamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
 		tokens := make([]string, 0, len(tokenizedSpam))
@@ -372,7 +375,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	}
 
 	// load ham samples and update the classifier with them
-	for token := range d.tokenChan(hamReaders...) {
+	for token := range d.tokenIterator(hamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSpam))
 		for token := range tokenizedSpam {
@@ -392,7 +395,7 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	defer d.lock.Unlock()
 
 	d.stopWords = []string{}
-	for t := range d.tokenChan(readers...) {
+	for t := range d.tokenIterator(readers...) {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
 	return LoadResult{StopWords: len(d.stopWords)}, nil
@@ -421,7 +424,7 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 
 	// load samples and update the classifier with them
 	docs := []document{}
-	for token := range d.tokenChan(bytes.NewBufferString(msg)) {
+	for token := range d.tokenIterator(bytes.NewBufferString(msg)) {
 		tokenizedSample := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSample))
 		for token := range tokenizedSample {
@@ -433,14 +436,10 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 	return nil
 }
 
-// tokenChan parses readers and returns a channel of tokens.
+// tokenIterator parses readers and returns an iterator of tokens.
 // A line per-token or comma-separated "tokens" supported
-func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
-	resCh := make(chan string)
-
-	go func() {
-		defer close(resCh)
-
+func (d *Detector) tokenIterator(readers ...io.Reader) iter.Seq[string] {
+	return func(yield func(string) bool) {
 		for _, reader := range readers {
 			scanner := bufio.NewScanner(reader)
 			for scanner.Scan() {
@@ -451,15 +450,19 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 					for _, token := range lineTokens {
 						cleanToken := strings.Trim(token, " \"\n\r\t")
 						if cleanToken != "" {
-							resCh <- cleanToken
+							if !yield(cleanToken) {
+								return
+							}
 						}
 					}
-					continue
-				}
-				// each line with a single token
-				cleanToken := strings.Trim(line, " \n\r\t")
-				if cleanToken != "" {
-					resCh <- cleanToken
+				} else {
+					// each line with a single token
+					cleanToken := strings.Trim(line, " \n\r\t")
+					if cleanToken != "" {
+						if !yield(cleanToken) {
+							return
+						}
+					}
 				}
 			}
 
@@ -467,9 +470,7 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 				log.Printf("[WARN] failed to read tokens, error=%v", err)
 			}
 		}
-	}()
-
-	return resCh
+	}
 }
 
 // tokenize takes a string and returns a map where the keys are unique words (tokens)
@@ -477,10 +478,8 @@ func (d *Detector) tokenChan(readers ...io.Reader) <-chan string {
 // exclude tokens representing common words.
 func (d *Detector) tokenize(inp string) map[string]int {
 	isExcludedToken := func(token string) bool {
-		for _, w := range d.excludedTokens {
-			if strings.EqualFold(token, w) {
-				return true
-			}
+		if _, ok := d.excludedTokens[strings.ToLower(token)]; ok {
+			return true
 		}
 		return false
 	}
@@ -764,4 +763,12 @@ func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
 		return context.Background(), func() {}
 	}
 	return context.WithTimeout(context.Background(), d.StorageTimeout)
+}
+
+func cleanEmoji(s string) string {
+	return gomoji.RemoveEmojis(s)
+}
+
+func countEmoji(s string) int {
+	return len(gomoji.CollectAll(s))
 }

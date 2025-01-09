@@ -397,7 +397,7 @@ func TestDetectedSpam_Read_LimitAndOrder(t *testing.T) {
 
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-		  entries[i-1].Timestamp.Equal(entries[i].Timestamp))
+			entries[i-1].Timestamp.Equal(entries[i].Timestamp))
 	}
 }
 
@@ -614,28 +614,6 @@ func TestDetectedSpam_ValidationAndEdgeCases(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "empty text",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				UserID:    1,
-				UserName:  "Spammer",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "Check1", Spam: true}},
-			wantErr: true,
-		},
-		{
-			name: "zero user id",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				Text:      "spam message",
-				UserName:  "Spammer",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "Check1", Spam: true}},
-			wantErr: true,
-		},
-		{
 			name: "empty username",
 			entry: DetectedSpamInfo{
 				GID:       "group1",
@@ -644,7 +622,7 @@ func TestDetectedSpam_ValidationAndEdgeCases(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 			checks:  []spamcheck.Response{{Name: "Check1", Spam: true}},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "nil checks",
@@ -813,98 +791,6 @@ func TestDetectedSpam_MigrationEdgeCases(t *testing.T) {
 	})
 }
 
-func TestDetectedSpam_ValidationAndConstraints(t *testing.T) {
-	db, teardown := setupTestDB(t)
-	defer teardown()
-
-	ctx := context.Background()
-	ds, err := NewDetectedSpam(ctx, db)
-	require.NoError(t, err)
-
-	testCases := []struct {
-		name    string
-		entry   DetectedSpamInfo
-		checks  []spamcheck.Response
-		wantErr bool
-	}{
-		{
-			name: "valid entry",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				Text:      "spam",
-				UserID:    1,
-				UserName:  "user1",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
-			wantErr: false,
-		},
-		{
-			name: "missing gid",
-			entry: DetectedSpamInfo{
-				Text:      "spam",
-				UserID:    1,
-				UserName:  "user1",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
-			wantErr: true,
-		},
-		{
-			name: "empty text",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				UserID:    1,
-				UserName:  "user1",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
-			wantErr: true,
-		},
-		{
-			name: "zero user id",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				Text:      "spam",
-				UserName:  "user1",
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
-			wantErr: true,
-		},
-		{
-			name: "empty username",
-			entry: DetectedSpamInfo{
-				GID:       "group1",
-				Text:      "spam",
-				UserID:    1,
-				Timestamp: time.Now(),
-			},
-			checks:  []spamcheck.Response{{Name: "test", Spam: true}},
-			wantErr: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := ds.Write(ctx, tc.entry, tc.checks)
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-
-			entries, err := ds.Read(ctx)
-			require.NoError(t, err)
-			require.NotEmpty(t, entries)
-			assert.Equal(t, tc.entry.Text, entries[0].Text)
-			assert.Equal(t, tc.entry.UserID, entries[0].UserID)
-			assert.Equal(t, tc.entry.UserName, entries[0].UserName)
-			assert.Equal(t, tc.entry.GID, entries[0].GID)
-		})
-	}
-}
-
 func TestDetectedSpam_ConcurrentWrites(t *testing.T) {
 	db, teardown := setupTestDB(t)
 	defer teardown()
@@ -1024,7 +910,7 @@ func TestDetectedSpam_ReadAfterCleanup(t *testing.T) {
 	// verify order (newest first)
 	for i := 1; i < len(entries); i++ {
 		assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
-		  entries[i-1].Timestamp.Equal(entries[i].Timestamp),
+			entries[i-1].Timestamp.Equal(entries[i].Timestamp),
 			"entries should be ordered by timestamp descending")
 	}
 }
