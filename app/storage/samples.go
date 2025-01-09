@@ -64,6 +64,7 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 		CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
 		CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+		CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message);
     `
 
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
@@ -79,7 +80,11 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 
 // Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
 func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
-	log.Printf("[DEBUG] adding sample: %s, %s, %q", t, o, message)
+	dbgMsg := message
+	if len(dbgMsg) > 1024 {
+		dbgMsg = dbgMsg[:1024] + "..."
+	}
+	log.Printf("[DEBUG] adding sample: %s, %s, %q", t, o, dbgMsg)
 	if err := t.Validate(); err != nil {
 		return err
 	}
