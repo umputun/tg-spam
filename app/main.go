@@ -841,7 +841,7 @@ func backupDB(dbFile, version string, maxBackups int) error {
 	if maxBackups == 0 {
 		return nil
 	}
-	backupFile := dbFile + "." + strings.ReplaceAll(version, ".", "_")
+	backupFile := dbFile + "." + strings.ReplaceAll(version, ".", "_") // replace dots with underscores for file name
 	if _, err := os.Stat(backupFile); err == nil {
 		// backup file for the version already exists, no need to make it again
 		return nil
@@ -867,21 +867,22 @@ func backupDB(dbFile, version string, maxBackups int) error {
 	// sort files by timestamp in version suffix or mod time if suffix not formatted as timestamp
 	sort.Slice(files, func(i, j int) bool {
 		getTime := func(f string) time.Time {
-			base := filepath.Base(f) // get just the filename part
-			// try to get timestamp from branch-HASH-TIMESTAMP pattern
+			base := filepath.Base(f) // file name like this: tg-spam.db.master-77e0bfd-20250107T23:17:34
+			// try to get timestamp from version suffix first
 			parts := strings.Split(base, "-")
 			if len(parts) >= 3 {
 				suffix := parts[len(parts)-1]
-				if t, err := time.Parse("20060102T15:04:05", suffix); err == nil {
+				if t, err := time.ParseInLocation("20060102T15:04:05", suffix, time.Local); err == nil {
 					return t
 				}
 			}
-			// fallback to modification time
+			// fallback to modification time for non-versioned files
 			fi, err := os.Stat(f)
 			if err != nil {
-				return time.Time{} // return zero time for failed stats
+				log.Printf("[WARN] can't stat file %s: %v", f, err)
+				return time.Now().Local() // treat errored files as newest to avoid deleting them
 			}
-			return fi.ModTime()
+			return fi.ModTime().Local() // convert to local for consistent comparison
 		}
 		return getTime(files[i]).Before(getTime(files[j]))
 	})
