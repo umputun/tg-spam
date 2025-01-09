@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -113,6 +115,31 @@ func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
 		entries[i].Timestamp = entry.Timestamp.Local()
 	}
 	return entries, nil
+}
+
+// FindByUserID returns the latest detected spam entry for the given user ID
+func (ds *DetectedSpam) FindByUserID(ctx context.Context, userID int64) (*DetectedSpamInfo, error) {
+	ds.RLock()
+	defer ds.RUnlock()
+
+	var entry DetectedSpamInfo
+	err := ds.db.GetContext(ctx, &entry, "SELECT * FROM detected_spam WHERE user_id = ? AND gid = ?"+
+		" ORDER BY timestamp DESC LIMIT 1", userID, ds.db.GID())
+	if errors.Is(err, sql.ErrNoRows) {
+		// not found, return nil *DetectedSpamInfo instead of error
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get detected spam entry for user_id %d: %w", userID, err)
+	}
+
+	var checks []spamcheck.Response
+	if err := json.Unmarshal([]byte(entry.ChecksJSON), &checks); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal checks for entry: %w", err)
+	}
+	entry.Checks = checks
+	entry.Timestamp = entry.Timestamp.Local()
+	return &entry, nil
 }
 
 func migrateDetectedSpamTx(ctx context.Context, tx *sqlx.Tx, gid string) error {

@@ -430,6 +430,24 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
   - `user_id` - user id
   - `user_name` - username
 
+- `GET /check/{user_id}` - returns status and optional details about detected spammer by user ID.
+  - Response format:
+    ```json
+    {
+      "status": "ham" or "spam",
+      "checks": {  // optional, present only if status is "spam"
+        "user_id": 123,
+        "user_name": "spam_user",
+        "text": "spam text",
+        "checks": [{"name": "check name is here", "spam": true, "details": "detected because of something"}]
+      }
+    }
+    ```
+  - Status codes:
+    - `200` - successful response with status and optional details
+    - `400` - invalid user_id format
+    - `500` - internal server error during check
+  
 - `POST /update/spam` - update spam samples with the message passed in the body. The body should be a json object with the following fields:
   - `msg` - spam text
 
