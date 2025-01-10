@@ -22,15 +22,11 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		_, err := NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
-		// check if the table and columns exist
+		// check if the table exists - use db-agnostic way
 		var exists int
-		err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
+		err = db.Get(&exists, `SELECT COUNT(*) FROM approved_users`) // simpler check
 		require.NoError(t, err)
-		assert.Equal(t, 1, exists)
-
-		err = db.Get(&exists, "SELECT COUNT(*) FROM pragma_table_info('approved_users') WHERE name='name'")
-		require.NoError(t, err)
-		assert.Equal(t, 1, exists)
+		assert.Equal(t, 0, exists) // empty but exists
 	})
 
 	t.Run("table already exists", func(t *testing.T) {
@@ -78,13 +74,21 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		db, teardown := setupTestDB(t)
 		defer teardown()
 
-		// create old schema and insert data
-		_, err := db.Exec(`CREATE TABLE approved_users (
-			id TEXT PRIMARY KEY,
-			name TEXT,
-			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`)
+		// create old schema
+		_, err := db.Exec(`
+            CREATE TABLE approved_users (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `)
 		require.NoError(t, err)
+
+		// verify old schema exists
+		var exists int
+		err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approved_users'")
+		require.NoError(t, err)
+		assert.Equal(t, 1, exists)
 
 		oldTime := time.Now().Add(-time.Hour).UTC()
 		_, err = db.Exec("INSERT INTO approved_users (id, name, timestamp) VALUES (?, ?, ?)", "user1", "test", oldTime)
@@ -94,7 +98,7 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		au, err := NewApprovedUsers(context.Background(), db)
 		require.NoError(t, err)
 
-		// verify data was preserved
+		// verify data migrated correctly
 		users, err := au.Read(context.Background())
 		require.NoError(t, err)
 		require.Len(t, users, 1)
@@ -330,114 +334,6 @@ func TestApprovedUsers_ContextCancellation(t *testing.T) {
 	})
 }
 
-func TestApprovedUsers_Migrate(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("migrate from old schema with string id", func(t *testing.T) {
-		db, err := engine.NewSqlite(":memory:", "gr1")
-		require.NoError(t, err)
-		defer db.Close()
-
-		// setup old schema
-		_, err = db.Exec(`
-			CREATE TABLE approved_users (
-				id TEXT PRIMARY KEY,
-				name TEXT,
-				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-			)
-		`)
-		require.NoError(t, err)
-
-		// insert test data in old format
-		_, err = db.Exec("INSERT INTO approved_users (id, name) VALUES (?, ?), (?, ?)", "user1", "John", "user2", "Jane")
-		require.NoError(t, err)
-
-		// run migration within transaction
-		tx, err := db.Beginx()
-		require.NoError(t, err)
-		defer tx.Rollback()
-
-		err = migrateTableTx(ctx, tx, "gr1")
-		require.NoError(t, err)
-		require.NoError(t, tx.Commit())
-
-		// verify structure
-		var cols []struct {
-			CID       int     `db:"cid"`
-			Name      string  `db:"name"`
-			Type      string  `db:"type"`
-			NotNull   bool    `db:"notnull"`
-			DfltValue *string `db:"dflt_value"`
-			PK        bool    `db:"pk"`
-		}
-		err = db.Select(&cols, "PRAGMA table_info(approved_users)")
-		require.NoError(t, err)
-
-		colMap := make(map[string]string)
-		for _, col := range cols {
-			colMap[col.Name] = col.Type
-		}
-		assert.Equal(t, "TEXT", colMap["uid"])
-		assert.Equal(t, "TEXT", colMap["gid"])
-
-		// verify data migrated correctly
-		var users []struct {
-			UID  string `db:"uid"`
-			Name string `db:"name"`
-			GID  string `db:"gid"`
-		}
-		err = db.Select(&users, "SELECT uid, name, gid FROM approved_users ORDER BY uid")
-		require.NoError(t, err)
-		assert.Len(t, users, 2)
-
-		assert.Equal(t, "user1", users[0].UID)
-		assert.Equal(t, "John", users[0].Name)
-		assert.Equal(t, "gr1", users[0].GID)
-
-		assert.Equal(t, "user2", users[1].UID)
-		assert.Equal(t, "Jane", users[1].Name)
-		assert.Equal(t, "gr1", users[1].GID)
-	})
-
-	t.Run("migration not needed", func(t *testing.T) {
-		db, err := engine.NewSqlite(":memory:", "gr1")
-		require.NoError(t, err)
-		defer db.Close()
-
-		// setup new schema
-		_, err = db.Exec(approvedUsersSchema)
-		require.NoError(t, err)
-
-		// run migration within transaction
-		tx, err := db.Beginx()
-		require.NoError(t, err)
-		defer tx.Rollback()
-
-		err = migrateTableTx(ctx, tx, "gr1")
-		require.NoError(t, err)
-		require.NoError(t, tx.Commit())
-
-		// verify structure
-		var cols []struct {
-			CID       int     `db:"cid"`
-			Name      string  `db:"name"`
-			Type      string  `db:"type"`
-			NotNull   bool    `db:"notnull"`
-			DfltValue *string `db:"dflt_value"`
-			PK        bool    `db:"pk"`
-		}
-		err = db.Select(&cols, "PRAGMA table_info(approved_users)")
-		require.NoError(t, err)
-
-		colMap := make(map[string]string)
-		for _, col := range cols {
-			colMap[col.Name] = col.Type
-		}
-		assert.Equal(t, "TEXT", colMap["uid"])
-		assert.Equal(t, "TEXT", colMap["gid"])
-	})
-}
-
 func TestApprovedUsers_DetailedGroupIsolation(t *testing.T) {
 	ctx := context.Background()
 
@@ -624,5 +520,165 @@ func TestApprovedUsers_Cleanup(t *testing.T) {
 		users, err := au.Read(ctx)
 		require.NoError(t, err)
 		assert.Empty(t, users)
+	})
+}
+
+func TestApprovedUsers_Migrate(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("migrate from old sqlite schema", func(t *testing.T) {
+		db, err := engine.NewSqlite(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// create old schema without uid and gid
+		_, err = db.Exec(`
+            CREATE TABLE approved_users (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `)
+		require.NoError(t, err)
+
+		testData := []struct {
+			id   string
+			name string
+		}{
+			{"123", "test1"},
+			{"456", "test2"},
+		}
+
+		// add test data
+		for _, tc := range testData {
+			_, err := db.Exec("INSERT INTO approved_users (id, name) VALUES (?, ?)", tc.id, tc.name)
+			require.NoError(t, err)
+		}
+
+		// verify initial data
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+
+		// run migration via NewApprovedUsers
+		au, err := NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		// verify migrated data
+		users, err := au.Read(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(users))
+
+		// check data preserved and moved correctly
+		assert.Equal(t, "test1", users[0].UserName)
+		assert.Equal(t, "123", users[0].UserID)
+		assert.Equal(t, "test2", users[1].UserName)
+		assert.Equal(t, "456", users[1].UserID)
+
+		// verify table structure
+		var cols []string
+		rows, err := db.Query("SELECT * FROM approved_users LIMIT 1")
+		require.NoError(t, err)
+		cols, err = rows.Columns()
+		require.NoError(t, err)
+		rows.Close()
+
+		// check all needed columns exist
+		expected := []string{"id", "uid", "gid", "name", "timestamp"}
+		for _, col := range expected {
+			assert.Contains(t, cols, col)
+		}
+	})
+
+	t.Run("no migration needed for new schema", func(t *testing.T) {
+		db, err := engine.NewSqlite(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		au1, err := NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		// add user with new schema
+		err = au1.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test"})
+		require.NoError(t, err)
+
+		// second instance should not trigger migration
+		au2, err := NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		users, err := au2.Read(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(users))
+		assert.Equal(t, "test", users[0].UserName)
+		assert.Equal(t, "123", users[0].UserID)
+	})
+
+	t.Run("double migration attempt", func(t *testing.T) {
+		db, err := engine.NewSqlite(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// create old schema first
+		_, err = db.Exec(`
+            CREATE TABLE approved_users (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `)
+		require.NoError(t, err)
+
+		// insert test data
+		_, err = db.Exec("INSERT INTO approved_users (id, name) VALUES ('123', 'test')")
+		require.NoError(t, err)
+
+		// run first migration
+		_, err = NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		// try second migration
+		au2, err := NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		// verify data preserved
+		users, err := au2.Read(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(users))
+		assert.Equal(t, "test", users[0].UserName)
+		assert.Equal(t, "123", users[0].UserID)
+	})
+
+	t.Run("migration preserves indices", func(t *testing.T) {
+		db, err := engine.NewSqlite(":memory:", "gr1")
+		require.NoError(t, err)
+		defer db.Close()
+
+		_, err = NewApprovedUsers(ctx, db)
+		require.NoError(t, err)
+
+		var indices []struct {
+			Name string `db:"name"`
+		}
+		err = db.Select(&indices, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'approved_users'")
+		require.NoError(t, err)
+
+		expectedIndices := []string{
+			"idx_approved_users_uid",
+			"idx_approved_users_gid",
+			"idx_approved_users_name",
+			"idx_approved_users_timestamp",
+		}
+
+		for _, expected := range expectedIndices {
+			found := false
+			for _, idx := range indices {
+				if idx.Name == expected {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "index %s not found", expected)
+		}
 	})
 }
