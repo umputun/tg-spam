@@ -31,6 +31,79 @@ func TestEngine(t *testing.T) {
 	})
 }
 
+func TestEngine_Adopt(t *testing.T) {
+	tests := []struct {
+		name     string
+		dbType   Type
+		query    string
+		expected string
+	}{
+		{
+			name:     "sqlite simple query",
+			dbType:   Sqlite,
+			query:    "SELECT * FROM test WHERE id = ?",
+			expected: "SELECT * FROM test WHERE id = ?",
+		},
+		{
+			name:     "sqlite multiple placeholders",
+			dbType:   Sqlite,
+			query:    "INSERT INTO test (id, name) VALUES (?, ?)",
+			expected: "INSERT INTO test (id, name) VALUES (?, ?)",
+		},
+		{
+			name:     "postgres simple query",
+			dbType:   Postgres,
+			query:    "SELECT * FROM test WHERE id = ?",
+			expected: "SELECT * FROM test WHERE id = $1",
+		},
+		{
+			name:     "postgres multiple placeholders",
+			dbType:   Postgres,
+			query:    "INSERT INTO test (id, name) VALUES (?, ?)",
+			expected: "INSERT INTO test (id, name) VALUES ($1, $2)",
+		},
+		{
+			name:     "postgres complex query",
+			dbType:   Postgres,
+			query:    "SELECT * FROM test WHERE id = ? AND name = ? OR value = ?",
+			expected: "SELECT * FROM test WHERE id = $1 AND name = $2 OR value = $3",
+		},
+		{
+			name:     "no placeholders",
+			dbType:   Postgres,
+			query:    "SELECT * FROM test",
+			expected: "SELECT * FROM test",
+		},
+		{
+			name:     "question mark in string literal",
+			dbType:   Postgres,
+			query:    "SELECT * FROM test WHERE text = '?' AND id = ?",
+			expected: "SELECT * FROM test WHERE text = '?' AND id = $1",
+		},
+		{
+			name:     "empty query",
+			dbType:   Postgres,
+			query:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &SQL{dbType: tt.dbType}
+			result := e.Adopt(tt.query)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+
+	t.Run("unknown type defaults to non-postgres", func(t *testing.T) {
+		e := &SQL{dbType: Unknown}
+		query := "SELECT * FROM test WHERE id = ?"
+		result := e.Adopt(query)
+		assert.Equal(t, query, result)
+	})
+}
+
 func TestConcurrentDBAccess(t *testing.T) {
 	db, err := NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)

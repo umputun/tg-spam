@@ -57,6 +57,37 @@ func (e *SQL) MakeLock() RWLocker {
 	return &NoopLocker{} // other engines don't need locking
 }
 
+// Adopt adopts placeholders in a query for the database engine
+// This is for query which compatible between sqlite and postgres except for the placeholders
+func (e *SQL) Adopt(q string) string {
+	if e.dbType != Postgres { // no need to replace placeholders for sqlite
+		return q
+	}
+
+	placeholderCount := 1
+	result := ""
+	inQuotes := false
+
+	for _, r := range q {
+		switch r {
+		case '\'':
+			inQuotes = !inQuotes
+			result += string(r)
+		case '?':
+			if inQuotes {
+				result += string(r)
+			} else {
+				result += fmt.Sprintf("$%d", placeholderCount)
+				placeholderCount++
+			}
+		default:
+			result += string(r)
+		}
+	}
+
+	return result
+}
+
 func setSqlitePragma(db *sqlx.DB) error {
 	// Set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
 	// to make sure if it is worth having 2 more DB-related files for WAL and SHM.
