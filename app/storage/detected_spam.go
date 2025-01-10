@@ -54,7 +54,7 @@ var detectedSpamSchema = `
 
 // NewDetectedSpam creates a new DetectedSpam storage
 func NewDetectedSpam(ctx context.Context, db *engine.SQL) (*DetectedSpam, error) {
-	err := initDB(ctx, db, "detected_spam", detectedSpamSchema, migrateDetectedSpamTx)
+	err := engine.InitDB(ctx, db, "detected_spam", detectedSpamSchema, migrateDetectedSpamTx)
 	if err != nil {
 		return nil, err
 	}

@@ -44,7 +44,7 @@ var approvedUsersSchema = `
 
 // NewApprovedUsers creates a new ApprovedUsers storage
 func NewApprovedUsers(ctx context.Context, db *engine.SQL) (*ApprovedUsers, error) {
-	err := initDB(ctx, db, "approved_users", approvedUsersSchema, migrateTableTx)
+	err := engine.InitDB(ctx, db, "approved_users", approvedUsersSchema, migrateTableTx)
 	if err != nil {
 		return nil, err
 	}
