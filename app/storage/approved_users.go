@@ -9,13 +9,14 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
 )
 
 // ApprovedUsers is a storage for approved users
 type ApprovedUsers struct {
-	db *Engine
-	RWLocker
+	db *engine.SQL
+	engine.RWLocker
 }
 
 // approvedUsersInfo is a struct to store approved user info in the database
@@ -42,7 +43,7 @@ var approvedUsersSchema = `
 `
 
 // NewApprovedUsers creates a new ApprovedUsers storage
-func NewApprovedUsers(ctx context.Context, db *Engine) (*ApprovedUsers, error) {
+func NewApprovedUsers(ctx context.Context, db *engine.SQL) (*ApprovedUsers, error) {
 	err := initDB(ctx, db, "approved_users", approvedUsersSchema, migrateTableTx)
 	if err != nil {
 		return nil, err

@@ -7,12 +7,14 @@ import (
 	"io"
 	"iter"
 	"strings"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
 // Dictionary is a storage for stop words/phrases and ignored words
 type Dictionary struct {
-	db *Engine
-	RWLocker
+	db *engine.SQL
+	engine.RWLocker
 }
 
 // DictionaryType represents the type of dictionary entry
@@ -25,7 +27,7 @@ const (
 )
 
 // NewDictionary creates a new Dictionary storage
-func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
+func NewDictionary(ctx context.Context, db *engine.SQL) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}

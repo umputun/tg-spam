@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -19,8 +20,8 @@ const maxDetectedSpamEntries = 500
 
 // DetectedSpam is a storage for detected spam entries
 type DetectedSpam struct {
-	db *Engine
-	RWLocker
+	db *engine.SQL
+	engine.RWLocker
 }
 
 // DetectedSpamInfo represents information about a detected spam entry.
@@ -52,7 +53,7 @@ var detectedSpamSchema = `
 `
 
 // NewDetectedSpam creates a new DetectedSpam storage
-func NewDetectedSpam(ctx context.Context, db *Engine) (*DetectedSpam, error) {
+func NewDetectedSpam(ctx context.Context, db *engine.SQL) (*DetectedSpam, error) {
 	err := initDB(ctx, db, "detected_spam", detectedSpamSchema, migrateDetectedSpamTx)
 	if err != nil {
 		return nil, err

@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
 func TestNewSamples(t *testing.T) {
@@ -20,7 +22,7 @@ func TestNewSamples(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		db      *Engine
+		db      *engine.SQL
 		wantErr bool
 	}{
 		{
@@ -658,7 +660,7 @@ func TestSamples_IteratorOrder(t *testing.T) {
 func TestSamples_Import(t *testing.T) {
 	ctx := context.Background()
 
-	countSamples := func(db *Engine, t SampleType, o SampleOrigin) int {
+	countSamples := func(db *engine.SQL, t SampleType, o SampleOrigin) int {
 		var count int
 		err := db.Get(&count, "SELECT COUNT(*) FROM samples WHERE type = ? AND origin = ?", t, o)
 		if err != nil {
@@ -667,7 +669,7 @@ func TestSamples_Import(t *testing.T) {
 		return count
 	}
 
-	prep := func() (*Engine, *Samples, func()) {
+	prep := func() (*engine.SQL, *Samples, func()) {
 		db, teardown := setupTestDB(t)
 		s, err := NewSamples(context.Background(), db)
 		require.NoError(t, err)

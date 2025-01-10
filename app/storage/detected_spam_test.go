@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -544,11 +545,11 @@ func TestDetectedSpam_ConcurrentAccess(t *testing.T) {
 }
 
 func TestDetectedSpam_GIDIsolation(t *testing.T) {
-	db1, err := NewSqliteDB(":memory:", "gr1")
+	db1, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db1.Close()
 
-	db2, err := NewSqliteDB(":memory:", "gr2")
+	db2, err := engine.NewSqlite(":memory:", "gr2")
 	require.NoError(t, err)
 	defer db2.Close()
 
@@ -997,7 +998,7 @@ func TestDetectedSpam_FindByUserID(t *testing.T) {
 
 	t.Run("gid isolation", func(t *testing.T) {
 		// create another db instance with different gid
-		db2, err := NewSqliteDB(":memory:", "other_gid")
+		db2, err := engine.NewSqlite(":memory:", "other_gid")
 		require.NoError(t, err)
 		defer db2.Close()
 

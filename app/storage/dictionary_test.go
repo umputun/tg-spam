@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
 func TestNewDictionary(t *testing.T) {
@@ -523,11 +525,11 @@ func TestDictionary_ImportEdgeCases(t *testing.T) {
 }
 
 func TestDictionary_StrictGroupIsolation(t *testing.T) {
-	db1, err := NewSqliteDB(":memory:", "gr1")
+	db1, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db1.Close()
 
-	db2, err := NewSqliteDB(":memory:", "gr2")
+	db2, err := engine.NewSqlite(":memory:", "gr2")
 	require.NoError(t, err)
 	defer db2.Close()
 
@@ -553,7 +555,7 @@ func TestDictionary_StrictGroupIsolation(t *testing.T) {
 	}
 
 	// verify each dictionary only sees its own entries
-	verifyDictionary := func(t *testing.T, d *Dictionary, db *Engine) {
+	verifyDictionary := func(t *testing.T, d *Dictionary, db *engine.SQL) {
 		for _, p := range commonPhrases {
 			phrases, err := d.Read(ctx, p.dType)
 			require.NoError(t, err)

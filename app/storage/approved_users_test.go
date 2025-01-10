@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
 )
 
@@ -101,29 +102,6 @@ func TestApprovedUsers_NewApprovedUsers(t *testing.T) {
 		assert.Equal(t, "test", users[0].UserName)
 		assert.Equal(t, oldTime.Unix(), users[0].Timestamp.Unix())
 	})
-
-	t.Run("unique constraint violation", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-
-		au, err := NewApprovedUsers(context.Background(), db)
-		require.NoError(t, err)
-
-		// insert same user for different groups
-		err = au.Write(context.Background(), approved.UserInfo{UserID: "user1", UserName: "test"})
-		require.NoError(t, err)
-
-		// should succeed with different gid (handled by Engine.GID())
-		db.gid = "group2"
-		err = au.Write(context.Background(), approved.UserInfo{UserID: "user1", UserName: "test"})
-		require.NoError(t, err)
-
-		// verify both records exist
-		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users WHERE uid = ?", "user1")
-		require.NoError(t, err)
-		assert.Equal(t, 2, count)
-	})
 }
 
 func TestApprovedUsers_Write(t *testing.T) {
@@ -188,7 +166,7 @@ func TestApprovedUsers_Write(t *testing.T) {
 }
 
 func TestApprovedUsers_Read(t *testing.T) {
-	db, e := NewSqliteDB(":memory:", "gr1")
+	db, e := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, e)
 	ctx := context.Background()
 	au, e := NewApprovedUsers(ctx, db)
@@ -215,7 +193,7 @@ func TestApprovedUsers_Read(t *testing.T) {
 }
 
 func TestApprovedUsers_Delete(t *testing.T) {
-	db, e := NewSqliteDB(":memory:", "gr1")
+	db, e := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, e)
 	ctx := context.Background()
 	au, e := NewApprovedUsers(ctx, db)
@@ -272,7 +250,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := NewSqliteDB(":memory:", "gr1")
+			db, err := engine.NewSqlite(":memory:", "gr1")
 			require.NoError(t, err)
 			au, err := NewApprovedUsers(ctx, db)
 			require.NoError(t, err)
@@ -290,7 +268,7 @@ func TestApprovedUsers_StoreAndRead(t *testing.T) {
 }
 
 func TestApprovedUsers_ContextCancellation(t *testing.T) {
-	db, err := NewSqliteDB(":memory:", "gr1")
+	db, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -356,7 +334,7 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("migrate from old schema with string id", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -422,7 +400,7 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 	})
 
 	t.Run("migration not needed", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -463,11 +441,11 @@ func TestApprovedUsers_Migrate(t *testing.T) {
 func TestApprovedUsers_DetailedGroupIsolation(t *testing.T) {
 	ctx := context.Background()
 
-	db1, err := NewSqliteDB(":memory:", "gr1")
+	db1, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db1.Close()
 
-	db2, err := NewSqliteDB(":memory:", "gr2")
+	db2, err := engine.NewSqlite(":memory:", "gr2")
 	require.NoError(t, err)
 	defer db2.Close()
 

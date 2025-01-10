@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -122,7 +123,7 @@ func TestLocator_CleanupLogic(t *testing.T) {
 	assert.Equal(t, 0, spamCountAfter, "spam should be cleaned up")
 
 	// verify cleanup respects gid
-	db2, err := NewSqliteDB(":memory:", "gr2")
+	db2, err := engine.NewSqlite(":memory:", "gr2")
 	require.NoError(t, err)
 	locator2, err := NewLocator(ctx, ttl, 1, db2)
 	require.NoError(t, err)
@@ -166,7 +167,7 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 
 func TestLocator_Migration(t *testing.T) {
 	t.Run("migrate from old schema", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -242,7 +243,7 @@ func TestLocator_Migration(t *testing.T) {
 
 	t.Run("migration idempotency", func(t *testing.T) {
 		// create a new db connection for this test
-		db, err := NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -328,11 +329,11 @@ func TestLocator_HashCollisions(t *testing.T) {
 }
 
 func TestLocator_GIDIsolation(t *testing.T) {
-	db1, err := NewSqliteDB(":memory:", "gr1")
+	db1, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db1.Close()
 
-	db2, err := NewSqliteDB(":memory:", "gr2")
+	db2, err := engine.NewSqlite(":memory:", "gr2")
 	require.NoError(t, err)
 	defer db2.Close()
 
@@ -382,7 +383,7 @@ func TestLocator_GIDIsolation(t *testing.T) {
 }
 
 func newTestLocator(t *testing.T) *Locator {
-	db, err := NewSqliteDB(":memory:", "gr1")
+	db, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	ctx := context.Background()
 	const ttl = 10 * time.Minute

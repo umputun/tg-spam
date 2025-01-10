@@ -29,6 +29,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi"
 	"github.com/umputun/tg-spam/lib/tgspam"
 )
@@ -212,7 +213,7 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
+	dataDB, err := engine.NewSqlite(dbFile, opts.InstanceID)
 	if err != nil {
 		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
 	}
@@ -356,7 +357,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *storage.Engine) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -513,7 +514,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	if dataDB == nil || detector == nil {
 		return nil, errors.New("nil datadb or detector")
 	}
@@ -583,7 +584,7 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *storage.Engine) (events.SpamLogger, error) {
+func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *engine.SQL) (events.SpamLogger, error) {
 	// make store and load approved users
 	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {

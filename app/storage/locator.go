@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -21,8 +22,8 @@ import (
 type Locator struct {
 	ttl     time.Duration
 	minSize int
-	db      *Engine
-	RWLocker
+	db      *engine.SQL
+	engine.RWLocker
 }
 
 // MsgMeta stores message metadata
@@ -64,7 +65,7 @@ var locatorSchema = `
 `
 
 // NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
-func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *Engine) (*Locator, error) {
+func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *engine.SQL) (*Locator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}

@@ -10,12 +10,14 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite/lib" // sqlite driver
+
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
 // Samples is a storage for samples. It supports both ham and spam, as well as preset samples and user's samples
 type Samples struct {
-	db *Engine
-	RWLocker
+	db *engine.SQL
+	engine.RWLocker
 }
 
 // SampleType represents the type of the sample
@@ -38,7 +40,7 @@ const (
 )
 
 // NewSamples creates a new Samples storage
-func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
+func NewSamples(ctx context.Context, db *engine.SQL) (*Samples, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
