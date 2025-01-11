@@ -8,8 +8,54 @@ import (
 	"iter"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/umputun/tg-spam/app/storage/engine"
 )
+
+// dictionary-related command constants
+const (
+	CmdCreateDictionaryTable engine.DBCmd = iota + 300
+	CmdCreateDictionaryIndexes
+)
+
+// queries holds all dictionary-related queries
+var dictionaryQueries = engine.QueryMap{
+	engine.Sqlite: {
+		CmdCreateDictionaryTable: `
+			CREATE TABLE IF NOT EXISTS dictionary (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				gid TEXT DEFAULT '',
+				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+				type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+				data TEXT NOT NULL,
+				UNIQUE(gid, data)
+			)`,
+		CmdCreateDictionaryIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
+		CmdAddGIDColumn: "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
+	},
+	engine.Postgres: {
+		CmdCreateDictionaryTable: `
+			CREATE TABLE IF NOT EXISTS dictionary (
+				id SERIAL PRIMARY KEY,
+				gid TEXT DEFAULT '',
+				timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+				data TEXT NOT NULL,
+				UNIQUE(gid, data)
+			)`,
+		CmdCreateDictionaryIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
+		CmdAddGIDColumn: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	},
+}
 
 // Dictionary is a storage for stop words/phrases and ignored words
 type Dictionary struct {
@@ -31,38 +77,48 @@ func NewDictionary(ctx context.Context, db *engine.SQL) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
+	res := &Dictionary{db: db, RWLocker: db.MakeLock()}
+	if err := res.init(ctx); err != nil {
+		return nil, fmt.Errorf("failed to init dictionary storage: %w", err)
+	}
+	return res, nil
+}
 
-	// create schema in a single transaction
-	tx, err := db.Begin()
+//nolint:dupl // it's ok to have similar code for different storages
+func (d *Dictionary) init(ctx context.Context) error {
+	tx, err := d.db.Beginx()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	schema := `
-        CREATE TABLE IF NOT EXISTS dictionary (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            gid TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
-            data TEXT NOT NULL,
-            UNIQUE(gid, data)
-        );
-        CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
-		CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid);
-    `
+	// create table first
+	createSchema, err := engine.PickQuery(dictionaryQueries, d.db.Type(), CmdCreateDictionaryTable)
+	if err != nil {
+		return fmt.Errorf("failed to get create table query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
+	}
 
-	if _, err = tx.ExecContext(ctx, schema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+	// try to migrate if needed
+	if err = d.migrate(ctx, tx, d.db.GID()); err != nil {
+		return fmt.Errorf("failed to migrate table: %w", err)
+	}
+
+	// create indices after migration when all columns exist
+	createIndexes, err := engine.PickQuery(dictionaryQueries, d.db.Type(), CmdCreateDictionaryIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to get create indexes query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
+		return fmt.Errorf("failed to create indexes: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
-	return &Dictionary{db: db, RWLocker: db.MakeLock()}, nil
+	return nil
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
@@ -292,4 +348,9 @@ func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil
+}
+
+func (d *Dictionary) migrate(_ context.Context, _ *sqlx.Tx, _ string) error {
+	// no migrations yet
+	return nil
 }

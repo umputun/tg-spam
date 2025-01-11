@@ -91,6 +91,7 @@ func NewApprovedUsers(ctx context.Context, db *engine.SQL) (*ApprovedUsers, erro
 	return res, nil
 }
 
+//nolint:dupl // it's ok to have similar code for different tables
 func (au *ApprovedUsers) init(ctx context.Context) error {
 	tx, err := au.db.Beginx()
 	if err != nil {
