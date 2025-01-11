@@ -768,14 +768,18 @@ func TestDetectedSpam_MigrationEdgeCases(t *testing.T) {
 		db, teardown := setupTestDB(t)
 		defer teardown()
 
+		// get schema creation queries
+		schema, err := engine.PickQuery(detectedSpamQueries, db.Type(), CmdCreateDetectedSpamTable)
+		require.NoError(t, err)
+
 		// create schema with gid already present
-		_, err := db.Exec(detectedSpamSchema)
+		_, err = db.Exec(schema)
 		require.NoError(t, err)
 
 		// insert test data with existing gid
 		_, err = db.Exec(`
-            INSERT INTO detected_spam (text, user_id, user_name, gid, checks)
-            VALUES (?, ?, ?, ?, ?)`,
+	        INSERT INTO detected_spam (text, user_id, user_name, gid, checks)
+	        VALUES (?, ?, ?, ?, ?)`,
 			"spam", 1, "user1", "existing_gid", `[{"Name":"test","Spam":true}]`)
 		require.NoError(t, err)
 
