@@ -248,7 +248,9 @@ func TestLocator_Migration(t *testing.T) {
 		defer db.Close()
 
 		// create schema with new tables including gid
-		_, err = db.Exec(locatorSchema)
+		createSchema, err := engine.PickQuery(locatorQueries, db.Type(), CmdCreateLocatorTables)
+		require.NoError(t, err)
+		_, err = db.Exec(createSchema)
 		require.NoError(t, err)
 
 		// create first locator which should trigger migration
