@@ -37,8 +37,11 @@ type DetectedSpamInfo struct {
 	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB directly
 }
 
-// CmdCreateDetectedSpamTable creates detected_spam table
-const CmdCreateDetectedSpamTable engine.DBCmd = iota + 200
+// all detected spam queries
+const (
+	CmdCreateDetectedSpamTable engine.DBCmd = iota + 200
+	CmdCreateDetectedSpamIndexes
+)
 
 // queries holds all detected spam queries
 var detectedSpamQueries = engine.QueryMap{
@@ -54,6 +57,9 @@ var detectedSpamQueries = engine.QueryMap{
 				added BOOLEAN DEFAULT 0,
 				checks TEXT
 			)`,
+		CmdCreateDetectedSpamIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`,
 		CmdAddGIDColumn: "ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''",
 	},
 	engine.Postgres: {
@@ -68,6 +74,9 @@ var detectedSpamQueries = engine.QueryMap{
 				added BOOLEAN DEFAULT false,
 				checks TEXT
 			)`,
+		CmdCreateDetectedSpamIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`,
 		CmdAddGIDColumn: "ALTER TABLE detected_spam ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
 	},
 }
@@ -77,48 +86,18 @@ func NewDetectedSpam(ctx context.Context, db *engine.SQL) (*DetectedSpam, error)
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
-
 	res := &DetectedSpam{db: db, RWLocker: db.MakeLock()}
-	if err := res.init(ctx); err != nil {
+	cfg := engine.TableConfig{
+		Name:          "detected_spam",
+		CreateTable:   CmdCreateDetectedSpamTable,
+		CreateIndexes: CmdCreateDetectedSpamIndexes,
+		MigrateFunc:   res.migrate,
+		QueriesMap:    detectedSpamQueries,
+	}
+	if err := engine.InitTable(ctx, db, cfg); err != nil {
 		return nil, fmt.Errorf("failed to init detected spam storage: %w", err)
 	}
 	return res, nil
-}
-
-func (ds *DetectedSpam) init(ctx context.Context) error {
-	tx, err := ds.db.Beginx()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// create table first
-	createSchema, err := engine.PickQuery(detectedSpamQueries, ds.db.Type(), CmdCreateDetectedSpamTable)
-	if err != nil {
-		return fmt.Errorf("failed to get create table query: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-
-	// try to migrate if needed
-	if err = ds.migrate(ctx, tx, ds.db.GID()); err != nil {
-		return fmt.Errorf("failed to migrate table: %w", err)
-	}
-
-	// create indices after migration when all columns exist
-
-	createIndexes := `
-		CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp);
-		CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`
-	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
-		return fmt.Errorf("failed to create indexes: %w", err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	return nil
 }
 
 // Write adds a new detected spam entry

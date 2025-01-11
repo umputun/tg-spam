@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"testing"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,4 +144,174 @@ func TestConcurrentDBAccess(t *testing.T) {
 	err = db.Get(&count, "SELECT COUNT(*) FROM test")
 	require.NoError(t, err)
 	assert.Equal(t, 10, count)
+}
+
+func TestInitTable(t *testing.T) {
+	const (
+		cmdCreateTable DBCmd = iota + 1000
+		cmdCreateIndexes
+	)
+
+	queries := QueryMap{
+		Sqlite: {
+			cmdCreateTable: `CREATE TABLE IF NOT EXISTS test_table (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				gid TEXT DEFAULT '',
+				data TEXT
+			)`,
+			cmdCreateIndexes: `CREATE INDEX IF NOT EXISTS idx_test_table ON test_table(gid)`,
+		},
+		Postgres: {
+			cmdCreateTable: `CREATE TABLE IF NOT EXISTS test_table (
+				id SERIAL PRIMARY KEY,
+				gid TEXT DEFAULT '',
+				data TEXT
+			)`,
+			cmdCreateIndexes: `CREATE INDEX IF NOT EXISTS idx_test_table ON test_table(gid)`,
+		},
+	}
+
+	t.Run("success case", func(t *testing.T) {
+		db, err := NewSqlite(":memory:", "test_group")
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrateCalled := false
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   cmdCreateTable,
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc: func(ctx context.Context, tx *sqlx.Tx, gid string) error {
+				migrateCalled = true
+				assert.Equal(t, "test_group", gid)
+				return nil
+			},
+			QueriesMap: queries,
+		}
+
+		err = InitTable(context.Background(), db, cfg)
+		require.NoError(t, err)
+		assert.True(t, migrateCalled, "migrate function should be called")
+
+		// verify table exists
+		var exists bool
+		err = db.Get(&exists, "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='test_table'")
+		require.NoError(t, err)
+		assert.True(t, exists, "table should exist")
+
+		// verify index exists
+		err = db.Get(&exists, "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name='idx_test_table'")
+		require.NoError(t, err)
+		assert.True(t, exists, "index should exist")
+	})
+
+	t.Run("nil db", func(t *testing.T) {
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   cmdCreateTable,
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc:   func(context.Context, *sqlx.Tx, string) error { return nil },
+			QueriesMap:    queries,
+		}
+
+		err := InitTable(context.Background(), nil, cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "db connection is nil")
+	})
+
+	t.Run("failed migration", func(t *testing.T) {
+		db, err := NewSqlite(":memory:", "test_group")
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrationErr := fmt.Errorf("migration failed")
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   cmdCreateTable,
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc:   func(context.Context, *sqlx.Tx, string) error { return migrationErr },
+			QueriesMap:    queries,
+		}
+
+		err = InitTable(context.Background(), db, cfg)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, migrationErr)
+
+		// verify table doesn't exist after rollback
+		var exists bool
+		err = db.Get(&exists, "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='test_table'")
+		require.NoError(t, err)
+		assert.False(t, exists, "table should not exist after rollback")
+	})
+
+	t.Run("invalid query cmd", func(t *testing.T) {
+		db, err := NewSqlite(":memory:", "test_group")
+		require.NoError(t, err)
+		defer db.Close()
+
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   999, // invalid command
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc:   func(context.Context, *sqlx.Tx, string) error { return nil },
+			QueriesMap:    queries,
+		}
+
+		err = InitTable(context.Background(), db, cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get create table query")
+	})
+
+	t.Run("canceled context", func(t *testing.T) {
+		db, err := NewSqlite(":memory:", "test_group")
+		require.NoError(t, err)
+		defer db.Close()
+
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   cmdCreateTable,
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc:   func(context.Context, *sqlx.Tx, string) error { return nil },
+			QueriesMap:    queries,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err = InitTable(ctx, db, cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+
+	t.Run("transaction isolation", func(t *testing.T) {
+		db, err := NewSqlite(":memory:", "test_group")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// first create valid table
+		cfg := TableConfig{
+			Name:          "test_table",
+			CreateTable:   cmdCreateTable,
+			CreateIndexes: cmdCreateIndexes,
+			MigrateFunc:   func(context.Context, *sqlx.Tx, string) error { return nil },
+			QueriesMap:    queries,
+		}
+		err = InitTable(context.Background(), db, cfg)
+		require.NoError(t, err)
+
+		// insert test data
+		_, err = db.Exec("INSERT INTO test_table (data) VALUES (?)", "test")
+		require.NoError(t, err)
+
+		// try to reinitialize with failing migration
+		cfg.MigrateFunc = func(context.Context, *sqlx.Tx, string) error { return fmt.Errorf("migration failed") }
+		err = InitTable(context.Background(), db, cfg)
+		assert.Error(t, err)
+
+		// verify data still exists
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM test_table WHERE data = ?", "test")
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "data should still exist after failed reinitialization")
+	})
 }

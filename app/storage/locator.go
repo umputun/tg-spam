@@ -111,47 +111,17 @@ func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *engine.
 		return nil, fmt.Errorf("db connection is nil")
 	}
 	res := &Locator{ttl: ttl, minSize: minSize, db: db, RWLocker: db.MakeLock()}
-	if err := res.init(ctx); err != nil {
+	cfg := engine.TableConfig{
+		Name:          "messages_spam",
+		CreateTable:   CmdCreateLocatorTables,
+		CreateIndexes: CmdCreateLocatorIndexes,
+		MigrateFunc:   res.migrate,
+		QueriesMap:    locatorQueries,
+	}
+	if err := engine.InitTable(ctx, db, cfg); err != nil {
 		return nil, fmt.Errorf("failed to init locator storage: %w", err)
 	}
 	return res, nil
-}
-
-//nolint:dupl // it's ok to have similar code for different tables
-func (l *Locator) init(ctx context.Context) error {
-	tx, err := l.db.Beginx()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// create tables first
-	createSchema, err := engine.PickQuery(locatorQueries, l.db.Type(), CmdCreateLocatorTables)
-	if err != nil {
-		return fmt.Errorf("failed to get create tables query: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-
-	// try to migrate if needed
-	if err = l.migrate(ctx, tx, l.db.GID()); err != nil {
-		return fmt.Errorf("failed to migrate tables: %w", err)
-	}
-
-	// create indices after migration when all columns exist
-	createIndexes, err := engine.PickQuery(locatorQueries, l.db.Type(), CmdCreateLocatorIndexes)
-	if err != nil {
-		return fmt.Errorf("failed to get create indexes query: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
-		return fmt.Errorf("failed to create indexes: %w", err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	return nil
 }
 
 func (l *Locator) migrate(ctx context.Context, tx *sqlx.Tx, gid string) error {

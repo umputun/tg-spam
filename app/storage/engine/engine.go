@@ -107,8 +107,17 @@ func setSqlitePragma(db *sqlx.DB) error {
 	return nil
 }
 
-// InitDB initializes db table with a schema and handles migration in a transaction
-func InitDB(ctx context.Context, db *SQL, tableName, schema string, migrateFn func(context.Context, *sqlx.Tx, string) error) error {
+// TableConfig represents configuration for table initialization
+type TableConfig struct {
+	Name          string
+	CreateTable   DBCmd
+	CreateIndexes DBCmd
+	MigrateFunc   func(ctx context.Context, tx *sqlx.Tx, gid string) error
+	QueriesMap    QueryMap
+}
+
+// InitTable initializes database table with schema and handles migration in a transaction
+func InitTable(ctx context.Context, db *SQL, cfg TableConfig) error {
 	if db == nil {
 		return fmt.Errorf("db connection is nil")
 	}
@@ -119,29 +128,31 @@ func InitDB(ctx context.Context, db *SQL, tableName, schema string, migrateFn fu
 	}
 	defer tx.Rollback()
 
-	var exists int
-	err = tx.GetContext(ctx, &exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
+	// create table first
+	createSchema, err := PickQuery(cfg.QueriesMap, db.Type(), cfg.CreateTable)
 	if err != nil {
-		return fmt.Errorf("failed to check for %s table existence: %w", tableName, err)
+		return fmt.Errorf("failed to get create table query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	if exists == 0 {
-		// create schema if it doesn't exist, no migration needed
-		if _, err = tx.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("failed to create schema: %w", err)
-		}
+	// try to migrate if needed
+	if err = cfg.MigrateFunc(ctx, tx, db.GID()); err != nil {
+		return fmt.Errorf("failed to migrate table: %w", err)
 	}
 
-	if exists > 0 {
-		// migrate existing table
-		if err = migrateFn(ctx, tx, db.GID()); err != nil {
-			return fmt.Errorf("failed to migrate %s: %w", tableName, err)
-		}
+	// create indices after migration when all columns exist
+	createIndexes, err := PickQuery(cfg.QueriesMap, db.Type(), cfg.CreateIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to get create indexes query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
+		return fmt.Errorf("failed to create indexes: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
 	return nil
 }

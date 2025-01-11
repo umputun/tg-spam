@@ -78,47 +78,17 @@ func NewDictionary(ctx context.Context, db *engine.SQL) (*Dictionary, error) {
 		return nil, fmt.Errorf("db connection is nil")
 	}
 	res := &Dictionary{db: db, RWLocker: db.MakeLock()}
-	if err := res.init(ctx); err != nil {
+	cfg := engine.TableConfig{
+		Name:          "dictionary",
+		CreateTable:   CmdCreateDictionaryTable,
+		CreateIndexes: CmdCreateDictionaryIndexes,
+		MigrateFunc:   res.migrate,
+		QueriesMap:    dictionaryQueries,
+	}
+	if err := engine.InitTable(ctx, db, cfg); err != nil {
 		return nil, fmt.Errorf("failed to init dictionary storage: %w", err)
 	}
 	return res, nil
-}
-
-//nolint:dupl // it's ok to have similar code for different storages
-func (d *Dictionary) init(ctx context.Context) error {
-	tx, err := d.db.Beginx()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// create table first
-	createSchema, err := engine.PickQuery(dictionaryQueries, d.db.Type(), CmdCreateDictionaryTable)
-	if err != nil {
-		return fmt.Errorf("failed to get create table query: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-
-	// try to migrate if needed
-	if err = d.migrate(ctx, tx, d.db.GID()); err != nil {
-		return fmt.Errorf("failed to migrate table: %w", err)
-	}
-
-	// create indices after migration when all columns exist
-	createIndexes, err := engine.PickQuery(dictionaryQueries, d.db.Type(), CmdCreateDictionaryIndexes)
-	if err != nil {
-		return fmt.Errorf("failed to get create indexes query: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
-		return fmt.Errorf("failed to create indexes: %w", err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	return nil
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
