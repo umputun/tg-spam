@@ -39,45 +39,101 @@ const (
 	SampleOriginAny    SampleOrigin = "any"
 )
 
+// samples-related command constants
+const (
+	CmdCreateSamplesTable engine.DBCmd = iota + 500
+	CmdCreateSamplesIndexes
+)
+
+// queries holds all samples-related queries
+var samplesQueries = engine.QueryMap{
+	engine.Sqlite: {
+		CmdCreateSamplesTable: `
+			CREATE TABLE IF NOT EXISTS samples (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				gid TEXT NOT NULL DEFAULT '',
+				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+				type TEXT CHECK (type IN ('ham', 'spam')),
+				origin TEXT CHECK (origin IN ('preset', 'user')),
+				message TEXT NOT NULL,
+				UNIQUE(gid, message)
+			)`,
+		CmdCreateSamplesIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
+		CmdAddGIDColumn: "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
+	},
+	engine.Postgres: {
+		CmdCreateSamplesTable: `
+			CREATE TABLE IF NOT EXISTS samples (
+				id SERIAL PRIMARY KEY,
+				gid TEXT NOT NULL DEFAULT '',
+				timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				type TEXT CHECK (type IN ('ham', 'spam')),
+				origin TEXT CHECK (origin IN ('preset', 'user')),
+				message TEXT NOT NULL,
+				UNIQUE(gid, message)
+			)`,
+		CmdCreateSamplesIndexes: `
+			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
+		CmdAddGIDColumn: "ALTER TABLE samples ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	},
+}
+
 // NewSamples creates a new Samples storage
 func NewSamples(ctx context.Context, db *engine.SQL) (*Samples, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
+	res := &Samples{db: db, RWLocker: db.MakeLock()}
+	if err := res.init(ctx); err != nil {
+		return nil, fmt.Errorf("failed to init samples storage: %w", err)
+	}
+	return res, nil
+}
 
-	// create schema in a single transaction
-	tx, err := db.Begin()
+//nolint:dupl // it's ok to have similar code for different storages
+func (s *Samples) init(ctx context.Context) error {
+	tx, err := s.db.Beginx()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	schema := `
-		CREATE TABLE IF NOT EXISTS samples (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			gid TEXT NOT NULL,
-			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-			type TEXT CHECK (type IN ('ham', 'spam')),
-			origin TEXT CHECK (origin IN ('preset', 'user')),
-			message TEXT NOT NULL,
-			UNIQUE(gid, message)
-		);
-		CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
-		CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-		CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-		CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
-		CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message);
-    `
+	// create table first
+	createSchema, err := engine.PickQuery(samplesQueries, s.db.Type(), CmdCreateSamplesTable)
+	if err != nil {
+		return fmt.Errorf("failed to get create table query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createSchema); err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
+	}
 
-	if _, err = tx.ExecContext(ctx, schema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+	// try to migrate if needed
+	if err = s.migrate(ctx, tx, s.db.GID()); err != nil {
+		return fmt.Errorf("failed to migrate table: %w", err)
+	}
+
+	// create indices after migration when all columns exist
+	createIndexes, err := engine.PickQuery(samplesQueries, s.db.Type(), CmdCreateSamplesIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to get create indexes query: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, createIndexes); err != nil {
+		return fmt.Errorf("failed to create indexes: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
-	return &Samples{db: db, RWLocker: db.MakeLock()}, nil
+	return nil
 }
 
 // Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
@@ -433,6 +489,11 @@ func (s *Samples) stats(ctx context.Context) (*SamplesStats, error) {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil
+}
+
+func (s *Samples) migrate(_ context.Context, _ *sqlx.Tx, _ string) error {
+	// no migration needed for now
+	return nil
 }
 
 // sampleReader implements io.Reader for database rows and handles partial reads with buffering.
