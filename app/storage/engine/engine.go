@@ -17,6 +17,7 @@ const (
 	Unknown  Type = ""
 	Sqlite   Type = "sqlite"
 	Postgres Type = "postgres"
+	Mysql    Type = "mysql"
 )
 
 // SQL is a wrapper for sqlx.DB with type.
@@ -31,12 +32,21 @@ type SQL struct {
 func NewSqlite(file, gid string) (*SQL, error) {
 	db, err := sqlx.Connect("sqlite", file)
 	if err != nil {
-		return &SQL{}, err
+		return &SQL{}, fmt.Errorf("failed to connect to sqlite: %w", err)
 	}
 	if err := setSqlitePragma(db); err != nil {
 		return &SQL{}, err
 	}
 	return &SQL{DB: *db, gid: gid, dbType: Sqlite}, nil
+}
+
+// NewPostgres creates a new postgres database
+func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
+	db, err := sqlx.ConnectContext(ctx, "postgres", connURL)
+	if err != nil {
+		return &SQL{}, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+	return &SQL{DB: *db, gid: gid, dbType: Postgres}, nil
 }
 
 // GID returns the group id
