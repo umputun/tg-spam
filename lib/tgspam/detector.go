@@ -767,14 +767,14 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 		return spamcheck.Response{
 			Name:    "word-spacing",
 			Spam:    true,
-			Details: fmt.Sprintf("abnormal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+			Details: fmt.Sprintf("abnormal (ratio: %.2f, short: %.0f%%)", spaceRatio, shortWordRatio*100),
 		}
 	}
 
 	return spamcheck.Response{
 		Name:    "word-spacing",
 		Spam:    false,
-		Details: fmt.Sprintf("normal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+		Details: fmt.Sprintf("normal (ratio: %.2f, short: %.0f%%)", spaceRatio, shortWordRatio*100),
 	}
 }
 
