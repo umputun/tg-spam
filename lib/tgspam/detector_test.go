@@ -709,13 +709,13 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 			name:     "normal text",
 			input:    "This is a normal message with regular spacing between words",
 			expected: false,
-			details:  "normal spacing (ratio: 0.18, short words: 20%)",
+			details:  "normal (ratio: 0.18, short: 20%)",
 		},
 		{
 			name:     "another normal text",
 			input:    "For structured content, like code or tables, the ratio can vary significantly based on formatting and indentation",
 			expected: false,
-			details:  "normal spacing (ratio: 0.17, short words: 35%)",
+			details:  "normal (ratio: 0.17, short: 35%)",
 		},
 		{
 			name: "normal text, cyrillic",
@@ -723,25 +723,25 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 				" сконвертировать в эмбеддинги и проверять через них после байеса, но до gpt4. Эмбеддинги должны быть" +
 				" устойчивы к разделенным словам и даже переформулировкам, при этом они гораздо дешевле большой модели.",
 			expected: false,
-			details:  "normal spacing (ratio: 0.17, short words: 26%)",
+			details:  "normal (ratio: 0.17, short: 26%)",
 		},
 		{
 			name:     "suspicious spacing cyrillic",
 			input:    "СРО ЧНО ЭТО КАСА ЕТСЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.31, short words: 75%)",
+			details:  "abnormal (ratio: 0.31, short: 75%)",
 		},
 		{
 			name:     "very suspicious spacing cyrillic",
 			input:    "н а р к о т и к о в, и н в е с т и ц и й",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.95, short words: 100%)",
+			details:  "abnormal (ratio: 0.95, short: 100%)",
 		},
 		{
 			name:     "mixed normal and suspicious",
 			input:    "Hello there к а ж д о г о в э т о й г р у п п е",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.68, short words: 90%)",
+			details:  "abnormal (ratio: 0.68, short: 90%)",
 		},
 		{
 			name:     "short spaced text",
@@ -753,7 +753,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 			name:     "text with some extra spaces",
 			input:    "This   is    a    message    with    some    extra    spaces",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.82, short words: 25%)",
+			details:  "abnormal (ratio: 0.82, short: 25%)",
 		},
 		{
 			name: "real spam example",
@@ -764,7 +764,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 				"на % (вы зараба тываете и  только потом делитесь с нами) Кому действ ительно инте ресно " +
 				"пишите в и я обязат ельно тебе отвечу",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.36, short words: 63%)",
+			details:  "abnormal (ratio: 0.36, short: 63%)",
 		},
 		{
 			name:     "empty string",
@@ -789,7 +789,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.False(t, spam)
-		assert.Equal(t, "normal spacing (ratio: 0.29, short words: 0%)", resp[0].Details)
+		assert.Equal(t, "normal (ratio: 0.29, short: 0%)", resp[0].Details)
 	})
 
 	t.Run("enabled short word threshold", func(t *testing.T) {
@@ -797,7 +797,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.True(t, spam)
-		assert.Equal(t, "abnormal spacing (ratio: 0.29, short words: 80%)", resp[0].Details)
+		assert.Equal(t, "abnormal (ratio: 0.29, short: 80%)", resp[0].Details)
 	})
 
 }
