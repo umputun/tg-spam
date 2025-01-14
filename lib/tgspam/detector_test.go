@@ -698,6 +698,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	d.Config.AbnormalSpacing.ShortWordLen = 3
 	d.Config.AbnormalSpacing.ShortWordRatioThreshold = 0.7
 	d.Config.AbnormalSpacing.SpaceRatioThreshold = 0.3
+	d.Config.AbnormalSpacing.MinWordsCount = 6
 
 	tests := []struct {
 		name     string
@@ -771,6 +772,12 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 			input:    "",
 			expected: false,
 			details:  "too short",
+		},
+		{
+			name:     "low number of words",
+			input:    "с впн всё работает",
+			expected: false,
+			details:  "too few words (4)",
 		},
 	}
 

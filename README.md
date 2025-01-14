@@ -143,6 +143,7 @@ This option is disabled by default. If `--space.enabled` is set or `env:SPACE_EN
 - `--space.short-word` (default:3) - the maximum length of a short word
 - `--space.ratio` (default:0.3) - the ratio of spaces to all characters in the message
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
+- `--space.min-words` (default:5) - the minimum number of words in the message to trigger the check
 
 ### Database Migration for samples (spam and ham), stop words and exclude tokens, after version (v1.16.0+)
 
@@ -278,87 +279,91 @@ Success! The new status is: DISABLED. /help
 ## All Application Options
 
 ```
-       --admin.group=                admin group name, or channel id [$ADMIN_GROUP]
-      --disable-admin-spam-forward  disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
-      --testing-id=                 testing ids, allow bot to reply to them [$TESTING_ID]
-      --history-duration=           history duration (default: 24h) [$HISTORY_DURATION]
-      --history-min-size=           history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
-      --super=                      super-users [$SUPER_USER]
-      --no-spam-reply               do not reply to spam messages [$NO_SPAM_REPLY]
-      --suppress-join-message       delete join message if user is kicked out [$SUPPRESS_JOIN_MESSAGE]
-      --similarity-threshold=       spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
-      --min-msg-len=                min message length to check (default: 50) [$MIN_MSG_LEN]
-      --max-emoji=                  max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
-      --min-probability=            min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
-      --multi-lang=                 number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
-      --paranoid                    paranoid mode, check all messages [$PARANOID]
-      --first-messages-count=       number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
-      --training                    training mode, passive spam detection only [$TRAINING]
-      --soft-ban                    soft ban mode, restrict user actions but not ban [$SOFT_BAN]
-      --dry                         dry mode, no bans [$DRY]
-      --dbg                         debug mode [$DEBUG]
-      --tg-dbg                      telegram debug mode [$TG_DEBUG]
+      --instance-id=                    instance id (default: tg-spam) [$INSTANCE_ID]
+      --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
+      --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
+      --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
+      --history-duration=               history duration (default: 24h) [$HISTORY_DURATION]
+      --history-min-size=               history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
+      --storage-timeout=                storage timeout (default: 0s) [$STORAGE_TIMEOUT]
+      --super=                          super-users [$SUPER_USER]
+      --no-spam-reply                   do not reply to spam messages [$NO_SPAM_REPLY]
+      --suppress-join-message           delete join message if user is kicked out [$SUPPRESS_JOIN_MESSAGE]
+      --similarity-threshold=           spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
+      --min-msg-len=                    min message length to check (default: 50) [$MIN_MSG_LEN]
+      --max-emoji=                      max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
+      --min-probability=                min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
+      --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
+      --paranoid                        paranoid mode, check all messages [$PARANOID]
+      --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
+      --training                        training mode, passive spam detection only [$TRAINING]
+      --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
+      --convert=[only|enabled|disabled] convert mode for txt samples and other storage files to DB (default: enabled)
+      --dry                             dry mode, no bans [$DRY]
+      --dbg                             debug mode [$DEBUG]
+      --tg-dbg                          telegram debug mode [$TG_DEBUG]
 
 telegram:
-      --telegram.token=             telegram bot token [$TELEGRAM_TOKEN]
-      --telegram.group=             group name/id [$TELEGRAM_GROUP]
-      --telegram.timeout=           http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
-      --telegram.idle=              idle duration (default: 30s) [$TELEGRAM_IDLE]
+      --telegram.token=                 telegram bot token [$TELEGRAM_TOKEN]
+      --telegram.group=                 group name/id [$TELEGRAM_GROUP]
+      --telegram.timeout=               http client timeout for telegram (default: 30s) [$TELEGRAM_TIMEOUT]
+      --telegram.idle=                  idle duration (default: 30s) [$TELEGRAM_IDLE]
 
 logger:
-      --logger.enabled              enable spam rotated logs [$LOGGER_ENABLED]
-      --logger.file=                location of spam log (default: tg-spam.log) [$LOGGER_FILE]
-      --logger.max-size=            maximum size before it gets rotated (default: 100M) [$LOGGER_MAX_SIZE]
-      --logger.max-backups=         maximum number of old log files to retain (default: 10) [$LOGGER_MAX_BACKUPS]
+      --logger.enabled                  enable spam rotated logs [$LOGGER_ENABLED]
+      --logger.file=                    location of spam log (default: tg-spam.log) [$LOGGER_FILE]
+      --logger.max-size=                maximum size before it gets rotated (default: 100M) [$LOGGER_MAX_SIZE]
+      --logger.max-backups=             maximum number of old log files to retain (default: 10) [$LOGGER_MAX_BACKUPS]
 
 cas:
-      --cas.api=                    CAS API (default: https://api.cas.chat) [$CAS_API]
-      --cas.timeout=                CAS timeout (default: 5s) [$CAS_TIMEOUT]
+      --cas.api=                        CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.timeout=                    CAS timeout (default: 5s) [$CAS_TIMEOUT]
 
 meta:
-      --meta.links-limit=           max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
-      --meta.image-only             enable image only check [$META_IMAGE_ONLY]
-      --meta.links-only             enable links only check [$META_LINKS_ONLY]
-      --meta.video-only             enable video only check [$META_VIDEO_ONLY]
-      --meta.forward                enable forward check [$META_FORWARD]
+      --meta.links-limit=               max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
+      --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
+      --meta.links-only                 enable links only check [$META_LINKS_ONLY]
+      --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
+      --meta.forward                    enable forward check [$META_FORWARD]
 
 openai:
-      --openai.token=               openai token, disabled if not set [$OPENAI_TOKEN]
-      --openai.apibase=             custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
-      --openai.veto                 veto mode, confirm detected spam [$OPENAI_VETO]
-      --openai.prompt=              openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
-      --openai.model=               openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
-      --openai.max-tokens-response= openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
-      --openai.max-tokens-request=  openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
-      --openai.max-symbols-request= openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
-      --openai.retry-count=         openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
+      --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.apibase=                 custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
+      --openai.veto                     veto mode, confirm detected spam [$OPENAI_VETO]
+      --openai.prompt=                  openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
+      --openai.model=                   openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
+      --openai.max-tokens-response=     openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
+      --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
+      --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
+      --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
 
 space:
-      --space.enabled               enable abnormal words check [$SPACE_ENABLED]
-      --space.short-word=           the length of the word to be considered short (default: 3) [$SPACE_SHORT_WORD]
-      --space.short-ratio=          the ratio of short words to all words in the message (default: 0.7) [$SPACE_SHORT_RATIO]
-      --space.ratio=                the ratio of spaces to all characters in the message (default: 0.3) [$SPACE_RATIO]
+      --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
+      --space.ratio=                    the ratio of spaces to all characters in the message (default: 0.3) [$SPACE_RATIO]
+      --space.short-ratio=              the ratio of short words to all words in the message (default: 0.7) [$SPACE_SHORT_RATIO]
+      --space.short-word=               the length of the word to be considered short (default: 3) [$SPACE_SHORT_WORD]
+      --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
 
 files:
-      --files.samples=              samples data path (default: data) [$FILES_SAMPLES]
-      --files.dynamic=              dynamic data path (default: data) [$FILES_DYNAMIC]
-      --files.watch-interval=       watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.samples=                  samples data path (default: data) [$FILES_SAMPLES]
+      --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
+      --files.watch-interval=           watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
 
 message:
-      --message.startup=            startup message [$MESSAGE_STARTUP]
-      --message.spam=               spam message (default: this is spam) [$MESSAGE_SPAM]
-      --message.dry=                spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=               warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay
-                                    compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.startup=                startup message [$MESSAGE_STARTUP]
+      --message.spam=                   spam message (default: this is spam) [$MESSAGE_SPAM]
+      --message.dry=                    spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
+      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial.
+                                        Stay compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
-      --server.enabled              enable web server [$SERVER_ENABLED]
-      --server.listen=              listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
-      --server.auth-hash=           basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
+      --server.enabled                  enable web server [$SERVER_ENABLED]
+      --server.listen=                  listen address (default: :8080) [$SERVER_LISTEN]
+      --server.auth=                    basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
+      --server.auth-hash=               basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
 
 Help Options:
-  -h, --help                        Show this help message
+  -h, --help                            Show this help message
 
 ```
 
