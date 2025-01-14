@@ -63,6 +63,7 @@ type Config struct {
 
 	AbnormalSpacing struct {
 		Enabled                 bool    // if true, enable check for abnormal spacing
+		MinWordsCount           int     // the minimum number of words in the message to be considered
 		ShortWordLen            int     // the length of the word to be considered short (in rune characters)
 		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
 		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
@@ -729,6 +730,14 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 	}
 
 	words := strings.Fields(text)
+	// check for minimum number of words
+	if len(words) < d.AbnormalSpacing.MinWordsCount {
+		return spamcheck.Response{
+			Name:    "word-spacing",
+			Spam:    false,
+			Details: fmt.Sprintf("too few words (%d)", len(words)),
+		}
+	}
 
 	// count letters and spaces in original text
 	var totalChars, spaces int
