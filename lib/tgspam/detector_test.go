@@ -1476,6 +1476,37 @@ func TestDetector_RemoveSpamHam(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckHistory(t *testing.T) {
+	d := NewDetector(Config{HistorySize: 5})
+	_, err := d.LoadStopWords(strings.NewReader("spam text\nbad text"))
+	require.NoError(t, err)
+
+	// first message is ham
+	isSpam, _ := d.Check(spamcheck.Request{Msg: "good message", UserID: "1"})
+	assert.False(t, isSpam)
+	hamMsgs := d.hamHistory.Last(5)
+	require.Equal(t, 1, len(hamMsgs))
+	assert.Equal(t, "good message", hamMsgs[0].Msg)
+	assert.Empty(t, d.spamHistory.Last(5))
+
+	// second message is spam
+	isSpam, _ = d.Check(spamcheck.Request{Msg: "spam text", UserID: "1"})
+	assert.True(t, isSpam)
+	spamMsgs := d.spamHistory.Last(5)
+	require.Equal(t, 1, len(spamMsgs))
+	assert.Equal(t, "spam text", spamMsgs[0].Msg)
+	assert.Equal(t, 1, len(d.hamHistory.Last(5)), "ham history should remain unchanged")
+
+	// third message is ham
+	isSpam, _ = d.Check(spamcheck.Request{Msg: "another good one", UserID: "2"})
+	assert.False(t, isSpam)
+	hamMsgs = d.hamHistory.Last(5)
+	require.Equal(t, 2, len(hamMsgs))
+	assert.Equal(t, "good message", hamMsgs[0].Msg)
+	assert.Equal(t, "another good one", hamMsgs[1].Msg)
+	assert.Equal(t, 1, len(d.spamHistory.Last(5)), "spam history should remain unchanged")
+}
+
 func BenchmarkTokenize(b *testing.B) {
 	d := &Detector{
 		excludedTokens: map[string]struct{}{"the": {}, "and": {}, "or": {}, "but": {}, "in": {}, "on": {}, "at": {}, "to": {}},
