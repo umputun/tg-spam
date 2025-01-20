@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// LastRequests keeps track of last N requests globally
+// LastRequests keeps track of last N requests, thread-safe.
 type LastRequests struct {
 	requests *ring.Ring
 	size     int

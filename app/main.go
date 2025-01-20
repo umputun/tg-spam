@@ -86,6 +86,7 @@ type options struct {
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	AbnormalSpacing struct {
@@ -128,7 +129,8 @@ type options struct {
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
 
-	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
+	HistorySize int    `long:"history-size" env:"LAST_MSGS_HISTORY_SIZE" default:"100" description:"history size"`
+	Convert     string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -441,7 +443,9 @@ func makeDetector(opts options) *tgspam.Detector {
 		FirstMessageOnly:    !opts.ParanoidMode,
 		FirstMessagesCount:  opts.FirstMessagesCount,
 		OpenAIVeto:          opts.OpenAI.Veto,
+		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
 		MultiLangWords:      opts.MultiLangWords,
+		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.

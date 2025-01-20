@@ -63,6 +63,7 @@ type Config struct {
 	HTTPClient          HTTPClient    // http client to use for requests
 	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	OpenAIHistorySize   int           // history size for openai
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 
@@ -206,7 +207,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
-			spam, details := d.openaiChecker.check(cleanMsg)
+			var hist []spamcheck.Request // by default, openai doesn't use history
+			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
+				// if history size is set, we use the last N messages for openai
+				hist = d.hamHistory.Last(d.OpenAIHistorySize)
+			}
+			spam, details := d.openaiChecker.check(cleanMsg, hist)
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
