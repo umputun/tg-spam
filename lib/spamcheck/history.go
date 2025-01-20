@@ -12,6 +12,8 @@ type LastRequests struct {
 	lock     sync.RWMutex
 }
 
+const maxMsgLen = 1024
+
 // NewLastRequests creates new requests tracker
 func NewLastRequests(size int) *LastRequests {
 	// minimum size is 1
@@ -28,6 +30,11 @@ func NewLastRequests(size int) *LastRequests {
 func (h *LastRequests) Push(req Request) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
+
+	if len(req.Msg) > maxMsgLen {
+		// truncate the message if it's too long to prevent memory exhaustion attacks
+		req.Msg = req.Msg[:maxMsgLen]
+	}
 
 	h.requests.Value = req
 	h.requests = h.requests.Next()

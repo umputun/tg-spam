@@ -1,6 +1,7 @@
 package spamcheck
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,4 +108,24 @@ func TestLastRequestsNilValues(t *testing.T) {
 	res := h.Last(2)
 	require.Equal(t, 1, len(res))
 	assert.Equal(t, req, res[0])
+}
+
+func TestLastRequestsVeryLong(t *testing.T) {
+	history := NewLastRequests(1)
+
+	// create a very long message
+	longMessage := strings.Repeat("a", 2000)
+
+	req := Request{
+		Msg:      longMessage,
+		UserID:   "user5",
+		UserName: "Eve",
+	}
+
+	history.Push(req)
+
+	// Retrieve and verify
+	lastMsgs := history.Last(1)
+	require.Len(t, lastMsgs, 1)
+	assert.Len(t, lastMsgs[0].Msg, 1024, "Message should be truncated to max length")
 }
