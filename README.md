@@ -100,10 +100,12 @@ Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other p
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
-- OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
-- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
-- By default, OpenAI integration is disabled.
+- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token.
+-  Only the initial message(s) from a specific user are examined for spam. If `--paranoid` mode is activated, OpenAI will not be utilized at all.
+-  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
+-  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
+-  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
+
 
 **Emoji Count**
 
@@ -137,7 +139,7 @@ This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
-** Abnormal spacing check**
+**Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
 - `--space.short-word` (default:3) - the maximum length of a short word
@@ -298,6 +300,7 @@ Success! The new status is: DISABLED. /help
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                        training mode, passive spam detection only [$TRAINING]
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
+      --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
       --convert=[only|enabled|disabled] convert mode for txt samples and other storage files to DB (default: enabled)
       --dry                             dry mode, no bans [$DRY]
       --dbg                             debug mode [$DEBUG]
@@ -336,6 +339,7 @@ openai:
       --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
+      --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
@@ -353,8 +357,8 @@ message:
       --message.startup=                startup message [$MESSAGE_STARTUP]
       --message.spam=                   spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                    spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial.
-                                        Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the
+                                        consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
