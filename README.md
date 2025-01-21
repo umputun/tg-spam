@@ -51,17 +51,21 @@ As long as theses two parameters are set, the bot will work. Don't forget to add
 
 There are some important customizations available:
 
-First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
-
-User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located.
-
-Second, are messages the bot is sending. There are three messages user may want to customize:
+First of all, are messages the bot is sending. There are three messages user may want to customize:
 
 - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
-- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
+- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected, optional
 - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
+
+Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+
+### Legacy way of storing data in text files
+
+**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about the old way of storing data in text files.
+
+Another thing to customize is the sample files; the bot uses some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt`, and `stop-words.txt`. Users can specify a custom location for them with the `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory where all the files are located.
 
 There are 4 files used by the bot to detect spam:
 
@@ -70,9 +74,7 @@ There are 4 files used by the bot to detect spam:
 - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words. Each line in this file is a single token (word), or a comma-separated list of words in dbl-quotes.
 - `stop-words.txt` - list of stop words to detect spam right away. Each line in this file is a single phrase (can be one or more words). The bot checks if any of those phrases are present in the message and if so, it marks the message as spam.
 
-_The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
-
-Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot.
 
 ### Configuring spam detection modules and parameters
 
