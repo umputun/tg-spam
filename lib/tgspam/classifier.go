@@ -10,6 +10,12 @@ import (
 // spamClass is alias of string, representing class of a document
 type spamClass string
 
+// enum for spamClass
+const (
+	ClassSpam spamClass = "spam"
+	ClassHam  spamClass = "ham"
+)
+
 // document is a group of tokens with certain class
 type document struct {
 	spamClass spamClass

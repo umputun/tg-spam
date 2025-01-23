@@ -113,20 +113,22 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
 func (s *SpamFilter) UpdateSpam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[INFO] update spam samples with %q", cleanMsg)
+	log.Printf("[DEBUG] update spam samples with %q", cleanMsg)
 	if err := s.Detector.UpdateSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
+	log.Printf("[INFO] updated spam samples with %q", cleanMsg)
 	return nil
 }
 
 // UpdateHam appends a message to the ham samples file and updates the classifier
 func (s *SpamFilter) UpdateHam(msg string) error {
 	cleanMsg := strings.ReplaceAll(msg, "\n", " ")
-	log.Printf("[INFO] update ham samples with %q", cleanMsg)
+	log.Printf("[DEBUG] update ham samples with %q", cleanMsg)
 	if err := s.Detector.UpdateHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
+	log.Printf("[INFO] updated ham samples with %q", cleanMsg)
 	return nil
 }
 
