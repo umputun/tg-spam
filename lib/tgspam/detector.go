@@ -217,14 +217,19 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		return true, cr
 	}
 
-	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+	// update approved users only if it's not paranoid mode and not a check-only request
+	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
-
-		au := approved.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
-			UserName: req.UserName, Timestamp: time.Now()}
-		d.approvedUsers[req.UserID] = au
-		if d.userStorage != nil && !req.CheckOnly {
+		au := approved.UserInfo{
+			Count:     d.approvedUsers[req.UserID].Count + 1,
+			UserID:    req.UserID,
+			UserName:  req.UserName,
+			Timestamp: time.Now(),
+		}
+		d.approvedUsers[req.UserID] = au // update approved users status in memory
+		if d.userStorage != nil {
+			// update approved users status in storage
 			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
 		}
 	}
@@ -295,6 +300,7 @@ func (d *Detector) ApprovedUsers() (res []approved.UserInfo) {
 }
 
 // IsApprovedUser checks if a given user ID is approved.
+// It uses memory cache for approved users and compares the count of messages sent by the user.
 func (d *Detector) IsApprovedUser(userID string) bool {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
