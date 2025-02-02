@@ -31,6 +31,9 @@ github.com/go-chi/chi/v5/middleware
 # github.com/go-pkgz/expirable-cache/v3 v3.0.0
 ## explicit; go 1.20
 github.com/go-pkgz/expirable-cache/v3
+# github.com/go-pkgz/fileutils v0.2.0
+## explicit; go 1.19
+github.com/go-pkgz/fileutils
 # github.com/go-pkgz/lgr v0.11.1
 ## explicit; go 1.20
 github.com/go-pkgz/lgr
