@@ -1201,7 +1201,7 @@ func TestDetector_LoadSamples(t *testing.T) {
 
 	t.Run("multiple readers", func(t *testing.T) {
 		d := NewDetector(Config{})
-		exclSamples := strings.NewReader(`"xy", "z", "the"`)
+		exclSamples := strings.NewReader("xy\n z\n the\n")
 		spamSamples1 := strings.NewReader("win free iPhone")
 		spamSamples2 := strings.NewReader("lottery prize xyz")
 		hamsSamples1 := strings.NewReader("hello world\nhow are you\nhave a good day")
@@ -1255,7 +1255,7 @@ func TestDetector_tokenize(t *testing.T) {
 	}
 }
 
-func TestDetector_tokenIterator(t *testing.T) {
+func TestDetector_readerIterator(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -1265,15 +1265,16 @@ func TestDetector_tokenIterator(t *testing.T) {
 		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
 		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
 		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
-		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, empty tokens", input: "\"hello\",world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
+		{name: "multiple tokens per line with", input: " hello blah\n the new world ",
+			expected: []string{"hello blah", "the new world"}},
+		{name: "with extra EOL", input: " hello blah\n the new world \n  ", expected: []string{"hello blah", "the new world"}},
+		{name: "with empty lines", input: " hello blah\n\n  \n the new world \n  \n", expected: []string{"hello blah", "the new world"}},
 	}
 
 	d := Detector{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ch := d.tokenIterator(bytes.NewBufferString(tt.input))
+			ch := d.readerIterator(bytes.NewBufferString(tt.input))
 			res := []string{}
 			for token := range ch {
 				res = append(res, token)
@@ -1283,9 +1284,9 @@ func TestDetector_tokenIterator(t *testing.T) {
 	}
 }
 
-func TestDetector_tokenIteratorMultipleReaders(t *testing.T) {
+func TestDetector_readerIteratorMultipleReaders(t *testing.T) {
 	d := Detector{}
-	ch := d.tokenIterator(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
+	ch := d.readerIterator(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
 	res := []string{}
 	for token := range ch {
 		res = append(res, token)
@@ -1474,6 +1475,15 @@ func TestDetector_RemoveSpamHam(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "can't unlearn spam samples")
 	})
+}
+
+func TestDetector_buildDocs(t *testing.T) {
+	d := &Detector{excludedTokens: map[string]struct{}{"the": {}, "and": {}}}
+
+	docs := d.buildDocs("buy crypto coins now", "spam")
+	assert.Equal(t, 1, len(docs), "should create single document")
+	assert.Equal(t, spamClass("spam"), docs[0].spamClass)
+	assert.ElementsMatch(t, []string{"buy", "crypto", "coins", "now"}, docs[0].tokens)
 }
 
 func TestDetector_CheckHistory(t *testing.T) {
