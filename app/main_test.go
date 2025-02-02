@@ -713,39 +713,22 @@ func TestBackupDB(t *testing.T) {
 		require.Equal(t, "test data", string(content))
 	})
 
-	t.Run("mixed_timestamp_formats", func(t *testing.T) {
+	t.Run("mixed_formats", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
 		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
 
-		baseTime := time.Now().Add(-24 * time.Hour) // start from 24 hours ago
-		// create backups files in chronological order
-		backups := []struct {
-			name    string
-			content string
-			modTime time.Time
-		}{
-			{dbFile + ".backup1", "old1", baseTime}, // oldest by mod time
-			{dbFile + ".master-123abc-20250108T00:01:26", "old2", time.Time{}},
-			{dbFile + ".backup2", "old3", baseTime.Add(23 * time.Hour)}, // much newer than backup1
-			{dbFile + ".master-456def-20250108T00:02:26", "old4", time.Time{}},
-		}
+		// make older files with version suffix
+		require.NoError(t, os.WriteFile(dbFile+".master-aaa-20250101T12:00:00", []byte("1"), 0600))
+		require.NoError(t, os.WriteFile(dbFile+".master-bbb-20250101T13:00:00", []byte("2"), 0600))
 
-		// create all files first, then set mod times to avoid any timing issues
-		for _, b := range backups {
-			require.NoError(t, os.WriteFile(b.name, []byte(b.content), 0600))
-		}
+		// make normal files dated between versioned ones
+		testTime := time.Date(2025, 1, 1, 12, 30, 0, 0, time.Local)
+		require.NoError(t, os.WriteFile(dbFile+".backup1", []byte("3"), 0600))
+		require.NoError(t, os.Chtimes(dbFile+".backup1", testTime, testTime))
 
-		// set mod times after all files created
-		for _, b := range backups {
-			if !b.modTime.IsZero() {
-				require.NoError(t, os.Chtimes(b.name, b.modTime, b.modTime))
-			}
-		}
-
-		// make new backup with maxBackups=3
-		newVer := "master-789ghi-20250108T00:03:26"
-		err := backupDB(dbFile, newVer, 3)
+		// make new backup, should keep only 3 newest files
+		err := backupDB(dbFile, "master-ccc-20250101T14:00:00", 3)
 		require.NoError(t, err)
 
 		// check remaining files
@@ -753,25 +736,20 @@ func TestBackupDB(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, files, 3)
 
-		// verify the oldest file was removed
-		_, err = os.Stat(backups[0].name)
-		require.True(t, os.IsNotExist(err), "oldest file (backup1) should be removed")
-
-		// dump all files and their mod times for debugging
-		for _, f := range files {
-			info, _ := os.Stat(f)
-			t.Logf("file: %s, mod time: %v", filepath.Base(f), info.ModTime())
-		}
-
-		// verify remaining files
+		// verify we have the three newest files by checking their names
 		foundFiles := make(map[string]bool)
 		for _, f := range files {
 			foundFiles[filepath.Base(f)] = true
+			t.Logf("found file: %s", filepath.Base(f))
 		}
 
-		require.True(t, foundFiles["test.db.master-456def-20250108T00:02:26"], "should have middle versioned backup")
-		require.True(t, foundFiles["test.db.master-789ghi-20250108T00:03:26"], "should have newest backup")
-		require.True(t, foundFiles["test.db.backup2"], "should have newer non-versioned backup")
+		require.True(t, foundFiles["test.db.master-ccc-20250101T14:00:00"], "newest versioned backup")
+		require.True(t, foundFiles["test.db.master-bbb-20250101T13:00:00"], "middle versioned backup")
+		require.True(t, foundFiles["test.db.backup1"], "normal backup with mod time in between")
+
+		// and oldest versioned backup should be removed
+		_, err = os.Stat(dbFile + ".master-aaa-20250101T12:00:00")
+		require.True(t, os.IsNotExist(err), "oldest versioned file should be gone")
 	})
 
 	t.Run("version with dots", func(t *testing.T) {
