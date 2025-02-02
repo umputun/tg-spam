@@ -249,3 +249,53 @@ func TestVideosCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestAudioCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name: "No audio and text",
+			req: spamcheck.Request{
+				Msg: "This is a message with text.",
+				Meta: spamcheck.MetaData{
+					HasAudio: false,
+				},
+			},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "no audio without text"},
+		},
+		{
+			name: "Audio with text",
+			req: spamcheck.Request{
+				Msg: "This is a message with text and an audio.",
+				Meta: spamcheck.MetaData{
+					HasAudio: true,
+				},
+			},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "no audio without text"},
+		},
+		{
+			name: "Audio without text",
+			req: spamcheck.Request{
+				Msg: "",
+				Meta: spamcheck.MetaData{
+					HasAudio: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "audio",
+				Spam:    true,
+				Details: "audio without text",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := AudioCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}

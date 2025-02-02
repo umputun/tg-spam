@@ -71,6 +71,7 @@ type Settings struct {
 	MetaLinksOnly           bool     `json:"meta_links_only"`
 	MetaImageOnly           bool     `json:"meta_image_only"`
 	MetaVideoOnly           bool     `json:"meta_video_only"`
+	MetaAudioOnly           bool     `json:"meta_audio_only"`
 	MetaForwarded           bool     `json:"meta_forwarded"`
 	MultiLangLimit          int      `json:"multi_lang_limit"`
 	OpenAIEnabled           bool     `json:"openai_enabled"`

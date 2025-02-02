@@ -133,6 +133,10 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
 
+**Audio only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
+
 **Forward check**
 
 This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD` is `true`, the bot will check if the message forwarded. If the message is a forward, it will be marked as spam.
@@ -345,6 +349,7 @@ meta:
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]
+      --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
