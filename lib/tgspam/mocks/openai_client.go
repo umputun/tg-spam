@@ -76,3 +76,17 @@ func (mock *OpenAIClientMock) CreateChatCompletionCalls() []struct {
 	mock.lockCreateChatCompletion.RUnlock()
 	return calls
 }
+
+// ResetCreateChatCompletionCalls reset all the calls that were made to CreateChatCompletion.
+func (mock *OpenAIClientMock) ResetCreateChatCompletionCalls() {
+	mock.lockCreateChatCompletion.Lock()
+	mock.calls.CreateChatCompletion = nil
+	mock.lockCreateChatCompletion.Unlock()
+}
+
+// ResetCalls reset all the calls that were made to all mocked methods.
+func (mock *OpenAIClientMock) ResetCalls() {
+	mock.lockCreateChatCompletion.Lock()
+	mock.calls.CreateChatCompletion = nil
+	mock.lockCreateChatCompletion.Unlock()
+}

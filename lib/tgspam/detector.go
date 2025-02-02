@@ -44,6 +44,11 @@ type Detector struct {
 	hamSamplesUpd  SampleUpdater
 	userStorage    UserStorage
 
+	// history of recent messages to keep in memory
+	// can be passed to checkers supporting history
+	hamHistory  *spamcheck.LastRequests
+	spamHistory *spamcheck.LastRequests
+
 	lock sync.RWMutex
 }
 
@@ -58,6 +63,7 @@ type Config struct {
 	HTTPClient          HTTPClient    // http client to use for requests
 	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	OpenAIHistorySize   int           // history size for openai
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 
@@ -68,6 +74,7 @@ type Config struct {
 		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
 		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
 	}
+	HistorySize int // history of recent messages to keep in memory
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
@@ -104,6 +111,8 @@ func NewDetector(p Config) *Detector {
 		classifier:    newClassifier(),
 		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
+		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
+		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
 	}
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
@@ -173,8 +182,10 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	if len([]rune(req.Msg)) < d.MinMsgLen {
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		if isSpamDetected(cr) {
+			d.spamHistory.Push(req)
 			return true, cr // spam from the checks above
 		}
+		d.hamHistory.Push(req)
 		return false, cr
 	}
 
@@ -196,7 +207,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
-			spam, details := d.openaiChecker.check(cleanMsg)
+			var hist []spamcheck.Request // by default, openai doesn't use history
+			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
+				// if history size is set, we use the last N messages for openai
+				hist = d.hamHistory.Last(d.OpenAIHistorySize)
+			}
+			spam, details := d.openaiChecker.check(cleanMsg, hist)
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
@@ -214,6 +230,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	if spamDetected {
+		d.spamHistory.Push(req)
 		return true, cr
 	}
 
@@ -233,6 +250,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
 		}
 	}
+	d.hamHistory.Push(req)
 	return false, cr
 }
 

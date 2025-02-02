@@ -51,17 +51,21 @@ As long as theses two parameters are set, the bot will work. Don't forget to add
 
 There are some important customizations available:
 
-First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
-
-User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located.
-
-Second, are messages the bot is sending. There are three messages user may want to customize:
+First of all, are messages the bot is sending. There are three messages user may want to customize:
 
 - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
-- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
+- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected, optional
 - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
+
+Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+
+### Legacy way of storing data in text files
+
+**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about the old way of storing data in text files.
+
+Another thing to customize is the sample files; the bot uses some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt`, and `stop-words.txt`. Users can specify a custom location for them with the `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory where all the files are located.
 
 There are 4 files used by the bot to detect spam:
 
@@ -70,9 +74,7 @@ There are 4 files used by the bot to detect spam:
 - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words. Each line in this file is a single token (word), or a comma-separated list of words in dbl-quotes.
 - `stop-words.txt` - list of stop words to detect spam right away. Each line in this file is a single phrase (can be one or more words). The bot checks if any of those phrases are present in the message and if so, it marks the message as spam.
 
-_The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
-
-Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot.
 
 ### Configuring spam detection modules and parameters
 
@@ -100,10 +102,12 @@ Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other p
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
-- OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
-- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
-- By default, OpenAI integration is disabled.
+- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token.
+-  Only the initial message(s) from a specific user are examined for spam. If `--paranoid` mode is activated, OpenAI will not be utilized at all.
+-  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
+-  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
+-  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
+
 
 **Emoji Count**
 
@@ -137,7 +141,7 @@ This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
-** Abnormal spacing check**
+**Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
 - `--space.short-word` (default:3) - the maximum length of a short word
@@ -298,6 +302,7 @@ Success! The new status is: DISABLED. /help
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                        training mode, passive spam detection only [$TRAINING]
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
+      --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
       --convert=[only|enabled|disabled] convert mode for txt samples and other storage files to DB (default: enabled)
       --dry                             dry mode, no bans [$DRY]
       --dbg                             debug mode [$DEBUG]
@@ -336,6 +341,7 @@ openai:
       --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
+      --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
@@ -353,8 +359,8 @@ message:
       --message.startup=                startup message [$MESSAGE_STARTUP]
       --message.spam=                   spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                    spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial.
-                                        Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the
+                                        consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
