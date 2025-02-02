@@ -103,6 +103,16 @@ func (u *SampleUpdater) Append(msg string) error {
 	return u.samplesService.Add(ctx, u.sampleType, SampleOriginUser, msg)
 }
 
+// Remove a message from the samples
+func (u *SampleUpdater) Remove(msg string) error {
+	ctx, cancel := context.Background(), func() {}
+	if u.timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), u.timeout)
+	}
+	defer cancel()
+	return u.samplesService.DeleteMessage(ctx, msg)
+}
+
 // Reader returns a reader for the samples
 func (u *SampleUpdater) Reader() (io.ReadCloser, error) {
 	// we don't want to pass context with timeout here, as it's an async operation

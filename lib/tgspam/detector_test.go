@@ -698,6 +698,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	d.Config.AbnormalSpacing.ShortWordLen = 3
 	d.Config.AbnormalSpacing.ShortWordRatioThreshold = 0.7
 	d.Config.AbnormalSpacing.SpaceRatioThreshold = 0.3
+	d.Config.AbnormalSpacing.MinWordsCount = 6
 
 	tests := []struct {
 		name     string
@@ -709,13 +710,13 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 			name:     "normal text",
 			input:    "This is a normal message with regular spacing between words",
 			expected: false,
-			details:  "normal spacing (ratio: 0.18, short words: 20%)",
+			details:  "normal (ratio: 0.18, short: 20%)",
 		},
 		{
 			name:     "another normal text",
 			input:    "For structured content, like code or tables, the ratio can vary significantly based on formatting and indentation",
 			expected: false,
-			details:  "normal spacing (ratio: 0.17, short words: 35%)",
+			details:  "normal (ratio: 0.17, short: 35%)",
 		},
 		{
 			name: "normal text, cyrillic",
@@ -723,25 +724,25 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 				" сконвертировать в эмбеддинги и проверять через них после байеса, но до gpt4. Эмбеддинги должны быть" +
 				" устойчивы к разделенным словам и даже переформулировкам, при этом они гораздо дешевле большой модели.",
 			expected: false,
-			details:  "normal spacing (ratio: 0.17, short words: 26%)",
+			details:  "normal (ratio: 0.17, short: 26%)",
 		},
 		{
 			name:     "suspicious spacing cyrillic",
 			input:    "СРО ЧНО ЭТО КАСА ЕТСЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.31, short words: 75%)",
+			details:  "abnormal (ratio: 0.31, short: 75%)",
 		},
 		{
 			name:     "very suspicious spacing cyrillic",
 			input:    "н а р к о т и к о в, и н в е с т и ц и й",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.95, short words: 100%)",
+			details:  "abnormal (ratio: 0.95, short: 100%)",
 		},
 		{
 			name:     "mixed normal and suspicious",
 			input:    "Hello there к а ж д о г о в э т о й г р у п п е",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.68, short words: 90%)",
+			details:  "abnormal (ratio: 0.68, short: 90%)",
 		},
 		{
 			name:     "short spaced text",
@@ -753,7 +754,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 			name:     "text with some extra spaces",
 			input:    "This   is    a    message    with    some    extra    spaces",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.82, short words: 25%)",
+			details:  "abnormal (ratio: 0.82, short: 25%)",
 		},
 		{
 			name: "real spam example",
@@ -764,13 +765,19 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 				"на % (вы зараба тываете и  только потом делитесь с нами) Кому действ ительно инте ресно " +
 				"пишите в и я обязат ельно тебе отвечу",
 			expected: true,
-			details:  "abnormal spacing (ratio: 0.36, short words: 63%)",
+			details:  "abnormal (ratio: 0.36, short: 63%)",
 		},
 		{
 			name:     "empty string",
 			input:    "",
 			expected: false,
 			details:  "too short",
+		},
+		{
+			name:     "low number of words",
+			input:    "с впн всё работает",
+			expected: false,
+			details:  "too few words (4)",
 		},
 	}
 
@@ -789,7 +796,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.False(t, spam)
-		assert.Equal(t, "normal spacing (ratio: 0.29, short words: 0%)", resp[0].Details)
+		assert.Equal(t, "normal (ratio: 0.29, short: 0%)", resp[0].Details)
 	})
 
 	t.Run("enabled short word threshold", func(t *testing.T) {
@@ -797,7 +804,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.True(t, spam)
-		assert.Equal(t, "abnormal spacing (ratio: 0.29, short words: 80%)", resp[0].Details)
+		assert.Equal(t, "abnormal (ratio: 0.29, short: 80%)", resp[0].Details)
 	})
 
 }
@@ -1194,7 +1201,7 @@ func TestDetector_LoadSamples(t *testing.T) {
 
 	t.Run("multiple readers", func(t *testing.T) {
 		d := NewDetector(Config{})
-		exclSamples := strings.NewReader(`"xy", "z", "the"`)
+		exclSamples := strings.NewReader("xy\n z\n the\n")
 		spamSamples1 := strings.NewReader("win free iPhone")
 		spamSamples2 := strings.NewReader("lottery prize xyz")
 		hamsSamples1 := strings.NewReader("hello world\nhow are you\nhave a good day")
@@ -1248,7 +1255,7 @@ func TestDetector_tokenize(t *testing.T) {
 	}
 }
 
-func TestDetector_tokenIterator(t *testing.T) {
+func TestDetector_readerIterator(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -1258,15 +1265,16 @@ func TestDetector_tokenIterator(t *testing.T) {
 		{name: "token per line", input: "hello\nworld", expected: []string{"hello", "world"}},
 		{name: "token per line", input: "hello 123\nworld", expected: []string{"hello 123", "world"}},
 		{name: "token per line with spaces", input: "hello \n world", expected: []string{"hello", "world"}},
-		{name: "tokens comma separated", input: "\"hello\",\"world\"\nsomething", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, extra EOL", input: "\"hello\",world\nsomething\n", expected: []string{"hello", "world", "something"}},
-		{name: "tokens comma separated, empty tokens", input: "\"hello\",world,\"\"\nsomething\n ", expected: []string{"hello", "world", "something"}},
+		{name: "multiple tokens per line with", input: " hello blah\n the new world ",
+			expected: []string{"hello blah", "the new world"}},
+		{name: "with extra EOL", input: " hello blah\n the new world \n  ", expected: []string{"hello blah", "the new world"}},
+		{name: "with empty lines", input: " hello blah\n\n  \n the new world \n  \n", expected: []string{"hello blah", "the new world"}},
 	}
 
 	d := Detector{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ch := d.tokenIterator(bytes.NewBufferString(tt.input))
+			ch := d.readerIterator(bytes.NewBufferString(tt.input))
 			res := []string{}
 			for token := range ch {
 				res = append(res, token)
@@ -1276,9 +1284,9 @@ func TestDetector_tokenIterator(t *testing.T) {
 	}
 }
 
-func TestDetector_tokenIteratorMultipleReaders(t *testing.T) {
+func TestDetector_readerIteratorMultipleReaders(t *testing.T) {
 	d := Detector{}
-	ch := d.tokenIterator(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
+	ch := d.readerIterator(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
 	res := []string{}
 	for token := range ch {
 		res = append(res, token)
@@ -1400,6 +1408,113 @@ func Test_cleanEmoji(t *testing.T) {
 			assert.Equal(t, tt.clean, cleanEmoji(tt.input))
 		})
 	}
+}
+
+func TestDetector_RemoveSpamHam(t *testing.T) {
+	updSpam := &mocks.SampleUpdaterMock{
+		RemoveFunc: func(msg string) error {
+			return nil
+		},
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.WithSpamUpdater(updSpam)
+
+	// load initial samples WITHOUT the test message
+	spamSamples := strings.NewReader("lottery prize xyz")
+	hamsSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
+	lr, err := d.LoadSamples(strings.NewReader("xyz"), []io.Reader{spamSamples}, []io.Reader{hamsSamples})
+	require.NoError(t, err)
+	assert.Equal(t, LoadResult{ExcludedTokens: 1, SpamSamples: 1, HamSamples: 3}, lr)
+
+	// add our test message separately
+	spamMsg := "win free iPhone"
+	err = d.UpdateSpam(spamMsg)
+	require.NoError(t, err)
+
+	t.Run("initially classified as spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "win free iPhone hello world"})
+		t.Logf("%+v", cr)
+		require.True(t, spam, "should initially be classified as spam")
+		require.NotEmpty(t, cr, "should have classification results")
+		assert.Equal(t, "classifier", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+	})
+
+	err = d.RemoveSpam(spamMsg)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(updSpam.RemoveCalls()))
+	assert.Equal(t, spamMsg, updSpam.RemoveCalls()[0].Msg)
+
+	t.Run("after removing spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "win free iPhone hello world"})
+		t.Logf("%+v", cr)
+		require.NotEmpty(t, cr, "should have classification results")
+		assert.Equal(t, "classifier", cr[0].Name)
+		assert.False(t, spam, "should no longer be classified as spam")
+		assert.False(t, cr[0].Spam)
+	})
+
+	t.Run("error on updater", func(t *testing.T) {
+		failingUpd := &mocks.SampleUpdaterMock{
+			RemoveFunc: func(msg string) error {
+				return fmt.Errorf("remove error")
+			},
+		}
+		d.WithSpamUpdater(failingUpd)
+		err := d.RemoveSpam(spamMsg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "can't unlearn spam samples")
+	})
+
+	t.Run("error on non-existent message", func(t *testing.T) {
+		err := d.RemoveSpam("not-learned-message")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "can't unlearn spam samples")
+	})
+}
+
+func TestDetector_buildDocs(t *testing.T) {
+	d := &Detector{excludedTokens: map[string]struct{}{"the": {}, "and": {}}}
+
+	docs := d.buildDocs("buy crypto coins now", "spam")
+	assert.Equal(t, 1, len(docs), "should create single document")
+	assert.Equal(t, spamClass("spam"), docs[0].spamClass)
+	assert.ElementsMatch(t, []string{"buy", "crypto", "coins", "now"}, docs[0].tokens)
+}
+
+func TestDetector_CheckHistory(t *testing.T) {
+	d := NewDetector(Config{HistorySize: 5})
+	_, err := d.LoadStopWords(strings.NewReader("spam text\nbad text"))
+	require.NoError(t, err)
+
+	// first message is ham
+	isSpam, _ := d.Check(spamcheck.Request{Msg: "good message", UserID: "1"})
+	assert.False(t, isSpam)
+	hamMsgs := d.hamHistory.Last(5)
+	require.Equal(t, 1, len(hamMsgs))
+	assert.Equal(t, "good message", hamMsgs[0].Msg)
+	assert.Empty(t, d.spamHistory.Last(5))
+
+	// second message is spam
+	isSpam, _ = d.Check(spamcheck.Request{Msg: "spam text", UserID: "1"})
+	assert.True(t, isSpam)
+	spamMsgs := d.spamHistory.Last(5)
+	require.Equal(t, 1, len(spamMsgs))
+	assert.Equal(t, "spam text", spamMsgs[0].Msg)
+	assert.Equal(t, 1, len(d.hamHistory.Last(5)), "ham history should remain unchanged")
+
+	// third message is ham
+	isSpam, _ = d.Check(spamcheck.Request{Msg: "another good one", UserID: "2"})
+	assert.False(t, isSpam)
+	hamMsgs = d.hamHistory.Last(5)
+	require.Equal(t, 2, len(hamMsgs))
+	assert.Equal(t, "good message", hamMsgs[0].Msg)
+	assert.Equal(t, "another good one", hamMsgs[1].Msg)
+	assert.Equal(t, 1, len(d.spamHistory.Last(5)), "spam history should remain unchanged")
 }
 
 func BenchmarkTokenize(b *testing.B) {

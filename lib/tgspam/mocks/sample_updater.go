@@ -20,6 +20,9 @@ import (
 //			ReaderFunc: func() (io.ReadCloser, error) {
 //				panic("mock out the Reader method")
 //			},
+//			RemoveFunc: func(msg string) error {
+//				panic("mock out the Remove method")
+//			},
 //		}
 //
 //		// use mockedSampleUpdater in code that requires tgspam.SampleUpdater
@@ -33,6 +36,9 @@ type SampleUpdaterMock struct {
 	// ReaderFunc mocks the Reader method.
 	ReaderFunc func() (io.ReadCloser, error)
 
+	// RemoveFunc mocks the Remove method.
+	RemoveFunc func(msg string) error
+
 	// calls tracks calls to the methods.
 	calls struct {
 		// Append holds details about calls to the Append method.
@@ -43,9 +49,15 @@ type SampleUpdaterMock struct {
 		// Reader holds details about calls to the Reader method.
 		Reader []struct {
 		}
+		// Remove holds details about calls to the Remove method.
+		Remove []struct {
+			// Msg is the msg argument value.
+			Msg string
+		}
 	}
 	lockAppend sync.RWMutex
 	lockReader sync.RWMutex
+	lockRemove sync.RWMutex
 }
 
 // Append calls AppendFunc.
@@ -121,6 +133,45 @@ func (mock *SampleUpdaterMock) ResetReaderCalls() {
 	mock.lockReader.Unlock()
 }
 
+// Remove calls RemoveFunc.
+func (mock *SampleUpdaterMock) Remove(msg string) error {
+	if mock.RemoveFunc == nil {
+		panic("SampleUpdaterMock.RemoveFunc: method is nil but SampleUpdater.Remove was just called")
+	}
+	callInfo := struct {
+		Msg string
+	}{
+		Msg: msg,
+	}
+	mock.lockRemove.Lock()
+	mock.calls.Remove = append(mock.calls.Remove, callInfo)
+	mock.lockRemove.Unlock()
+	return mock.RemoveFunc(msg)
+}
+
+// RemoveCalls gets all the calls that were made to Remove.
+// Check the length with:
+//
+//	len(mockedSampleUpdater.RemoveCalls())
+func (mock *SampleUpdaterMock) RemoveCalls() []struct {
+	Msg string
+} {
+	var calls []struct {
+		Msg string
+	}
+	mock.lockRemove.RLock()
+	calls = mock.calls.Remove
+	mock.lockRemove.RUnlock()
+	return calls
+}
+
+// ResetRemoveCalls reset all the calls that were made to Remove.
+func (mock *SampleUpdaterMock) ResetRemoveCalls() {
+	mock.lockRemove.Lock()
+	mock.calls.Remove = nil
+	mock.lockRemove.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *SampleUpdaterMock) ResetCalls() {
 	mock.lockAppend.Lock()
@@ -130,4 +181,8 @@ func (mock *SampleUpdaterMock) ResetCalls() {
 	mock.lockReader.Lock()
 	mock.calls.Reader = nil
 	mock.lockReader.Unlock()
+
+	mock.lockRemove.Lock()
+	mock.calls.Remove = nil
+	mock.lockRemove.Unlock()
 }

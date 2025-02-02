@@ -88,6 +88,7 @@ type options struct {
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	AbnormalSpacing struct {
@@ -95,6 +96,7 @@ type options struct {
 		SpaceRatioThreshold     float64 `long:"ratio" env:"RATIO" default:"0.3" description:"the ratio of spaces to all characters in the message"`
 		ShortWordRatioThreshold float64 `long:"short-ratio" env:"SHORT_RATIO" default:"0.7" description:"the ratio of short words to all words in the message"`
 		ShortWordLen            int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
+		MinWords                int     `long:"min-words" env:"MIN_WORDS" default:"5" description:"the minimum number of words in the message to check"`
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
@@ -129,7 +131,8 @@ type options struct {
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
 
-	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
+	HistorySize int    `long:"history-size" env:"LAST_MSGS_HISTORY_SIZE" default:"100" description:"history size"`
+	Convert     string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
 
 	BackupVer struct {
 		Enabled    bool `long:"enabled" env:"ENABLED" description:"enable backup on version change"`
@@ -455,7 +458,9 @@ func makeDetector(opts options) *tgspam.Detector {
 		FirstMessageOnly:    !opts.ParanoidMode,
 		FirstMessagesCount:  opts.FirstMessagesCount,
 		OpenAIVeto:          opts.OpenAI.Veto,
+		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
 		MultiLangWords:      opts.MultiLangWords,
+		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.
@@ -499,6 +504,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		detector.AbnormalSpacing.ShortWordLen = opts.AbnormalSpacing.ShortWordLen
 		detector.AbnormalSpacing.ShortWordRatioThreshold = opts.AbnormalSpacing.ShortWordRatioThreshold
 		detector.AbnormalSpacing.SpaceRatioThreshold = opts.AbnormalSpacing.SpaceRatioThreshold
+		detector.AbnormalSpacing.MinWordsCount = opts.AbnormalSpacing.MinWords
 	}
 
 	metaChecks := []tgspam.MetaCheck{}

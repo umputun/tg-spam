@@ -12,7 +12,7 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-//go:generate moq --out mocks/openai_client.go --pkg mocks --skip-ensure . openAIClient:OpenAIClientMock
+//go:generate moq --out mocks/openai_client.go --pkg mocks --with-resets --skip-ensure . openAIClient:OpenAIClientMock
 
 // openAIChecker is a wrapper for OpenAI API to check if a text is spam
 type openAIChecker struct {
@@ -36,7 +36,7 @@ type openAIClient interface {
 	CreateChatCompletion(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
 }
 
-const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80. Return JSON only with no extra formatting!`
+const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80. Return JSON only with no extra formatting!` + "\n" + `If history of previous messages provided, use them as extra context to make the decision.`
 
 type openAIResponse struct {
 	IsSpam     bool   `json:"spam"`
@@ -67,10 +67,19 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 	return &openAIChecker{client: client, params: params}
 }
 
-// check checks if a text is spam
-func (o *openAIChecker) check(msg string) (spam bool, cr spamcheck.Response) {
+// check checks if a text is spam using OpenAI API
+func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
 	if o.client == nil {
 		return false, spamcheck.Response{}
+	}
+
+	// update the message with the history
+	if len(history) > 0 {
+		hist := []string{"--------------------------------", "this is the history of previous messages from other users:", ""}
+		for _, h := range history {
+			hist = append(hist, fmt.Sprintf("%q: %q", h.UserName, h.Msg))
+		}
+		msg = msg + "\n" + strings.Join(hist, "\n")
 	}
 
 	// try to send a request several times if it fails
@@ -91,9 +100,9 @@ func (o *openAIChecker) check(msg string) (spam bool, cr spamcheck.Response) {
 }
 
 func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err error) {
-	// Reduce the request size with tokenizer and fallback to default reducer if it fails
-	// The API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together
-	// The response is limited to 1000 tokens and OpenAI always reserved it for the result
+	// Reduce the request size with tokenizer and fallback to default reducer if it fails.
+	// The API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
+	// The response is limited to 1000 tokens, and OpenAI always reserved it for the result.
 	// So the max length of the request should be 3000 tokens or ~12000 characters
 	reduceRequest := func(text string) (result string) {
 		// defaultReducer is a fallback if tokenizer fails

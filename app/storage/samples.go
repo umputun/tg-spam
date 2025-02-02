@@ -64,6 +64,7 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 		CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
 		CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+		CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message);
     `
 
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
@@ -79,6 +80,11 @@ func NewSamples(ctx context.Context, db *Engine) (*Samples, error) {
 
 // Add adds a sample to the storage. Checks if the sample is already present and skips it if it is.
 func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message string) error {
+	dbgMsg := message
+	if len(dbgMsg) > 1024 {
+		dbgMsg = dbgMsg[:1024] + "..."
+	}
+	log.Printf("[DEBUG] adding sample: %s, %s, %q", t, o, dbgMsg)
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -107,6 +113,7 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 
 // Delete removes a sample from the storage by its ID
 func (s *Samples) Delete(ctx context.Context, id int64) error {
+	log.Printf("[DEBUG] deleting sample: %d", id)
 	s.Lock()
 	defer s.Unlock()
 
@@ -127,6 +134,7 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 
 // DeleteMessage removes a sample from the storage by its message
 func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
+	log.Printf("[DEBUG] deleting sample: %q", message)
 	s.Lock()
 	defer s.Unlock()
 
@@ -184,6 +192,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 	if err := s.db.SelectContext(ctx, &samples, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to get samples: %w", err)
 	}
+	log.Printf("[DEBUG] read %d samples: gid=%s, type=%s, origin=%s", len(samples), gid, t, o)
 	return samples, nil
 }
 

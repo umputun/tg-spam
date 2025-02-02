@@ -44,6 +44,11 @@ type Detector struct {
 	hamSamplesUpd  SampleUpdater
 	userStorage    UserStorage
 
+	// history of recent messages to keep in memory
+	// can be passed to checkers supporting history
+	hamHistory  *spamcheck.LastRequests
+	spamHistory *spamcheck.LastRequests
+
 	lock sync.RWMutex
 }
 
@@ -58,20 +63,24 @@ type Config struct {
 	HTTPClient          HTTPClient    // http client to use for requests
 	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	OpenAIHistorySize   int           // history size for openai
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 
 	AbnormalSpacing struct {
 		Enabled                 bool    // if true, enable check for abnormal spacing
+		MinWordsCount           int     // the minimum number of words in the message to be considered
 		ShortWordLen            int     // the length of the word to be considered short (in rune characters)
 		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
 		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
 	}
+	HistorySize int // history of recent messages to keep in memory
 }
 
 // SampleUpdater is an interface for updating spam/ham samples on the fly.
 type SampleUpdater interface {
 	Append(msg string) error        // append a message to the samples storage
+	Remove(msg string) error        // remove a message from the samples storage
 	Reader() (io.ReadCloser, error) // return a reader for the samples storage
 }
 
@@ -102,6 +111,8 @@ func NewDetector(p Config) *Detector {
 		classifier:    newClassifier(),
 		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
+		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
+		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
 	}
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
@@ -171,8 +182,10 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	if len([]rune(req.Msg)) < d.MinMsgLen {
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		if isSpamDetected(cr) {
+			d.spamHistory.Push(req)
 			return true, cr // spam from the checks above
 		}
+		d.hamHistory.Push(req)
 		return false, cr
 	}
 
@@ -194,7 +207,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
-			spam, details := d.openaiChecker.check(cleanMsg)
+			var hist []spamcheck.Request // by default, openai doesn't use history
+			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
+				// if history size is set, we use the last N messages for openai
+				hist = d.hamHistory.Last(d.OpenAIHistorySize)
+			}
+			spam, details := d.openaiChecker.check(cleanMsg, hist)
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
@@ -212,20 +230,27 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	if spamDetected {
+		d.spamHistory.Push(req)
 		return true, cr
 	}
 
-	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+	// update approved users only if it's not paranoid mode and not a check-only request
+	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
-
-		au := approved.UserInfo{Count: d.approvedUsers[req.UserID].Count + 1, UserID: req.UserID,
-			UserName: req.UserName, Timestamp: time.Now()}
-		d.approvedUsers[req.UserID] = au
-		if d.userStorage != nil && !req.CheckOnly {
+		au := approved.UserInfo{
+			Count:     d.approvedUsers[req.UserID].Count + 1,
+			UserID:    req.UserID,
+			UserName:  req.UserName,
+			Timestamp: time.Now(),
+		}
+		d.approvedUsers[req.UserID] = au // update approved users status in memory
+		if d.userStorage != nil {
+			// update approved users status in storage
 			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
 		}
 	}
+	d.hamHistory.Push(req)
 	return false, cr
 }
 
@@ -293,6 +318,7 @@ func (d *Detector) ApprovedUsers() (res []approved.UserInfo) {
 }
 
 // IsApprovedUser checks if a given user ID is approved.
+// It uses memory cache for approved users and compares the count of messages sent by the user.
 func (d *Detector) IsApprovedUser(userID string) bool {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
@@ -356,32 +382,32 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	d.classifier.reset()
 
 	// excluded tokens should be loaded before spam samples to exclude them from spam tokenization
-	for t := range d.tokenIterator(exclReader) {
+	for t := range d.readerIterator(exclReader) {
 		d.excludedTokens[strings.ToLower(t)] = struct{}{}
 	}
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
 	docs := []document{}
-	for token := range d.tokenIterator(spamReaders...) {
+	for token := range d.readerIterator(spamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
 		tokens := make([]string, 0, len(tokenizedSpam))
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, newDocument("spam", tokens...))
+		docs = append(docs, newDocument(ClassSpam, tokens...))
 		lr.SpamSamples++
 	}
 
 	// load ham samples and update the classifier with them
-	for token := range d.tokenIterator(hamReaders...) {
+	for token := range d.readerIterator(hamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSpam))
 		for token := range tokenizedSpam {
 			tokens = append(tokens, token)
 		}
-		docs = append(docs, document{spamClass: "ham", tokens: tokens})
+		docs = append(docs, document{spamClass: ClassHam, tokens: tokens})
 		lr.HamSamples++
 	}
 
@@ -395,17 +421,31 @@ func (d *Detector) LoadStopWords(readers ...io.Reader) (LoadResult, error) {
 	defer d.lock.Unlock()
 
 	d.stopWords = []string{}
-	for t := range d.tokenIterator(readers...) {
+	for t := range d.readerIterator(readers...) {
 		d.stopWords = append(d.stopWords, strings.ToLower(t))
 	}
 	return LoadResult{StopWords: len(d.stopWords)}, nil
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
-func (d *Detector) UpdateSpam(msg string) error { return d.updateSample(msg, d.spamSamplesUpd, "spam") }
+func (d *Detector) UpdateSpam(msg string) error {
+	return d.updateSample(msg, d.spamSamplesUpd, ClassSpam)
+}
 
 // UpdateHam appends a message to the ham samples file and updates the classifier
-func (d *Detector) UpdateHam(msg string) error { return d.updateSample(msg, d.hamSamplesUpd, "ham") }
+func (d *Detector) UpdateHam(msg string) error {
+	return d.updateSample(msg, d.hamSamplesUpd, ClassHam)
+}
+
+// RemoveSpam removes a message from the spam samples file and updates the classifier by unlearning
+func (d *Detector) RemoveSpam(msg string) error {
+	return d.removeSample(msg, d.spamSamplesUpd, ClassSpam)
+}
+
+// RemoveHam removes a message from the ham samples file and updates the classifier by unlearning
+func (d *Detector) RemoveHam(msg string) error {
+	return d.removeSample(msg, d.hamSamplesUpd, ClassHam)
+}
 
 // updateSample appends a message to the samples store and updates the classifier
 // doesn't reset state, update append samples
@@ -423,8 +463,46 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 	}
 
 	// load samples and update the classifier with them
+	docs := d.buildDocs(msg, sc)
+	d.classifier.learn(docs...)
+
+	// update tokenized spam samples for similarity check
+	if sc == ClassSpam {
+		tokenizedSpam := d.tokenize(msg)
+		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam)
+	}
+
+	return nil
+}
+
+// removeSample removes a message from the spam samples file and updates the classifier by unlearning
+func (d *Detector) removeSample(msg string, upd SampleUpdater, sc spamClass) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	if upd == nil {
+		return nil
+	}
+
+	// first validate that we can unlearn this sample
+	docs := d.buildDocs(msg, sc)
+	if err := d.classifier.unlearn(docs...); err != nil {
+		return fmt.Errorf("can't unlearn %s samples: %w", sc, err)
+	}
+
+	// if unlearn succeeded, remove from storage
+	if err := upd.Remove(msg); err != nil {
+		// try to relearn since storage update failed
+		d.classifier.learn(docs...)
+		return fmt.Errorf("can't remove %s samples: %w", sc, err)
+	}
+	return nil
+}
+
+// buildDocs builds a list of classifier documents from a message
+func (d *Detector) buildDocs(msg string, sc spamClass) []document {
 	docs := []document{}
-	for token := range d.tokenIterator(bytes.NewBufferString(msg)) {
+	for token := range d.readerIterator(bytes.NewBufferString(msg)) {
 		tokenizedSample := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSample))
 		for token := range tokenizedSample {
@@ -432,36 +510,21 @@ func (d *Detector) updateSample(msg string, upd SampleUpdater, sc spamClass) err
 		}
 		docs = append(docs, document{spamClass: sc, tokens: tokens})
 	}
-	d.classifier.learn(docs...)
-	return nil
+	return docs
 }
 
-// tokenIterator parses readers and returns an iterator of tokens.
-// A line per-token or comma-separated "tokens" supported
-func (d *Detector) tokenIterator(readers ...io.Reader) iter.Seq[string] {
+// readerIterator parses readers and returns an iterator of data elements, each line is an element.
+func (d *Detector) readerIterator(readers ...io.Reader) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		for _, reader := range readers {
 			scanner := bufio.NewScanner(reader)
 			for scanner.Scan() {
 				line := scanner.Text()
-				if strings.Contains(line, ",") && strings.HasPrefix(line, "\"") {
-					// line with comma-separated tokens
-					lineTokens := strings.Split(line, ",")
-					for _, token := range lineTokens {
-						cleanToken := strings.Trim(token, " \"\n\r\t")
-						if cleanToken != "" {
-							if !yield(cleanToken) {
-								return
-							}
-						}
-					}
-				} else {
-					// each line with a single token
-					cleanToken := strings.Trim(line, " \n\r\t")
-					if cleanToken != "" {
-						if !yield(cleanToken) {
-							return
-						}
+				// each line with a single element
+				cleanToken := strings.Trim(line, " \n\r\t")
+				if cleanToken != "" {
+					if !yield(cleanToken) {
+						return
 					}
 				}
 			}
@@ -594,7 +657,7 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 		tokens = append(tokens, token)
 	}
 	class, prob, certain := d.classifier.classify(tokens...)
-	isSpam := class == "spam" && certain && (d.MinSpamProbability == 0 || prob >= d.MinSpamProbability)
+	isSpam := class == ClassSpam && certain && (d.MinSpamProbability == 0 || prob >= d.MinSpamProbability)
 	return spamcheck.Response{Name: "classifier", Spam: isSpam,
 		Details: fmt.Sprintf("probability of %s: %.2f%%", class, prob)}
 }
@@ -691,6 +754,14 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 	}
 
 	words := strings.Fields(text)
+	// check for minimum number of words
+	if len(words) < d.AbnormalSpacing.MinWordsCount {
+		return spamcheck.Response{
+			Name:    "word-spacing",
+			Spam:    false,
+			Details: fmt.Sprintf("too few words (%d)", len(words)),
+		}
+	}
 
 	// count letters and spaces in original text
 	var totalChars, spaces int
@@ -729,14 +800,14 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 		return spamcheck.Response{
 			Name:    "word-spacing",
 			Spam:    true,
-			Details: fmt.Sprintf("abnormal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+			Details: fmt.Sprintf("abnormal (ratio: %.2f, short: %.0f%%)", spaceRatio, shortWordRatio*100),
 		}
 	}
 
 	return spamcheck.Response{
 		Name:    "word-spacing",
 		Spam:    false,
-		Details: fmt.Sprintf("normal spacing (ratio: %.2f, short words: %.0f%%)", spaceRatio, shortWordRatio*100),
+		Details: fmt.Sprintf("normal (ratio: %.2f, short: %.0f%%)", spaceRatio, shortWordRatio*100),
 	}
 }
 

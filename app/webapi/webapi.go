@@ -16,8 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/didip/tollbooth/v7"
-	"github.com/didip/tollbooth_chi"
+	"github.com/didip/tollbooth/v8"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	log "github.com/go-pkgz/lgr"
@@ -116,6 +115,7 @@ type Locator interface {
 type DetectedSpam interface {
 	Read(ctx context.Context) ([]storage.DetectedSpamInfo, error)
 	SetAddedToSamplesFlag(ctx context.Context, id int64) error
+	FindByUserID(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
 }
 
 // NewServer creates a new web API server.
@@ -130,7 +130,7 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(logger.New(logger.Log(log.Default()), logger.Prefix("[DEBUG]")).Handler)
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
-	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
+	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
 	if s.AuthPasswd != "" || s.AuthHash != "" {
@@ -167,7 +167,8 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 	// auth api routes
 	router.Group(func(authApi chi.Router) {
 		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
-		authApi.Post("/check", s.checkHandler) // check a message for spam
+		authApi.Post("/check", s.checkMsgHandler)         // check a message for spam
+		authApi.Get("/check/{user_id}", s.checkIDHandler) // check user id for spam
 
 		authApi.Route("/update", func(r chi.Router) { // update spam/ham samples
 			r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
@@ -218,10 +219,9 @@ func (s *Server) routes(router *chi.Mux) *chi.Mux {
 	return router
 }
 
-// checkHandler handles POST /check request.
+// checkMsgHandler handles POST /check request.
 // it gets message text and user id from request body and returns spam status and check results.
-func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
-
+func (s *Server) checkMsgHandler(w http.ResponseWriter, r *http.Request) {
 	type CheckResultDisplay struct {
 		Spam   bool
 		Checks []spamcheck.Response
@@ -269,6 +269,48 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
 	}
+}
+
+// checkIDHandler handles GET /check/{user_id} request.
+// it returns JSON with the status "spam" or "ham" for a given user id.
+// if user is spammer, it also returns check results.
+func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
+	type info struct {
+		UserName  string               `json:"user_name,omitempty"`
+		Message   string               `json:"message,omitempty"`
+		Timestamp time.Time            `json:"timestamp,omitempty"`
+		Checks    []spamcheck.Response `json:"checks,omitempty"`
+	}
+	resp := struct {
+		Status string `json:"status"`
+		Info   *info  `json:"info,omitempty"`
+	}{
+		Status: "ham",
+	}
+
+	userID, err := strconv.ParseInt(chi.URLParam(r, "user_id"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		rest.RenderJSON(w, rest.JSON{"error": "can't parse user id", "details": err.Error()})
+		return
+	}
+
+	si, err := s.DetectedSpam.FindByUserID(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't get user info", "details": err.Error()})
+		return
+	}
+	if si != nil {
+		resp.Status = "spam"
+		resp.Info = &info{
+			UserName:  si.UserName,
+			Message:   si.Text,
+			Timestamp: si.Timestamp,
+			Checks:    si.Checks,
+		}
+	}
+	rest.RenderJSON(w, resp)
 }
 
 // getDynamicSamplesHandler handles GET /samples request. It returns dynamic samples both for spam and ham.

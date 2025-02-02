@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/didip/tollbooth/v7/errors"
-	"github.com/didip/tollbooth/v7/libstring"
-	"github.com/didip/tollbooth/v7/limiter"
+	"github.com/didip/tollbooth/v8/errors"
+	"github.com/didip/tollbooth/v8/libstring"
+	"github.com/didip/tollbooth/v8/limiter"
 )
 
 // setResponseHeaders configures X-Rate-Limit-Limit and X-Rate-Limit-Duration
@@ -37,8 +37,7 @@ func setRateLimitResponseHeaders(lmt *limiter.Limiter, w http.ResponseWriter, to
 func NewLimiter(max float64, tbOptions *limiter.ExpirableOptions) *limiter.Limiter {
 	return limiter.New(tbOptions).
 		SetMax(max).
-		SetBurst(int(math.Max(1, max))).
-		SetIPLookups([]string{"X-Forwarded-For", "X-Real-IP", "RemoteAddr"})
+		SetBurst(int(math.Max(1, max)))
 }
 
 // LimitByKeys keeps track number of request made by keys separated by pipe.
@@ -63,7 +62,7 @@ func ShouldSkipLimiter(lmt *limiter.Limiter, r *http.Request) bool {
 	// ---------------------------------
 	// Filter by remote ip
 	// If we are unable to find remoteIP, skip limiter
-	remoteIP := libstring.RemoteIP(lmt.GetIPLookups(), lmt.GetForwardedForIndexFromBehind(), r)
+	remoteIP := libstring.RemoteIPFromIPLookup(lmt.GetIPLookup(), r)
 	remoteIP = libstring.CanonicalizeIP(remoteIP)
 	if remoteIP == "" {
 		return true
@@ -195,7 +194,7 @@ func ShouldSkipLimiter(lmt *limiter.Limiter, r *http.Request) bool {
 
 // BuildKeys generates a slice of keys to rate-limit by given limiter and request structs.
 func BuildKeys(lmt *limiter.Limiter, r *http.Request) [][]string {
-	remoteIP := libstring.RemoteIP(lmt.GetIPLookups(), lmt.GetForwardedForIndexFromBehind(), r)
+	remoteIP := libstring.RemoteIPFromIPLookup(lmt.GetIPLookup(), r)
 	remoteIP = libstring.CanonicalizeIP(remoteIP)
 	path := r.URL.Path
 	sliceKeys := make([][]string, 0)
@@ -346,4 +345,31 @@ func LimitHandler(lmt *limiter.Limiter, next http.Handler) http.Handler {
 // LimitFuncHandler is a middleware that performs rate-limiting given request handler function.
 func LimitFuncHandler(lmt *limiter.Limiter, nextFunc func(http.ResponseWriter, *http.Request)) http.Handler {
 	return LimitHandler(lmt, http.HandlerFunc(nextFunc))
+}
+
+// HTTPMiddleware wraps http.Handler with tollbooth limiter
+func HTTPMiddleware(lmt *limiter.Limiter) func(http.Handler) http.Handler {
+	// // set IP lookup only if not set
+	if lmt.GetIPLookup().Name == "" {
+		lmt.SetIPLookup(limiter.IPLookup{Name: "RemoteAddr"})
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-r.Context().Done():
+				http.Error(w, "Context was canceled", http.StatusServiceUnavailable)
+				return
+			default:
+				if httpError := LimitByRequest(lmt, w, r); httpError != nil {
+					lmt.ExecOnLimitReached(w, r)
+					w.Header().Add("Content-Type", lmt.GetMessageContentType())
+					w.WriteHeader(httpError.StatusCode)
+					w.Write([]byte(httpError.Message)) //nolint:gosec // not much we can do here with failed write
+					return
+				}
+				next.ServeHTTP(w, r)
+			}
+		})
+	}
 }

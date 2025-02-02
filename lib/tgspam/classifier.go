@@ -1,11 +1,20 @@
 package tgspam
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 // based on the code from https://github.com/RadhiFadlillah/go-bayesian/blob/master/classifier.go
 
 // spamClass is alias of string, representing class of a document
 type spamClass string
+
+// enum for spamClass
+const (
+	ClassSpam spamClass = "spam"
+	ClassHam  spamClass = "ham"
+)
 
 // document is a group of tokens with certain class
 type document struct {
@@ -62,6 +71,56 @@ func (c *classifier) learn(docs ...document) {
 	for class, nDocument := range c.nDocumentByClass {
 		c.priorProbabilities[class] = math.Log(float64(nDocument) / float64(c.nAllDocument))
 	}
+}
+
+// unlearn removes the learning results for given documents
+func (c *classifier) unlearn(docs ...document) error {
+	if len(docs) > c.nAllDocument {
+		return fmt.Errorf("trying to unlearn more documents than learned")
+	}
+
+	c.nAllDocument -= len(docs)
+
+	for _, doc := range docs {
+		if c.nDocumentByClass[doc.spamClass] <= 0 {
+			return fmt.Errorf("no documents of class %v to unlearn", doc.spamClass)
+		}
+
+		c.nDocumentByClass[doc.spamClass]--
+		tokens := c.removeDuplicate(doc.tokens...)
+
+		for _, token := range tokens {
+			if c.nFrequencyByClass[doc.spamClass] <= 0 {
+				return fmt.Errorf("no tokens of class %v to unlearn", doc.spamClass)
+			}
+			c.nFrequencyByClass[doc.spamClass]--
+
+			if c.learningResults[token][doc.spamClass] <= 0 {
+				return fmt.Errorf("token %q not found in class %v", token, doc.spamClass)
+			}
+			c.learningResults[token][doc.spamClass]--
+
+			// cleanup empty entries
+			if c.learningResults[token][doc.spamClass] == 0 {
+				delete(c.learningResults[token], doc.spamClass)
+			}
+			if len(c.learningResults[token]) == 0 {
+				delete(c.learningResults, token)
+			}
+		}
+
+		// cleanup empty class entries
+		if c.nDocumentByClass[doc.spamClass] == 0 {
+			delete(c.nDocumentByClass, doc.spamClass)
+			delete(c.nFrequencyByClass, doc.spamClass)
+			delete(c.priorProbabilities, doc.spamClass)
+		} else {
+			// update prior probability for the class
+			c.priorProbabilities[doc.spamClass] = math.Log(float64(c.nDocumentByClass[doc.spamClass]) / float64(c.nAllDocument))
+		}
+	}
+
+	return nil
 }
 
 // reset resets all learning results
