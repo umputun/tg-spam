@@ -206,7 +206,11 @@ func banUserOrChannel(r banRequest) error {
 	return nil
 }
 
+// transform converts telegram message to internal message format.
+// properly handles all message types - text, photo, video, etc, and their combinations.
+// also handles forwarded messages, replies, and message entities like links and mentions.
 func transform(msg *tbapi.Message) *bot.Message {
+	// helper function to convert telegram entities to internal format
 	transformEntities := func(entities []tbapi.MessageEntity) *[]bot.Entity {
 		if len(entities) == 0 {
 			return nil
@@ -229,32 +233,33 @@ func transform(msg *tbapi.Message) *bot.Message {
 			}
 			result = append(result, e)
 		}
-
 		return &result
 	}
 
+	// initialize message with basic fields
 	message := bot.Message{
-		ID:   msg.MessageID,
-		Sent: msg.Time(),
-		Text: msg.Text,
+		ID:     msg.MessageID,
+		Sent:   msg.Time(),
+		Text:   msg.Text,
+		ChatID: msg.Chat.ID,
 	}
 
-	message.ChatID = msg.Chat.ID
-
+	// set sender info
 	if msg.From != nil {
 		message.From = bot.User{
 			ID:       msg.From.ID,
 			Username: msg.From.UserName,
 		}
+		// combine first and last name for display name if present
+		if firstName := strings.TrimSpace(msg.From.FirstName); firstName != "" {
+			message.From.DisplayName = firstName
+		}
+		if lastName := strings.TrimSpace(msg.From.LastName); lastName != "" {
+			message.From.DisplayName += " " + lastName
+		}
 	}
 
-	if msg.From != nil && strings.TrimSpace(msg.From.FirstName) != "" {
-		message.From.DisplayName = msg.From.FirstName
-	}
-	if msg.From != nil && strings.TrimSpace(msg.From.LastName) != "" {
-		message.From.DisplayName += " " + msg.From.LastName
-	}
-
+	// set sender chat for messages sent on behalf of a channel
 	if msg.SenderChat != nil {
 		message.SenderChat = bot.SenderChat{
 			ID:       msg.SenderChat.ID,
@@ -262,13 +267,14 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
-	switch {
-	case len(msg.Entities) > 0:
+	// handle message content and type flags independently
+	if len(msg.Entities) > 0 {
 		message.Entities = transformEntities(msg.Entities)
+	}
 
-	case len(msg.Photo) > 0:
+	if len(msg.Photo) > 0 {
 		sizes := msg.Photo
-		lastSize := sizes[len(sizes)-1]
+		lastSize := sizes[len(sizes)-1] // use the highest quality photo
 		message.Image = &bot.Image{
 			FileID:   lastSize.FileID,
 			Width:    lastSize.Width,
@@ -276,19 +282,26 @@ func transform(msg *tbapi.Message) *bot.Message {
 			Caption:  msg.Caption,
 			Entities: transformEntities(msg.CaptionEntities),
 		}
-	case msg.Video != nil:
+	}
+
+	// set media type flags
+	if msg.Video != nil {
 		message.WithVideo = true
-	case msg.VideoNote != nil:
+	}
+	if msg.VideoNote != nil {
 		message.WithVideoNote = true
-	case msg.Story != nil: // telegram story is a sort of video-like thing, mark it as video
+	}
+	if msg.Story != nil { // telegram story is treated as video
 		message.WithVideo = true
-	case msg.Audio != nil:
+	}
+	if msg.Audio != nil {
 		message.WithAudio = true
-	case msg.ForwardOrigin != nil:
+	}
+	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}
 
-	// fill in the message's reply-to message
+	// handle reply-to message if present
 	if msg.ReplyToMessage != nil {
 		message.ReplyTo.Text = msg.ReplyToMessage.Text
 		message.ReplyTo.Sent = msg.ReplyToMessage.Time()
@@ -307,6 +320,7 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	// handle caption - either as main text if no text present, or append to existing text
 	if msg.Caption != "" {
 		if message.Text == "" {
 			log.Printf("[DEBUG] caption only message: %q", msg.Caption)
@@ -316,5 +330,6 @@ func transform(msg *tbapi.Message) *bot.Message {
 			message.Text += "\n" + msg.Caption
 		}
 	}
+
 	return &message
 }
