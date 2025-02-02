@@ -75,6 +75,7 @@ type options struct {
 		ImageOnly  bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
 		LinksOnly  bool `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		VideosOnly bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
+		AudiosOnly bool `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		Forward    bool `long:"forward" env:"FORWARD" description:"enable forward check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
@@ -323,9 +324,8 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" suppress: %v, dry: %v, training: %v}",
-		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
+		" suppress: %v, dry: %v, training: %v}", tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
+		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
@@ -408,6 +408,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MetaVideoOnly:           opts.Meta.VideosOnly,
+		MetaAudioOnly:           opts.Meta.AudiosOnly,
 		MetaForwarded:           opts.Meta.Forward,
 		MultiLangLimit:          opts.MultiLangWords,
 		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
