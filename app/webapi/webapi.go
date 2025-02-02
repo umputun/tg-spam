@@ -16,8 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/didip/tollbooth/v7"
-	"github.com/didip/tollbooth_chi"
+	"github.com/didip/tollbooth/v8"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	log "github.com/go-pkgz/lgr"
@@ -131,7 +130,7 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(logger.New(logger.Log(log.Default()), logger.Prefix("[DEBUG]")).Handler)
 	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
-	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
+	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
 	if s.AuthPasswd != "" || s.AuthHash != "" {
