@@ -84,6 +84,11 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		m := transform(update.Message)
 		msgTxt = m.Text
 	}
+
+	if msgTxt == "" {
+		return errors.New("empty message text")
+	}
+
 	log.Printf("[DEBUG] forwarded message from superuser %q (%d) to admin chat %d: %q",
 		update.Message.From.UserName, update.Message.From.ID, a.adminChatID, msgTxt)
 
