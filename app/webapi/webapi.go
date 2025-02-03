@@ -17,11 +17,10 @@ import (
 	"time"
 
 	"github.com/didip/tollbooth/v8"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"github.com/go-pkgz/routegroup"
 
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib/approved"
@@ -126,10 +125,10 @@ func NewServer(config Config) *Server {
 
 // Run starts server and accepts requests checking for spam messages.
 func (s *Server) Run(ctx context.Context) error {
-	router := chi.NewRouter()
+	router := routegroup.New(http.NewServeMux())
 	router.Use(rest.Recoverer(log.Default()))
 	router.Use(logger.New(logger.Log(log.Default()), logger.Prefix("[DEBUG]")).Handler)
-	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
+	router.Use(rest.Throttle(1000))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
 	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
@@ -164,57 +163,62 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) routes(router *chi.Mux) *chi.Mux {
+func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	// auth api routes
-	router.Group(func(authApi chi.Router) {
+	router.Route(func(authApi *routegroup.Bundle) {
 		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
-		authApi.Post("/check", s.checkMsgHandler)         // check a message for spam
-		authApi.Get("/check/{user_id}", s.checkIDHandler) // check user id for spam
+		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
+		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
 
-		authApi.Route("/update", func(r chi.Router) { // update spam/ham samples
-			r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
-			r.Post("/ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
+		authApi.Mount("/update").Route(func(r *routegroup.Bundle) {
+			// update spam/ham samples
+			r.HandleFunc("POST /spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
+			r.HandleFunc("POST /ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
 		})
 
-		authApi.Route("/delete", func(r chi.Router) { // delete spam/ham samples
-			r.Post("/spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
-			r.Post("/ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
+		authApi.Mount("/delete").Route(func(r *routegroup.Bundle) {
+			// delete spam/ham samples
+			r.HandleFunc("POST /spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
+			r.HandleFunc("POST /ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
 		})
 
-		authApi.Route("/download", func(r chi.Router) {
-			r.Get("/spam", s.downloadSampleHandler(func(spam, _ []string) ([]string, string) {
+		authApi.Mount("/download").Route(func(r *routegroup.Bundle) {
+			r.HandleFunc("GET /spam", s.downloadSampleHandler(func(spam, _ []string) ([]string, string) {
 				return spam, "spam.txt"
 			}))
-			r.Get("/ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
+			r.HandleFunc("GET /ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
 				return ham, "ham.txt"
 			}))
 		})
 
-		authApi.Get("/samples", s.getDynamicSamplesHandler)    // get dynamic samples
-		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
+		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
+		authApi.HandleFunc("PUT /samples", s.reloadDynamicSamplesHandler) // reload samples
 
-		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUser)) // add user to the approved list and storage
-			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser))    // remove user from approved list and storage
-			r.Get("/", s.getApprovedUsersHandler)                                    // get approved users
+		authApi.Mount("/users").Route(func(r *routegroup.Bundle) { // manage approved users
+			// add user to the approved list and storage
+			r.HandleFunc("POST /add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUser))
+			// remove user from an approved list and storage
+			r.HandleFunc("POST /delete", s.updateApprovedUsersHandler(s.removeApprovedUser))
+			// get approved users
+			r.HandleFunc("GET /", s.getApprovedUsersHandler)
 		})
 
-		authApi.Get("/settings", func(w http.ResponseWriter, _ *http.Request) {
+		authApi.HandleFunc("GET /settings", func(w http.ResponseWriter, _ *http.Request) {
 			rest.RenderJSON(w, s.Settings)
 		})
 	})
 
-	router.Group(func(webUI chi.Router) {
+	router.Route(func(webUI *routegroup.Bundle) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
-		webUI.Get("/", s.htmlSpamCheckHandler)                         // serve template for webUI UI
-		webUI.Get("/manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
-		webUI.Get("/manage_users", s.htmlManageUsersHandler)           // serve manage users page
-		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
-		webUI.Get("/list_settings", s.htmlSettingsHandler)             // serve settings
-		webUI.Get("/styles.css", s.stylesHandler)                      // serve styles.css
-		webUI.Get("/logo.png", s.logoHandler)                          // serve logo.png
-		webUI.Get("/spinner.svg", s.spinnerHandler)                    // serve spinner.svg
-		webUI.Post("/detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
+		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
+		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
+		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
+		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
+		webUI.HandleFunc("GET /styles.css", s.stylesHandler)                      // serve styles.css
+		webUI.HandleFunc("GET /logo.png", s.logoHandler)                          // serve logo.png
+		webUI.HandleFunc("GET /spinner.svg", s.spinnerHandler)                    // serve spinner.svg
+		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
 	})
 
 	return router
@@ -289,7 +293,7 @@ func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
 		Status: "ham",
 	}
 
-	userID, err := strconv.ParseInt(chi.URLParam(r, "user_id"), 10, 64)
+	userID, err := strconv.ParseInt(r.PathValue("user_id"), 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		rest.RenderJSON(w, rest.JSON{"error": "can't parse user id", "details": err.Error()})

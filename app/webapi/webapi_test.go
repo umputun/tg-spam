@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/rest"
+	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -242,7 +242,7 @@ func TestServer_routes(t *testing.T) {
 		Locator:      locatorMock,
 		DetectedSpam: detectedSpamMock,
 	})
-	ts := httptest.NewServer(server.routes(chi.NewRouter()))
+	ts := httptest.NewServer(server.routes(routegroup.New(http.NewServeMux())))
 	defer ts.Close()
 
 	t.Run("check", func(t *testing.T) {

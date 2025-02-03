@@ -1,0 +1,59 @@
+linters-settings:
+  govet:
+    shadow: true
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  misspell:
+    locale: US
+  lll:
+    line-length: 140
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+      - experimental
+    disabled-checks:
+      - wrapperFunc
+
+linters:
+  enable:
+    - staticcheck
+    - revive
+    - govet
+    - unconvert
+    - gosec
+    - misspell
+    - unparam
+    - typecheck
+    - ineffassign
+    - stylecheck
+    - gochecknoinits
+    - copyloopvar
+    - gocritic
+    - nakedret
+    - gosimple
+    - prealloc
+    - unused
+  fast: false
+  disable-all: true
+
+
+run:
+  concurrency: 4
+
+issues:
+  exclude-rules:
+    - text: "G114: Use of net/http serve function that has no support for setting timeouts"
+      linters:
+        - gosec
+    - linters:
+        - unparam
+        - revive
+      path: _test\.go$
+      text: "unused-parameter"
+  exclude-use-default: false
