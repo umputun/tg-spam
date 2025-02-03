@@ -24,10 +24,6 @@ github.com/fatih/color
 # github.com/forPelevin/gomoji v1.2.0
 ## explicit; go 1.19
 github.com/forPelevin/gomoji
-# github.com/go-chi/chi/v5 v5.2.0
-## explicit; go 1.14
-github.com/go-chi/chi/v5
-github.com/go-chi/chi/v5/middleware
 # github.com/go-pkgz/expirable-cache/v3 v3.0.0
 ## explicit; go 1.20
 github.com/go-pkgz/expirable-cache/v3
@@ -42,6 +38,9 @@ github.com/go-pkgz/lgr
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
+# github.com/go-pkgz/routegroup v1.3.0
+## explicit; go 1.22
+github.com/go-pkgz/routegroup
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
