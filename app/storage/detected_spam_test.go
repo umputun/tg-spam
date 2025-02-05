@@ -1044,3 +1044,187 @@ func TestDetectedSpam_FindByUserID(t *testing.T) {
 		assert.Equal(t, "other_gid", res2.GID)
 	})
 }
+
+func TestDetectedSpam_All(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	for dbName, provider := range providers {
+		t.Run(dbName, func(t *testing.T) {
+			runDetectedSpamTests(t, ctx, provider)
+		})
+	}
+}
+
+func runDetectedSpamTests(t *testing.T, ctx context.Context, provider engineProvider) {
+	t.Helper()
+
+	// basic operations tests
+	t.Run("basic_ops", func(t *testing.T) {
+		db, teardown := provider(t, ctx)
+		defer teardown()
+
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+
+		entry := DetectedSpamInfo{
+			GID:       db.GID(),
+			Text:      "test spam",
+			UserID:    123,
+			UserName:  "spammer",
+			Timestamp: time.Now().UTC().Truncate(time.Millisecond),
+		}
+		checks := []spamcheck.Response{{
+			Name:    "test",
+			Spam:    true,
+			Details: "test details",
+		}}
+
+		// test write
+		err = ds.Write(ctx, entry, checks)
+		require.NoError(t, err)
+
+		// test read
+		entries, err := ds.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, entry.Text, entries[0].Text)
+		assert.Equal(t, entry.UserID, entries[0].UserID)
+		assert.Equal(t, entry.UserName, entries[0].UserName)
+		assert.Equal(t, entry.Timestamp.Unix(), entries[0].Timestamp.Unix())
+		assert.Equal(t, checks, entries[0].Checks)
+	})
+
+	t.Run("unicode_content", func(t *testing.T) {
+		db, teardown := provider(t, ctx)
+		defer teardown()
+
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+
+		entry := DetectedSpamInfo{
+			GID:       db.GID(),
+			Text:      "привет 你好 こんにちは",
+			UserID:    123,
+			UserName:  "スパマー",
+			Timestamp: time.Now().UTC(),
+		}
+		checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+		err = ds.Write(ctx, entry, checks)
+		require.NoError(t, err)
+
+		entries, err := ds.Read(ctx)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, entry.Text, entries[0].Text)
+		assert.Equal(t, entry.UserName, entries[0].UserName)
+	})
+
+	t.Run("concurrent_ops", func(t *testing.T) {
+		db, teardown := provider(t, ctx)
+		defer teardown()
+
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		errCh := make(chan error, 10)
+
+		// Start multiple writers
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+
+				entry := DetectedSpamInfo{
+					GID:       db.GID(),
+					Text:      fmt.Sprintf("spam %d", i),
+					UserID:    int64(i),
+					UserName:  fmt.Sprintf("user%d", i),
+					Timestamp: time.Now().UTC(),
+				}
+				checks := []spamcheck.Response{{Name: fmt.Sprintf("check%d", i), Spam: true}}
+
+				if err := ds.Write(ctx, entry, checks); err != nil {
+					errCh <- fmt.Errorf("write failed: %w", err)
+				}
+			}(i)
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			t.Errorf("concurrent operation error: %v", err)
+		}
+
+		entries, err := ds.Read(ctx)
+		require.NoError(t, err)
+		assert.Len(t, entries, 10)
+	})
+
+	t.Run("entry_limit", func(t *testing.T) {
+		db, teardown := provider(t, ctx)
+		defer teardown()
+
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+
+		// add more entries than the limit
+		for i := 0; i < maxDetectedSpamEntries+10; i++ {
+			entry := DetectedSpamInfo{
+				GID:       db.GID(),
+				Text:      fmt.Sprintf("spam %d", i),
+				UserID:    int64(i),
+				UserName:  fmt.Sprintf("user%d", i),
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			}
+			checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+			err = ds.Write(ctx, entry, checks)
+			require.NoError(t, err)
+		}
+
+		entries, err := ds.Read(ctx)
+		require.NoError(t, err)
+		assert.Len(t, entries, maxDetectedSpamEntries)
+
+		// verify entries are ordered by timestamp desc
+		for i := 1; i < len(entries); i++ {
+			assert.True(t, entries[i-1].Timestamp.After(entries[i].Timestamp) ||
+				entries[i-1].Timestamp.Equal(entries[i].Timestamp))
+		}
+	})
+
+	t.Run("find_by_user_id", func(t *testing.T) {
+		db, teardown := provider(t, ctx)
+		defer teardown()
+
+		ds, err := NewDetectedSpam(ctx, db)
+		require.NoError(t, err)
+
+		// add multiple entries for the same user
+		for i := 0; i < 3; i++ {
+			entry := DetectedSpamInfo{
+				GID:       db.GID(),
+				Text:      fmt.Sprintf("spam %d", i),
+				UserID:    123,
+				UserName:  "spammer",
+				Timestamp: time.Now().Add(time.Duration(i) * time.Hour),
+			}
+			checks := []spamcheck.Response{{Name: fmt.Sprintf("check%d", i), Spam: true}}
+
+			err = ds.Write(ctx, entry, checks)
+			require.NoError(t, err)
+		}
+
+		found, err := ds.FindByUserID(ctx, 123)
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, "spam 2", found.Text)
+		assert.Equal(t, "check2", found.Checks[0].Name)
+	})
+}

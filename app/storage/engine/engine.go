@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"  // postgres driver loaded here
 	_ "modernc.org/sqlite" // sqlite driver loaded here
 )
 
