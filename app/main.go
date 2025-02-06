@@ -570,7 +570,7 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, dete
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {
-		return nil, fmt.Errorf("can't relaod samples, %w", err)
+		return nil, fmt.Errorf("can't reload samples, %w", err)
 	}
 
 	// set detector samples updaters
