@@ -101,9 +101,9 @@ type options struct {
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
-		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
-		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files"`
+		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`

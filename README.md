@@ -24,10 +24,10 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
-- **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
+- **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images, forwarded messages, etc. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
-TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
+TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details, see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details, see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
 
 ## Installation
 
@@ -40,30 +40,32 @@ TG-Spam can also run as a server, providing a simple HTTP API to check messages 
 
 ## Configuration
 
-All the configuration is done via environment variables or command line arguments. Out of the box the bot has reasonable defaults, so user can run it without much hassle.
+All the configuration is done via environment variables or command line arguments. Out of the box, the bot has reasonable defaults, so user can run it without much hassle with just a couple of mandatory parameters.
 
 There are some mandatory parameters what has to be set:
 
 - `--telegram.token=, [$TELEGRAM_TOKEN]` - telegram bot token. See below how to get it.
 - `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it.
 
-As long as theses two parameters are set, the bot will work. Don't forget to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
+As long as theses two parameters are set, the bot will work. Remember to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 
 There are some important customizations available:
 
-First of all, are messages the bot is sending. There are three messages user may want to customize:
+- messages the bot is sending. There are three messages user may want to customize:
 
-- `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
-- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected, optional
-- `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
+  - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
+  - `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected, optional
+  - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
 
-Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+- persintency of the data.
+
+The bot can store the list of approved users and other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically. 
 
 ### Legacy way of storing data in text files
 
-**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about the old way of storing data in text files.
+**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about **the old way of storing data** in text files.
 
 Another thing to customize is the sample files; the bot uses some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt`, and `stop-words.txt`. Users can specify a custom location for them with the `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory where all the files are located.
 
