@@ -153,7 +153,7 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 			Model:          o.params.Model,
 			MaxTokens:      o.params.MaxTokensResponse,
 			Messages:       data,
-			ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json"},
+			ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
 		},
 	)
 
