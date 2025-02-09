@@ -33,7 +33,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("spam response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
@@ -50,7 +50,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("not spam response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"good text", "confidence":99}`},
@@ -67,7 +67,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("error response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, assert.AnError
 		}
 		spam, details := checker.check("some text", nil)
@@ -80,7 +80,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("bad encoding", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `bad json`},
@@ -99,7 +99,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("no choices", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, nil
 		}
 		spam, details := checker.check("some text", nil)
