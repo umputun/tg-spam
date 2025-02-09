@@ -36,7 +36,16 @@ type openAIClient interface {
 	CreateChatCompletion(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
 }
 
-const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80. Return JSON only with no extra formatting!` + "\n" + `If history of previous messages provided, use them as extra context to make the decision.`
+const defaultPrompt = `
+I'll give you a text from the messaging application, and you will return me a JSON with three fields: {"spam": true/false, "reason": "why this is spam", "confidence": 1-100}.
+Set spam:true only if the confidence is above 80. Return JSON only, with no extra formatting!
+
+Consider the following additional criteria:
+  - If the message is a short, generic reaction without meaningful context (e.g. "Какая красота, но зачем?"), 
+    or obviously auto-generated fluff that doesn't add real value to the conversation, treat it as spam.
+  - If history of previous messages is provided, use it for context to see if this message is relevant.
+  - If the user's profile data (like suspicious links in username or avatar pattern) is provided, factor it in.
+`
 
 type openAIResponse struct {
 	IsSpam     bool   `json:"spam"`
@@ -75,11 +84,12 @@ func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam boo
 
 	// update the message with the history
 	if len(history) > 0 {
-		hist := []string{"--------------------------------", "this is the history of previous messages from other users:", ""}
+		var hist []string
 		for _, h := range history {
 			hist = append(hist, fmt.Sprintf("%q: %q", h.UserName, h.Msg))
 		}
-		msg = msg + "\n" + strings.Join(hist, "\n")
+		msgWithHist := fmt.Sprintf("User message:\n%s\n\nHistory:\n%s\n", msg, strings.Join(hist, "\n"))
+		msg = msgWithHist
 	}
 
 	// try to send a request several times if it fails
@@ -139,7 +149,12 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 
 	resp, err := o.client.CreateChatCompletion(
 		context.Background(),
-		openai.ChatCompletionRequest{Model: o.params.Model, MaxTokens: o.params.MaxTokensResponse, Messages: data},
+		openai.ChatCompletionRequest{
+			Model:          o.params.Model,
+			MaxTokens:      o.params.MaxTokensResponse,
+			Messages:       data,
+			ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json"},
+		},
 	)
 
 	if err != nil {

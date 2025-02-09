@@ -33,7 +33,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("spam response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
@@ -50,7 +50,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("not spam response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"good text", "confidence":99}`},
@@ -67,7 +67,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("error response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, assert.AnError
 		}
 		spam, details := checker.check("some text", nil)
@@ -80,7 +80,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("bad encoding", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{{
 					Message: openai.ChatCompletionMessage{Content: `bad json`},
@@ -99,7 +99,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 
 	t.Run("no choices", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
-			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+		  contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, nil
 		}
 		spam, details := checker.check("some text", nil)
@@ -114,7 +114,7 @@ func TestOpenAIChecker_CheckWithHistory(t *testing.T) {
 	clientMock := &mocks.OpenAIClientMock{
 		CreateChatCompletionFunc: func(contextMoqParam context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			// verify the request contains history
-			assert.Contains(t, req.Messages[1].Content, "history of previous messages")
+			assert.Contains(t, req.Messages[1].Content, "History:")
 			assert.Contains(t, req.Messages[1].Content, `"user1": "first message"`)
 			assert.Contains(t, req.Messages[1].Content, `"user2": "second message"`)
 			assert.Contains(t, req.Messages[1].Content, `"user1": "third message"`)
@@ -175,12 +175,13 @@ func TestOpenAIChecker_FormatMessage(t *testing.T) {
 				{Msg: "first message", UserName: "user1"},
 				{Msg: "second message", UserName: "user2"},
 			},
-			expectedMessage: `current message
---------------------------------
-this is the history of previous messages from other users:
+			expectedMessage: `User message:
+current message
 
+History:
 "user1": "first message"
-"user2": "second message"`,
+"user2": "second message"
+`,
 		},
 		{
 			name:       "message with empty username in history",
@@ -189,12 +190,13 @@ this is the history of previous messages from other users:
 				{Msg: "first message", UserName: ""},
 				{Msg: "second message", UserName: "user2"},
 			},
-			expectedMessage: `current message
---------------------------------
-this is the history of previous messages from other users:
+			expectedMessage: `User message:
+current message
 
+History:
 "": "first message"
-"user2": "second message"`,
+"user2": "second message"
+`,
 		},
 	}
 
