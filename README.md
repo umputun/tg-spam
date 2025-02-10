@@ -232,16 +232,14 @@ The default logging prints spam reports to the console (stdout). The bot can log
 
 `tg-spam` includes an automatic backup mechanism that triggers when a version upgrade is detected. This feature helps protect against potential data loss or corruption that could occur during version upgrades, particularly when database schema changes are involved. If you need to rollback to a previous version, having these backups ensures you can restore your data to a compatible state.
 
-When enabled (disabled by default), the system:
+When enabled (enabled by default), the system:
 - Creates a backup of the database file before any version-related changes
 - Names the backup with a timestamp suffix for easy identification (e.g., tg-spam.db.v1_2_3-77e0bfd-20250107T23:17:34)
 - Maintains only the specified number of most recent backups to avoid excessive disk usage
 - Removes older backups automatically based on either file name's timestamp of file creation time
 
-This feature can be controlled with two parameters:
-- `--backup-ver.enabled` - enables automatic backup on version changes
-- `--backup-ver.max-backups` - sets the maximum number of backups to keep (default: 10)
-
+This feature can be controlled with a parameter `--max-backups env:"MAX_BACKUPS"` (default:10). 
+To disable automatic backups, set it to `0`.
 
 ## Setting up the telegram bot
 
@@ -327,6 +325,7 @@ Success! The new status is: DISABLED. /help
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
       --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
       --convert=[only|enabled|disabled] convert mode for txt samples and other storage files to DB (default: enabled)
+      --max-backups=                    maximum number of backups to keep, set 0 to disable (default: 10) [$MAX_BACKUPS]
       --dry                             dry mode, no bans [$DRY]
       --dbg                             debug mode [$DEBUG]
       --tg-dbg                          telegram debug mode [$TG_DEBUG]
@@ -352,8 +351,8 @@ meta:
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
-      --meta.forward                    enable forward check [$META_FORWARD]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
+      --meta.forward                    enable forward check [$META_FORWARD]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
@@ -375,16 +374,16 @@ space:
       --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
 
 files:
-      --files.samples=                  samples data path (default: data) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, deprecated (default: data) [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
-      --files.watch-interval=           watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 
 message:
       --message.startup=                startup message [$MESSAGE_STARTUP]
       --message.spam=                   spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                    spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the
-                                        consequences!) [$MESSAGE_WARN]
+      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial.
+                                        Stay compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
@@ -392,12 +391,8 @@ server:
       --server.auth=                    basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
       --server.auth-hash=               basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
 
-backup-ver:
-      --backup-ver.enabled              enable backup on version change [$BACKUP_VER_ENABLED]
-      --backup-ver.max-backups=         maximum number of backups to keep (default: 10) [$BACKUP_VER_MAX_BACKUPS]
-
 Help Options:
-  -h, --help                        Show this help message
+  -h, --help                            Show this help message
 
 ```
 

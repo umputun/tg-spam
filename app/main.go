@@ -135,10 +135,7 @@ type options struct {
 	HistorySize int    `long:"history-size" env:"LAST_MSGS_HISTORY_SIZE" default:"100" description:"history size"`
 	Convert     string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
 
-	BackupVer struct {
-		Enabled    bool `long:"enabled" env:"ENABLED" description:"enable backup on version change"`
-		MaxBackups int  `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep"`
-	} `group:"backup-ver" namespace:"backup-ver" env-namespace:"BACKUP_VER"`
+	MaxBackups int `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep, set 0 to disable"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -226,10 +223,12 @@ func execute(ctx context.Context, opts options) error {
 	log.Printf("[DEBUG] data db: %s", dbFile)
 
 	// make backup of db on version change
-	if opts.BackupVer.Enabled {
-		if err := backupDB(dbFile, revision, opts.BackupVer.MaxBackups); err != nil {
+	if opts.MaxBackups > 0 {
+		if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
 			return fmt.Errorf("backup on version change failed, %w", err)
 		}
+	} else {
+		log.Print("[WARN] database backups disabled")
 	}
 
 	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
@@ -851,6 +850,11 @@ func backupDB(dbFile, version string, maxBackups int) error {
 	backupFile := dbFile + "." + strings.ReplaceAll(version, ".", "_") // replace dots with underscores for file name
 	if _, err := os.Stat(backupFile); err == nil {
 		// backup file for the version already exists, no need to make it again
+		return nil
+	}
+	if _, err := os.Stat(dbFile); err != nil {
+		// db file not found, no need to backup. This is legit if the db is not created yet on the first run
+		log.Printf("[WARN] db file not found: %s, skip backup", dbFile)
 		return nil
 	}
 

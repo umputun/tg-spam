@@ -772,11 +772,10 @@ func TestBackupDB(t *testing.T) {
 		require.NotContains(t, expectedBackup, "master-123-1.2.3-20250108T00:01:26")
 	})
 
-	t.Run("backup with errors", func(t *testing.T) {
+	t.Run("backup with no db file", func(t *testing.T) {
 		dir := t.TempDir()
 		nonExistentFile := filepath.Join(dir, "non-existent.db")
 		err := backupDB(nonExistentFile, "v1", 1)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to copy db file")
+		require.NoError(t, err)
 	})
 }
