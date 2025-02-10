@@ -61,7 +61,9 @@ By default, the bot reports back to the group with the message `this is spam` an
 
 - persintency of the data.
 
-The bot can store the list of approved users and other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically. 
+The bot can store the list of approved users and other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic=, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically. 
+
+For users of Docker containers, it is recommended to use a mounted volume for this directory and not to set the location to anything else. I.e., do not pass `--files.dynamic=` and do not set `$FILES_DYNAMIC`; let `tg-spam` pick the default one. By default, the container will use the internal `/srv/data` directory for this purpose, which should be mounted as a volume to any place on the host filesystem.
 
 ### Legacy way of storing data in text files
 
