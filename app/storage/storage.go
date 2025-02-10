@@ -65,6 +65,7 @@ func setSqlitePragma(db *sqlx.DB) error {
 	// Set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
 	// to make sure if it is worth having 2 more DB-related files for WAL and SHM.
 	pragmas := map[string]string{
+		"journal_mode": "DELETE", // explicitly set to DELETE mode to prevent WAL files
 		// "journal_mode": "WAL",
 		// "synchronous":  "NORMAL",
 		// "busy_timeout": "5000",

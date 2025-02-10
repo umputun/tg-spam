@@ -101,7 +101,7 @@ type options struct {
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
-		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path, deprecated"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
 		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
