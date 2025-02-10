@@ -40,7 +40,7 @@ WORKDIR /srv
 
 RUN \
  /srv/tg-spam --convert=only --files.dynamic=/srv/preset --files.samples=/srv/preset && \
- rm -vf /srv/preset/*.loaded && \
+ sh -c 'for f in /srv/preset/*.txt.loaded; do mv -vf "$f" "${f%.loaded}"; done' && \
  echo "preset files converted" && \
  ls -la /srv/preset && \
  ls -la /srv/data
