@@ -400,6 +400,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		LoggerEnabled:           opts.Logger.Enabled,
 		SuperUsers:              opts.SuperUsers,
+		StorageTimeout:          opts.StorageTimeout,
 		NoSpamReply:             opts.NoSpamReply,
 		CasEnabled:              opts.CAS.API != "",
 		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.LinksOnly,
@@ -411,6 +412,9 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaForwarded:           opts.Meta.Forward,
 		MultiLangLimit:          opts.MultiLangWords,
 		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
+		OpenAIVeto:              opts.OpenAI.Veto,
+		OpenAIHistorySize:       opts.OpenAI.HistorySize,
+		OpenAIModel:             opts.OpenAI.Model,
 		SamplesDataPath:         opts.Files.SamplesDataPath,
 		DynamicDataPath:         opts.Files.DynamicDataPath,
 		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
@@ -422,6 +426,12 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		FirstMessagesCount:      opts.FirstMessagesCount,
 		StartupMessageEnabled:   opts.Message.Startup != "",
 		TrainingEnabled:         opts.Training,
+		SoftBanEnabled:          opts.SoftBan,
+		AbnormalSpacingEnabled:  opts.AbnormalSpacing.Enabled,
+		HistorySize:             opts.HistorySize,
+		DebugModeEnabled:        opts.Dbg,
+		DryModeEnabled:          opts.Dry,
+		TGDebugModeEnabled:      opts.TGDbg,
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
