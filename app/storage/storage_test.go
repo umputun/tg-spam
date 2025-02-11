@@ -1,8 +1,11 @@
+// file: app/storage/storage_test.go
 package storage
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,6 +20,7 @@ type StorageTestSuite struct {
 	suite.Suite
 	dbs         map[string]*engine.SQL
 	pgContainer testcontainers.Container
+	sqliteFile  string
 }
 
 func TestStorageSuite(t *testing.T) {
@@ -26,8 +30,10 @@ func TestStorageSuite(t *testing.T) {
 func (s *StorageTestSuite) SetupSuite() {
 	s.dbs = make(map[string]*engine.SQL)
 
-	// Setup SQLite
-	sqliteDB, err := engine.NewSqlite(":memory:", "gr1")
+	// Setup SQLite with file-based db
+	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
+	s.T().Logf("sqlite file: %s", s.sqliteFile)
+	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "gr1")
 	s.Require().NoError(err)
 	s.dbs["sqlite"] = sqliteDB
 
@@ -77,6 +83,11 @@ func (s *StorageTestSuite) TearDownSuite() {
 	if s.pgContainer != nil {
 		s.T().Log("terminating container")
 		s.Require().NoError(s.pgContainer.Terminate(context.Background()))
+	}
+	if s.sqliteFile != "" {
+		s.T().Logf("removing sqlite file: %s", s.sqliteFile)
+		err := os.Remove(s.sqliteFile)
+		s.Require().NoError(err)
 	}
 }
 

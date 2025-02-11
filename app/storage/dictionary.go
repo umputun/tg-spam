@@ -17,6 +17,8 @@ import (
 const (
 	CmdCreateDictionaryTable engine.DBCmd = iota + 300
 	CmdCreateDictionaryIndexes
+	CmdAddDictionaryEntry
+	CmdImportDictionaryEntry
 )
 
 // all dictionary-related queries
@@ -48,6 +50,14 @@ var dictionaryQueries = engine.NewQueryMap().
 	Add(CmdAddGIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	}).
+	Add(CmdAddDictionaryEntry, engine.Query{
+		Sqlite:   `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`,
+		Postgres: `INSERT INTO dictionary (type, data, gid) VALUES ($1, $2, $3) ON CONFLICT (gid, data) DO NOTHING`,
+	}).
+	Add(CmdImportDictionaryEntry, engine.Query{
+		Sqlite:   `INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`,
+		Postgres: `INSERT INTO dictionary (type, data, gid) VALUES ($1, $2, $3) ON CONFLICT (gid, data) DO UPDATE SET type = EXCLUDED.type`,
 	})
 
 // Dictionary is a storage for stop words/phrases and ignored words
@@ -96,22 +106,16 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 	d.Lock()
 	defer d.Unlock()
 
-	// start transaction
-	tx, err := d.BeginTx(ctx, nil)
+	// get the appropriate query for current db type
+	query, err := dictionaryQueries.Pick(d.Type(), CmdAddDictionaryEntry)
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
+		return fmt.Errorf("failed to get insert query: %w", err)
 	}
-	defer tx.Rollback()
 
-	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := d.Adopt(`INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`)
-	if _, err = tx.ExecContext(ctx, query, t, data, d.GID()); err != nil {
+	if _, err = d.ExecContext(ctx, query, t, data, d.GID()); err != nil {
 		return fmt.Errorf("failed to add data: %w", err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
 	return nil
 }
 
@@ -198,6 +202,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 // Import reads phrases from the reader and imports them into the storage.
 // If withCleanup is true removes all entries with the same type before import.
 // Input format is either a single phrase per line or a CSV file with multiple phrases.
+// Import reads phrases from the reader and imports them into the storage.
 func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -225,8 +230,15 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 		}
 	}
 
+	// get the appropriate insert query for current db type
+	query, err := dictionaryQueries.Pick(d.Type(), CmdImportDictionaryEntry)
+	if err != nil {
+		d.Unlock()
+		return nil, fmt.Errorf("failed to get insert query: %w", err)
+	}
+
 	// prepare statement for inserts
-	insertStmt, err := tx.PrepareContext(ctx, d.Adopt(`INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`))
+	insertStmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		d.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
