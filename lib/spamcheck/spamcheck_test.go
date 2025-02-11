@@ -47,19 +47,21 @@ func TestRequestString(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "Normal message",
-			request:  Request{"Hello, world!", "123", "Alice", MetaData{2, 1, false, false}, false},
-			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1, has_video:false`,
+			name: "Normal message",
+			request: Request{
+				Msg: "Hello, world!", UserID: "123", UserName: "Alice", Meta: MetaData{2, 1, false, false, false}, CheckOnly: false},
+			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1, has_video:false, has_audio:false, has_forward:false`,
 		},
 		{
-			name:     "Spam message",
-			request:  Request{"Spam message", "456", "Bob", MetaData{0, 3, true, false}, true},
-			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3, has_video:true`,
+			name: "Spam message",
+			request: Request{
+				Msg: "Spam message", UserID: "456", UserName: "Bob", Meta: MetaData{0, 3, true, false, false}, CheckOnly: true},
+			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3, has_video:true, has_audio:false, has_forward:false`,
 		},
 		{
 			name:     "Empty fields",
-			request:  Request{"", "", "", MetaData{0, 0, false, false}, false},
-			expected: `msg:"", user:"", id:, images:0, links:0, has_video:false`,
+			request:  Request{Msg: "", UserID: "", UserName: "", Meta: MetaData{}, CheckOnly: false},
+			expected: `msg:"", user:"", id:, images:0, links:0, has_video:false, has_audio:false, has_forward:false`,
 		},
 	}
 

@@ -4,13 +4,13 @@ go 1.23
 
 require (
 	github.com/OvyFlash/telegram-bot-api v0.0.0-20241219171906-3f2ca0c14ada
-	github.com/didip/tollbooth/v7 v7.0.2
-	github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
+	github.com/didip/tollbooth/v8 v8.0.1
 	github.com/fatih/color v1.18.0
 	github.com/forPelevin/gomoji v1.2.0
-	github.com/go-chi/chi/v5 v5.2.0
+	github.com/go-pkgz/fileutils v0.2.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/go-pkgz/rest v1.20.2
+	github.com/go-pkgz/routegroup v1.3.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/jmoiron/sqlx v1.4.0
@@ -20,7 +20,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.35.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.34.4
+	modernc.org/sqlite v1.34.5
 )
 
 require (

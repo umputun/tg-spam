@@ -85,6 +85,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithVideo || msg.WithVideoNote {
 		spamReq.Meta.HasVideo = true
 	}
+	if msg.WithAudio {
+		spamReq.Meta.HasAudio = true
+	}
 	if msg.WithForward {
 		spamReq.Meta.HasForward = true
 	}

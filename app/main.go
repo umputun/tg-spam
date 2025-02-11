@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/fatih/color"
+	"github.com/go-pkgz/fileutils"
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
@@ -74,6 +76,7 @@ type options struct {
 		ImageOnly  bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
 		LinksOnly  bool `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		VideosOnly bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
+		AudiosOnly bool `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		Forward    bool `long:"forward" env:"FORWARD" description:"enable forward check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
@@ -87,6 +90,7 @@ type options struct {
 		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	AbnormalSpacing struct {
@@ -98,9 +102,9 @@ type options struct {
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
 	Files struct {
-		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"data" description:"samples data path"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
-		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files"`
+		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
@@ -129,7 +133,10 @@ type options struct {
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
 	SoftBan  bool `long:"soft-ban" env:"SOFT_BAN" description:"soft ban mode, restrict user actions but not ban"`
 
-	Convert string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
+	HistorySize int    `long:"history-size" env:"LAST_MSGS_HISTORY_SIZE" default:"100" description:"history size"`
+	Convert     string `long:"convert" choice:"only" choice:"enabled" choice:"disabled" default:"enabled" description:"convert mode for txt samples and other storage files to DB"`
+
+	MaxBackups int `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep, set 0 to disable"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
 	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -214,11 +221,21 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
+	log.Printf("[DEBUG] data db: %s", dbFile)
+
+	// make backup of db on version change
+	if opts.MaxBackups > 0 {
+		if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
+			return fmt.Errorf("backup on version change failed, %w", err)
+		}
+	} else {
+		log.Print("[WARN] database backups disabled")
+	}
+
 	dataDB, err := engine.NewSqlite(dbFile, opts.InstanceID)
 	if err != nil {
 		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
 	}
-	log.Printf("[DEBUG] data db: %s", dbFile)
 
 	// make detector with all sample files loaded
 	detector := makeDetector(opts)
@@ -307,9 +324,8 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" suppress: %v, dry: %v, training: %v}",
-		tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers, tgListener.AdminGroup,
-		tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
+		" suppress: %v, dry: %v, training: %v}", tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
+		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
 		tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
@@ -385,6 +401,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		LoggerEnabled:           opts.Logger.Enabled,
 		SuperUsers:              opts.SuperUsers,
+		StorageTimeout:          opts.StorageTimeout,
 		NoSpamReply:             opts.NoSpamReply,
 		CasEnabled:              opts.CAS.API != "",
 		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.LinksOnly,
@@ -392,9 +409,13 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MetaVideoOnly:           opts.Meta.VideosOnly,
+		MetaAudioOnly:           opts.Meta.AudiosOnly,
 		MetaForwarded:           opts.Meta.Forward,
 		MultiLangLimit:          opts.MultiLangWords,
 		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
+		OpenAIVeto:              opts.OpenAI.Veto,
+		OpenAIHistorySize:       opts.OpenAI.HistorySize,
+		OpenAIModel:             opts.OpenAI.Model,
 		SamplesDataPath:         opts.Files.SamplesDataPath,
 		DynamicDataPath:         opts.Files.DynamicDataPath,
 		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
@@ -406,6 +427,12 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		FirstMessagesCount:      opts.FirstMessagesCount,
 		StartupMessageEnabled:   opts.Message.Startup != "",
 		TrainingEnabled:         opts.Training,
+		SoftBanEnabled:          opts.SoftBan,
+		AbnormalSpacingEnabled:  opts.AbnormalSpacing.Enabled,
+		HistorySize:             opts.HistorySize,
+		DebugModeEnabled:        opts.Dbg,
+		DryModeEnabled:          opts.Dry,
+		TGDebugModeEnabled:      opts.TGDbg,
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
@@ -442,7 +469,9 @@ func makeDetector(opts options) *tgspam.Detector {
 		FirstMessageOnly:    !opts.ParanoidMode,
 		FirstMessagesCount:  opts.FirstMessagesCount,
 		OpenAIVeto:          opts.OpenAI.Veto,
+		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
 		MultiLangWords:      opts.MultiLangWords,
+		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.
@@ -551,7 +580,7 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
 
 	if err := spamBot.ReloadSamples(); err != nil {
-		return nil, fmt.Errorf("can't relaod samples, %w", err)
+		return nil, fmt.Errorf("can't reload samples, %w", err)
 	}
 
 	// set detector samples updaters
@@ -815,6 +844,77 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 
 	if s.TotalIgnoredWords > 0 || s.TotalStopPhrases > 0 {
 		log.Printf("[DEBUG] dictionaries migration done: %s", s)
+	}
+	return nil
+}
+
+// backupDB creates a backup of the db file if the version has changed. It copies the db file to a new db file
+// named as the original file with a version suffix, e.g., tg-spam.db.master-77e0bfd-20250107T23:17:34.
+// The file is created only if the version has changed and a backup file with the name tg-spam.db.<version> does not exist.
+// It keeps up to maxBackups files; if maxBackups is 0, no backups are made.
+// Files are removed based on the final part of the version, i.e., 20250107T23:17:34, with the oldest backups removed first.
+// If the backup file extension suffix with the timestamp is not found, the modification time of the file is used instead.
+func backupDB(dbFile, version string, maxBackups int) error {
+	if maxBackups == 0 {
+		return nil
+	}
+	backupFile := dbFile + "." + strings.ReplaceAll(version, ".", "_") // replace dots with underscores for file name
+	if _, err := os.Stat(backupFile); err == nil {
+		// backup file for the version already exists, no need to make it again
+		return nil
+	}
+	if _, err := os.Stat(dbFile); err != nil {
+		// db file not found, no need to backup. This is legit if the db is not created yet on the first run
+		log.Printf("[WARN] db file not found: %s, skip backup", dbFile)
+		return nil
+	}
+
+	log.Printf("[DEBUG] db backup: %s -> %s", dbFile, backupFile)
+	// copy current db to the backup file
+	if err := fileutils.CopyFile(dbFile, backupFile); err != nil {
+		return fmt.Errorf("failed to copy db file: %w", err)
+	}
+	log.Printf("[INFO] db backup created: %s", backupFile)
+
+	// cleanup old backups if needed
+	files, err := filepath.Glob(dbFile + ".*")
+	if err != nil {
+		return fmt.Errorf("failed to list backup files: %w", err)
+	}
+
+	if len(files) <= maxBackups {
+		return nil
+	}
+
+	// sort files by timestamp in version suffix or mod time if suffix not formatted as timestamp
+	sort.Slice(files, func(i, j int) bool {
+		getTime := func(f string) time.Time {
+			base := filepath.Base(f) // file name like this: tg-spam.db.master-77e0bfd-20250107T23:17:34
+			// try to get timestamp from version suffix first
+			parts := strings.Split(base, "-")
+			if len(parts) >= 3 {
+				suffix := parts[len(parts)-1]
+				if t, err := time.ParseInLocation("20060102T15:04:05", suffix, time.Local); err == nil {
+					return t
+				}
+			}
+			// fallback to modification time for non-versioned files
+			fi, err := os.Stat(f)
+			if err != nil {
+				log.Printf("[WARN] can't stat file %s: %v", f, err)
+				return time.Now().Local() // treat errored files as newest to avoid deleting them
+			}
+			return fi.ModTime().Local() // convert to local for consistent comparison
+		}
+		return getTime(files[i]).Before(getTime(files[j]))
+	})
+
+	// remove oldest files
+	for i := 0; i < len(files)-maxBackups; i++ {
+		if err := os.Remove(files[i]); err != nil {
+			return fmt.Errorf("failed to remove old backup %s: %w", files[i], err)
+		}
+		log.Printf("[DEBUG] db backup removed: %s", files[i])
 	}
 	return nil
 }

@@ -87,6 +87,21 @@ func VideosCheck() MetaCheck {
 	}
 }
 
+// AudioCheck is a function that returns a MetaCheck function.
+// It checks if the message has an audio and the message is empty (i.e. it contains only audio).
+func AudioCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasAudio && req.Msg == "" {
+			return spamcheck.Response{
+				Name:    "audio",
+				Spam:    true,
+				Details: "audio without text",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "audio", Details: "no audio without text"}
+	}
+}
+
 // ForwardedCheck is a function that returns a MetaCheck function.
 // It checks if the message is a forwarded message.
 func ForwardedCheck() MetaCheck {

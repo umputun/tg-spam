@@ -24,10 +24,10 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
-- **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
+- **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images, forwarded messages, etc. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
-TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
+TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details, see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details, see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
 
 ## Installation
 
@@ -40,28 +40,36 @@ TG-Spam can also run as a server, providing a simple HTTP API to check messages 
 
 ## Configuration
 
-All the configuration is done via environment variables or command line arguments. Out of the box the bot has reasonable defaults, so user can run it without much hassle.
+All the configuration is done via environment variables or command line arguments. Out of the box, the bot has reasonable defaults, so user can run it without much hassle with just a couple of mandatory parameters.
 
 There are some mandatory parameters what has to be set:
 
 - `--telegram.token=, [$TELEGRAM_TOKEN]` - telegram bot token. See below how to get it.
 - `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it.
 
-As long as theses two parameters are set, the bot will work. Don't forget to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
+As long as theses two parameters are set, the bot will work. Remember to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 
 There are some important customizations available:
 
-First of all - sample files, the bot is using some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt` and `stop-words.txt`.
+- messages the bot is sending. There are three messages user may want to customize:
 
-User can specify custom location for them with `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory, where all the files are located.
-
-Second, are messages the bot is sending. There are three messages user may want to customize:
-
-- `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
-- `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected
-- `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
+  - `--message.startup=, [$MESSAGE_STARTUP]` - message sent to the group when bot is started, can be empty
+  - `--message.spam=, [$MESSAGE_SPAM]` - message sent to the group when spam detected, optional
+  - `--message.dry=, [$MESSAGE_DRY]` - message sent to the group when spam detected in dry mode
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
+
+- persintency of the data.
+
+The bot can store the list of approved users and other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic=, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically. 
+
+For users of Docker containers, it is recommended to use a mounted volume for this directory and not to set the location to anything else. I.e., do not pass `--files.dynamic=` and do not set `$FILES_DYNAMIC`; let `tg-spam` pick the default one. By default, the container will use the internal `/srv/data` directory for this purpose, which should be mounted as a volume to any place on the host filesystem.
+
+### Legacy way of storing data in text files
+
+**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about **the old way of storing data** in text files.
+
+Another thing to customize is the sample files; the bot uses some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt`, and `stop-words.txt`. Users can specify a custom location for them with the `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory where all the files are located.
 
 There are 4 files used by the bot to detect spam:
 
@@ -70,9 +78,7 @@ There are 4 files used by the bot to detect spam:
 - `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words. Each line in this file is a single token (word), or a comma-separated list of words in dbl-quotes.
 - `stop-words.txt` - list of stop words to detect spam right away. Each line in this file is a single phrase (can be one or more words). The bot checks if any of those phrases are present in the message and if so, it marks the message as spam.
 
-_The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot._
-
-Another useful feature is the ability to keep the list of approved users persistently and keep other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic =, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically.
+The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot.
 
 ### Configuring spam detection modules and parameters
 
@@ -100,10 +106,12 @@ Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other p
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- Only the first message(s) from a given user is checked for spam. If `--paranoid` mode is enabled, openai will not be used at all.
-- OpenAI check is the last in the chain of checks. By default (if `--openai.veto` is not set), the bot will not even call OpenAI if any of the previous checks marked the message as spam. This default mode makes spam detection stricter, helping detect more spam messages that otherwise could have slipped through the cracks.
-- Setting `--openai.veto` changes the workflow. In veto mode, OpenAI is called *only* if the message is classified as spam by other checks. The message is considered spam only if OpenAI confirms the decision. This helps reduce the number of false positives, making spam detection more careful.
-- By default, OpenAI integration is disabled.
+- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token.
+-  Only the initial message(s) from a specific user are examined for spam. If `--paranoid` mode is activated, OpenAI will not be utilized at all.
+-  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
+-  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
+-  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
+
 
 **Emoji Count**
 
@@ -129,6 +137,10 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
 
+**Audio only check**
+
+This option is disabled by default. If set to `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
+
 **Forward check**
 
 This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD` is `true`, the bot will check if the message forwarded. If the message is a forward, it will be marked as spam.
@@ -137,7 +149,7 @@ This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
-** Abnormal spacing check**
+**Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
 - `--space.short-word` (default:3) - the maximum length of a short word
@@ -205,7 +217,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat or reply to the message with `/spam` or `spam` text, the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat (the legacy way) or reply to the message with `/spam` or `spam` text (the modern way), the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
 --history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
@@ -215,6 +227,19 @@ Both dynamic spam and ham files are located in the directory set by `--files.dyn
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
+
+### Automatic backup on version upgrade
+
+`tg-spam` includes an automatic backup mechanism that triggers when a version upgrade is detected. This feature helps protect against potential data loss or corruption that could occur during version upgrades, particularly when database schema changes are involved. If you need to rollback to a previous version, having these backups ensures you can restore your data to a compatible state.
+
+When enabled (enabled by default), the system:
+- Creates a backup of the database file before any version-related changes
+- Names the backup with a timestamp suffix for easy identification (e.g., tg-spam.db.v1_2_3-77e0bfd-20250107T23:17:34)
+- Maintains only the specified number of most recent backups to avoid excessive disk usage
+- Removes older backups automatically based on either file name's timestamp of file creation time
+
+This feature can be controlled with a parameter `--max-backups env:"MAX_BACKUPS"` (default:10). 
+To disable automatic backups, set it to `0`.
 
 ## Setting up the telegram bot
 
@@ -298,7 +323,9 @@ Success! The new status is: DISABLED. /help
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --training                        training mode, passive spam detection only [$TRAINING]
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
+      --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
       --convert=[only|enabled|disabled] convert mode for txt samples and other storage files to DB (default: enabled)
+      --max-backups=                    maximum number of backups to keep, set 0 to disable (default: 10) [$MAX_BACKUPS]
       --dry                             dry mode, no bans [$DRY]
       --dbg                             debug mode [$DEBUG]
       --tg-dbg                          telegram debug mode [$TG_DEBUG]
@@ -324,6 +351,7 @@ meta:
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
+      --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]
 
 openai:
@@ -336,6 +364,7 @@ openai:
       --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
+      --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
@@ -345,9 +374,9 @@ space:
       --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
 
 files:
-      --files.samples=                  samples data path (default: data) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, deprecated (default: data) [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
-      --files.watch-interval=           watch interval for dynamic files (default: 5s) [$FILES_WATCH_INTERVAL]
+      --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 
 message:
       --message.startup=                startup message [$MESSAGE_STARTUP]

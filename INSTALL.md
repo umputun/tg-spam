@@ -152,7 +152,7 @@ docker-compose up -d
 ## Common Questions
 
 **Q: How do I know if it's working?**
-A: The bot will automatically start monitoring messages. Try sending a test message in your group - the bot should be active and monitoring.
+A: The bot will automatically start monitoring messages. Try sending a test message in your group - the bot should be active and monitoring. You can inspect the bot's logs by running `docker-compose logs -f tg-spam` in your tg-spam folder.
 
 **Q: How do I stop the bot?**
 A: In Terminal/Command Prompt, go to your tg-spam folder and type: `docker-compose down`

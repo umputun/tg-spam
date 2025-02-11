@@ -213,6 +213,32 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 				WithVideo: true,
 			},
 		},
+		{
+			name: "Message with audio",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Audio:     &tbapi.Audio{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+				},
+				Sent:      time.Unix(1578627415, 0),
+				ChatID:    123456,
+				WithAudio: true,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -385,6 +411,103 @@ func TestTelegramListener_transformEntities(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, transform(tt.input))
+		})
+	}
+}
+
+func TestTelegramListener_transformForward(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "forward from channel with ForwardOrigin",
+			in: &tbapi.Message{
+				MessageID:     1,
+				From:          &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:          tbapi.Chat{ID: 456},
+				Text:          "text",
+				ForwardOrigin: &tbapi.MessageOrigin{},
+			},
+			out: bot.Message{
+				ID:          1,
+				From:        bot.User{ID: 123, Username: "user_name"},
+				ChatID:      456,
+				Text:        "text",
+				WithForward: true,
+			},
+		},
+		{
+			name: "real message with video and forward",
+			in: &tbapi.Message{
+				MessageID: 600627,
+				From: &tbapi.User{
+					ID:        2010123477,
+					UserName:  "Zxcdaun",
+					FirstName: "Yaroslav",
+				},
+				Chat: tbapi.Chat{
+					ID:       -1001358715993,
+					Type:     "supergroup",
+					Title:    "radio-t chat",
+					UserName: "radio_t_chat",
+				},
+				ForwardOrigin: &tbapi.MessageOrigin{
+					Type: "channel",
+					Chat: &tbapi.Chat{
+						ID:       -1002160119872,
+						Type:     "channel",
+						Title:    "sdhjrt",
+						UserName: "srdfjtj",
+					},
+					MessageID: 2,
+				},
+				Video: &tbapi.Video{
+					FileID:       "BAACAgIAAx0CUPxcWQABCSozZ5_mO2Yf-5dx-_6m_kiz7-kcJ4IAAt5wAAKsCwFJz-NbffiygqI2BA",
+					FileUniqueID: "AgAD3nAAAqwLAUk",
+					Width:        464,
+					Height:       848,
+					Duration:     18,
+				},
+				Caption: "👁‍🗨Гᴧᴀɜ Бᴏᴦᴀ 3.0👁‍🗨\n✅ГОЛЫЕ ЖОПЫПЕР🍑\n✅СЛИВЫ ПРЕРЕПИСОКЛИС📨\n✅ИНТИМА💋 \n❗️И ЕЩЕ МНОГОЕ В ОБНОВЛЕННОМ ИНТИМ ПОИСКЕ❗️\n\n➡️t.me/glaz_Fahjhe_bot⬅️",
+			},
+			out: bot.Message{
+				ID:          600627,
+				From:        bot.User{ID: 2010123477, Username: "Zxcdaun", DisplayName: "Yaroslav"},
+				ChatID:      -1001358715993,
+				Text:        "👁‍🗨Гᴧᴀɜ Бᴏᴦᴀ 3.0👁‍🗨\n✅ГОЛЫЕ ЖОПЫПЕР🍑\n✅СЛИВЫ ПРЕРЕПИСОКЛИС📨\n✅ИНТИМА💋 \n❗️И ЕЩЕ МНОГОЕ В ОБНОВЛЕННОМ ИНТИМ ПОИСКЕ❗️\n\n➡️t.me/glaz_Fahjhe_bot⬅️",
+				WithVideo:   true,
+				WithForward: true,
+			},
+		},
+		{
+			name: "no forward",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+			},
+			out: bot.Message{
+				ID:          1,
+				From:        bot.User{ID: 123, Username: "user_name"},
+				ChatID:      456,
+				Text:        "text",
+				WithForward: false,
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.ID, res.ID)
+			assert.Equal(t, tt.out.From, res.From)
+			assert.Equal(t, tt.out.ChatID, res.ChatID)
+			assert.Equal(t, tt.out.Text, res.Text)
+			assert.Equal(t, tt.out.WithForward, res.WithForward)
+			assert.Equal(t, tt.out.WithVideo, res.WithVideo)
 		})
 	}
 }

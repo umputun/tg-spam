@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"testing"
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
@@ -227,5 +228,116 @@ func TestAdmin_dryModeForwardMessage(t *testing.T) {
 
 	adm.ReportBan("testUser", msg)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned [testUser]")
+}
 
+func TestAdmin_MsgHandlerWithEmptyText(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  *tbapi.Message
+	}{
+		{
+			name: "audio message without text",
+			msg: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123},
+				From: &tbapi.User{UserName: "admin", ID: 77},
+				ForwardOrigin: &tbapi.MessageOrigin{
+					Type: "user",
+					SenderUser: &tbapi.User{
+						ID:       123,
+						UserName: "user",
+					},
+				},
+				Audio: &tbapi.Audio{
+					FileID: "123",
+				},
+				MessageID: 999999,
+			},
+		},
+		{
+			name: "video message without text",
+			msg: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123},
+				From: &tbapi.User{UserName: "admin", ID: 77},
+				ForwardOrigin: &tbapi.MessageOrigin{
+					Type: "user",
+					SenderUser: &tbapi.User{
+						ID:       123,
+						UserName: "user",
+					},
+				},
+				Video: &tbapi.Video{
+					FileID: "123",
+				},
+				MessageID: 999999,
+			},
+		},
+		{
+			name: "photo message without text",
+			msg: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123},
+				From: &tbapi.User{UserName: "admin", ID: 77},
+				ForwardOrigin: &tbapi.MessageOrigin{
+					Type: "user",
+					SenderUser: &tbapi.User{
+						ID:       123,
+						UserName: "user",
+					},
+				},
+				Photo: []tbapi.PhotoSize{{
+					FileID: "123",
+				}},
+				MessageID: 999999,
+			},
+		},
+	}
+
+	mockAPI := &mocks.TbAPIMock{
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text}, nil
+		},
+	}
+
+	botMock := &mocks.BotMock{
+		UpdateSpamFunc: func(msg string) error {
+			t.Logf("update-spam: %s", msg)
+			return nil
+		},
+		RemoveApprovedUserFunc: func(id int64) error {
+			return nil
+		},
+	}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	adminHandler := admin{
+		tbAPI:      mockAPI,
+		bot:        botMock,
+		locator:    locator,
+		primChatID: 123,
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// reset mocks for each test
+			mockAPI.ResetCalls()
+			botMock.ResetCalls()
+
+			// add a message to locator that will be used by MsgHandler
+			err := locator.AddMessage(context.TODO(), "audio_msg", 123, 88, "user", 999999)
+			require.NoError(t, err)
+
+			update := tbapi.Update{Message: tt.msg}
+			err = adminHandler.MsgHandler(update)
+			assert.Error(t, err)
+			assert.Equal(t, "empty message text", err.Error())
+
+			// verify no requests were made to ban or delete
+			assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+			assert.Equal(t, 0, len(botMock.UpdateSpamCalls()))
+		})
+	}
 }
