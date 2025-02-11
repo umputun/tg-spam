@@ -6,25 +6,36 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
-// engineProvider defines a function type that provides a test database engine
-type engineProvider func(t *testing.T, ctx context.Context) (db *engine.SQL, teardown func())
+type StorageTestSuite struct {
+	suite.Suite
+	dbs         map[string]*engine.SQL
+	pgContainer testcontainers.Container
+}
 
-// database providers for each supported engine
-var providers = map[string]engineProvider{
-	"sqlite": func(t *testing.T, ctx context.Context) (*engine.SQL, func()) {
-		db, err := engine.NewSqlite(":memory:", "gr1")
-		require.NoError(t, err)
-		return db, func() { db.Close() }
-	},
-	"postgres": func(t *testing.T, ctx context.Context) (*engine.SQL, func()) {
+func TestStorageSuite(t *testing.T) {
+	suite.Run(t, new(StorageTestSuite))
+}
+
+func (s *StorageTestSuite) SetupSuite() {
+	s.dbs = make(map[string]*engine.SQL)
+
+	// Setup SQLite
+	sqliteDB, err := engine.NewSqlite(":memory:", "gr1")
+	s.Require().NoError(err)
+	s.dbs["sqlite"] = sqliteDB
+
+	// Setup Postgres
+	if !testing.Short() {
+		s.T().Log("start postgres container")
+		ctx := context.Background()
+
 		req := testcontainers.ContainerRequest{
 			Image:        "postgres:15",
 			ExposedPorts: []string{"5432/tcp"},
@@ -42,23 +53,49 @@ var providers = map[string]engineProvider{
 			ContainerRequest: req,
 			Started:          true,
 		})
-		require.NoError(t, err)
+		s.Require().NoError(err)
+		s.pgContainer = container
 
-		// wait a bit to ensure container is fully ready
 		time.Sleep(time.Second)
 
 		host, err := container.Host(ctx)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 		port, err := container.MappedPort(ctx, "5432")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		connStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
-		db, err := engine.NewPostgres(ctx, connStr, "gr1")
-		require.NoError(t, err)
+		pgDB, err := engine.NewPostgres(ctx, connStr, "gr1")
+		s.Require().NoError(err)
+		s.dbs["postgres"] = pgDB
+	}
+}
 
-		return db, func() {
-			db.Close()
-			assert.NoError(t, container.Terminate(ctx))
-		}
-	},
+func (s *StorageTestSuite) TearDownSuite() {
+	for _, db := range s.dbs {
+		db.Close()
+	}
+	if s.pgContainer != nil {
+		s.T().Log("terminating container")
+		s.Require().NoError(s.pgContainer.Terminate(context.Background()))
+	}
+}
+
+func (s *StorageTestSuite) getTestDB() []struct {
+	DB   *engine.SQL
+	Type engine.Type
+} {
+	var res []struct {
+		DB   *engine.SQL
+		Type engine.Type
+	}
+	for name, db := range s.dbs {
+		res = append(res, struct {
+			DB   *engine.SQL
+			Type engine.Type
+		}{
+			DB:   db,
+			Type: engine.Type(name),
+		})
+	}
+	return res
 }
