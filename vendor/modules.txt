@@ -35,22 +35,14 @@ github.com/cpuguy83/dockercfg
 github.com/davecgh/go-spew/spew
 # github.com/didip/tollbooth/v8 v8.0.1
 ## explicit; go 1.19
-github.com/didip/tollbooth/v7
-github.com/didip/tollbooth/v7/errors
-github.com/didip/tollbooth/v7/internal/time/rate
-github.com/didip/tollbooth/v7/libstring
-github.com/didip/tollbooth/v7/limiter
-# github.com/didip/tollbooth_chi v0.0.0-20220719025231-d662a7f6928f
-## explicit; go 1.14
-github.com/didip/tollbooth_chi
-# github.com/distribution/reference v0.6.0
-## explicit; go 1.20
-github.com/distribution/reference
 github.com/didip/tollbooth/v8
 github.com/didip/tollbooth/v8/errors
 github.com/didip/tollbooth/v8/internal/time/rate
 github.com/didip/tollbooth/v8/libstring
 github.com/didip/tollbooth/v8/limiter
+# github.com/distribution/reference v0.6.0
+## explicit; go 1.20
+github.com/distribution/reference
 # github.com/dlclark/regexp2 v1.11.4
 ## explicit; go 1.13
 github.com/dlclark/regexp2
@@ -105,10 +97,6 @@ github.com/felixge/httpsnoop
 # github.com/forPelevin/gomoji v1.2.0
 ## explicit; go 1.19
 github.com/forPelevin/gomoji
-# github.com/go-chi/chi/v5 v5.2.0
-## explicit; go 1.14
-github.com/go-chi/chi/v5
-github.com/go-chi/chi/v5/middleware
 # github.com/go-logr/logr v1.4.1
 ## explicit; go 1.18
 github.com/go-logr/logr
@@ -134,6 +122,9 @@ github.com/go-pkgz/lgr
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
+# github.com/go-pkgz/routegroup v1.3.0
+## explicit; go 1.22
+github.com/go-pkgz/routegroup
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
 github.com/gogo/protobuf/proto
@@ -235,7 +226,7 @@ github.com/samber/lo/mutable
 # github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
 ## explicit; go 1.18
 github.com/sandwich-go/gpt3-encoder
-# github.com/sashabaranov/go-openai v1.36.1
+# github.com/sashabaranov/go-openai v1.37.0
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
@@ -300,7 +291,7 @@ go.opentelemetry.io/otel/metric/embedded
 ## explicit; go 1.20
 go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
-# golang.org/x/crypto v0.32.0
+# golang.org/x/crypto v0.33.0
 ## explicit; go 1.20
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -312,15 +303,15 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
+# golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
-# golang.org/x/sys v0.29.0
+# golang.org/x/sys v0.30.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.21.0
+# golang.org/x/text v0.22.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -336,7 +327,7 @@ gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# modernc.org/libc v1.61.11
+# modernc.org/libc v1.61.12
 ## explicit; go 1.21
 modernc.org/libc
 modernc.org/libc/errno

@@ -93,7 +93,7 @@ type ChatMessagePart struct {
 
 type ChatCompletionMessage struct {
 	Role         string `json:"role"`
-	Content      string `json:"content"`
+	Content      string `json:"content,omitempty"`
 	Refusal      string `json:"refusal,omitempty"`
 	MultiContent []ChatMessagePart
 
@@ -132,7 +132,7 @@ func (m ChatCompletionMessage) MarshalJSON() ([]byte, error) {
 
 	msg := struct {
 		Role         string            `json:"role"`
-		Content      string            `json:"content"`
+		Content      string            `json:"content,omitempty"`
 		Refusal      string            `json:"refusal,omitempty"`
 		MultiContent []ChatMessagePart `json:"-"`
 		Name         string            `json:"name,omitempty"`
@@ -146,7 +146,7 @@ func (m ChatCompletionMessage) MarshalJSON() ([]byte, error) {
 func (m *ChatCompletionMessage) UnmarshalJSON(bs []byte) error {
 	msg := struct {
 		Role         string `json:"role"`
-		Content      string `json:"content"`
+		Content      string `json:"content,omitempty"`
 		Refusal      string `json:"refusal,omitempty"`
 		MultiContent []ChatMessagePart
 		Name         string        `json:"name,omitempty"`
@@ -258,6 +258,8 @@ type ChatCompletionRequest struct {
 	// Store can be set to true to store the output of this completion request for use in distillations and evals.
 	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-store
 	Store bool `json:"store,omitempty"`
+	// Controls effort on reasoning for reasoning models. It can be set to "low", "medium", or "high".
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	// Metadata to store with the completion.
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
@@ -390,7 +392,8 @@ func (c *Client) CreateChatCompletion(
 		return
 	}
 
-	if err = validateRequestForO1Models(request); err != nil {
+	reasoningValidator := NewReasoningValidator()
+	if err = reasoningValidator.Validate(request); err != nil {
 		return
 	}
 
