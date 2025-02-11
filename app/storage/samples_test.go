@@ -272,8 +272,10 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 			s.Run("concurrent delete", func() {
 				// add a message that will be deleted concurrently
 				msg := "concurrent delete message"
-				err := samples.Add(ctx, SampleTypeHam, SampleOriginPreset, msg)
-				s.Require().NoError(err)
+				for i := range 10 {
+					err := samples.Add(ctx, SampleTypeHam, SampleOriginPreset, msg+fmt.Sprintf("-%d", i))
+					s.Require().NoError(err)
+				}
 
 				const numWorkers = 10
 				var wg sync.WaitGroup
@@ -283,7 +285,9 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 				for i := 0; i < numWorkers; i++ {
 					wg.Add(1)
 					go func() {
+						i := i
 						defer wg.Done()
+						msg := msg + fmt.Sprintf("-%d", i)
 						if err := samples.DeleteMessage(ctx, msg); err != nil && !strings.Contains(err.Error(), "not found") {
 							errCh <- err
 						}

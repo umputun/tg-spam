@@ -195,7 +195,7 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 		return fmt.Errorf("failed to get affected rows: %w", err)
 	}
 	if affected == 0 {
-		return fmt.Errorf("failed to delete sample: gid=%s, message=%s", gid, message)
+		return fmt.Errorf("failed to delete sample: gid=%s, message=%s not found", gid, message)
 	}
 	return nil
 }
