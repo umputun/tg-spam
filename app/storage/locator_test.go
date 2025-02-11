@@ -4,11 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -374,56 +370,56 @@ func (s *StorageTestSuite) TestLocator_Migration() {
 
 }
 
-func TestLocator_GIDIsolation(t *testing.T) {
+func (s *StorageTestSuite) TestLocator_GIDIsolation() {
 	db1, err := engine.NewSqlite(":memory:", "gr1")
-	require.NoError(t, err)
+	s.Require().NoError(err)
 	defer db1.Close()
 
 	db2, err := engine.NewSqlite(":memory:", "gr2")
-	require.NoError(t, err)
+	s.Require().NoError(err)
 	defer db2.Close()
 
 	ctx := context.Background()
 
 	locator1, err := NewLocator(ctx, time.Hour, 5, db1)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	locator2, err := NewLocator(ctx, time.Hour, 5, db2)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// add same message to both locators
 	msg := "test message"
 	err = locator1.AddMessage(ctx, msg, 100, 1, "user1", 1)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 	err = locator2.AddMessage(ctx, msg, 200, 2, "user2", 2)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// verify messages are isolated
 	meta1, found := locator1.Message(ctx, msg)
-	require.True(t, found)
-	assert.Equal(t, int64(100), meta1.ChatID)
-	assert.Equal(t, "user1", meta1.UserName)
+	s.Require().True(found)
+	s.Assert().Equal(int64(100), meta1.ChatID)
+	s.Assert().Equal("user1", meta1.UserName)
 
 	meta2, found := locator2.Message(ctx, msg)
-	require.True(t, found)
-	assert.Equal(t, int64(200), meta2.ChatID)
-	assert.Equal(t, "user2", meta2.UserName)
+	s.Require().True(found)
+	s.Assert().Equal(int64(200), meta2.ChatID)
+	s.Assert().Equal("user2", meta2.UserName)
 
 	// verify spam data isolation
 	checks1 := []spamcheck.Response{{Name: "test1", Spam: true}}
 	checks2 := []spamcheck.Response{{Name: "test2", Spam: false}}
 
 	err = locator1.AddSpam(ctx, 1, checks1)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 	err = locator2.AddSpam(ctx, 1, checks2)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// verify spam data is isolated
 	spam1, found := locator1.Spam(ctx, 1)
-	require.True(t, found)
-	assert.True(t, spam1.Checks[0].Spam)
+	s.Require().True(found)
+	s.Assert().True(spam1.Checks[0].Spam)
 
 	spam2, found := locator2.Spam(ctx, 1)
-	require.True(t, found)
-	assert.False(t, spam2.Checks[0].Spam)
+	s.Require().True(found)
+	s.Assert().False(spam2.Checks[0].Spam)
 }
