@@ -31,7 +31,8 @@ COPY entrypoint.sh /srv/entrypoint.sh
 RUN \
  adduser -s /bin/sh -D -u 1000 app && chown -R app:app /home/app && \
  chown -R app:app /srv/preset /srv/data && \
- chmod -R 775 /srv/preset /srv/data && \
+ chmod -R 777 /srv/preset && \
+ chmod -R 775 /srv/data && \
  chmod +x /srv/entrypoint.sh && \
  ls -la /srv/preset
 
