@@ -150,7 +150,8 @@ func (l *Locator) migrate(ctx context.Context, tx *sqlx.Tx, gid string) error {
 	}
 
 	// update existing records with provided gid
-	if _, err = tx.ExecContext(ctx, "UPDATE messages SET gid = ? WHERE gid = ''", gid); err != nil {
+	query := l.Adopt("UPDATE messages SET gid = ? WHERE gid = ''")
+	if _, err = tx.ExecContext(ctx, query, gid); err != nil {
 		return fmt.Errorf("failed to update gid for existing messages: %w", err)
 	}
 
@@ -228,8 +229,8 @@ func (l *Locator) Message(ctx context.Context, msg string) (MsgMeta, bool) {
 
 	var meta MsgMeta
 	hash := l.MsgHash(msg)
-	err := l.GetContext(ctx, &meta, `SELECT time, chat_id, user_id, user_name, msg_id 
-        FROM messages WHERE hash = ? AND gid = ?`, hash, l.GID())
+	query := l.Adopt(`SELECT time, chat_id, user_id, user_name, msg_id FROM messages WHERE hash = ? AND gid = ?`)
+	err := l.GetContext(ctx, &meta, query, hash, l.GID())
 	if err != nil {
 		log.Printf("[DEBUG] failed to find message by hash %q: %v", hash, err)
 		return MsgMeta{}, false
@@ -243,7 +244,8 @@ func (l *Locator) UserNameByID(ctx context.Context, userID int64) string {
 	defer l.RUnlock()
 
 	var userName string
-	err := l.GetContext(ctx, &userName, `SELECT user_name FROM messages WHERE user_id = ? AND gid = ? LIMIT 1`, userID, l.GID())
+	query := l.Adopt(`SELECT user_name FROM messages WHERE user_id = ? AND gid = ? LIMIT 1`)
+	err := l.GetContext(ctx, &userName, query, userID, l.GID())
 	if err != nil {
 		log.Printf("[DEBUG] failed to find user name by id %d: %v", userID, err)
 		return ""
@@ -257,7 +259,8 @@ func (l *Locator) UserIDByName(ctx context.Context, userName string) int64 {
 	defer l.RUnlock()
 
 	var userID int64
-	err := l.GetContext(ctx, &userID, `SELECT user_id FROM messages WHERE user_name = ? AND gid = ? LIMIT 1`, userName, l.GID())
+	query := l.Adopt(`SELECT user_id FROM messages WHERE user_name = ? AND gid = ? LIMIT 1`)
+	err := l.GetContext(ctx, &userID, query, userName, l.GID())
 	if err != nil {
 		log.Printf("[DEBUG] failed to find user id by name %q: %v", userName, err)
 		return 0
@@ -272,8 +275,8 @@ func (l *Locator) Spam(ctx context.Context, userID int64) (SpamData, bool) {
 
 	var data SpamData
 	var checksStr string
-	err := l.QueryRowContext(ctx, `SELECT time, checks FROM spam WHERE user_id = ? AND gid = ?`,
-		userID, l.GID()).Scan(&data.Time, &checksStr)
+	query := l.Adopt(`SELECT time, checks FROM spam WHERE user_id = ? AND gid = ?`)
+	err := l.QueryRowContext(ctx, query, userID, l.GID()).Scan(&data.Time, &checksStr)
 	if err != nil {
 		return SpamData{}, false
 	}
@@ -292,8 +295,8 @@ func (l *Locator) MsgHash(msg string) string {
 
 // cleanupMessages removes old messages. Messages with expired ttl are removed if the total number of messages exceeds minSize.
 func (l *Locator) cleanupMessages(ctx context.Context) error {
-	_, err := l.ExecContext(ctx, `DELETE FROM messages WHERE time < ? AND gid = ? AND (SELECT COUNT(*) FROM messages WHERE gid = ?) > ?`,
-		time.Now().Add(-l.ttl), l.GID(), l.GID(), l.minSize)
+	query := l.Adopt(`DELETE FROM messages WHERE time < ? AND gid = ? AND (SELECT COUNT(*) FROM messages WHERE gid = ?) > ?`)
+	_, err := l.ExecContext(ctx, query, time.Now().Add(-l.ttl), l.GID(), l.GID(), l.minSize)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup messages: %w", err)
 	}
@@ -302,8 +305,8 @@ func (l *Locator) cleanupMessages(ctx context.Context) error {
 
 // cleanupSpam removes old spam data within the same gid
 func (l *Locator) cleanupSpam() error {
-	_, err := l.Exec(`DELETE FROM spam WHERE time < ? AND gid = ? AND (SELECT COUNT(*) FROM spam WHERE gid = ?) > ?`,
-		time.Now().Add(-l.ttl), l.GID(), l.GID(), l.minSize)
+	query := l.Adopt(`DELETE FROM spam WHERE time < ? AND gid = ? AND (SELECT COUNT(*) FROM spam WHERE gid = ?) > ?`)
+	_, err := l.Exec(query, time.Now().Add(-l.ttl), l.GID(), l.GID(), l.minSize)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup spam: %w", err)
 	}

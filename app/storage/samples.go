@@ -123,7 +123,7 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 	defer s.Unlock()
 
 	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
+	query := s.Adopt(`INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`)
 	if _, err := s.ExecContext(ctx, query, s.GID(), t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
@@ -137,7 +137,7 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 	s.Lock()
 	defer s.Unlock()
 
-	result, err := s.ExecContext(ctx, `DELETE FROM samples WHERE id = ?`, id)
+	result, err := s.ExecContext(ctx, s.Adopt(`DELETE FROM samples WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("failed to remove sample: %w", err)
 	}
@@ -161,14 +161,15 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 	// First verify the message exists in this group
 	var count int
 	gid := s.GID()
-	if err := s.GetContext(ctx, &count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, gid, message); err != nil {
+	query := s.Adopt(`SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`)
+	if err := s.GetContext(ctx, &count, query, gid, message); err != nil {
 		return fmt.Errorf("failed to check sample existence: %w", err)
 	}
 	if count == 0 {
 		return fmt.Errorf("sample not found: gid=%s, message=%s", gid, message)
 	}
 
-	result, err := s.ExecContext(ctx, `DELETE FROM samples WHERE gid = ? AND message = ?`, gid, message)
+	result, err := s.ExecContext(ctx, s.Adopt(`DELETE FROM samples WHERE gid = ? AND message = ?`), gid, message)
 	if err != nil {
 		return fmt.Errorf("failed to remove sample: %w", err)
 	}
@@ -208,6 +209,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ?`
 		args = []any{gid, t, o}
 	}
+	query = s.Adopt(query)
 
 	if err := s.SelectContext(ctx, &samples, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to get samples: %w", err)
@@ -237,6 +239,7 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ? ORDER BY timestamp DESC`
 		args = []any{gid, t, o}
 	}
+	query = s.Adopt(query)
 
 	s.RLock()
 	defer s.RUnlock()
@@ -270,6 +273,7 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 		query = `SELECT message FROM samples WHERE gid = ? AND type = ? AND origin = ? ORDER BY timestamp DESC`
 		args = []any{gid, t, o}
 	}
+	query = s.Adopt(query)
 
 	s.RLock()
 	rows, err := s.QueryxContext(ctx, query, args...)
@@ -342,7 +346,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 
 	// remove all samples with the same type and origin if requested
 	if withCleanup {
-		query := `DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`
+		query := s.Adopt(`DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`)
 		result, errDel := tx.ExecContext(ctx, query, gid, t, o)
 		if errDel != nil {
 			return nil, fmt.Errorf("failed to remove old samples: %w", errDel)
@@ -355,7 +359,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	}
 
 	// add samples
-	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
+	query := s.Adopt(`INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`)
 	scanner := bufio.NewScanner(r)
 	// Set custom buffer size and max token size for large lines
 	const maxScanTokenSize = 64 * 1024 // 64KB max line length
@@ -435,7 +439,7 @@ func (s *Samples) Stats(ctx context.Context) (*SamplesStats, error) {
 
 // stats returns statistics about samples without locking
 func (s *Samples) stats(ctx context.Context) (*SamplesStats, error) {
-	query := `
+	query := s.Adopt(`
         SELECT 
             COUNT(CASE WHEN type = 'spam' THEN 1 END) as spam_count,
             COUNT(CASE WHEN type = 'ham' THEN 1 END) as ham_count,
@@ -444,7 +448,7 @@ func (s *Samples) stats(ctx context.Context) (*SamplesStats, error) {
             COUNT(CASE WHEN type = 'spam' AND origin = 'user' THEN 1 END) as user_spam_count,
             COUNT(CASE WHEN type = 'ham' AND origin = 'user' THEN 1 END) as user_ham_count
         FROM samples 
-        WHERE gid = ?`
+        WHERE gid = ?`)
 
 	var stats SamplesStats
 	if err := s.GetContext(ctx, &stats, query, s.GID()); err != nil {

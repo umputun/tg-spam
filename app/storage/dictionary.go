@@ -104,7 +104,7 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 	defer tx.Rollback()
 
 	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`
+	query := d.Adopt(`INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`)
 	if _, err = tx.ExecContext(ctx, query, t, data, d.GID()); err != nil {
 		return fmt.Errorf("failed to add data: %w", err)
 	}
@@ -120,7 +120,7 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 	d.Lock()
 	defer d.Unlock()
 
-	result, err := d.ExecContext(ctx, `DELETE FROM dictionary WHERE id = ?`, id)
+	result, err := d.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("failed to remove phrase: %w", err)
 	}
@@ -145,7 +145,7 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 	}
 
 	var data []string
-	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
+	query := d.Adopt(`SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`)
 	if err := d.SelectContext(ctx, &data, query, t, d.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get data: %w", err)
 	}
@@ -172,7 +172,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 		return nil, err
 	}
 
-	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
+	query := d.Adopt(`SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`)
 
 	d.RLock()
 	rows, err := d.QueryxContext(ctx, query, t, d.GID())
@@ -219,14 +219,14 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 
 	// remove all entries with the same type if requested
 	if withCleanup {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ? AND gid = ?`, t, gid); err != nil {
+		if _, err = tx.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE type = ? AND gid = ?`), t, gid); err != nil {
 			d.Unlock()
 			return nil, fmt.Errorf("failed to remove old entries: %w", err)
 		}
 	}
 
 	// prepare statement for inserts
-	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`)
+	insertStmt, err := tx.PrepareContext(ctx, d.Adopt(`INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`))
 	if err != nil {
 		d.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
