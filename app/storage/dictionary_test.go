@@ -6,9 +6,6 @@ import (
 	"io"
 	"strings"
 	"sync"
-	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func (s *StorageTestSuite) TestNewDictionary() {
@@ -291,7 +288,7 @@ func (s *StorageTestSuite) TestDictionary_Import() {
 	}
 }
 
-func TestDictionaryType_Validate(t *testing.T) {
+func (s *StorageTestSuite) TestDictionaryType_Validate() {
 	tests := []struct {
 		name    string
 		dType   DictionaryType
@@ -303,12 +300,12 @@ func TestDictionaryType_Validate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		s.Run(tt.name, func() {
 			err := tt.dType.Validate()
 			if tt.wantErr {
-				assert.Error(t, err)
+				s.Assert().Error(err)
 			} else {
-				assert.NoError(t, err)
+				s.Assert().NoError(err)
 			}
 		})
 	}

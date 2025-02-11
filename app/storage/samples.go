@@ -43,6 +43,8 @@ const (
 const (
 	CmdCreateSamplesTable engine.DBCmd = iota + 500
 	CmdCreateSamplesIndexes
+	CmdAddSample
+	CmdImportSample
 )
 
 // queries holds all samples-related queries
@@ -66,6 +68,18 @@ var samplesQueries = engine.NewQueryMap().
             message TEXT NOT NULL,
             UNIQUE(gid, message)
         )`,
+	}).
+	Add(CmdAddSample, engine.Query{
+		Sqlite: `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`,
+		Postgres: `INSERT INTO samples (gid, type, origin, message) VALUES ($1, $2, $3, $4) 
+                  ON CONFLICT (gid, message) DO UPDATE SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
+	}).
+	Add(CmdImportSample, engine.Query{
+		Sqlite: `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`,
+		Postgres: `INSERT INTO samples (gid, type, origin, message) 
+                  VALUES ($1, $2, $3, $4) 
+                  ON CONFLICT (gid, message) DO UPDATE 
+                  SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
 	}).
 	AddSame(CmdCreateSamplesIndexes, `
         CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
@@ -122,8 +136,10 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 	s.Lock()
 	defer s.Unlock()
 
-	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := s.Adopt(`INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`)
+	query, err := samplesQueries.Pick(s.Type(), CmdAddSample)
+	if err != nil {
+		return fmt.Errorf("failed to get query: %w", err)
+	}
 	if _, err := s.ExecContext(ctx, query, s.GID(), t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
@@ -359,7 +375,10 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	}
 
 	// add samples
-	query := s.Adopt(`INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`)
+	query, err := samplesQueries.Pick(s.Type(), CmdImportSample)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get import query: %w", err)
+	}
 	scanner := bufio.NewScanner(r)
 	// Set custom buffer size and max token size for large lines
 	const maxScanTokenSize = 64 * 1024 // 64KB max line length
