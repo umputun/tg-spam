@@ -1025,31 +1025,85 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 	assert.Contains(t, body, "<tr><th>Min Message Length</th><td>150</td></tr>")
 }
 
-func TestServer_stylesHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0"})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/style.css", http.NoBody)
-	require.NoError(t, err)
+func TestServer_StaticFiles(t *testing.T) {
+	// setup necessary mocks
+	mockDetector := &mocks.DetectorMock{
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			return false, []spamcheck.Response{{Details: "not spam"}}
+		},
+		ApprovedUsersFunc: func() []approved.UserInfo {
+			return []approved.UserInfo{}
+		},
+	}
+	mockSpamFilter := &mocks.SpamFilterMock{}
+	detectedSpamMock := &mocks.DetectedSpamMock{}
 
-	handler := http.HandlerFunc(server.stylesHandler)
-	handler.ServeHTTP(rr, req)
+	server := NewServer(Config{
+		Version:      "1.0",
+		Detector:     mockDetector,
+		SpamFilter:   mockSpamFilter,
+		DetectedSpam: detectedSpamMock,
+	})
+	ts := httptest.NewServer(server.routes(routegroup.New(http.NewServeMux())))
+	defer ts.Close()
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	assert.Equal(t, "text/css; charset=utf-8", rr.Header().Get("Content-Type"), "handler should return CSS content type")
-	assert.Contains(t, rr.Body.String(), "body", "handler should return CSS content")
-}
+	tests := []struct {
+		name        string
+		path        string
+		contentType string
+		contains    string // for text files like CSS
+	}{
+		{
+			name:        "styles.css",
+			path:        "/styles.css",
+			contentType: "text/css; charset=utf-8",
+			contains:    "body",
+		},
+		{
+			name:        "logo.png",
+			path:        "/logo.png",
+			contentType: "image/png",
+		},
+		{
+			name:        "spinner.svg",
+			path:        "/spinner.svg",
+			contentType: "image/svg+xml",
+		},
+		{
+			name:        "non-existent file",
+			path:        "/non-existent.txt",
+			contentType: "",
+		},
+	}
 
-func TestServer_logoHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0"})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/logo.png", http.NoBody)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tt.path)
+			require.NoError(t, err)
+			defer resp.Body.Close()
 
-	handler := http.HandlerFunc(server.logoHandler)
-	handler.ServeHTTP(rr, req)
+			if tt.contentType == "" {
+				assert.Equal(t, http.StatusNotFound, resp.StatusCode, "should return 404 for non-existent files")
+				return
+			}
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"), "handler should return CSS content type")
+			assert.Equal(t, http.StatusOK, resp.StatusCode, "should return OK")
+			assert.Equal(t, tt.contentType, resp.Header.Get("Content-Type"), "should return correct content type")
+
+			if tt.contains != "" {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				assert.Contains(t, string(body), tt.contains, "response should contain expected content")
+			}
+		})
+	}
+
+	t.Run("disallow access to other files", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/assets/some.html")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, "should not allow access to other files")
+	})
 }
 
 func Test_downloadSampleHandler(t *testing.T) {

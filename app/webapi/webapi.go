@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"math/big"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -225,10 +227,15 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
 		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
-		webUI.HandleFunc("GET /styles.css", s.stylesHandler)                      // serve styles.css
-		webUI.HandleFunc("GET /logo.png", s.logoHandler)                          // serve logo.png
-		webUI.HandleFunc("GET /spinner.svg", s.spinnerHandler)                    // serve spinner.svg
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+
+		// serve only specific static files at root level
+		staticFiles := newStaticFS(templateFS,
+			staticFileMapping{urlPath: "styles.css", filesysPath: "assets/styles.css"},
+			staticFileMapping{urlPath: "logo.png", filesysPath: "assets/logo.png"},
+			staticFileMapping{urlPath: "spinner.svg", filesysPath: "assets/spinner.svg"},
+		)
+		webUI.HandleFiles("/", http.FS(staticFiles))
 	})
 
 	return router
@@ -621,42 +628,6 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// stylesHandler handles GET /styles.css request. It returns styles.css file.
-func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
-	body, err := templateFS.ReadFile("assets/styles.css")
-	if err != nil {
-		log.Printf("[WARN] can't read styles.css: %v", err)
-		http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-// logoHandler handles GET /logo.png request. It returns assets/logo.png file.
-func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/logo.png")
-	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
-}
-
-func (s *Server) spinnerHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/spinner.svg")
-	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "image/svg+xml")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
-}
-
 func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
@@ -726,6 +697,38 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 		revHam[i] = ham[j]
 	}
 	return revSpam, revHam
+}
+
+// staticFS is a filtered filesystem that only exposes specific static files
+type staticFS struct {
+	fs        fs.FS
+	urlToPath map[string]string
+}
+
+// staticFileMapping defines a mapping between URL path and filesystem path
+type staticFileMapping struct {
+	urlPath     string
+	filesysPath string
+}
+
+func newStaticFS(fsys fs.FS, files ...staticFileMapping) *staticFS {
+	urlToPath := make(map[string]string)
+	for _, f := range files {
+		urlToPath[f.urlPath] = f.filesysPath
+	}
+
+	return &staticFS{
+		fs:        fsys,
+		urlToPath: urlToPath,
+	}
+}
+
+func (sfs *staticFS) Open(name string) (fs.File, error) {
+	name = path.Clean("/" + name)[1:]
+	if fsPath, ok := sfs.urlToPath[name]; ok {
+		return sfs.fs.Open(fsPath)
+	}
+	return nil, fs.ErrNotExist
 }
 
 // GenerateRandomPassword generates a random password of a given length
