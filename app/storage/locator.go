@@ -22,6 +22,8 @@ const (
 	CmdCreateLocatorIndexes
 	CmdAddGIDColumnMessages
 	CmdAddGIDColumnSpam
+	CmdAddLocatorMessage
+	CmdAddLocatorSpam
 )
 
 // locatorQueries holds all locator-related queries
@@ -72,6 +74,29 @@ var locatorQueries = engine.NewQueryMap().
 	Add(CmdAddGIDColumnSpam, engine.Query{
 		Sqlite:   "ALTER TABLE spam ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE spam ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	}).
+	Add(CmdAddLocatorMessage, engine.Query{
+		Sqlite: `INSERT OR REPLACE INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+            VALUES (:hash, :gid, :time, :chat_id, :user_id, :user_name, :msg_id)`,
+		Postgres: `INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+            VALUES (:hash, :gid, :time, :chat_id, :user_id, :user_name, :msg_id)
+            ON CONFLICT (hash) DO UPDATE SET 
+            gid = :gid, 
+            time = :time, 
+            chat_id = :chat_id, 
+            user_id = :user_id, 
+            user_name = :user_name, 
+            msg_id = :msg_id`,
+	}).
+	Add(CmdAddLocatorSpam, engine.Query{
+		Sqlite: `INSERT OR REPLACE INTO spam (user_id, gid, time, checks) 
+            VALUES (:user_id, :gid, :time, :checks)`,
+		Postgres: `INSERT INTO spam (user_id, gid, time, checks) 
+            VALUES (:user_id, :gid, :time, :checks)
+            ON CONFLICT (user_id) DO UPDATE SET 
+            gid = :gid, 
+            time = :time, 
+            checks = :checks`,
 	})
 
 // Locator stores messages metadata and spam results for a given ttl period.
@@ -176,8 +201,13 @@ func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int
 	hash := l.MsgHash(msg)
 	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
 		msg, hash, userID, userName, chatID, msgID)
-	_, err := l.NamedExecContext(ctx, `INSERT OR REPLACE INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
-        VALUES (:hash, :gid, :time, :chat_id, :user_id, :user_name, :msg_id)`,
+
+	query, err := locatorQueries.Pick(l.Type(), CmdAddLocatorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to get add message query: %w", err)
+	}
+
+	_, err = l.NamedExecContext(ctx, query,
 		struct {
 			MsgMeta
 			Hash string `db:"hash"`
@@ -208,8 +238,13 @@ func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.
 	if err != nil {
 		return fmt.Errorf("failed to marshal checks: %w", err)
 	}
-	_, err = l.NamedExecContext(ctx, `INSERT OR REPLACE INTO spam (user_id, gid, time, checks) 
-        VALUES (:user_id, :gid, :time, :checks)`,
+
+	query, err := locatorQueries.Pick(l.Type(), CmdAddLocatorSpam)
+	if err != nil {
+		return fmt.Errorf("failed to get add spam query: %w", err)
+	}
+
+	_, err = l.NamedExecContext(ctx, query,
 		map[string]interface{}{
 			"user_id": userID,
 			"gid":     l.GID(),
