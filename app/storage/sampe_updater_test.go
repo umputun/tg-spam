@@ -2,230 +2,209 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
-	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestSampleUpdater(t *testing.T) {
-	t.Run("append and read with normal timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+func (s *StorageTestSuite) TestSampleUpdater() {
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test spam message"))
+			s.Run("append and read with normal timeout", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				s.Require().NoError(updater.Append("test spam message"))
 
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		assert.Equal(t, "test spam message\n", string(data))
-	})
+				reader, err := updater.Reader()
+				s.Require().NoError(err)
 
-	t.Run("append multiple messages", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				data, err := io.ReadAll(reader)
+				s.Require().NoError(err)
+				s.Assert().Equal("test spam message\n", string(data))
+			})
 
-		updater := NewSampleUpdater(samples, SampleTypeHam, 1*time.Second)
+			s.Run("append multiple messages", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		messages := []string{"msg1", "msg2", "msg3"}
-		for _, msg := range messages {
-			require.NoError(t, updater.Append(msg))
-			time.Sleep(time.Millisecond) // ensure messages have different timestamps
-		}
+				updater := NewSampleUpdater(samples, SampleTypeHam, 1*time.Second)
 
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
+				messages := []string{"msg1", "msg2", "msg3"}
+				for _, msg := range messages {
+					s.Require().NoError(updater.Append(msg))
+					time.Sleep(time.Millisecond) // ensure messages have different timestamps
+				}
 
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		result := strings.Split(strings.TrimSpace(string(data)), "\n")
-		assert.Equal(t, len(messages), len(result))
-		for _, msg := range messages {
-			assert.Contains(t, result, msg)
-		}
-	})
+				reader, err := updater.Reader()
+				s.Require().NoError(err)
+				defer reader.Close()
 
-	t.Run("timeout on append", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				data, err := io.ReadAll(reader)
+				s.Require().NoError(err)
+				result := strings.Split(strings.TrimSpace(string(data)), "\n")
+				s.Assert().Equal(len(messages), len(result))
+				for _, msg := range messages {
+					s.Assert().Contains(result, msg)
+				}
+			})
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		err = updater.Append("timeout message")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "context deadline exceeded")
-	})
+			s.Run("timeout on append", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-	t.Run("tiny timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
+				time.Sleep(time.Microsecond)
+				err = updater.Append("timeout message")
+				s.Require().Error(err)
+				s.Contains(err.Error(), "context deadline exceeded")
+			})
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, 1)
-		assert.Error(t, updater.Append("test message"))
-	})
+			s.Run("tiny timeout", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-	t.Run("verify user origin", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				updater := NewSampleUpdater(samples, SampleTypeSpam, 1)
+				s.Assert().Error(updater.Append("test message"))
+			})
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test message"))
+			s.Run("verify user origin", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		// verify the message was stored with user origin
-		ctx := context.Background()
-		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "test message")
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				s.Require().NoError(updater.Append("test message"))
 
-		// verify it's not in preset origin
-		messages, err = samples.Read(ctx, SampleTypeSpam, SampleOriginPreset)
-		require.NoError(t, err)
-		assert.NotContains(t, messages, "test message")
-	})
+				// verify the message was stored with user origin
+				ctx := context.Background()
+				messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
+				s.Require().NoError(err)
+				s.Assert().Contains(messages, "test message")
 
-	t.Run("sample type consistency", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				// verify it's not in preset origin
+				messages, err = samples.Read(ctx, SampleTypeSpam, SampleOriginPreset)
+				s.Require().NoError(err)
+				s.Assert().NotContains(messages, "test message")
+			})
 
-		spamUpdater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		hamUpdater := NewSampleUpdater(samples, SampleTypeHam, time.Second)
+			s.Run("sample type consistency", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		require.NoError(t, spamUpdater.Append("spam message"))
-		require.NoError(t, hamUpdater.Append("ham message"))
+				spamUpdater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				hamUpdater := NewSampleUpdater(samples, SampleTypeHam, time.Second)
 
-		ctx := context.Background()
+				s.Require().NoError(spamUpdater.Append("spam message"))
+				s.Require().NoError(hamUpdater.Append("ham message"))
 
-		// verify spam messages
-		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "spam message")
-		assert.NotContains(t, messages, "ham message")
+				ctx := context.Background()
 
-		// verify ham messages
-		messages, err = samples.Read(ctx, SampleTypeHam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "ham message")
-		assert.NotContains(t, messages, "spam message")
-	})
+				// verify spam messages
+				messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
+				s.Require().NoError(err)
+				s.Assert().Contains(messages, "spam message")
+				s.Assert().NotContains(messages, "ham message")
 
-	t.Run("read empty", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
+				// verify ham messages
+				messages, err = samples.Read(ctx, SampleTypeHam, SampleOriginUser)
+				s.Require().NoError(err)
+				s.Assert().Contains(messages, "ham message")
+				s.Assert().NotContains(messages, "spam message")
+			})
 
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
+			s.Run("read empty", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				reader, err := updater.Reader()
+				s.Require().NoError(err)
+				defer reader.Close()
 
-		data, err := reader.Read(make([]byte, 100))
-		require.Equal(t, 0, data)
-		require.Equal(t, io.EOF, err)
-	})
+				data, err := reader.Read(make([]byte, 100))
+				s.Require().Equal(0, data)
+				s.Require().Equal(io.EOF, err)
+			})
 
-	t.Run("timeout triggers", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
+			s.Run("timeout triggers", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
+				time.Sleep(time.Microsecond)
+				s.Require().Error(updater.Append("test"))
+			})
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		require.Error(t, updater.Append("test"))
-	})
+			s.Run("no timeout", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-	t.Run("no timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
+				updater := NewSampleUpdater(samples, SampleTypeSpam, 0)
+				s.Require().NoError(updater.Append("test"))
 
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
+				reader, err := updater.Reader()
+				s.Require().NoError(err)
+				defer reader.Close()
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, 0)
-		require.NoError(t, updater.Append("test"))
+				data := make([]byte, 100)
+				n, err := reader.Read(data)
+				s.Require().NoError(err)
+				s.Assert().Equal("test\n", string(data[:n]))
+			})
 
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
+			s.Run("remove message", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		data := make([]byte, 100)
-		n, err := reader.Read(data)
-		require.NoError(t, err)
-		assert.Equal(t, "test\n", string(data[:n]))
-	})
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				s.Require().NoError(updater.Append("test message"))
+				s.Require().NoError(updater.Remove("test message"))
 
-	t.Run("remove message", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+				reader, err := updater.Reader()
+				s.Require().NoError(err)
+				defer reader.Close()
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test message"))
-		require.NoError(t, updater.Remove("test message"))
+				data, err := io.ReadAll(reader)
+				s.Require().NoError(err)
+				s.Assert().Empty(string(data))
+			})
 
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
+			s.Run("remove with timeout", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		assert.Empty(t, string(data))
-	})
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
+				time.Sleep(time.Microsecond)
+				err = updater.Remove("test message")
+				s.Require().Error(err)
+				s.Assert().Contains(err.Error(), "context deadline exceeded")
+			})
 
-	t.Run("remove with timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
+			s.Run("remove non-existent", func() {
+				defer db.Exec("DROP TABLE IF EXISTS samples")
+				samples, err := NewSamples(context.Background(), db)
+				s.Require().NoError(err)
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		err = updater.Remove("test message")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "context deadline exceeded")
-	})
+				updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
+				err = updater.Remove("non-existent message")
+				s.Require().Error(err)
+			})
+		})
+	}
 
-	t.Run("remove non-existent", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		err = updater.Remove("non-existent message")
-		require.Error(t, err)
-	})
 }
