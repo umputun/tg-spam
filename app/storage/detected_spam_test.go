@@ -769,7 +769,7 @@ func TestDetectedSpam_MigrationEdgeCases(t *testing.T) {
 		defer teardown()
 
 		// get schema creation queries
-		schema, err := engine.PickQuery(detectedSpamQueries, db.Type(), CmdCreateDetectedSpamTable)
+		schema, err := detectedSpamQueries.Pick(db.Type(), CmdCreateDetectedSpamTable)
 		require.NoError(t, err)
 
 		// create schema with gid already present

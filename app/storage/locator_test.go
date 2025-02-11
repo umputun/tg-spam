@@ -94,29 +94,29 @@ func TestLocator_CleanupLogic(t *testing.T) {
 	oldTime := time.Now().Add(-2 * ttl) // ensure this is older than the ttl
 
 	// add two of each to both groups, we have minSize = 1, so we should have 2 to allow cleanup
-	_, err := locator.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+	_, err := locator.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"old_hash1", locator.db.GID(), oldTime, int64(111), int64(222), "old_user", 333)
+		"old_hash1", locator.GID(), oldTime, int64(111), int64(222), "old_user", 333)
 	require.NoError(t, err)
-	_, err = locator.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+	_, err = locator.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"old_hash2", locator.db.GID(), oldTime, int64(111), int64(222), "old_user", 333)
+		"old_hash2", locator.GID(), oldTime, int64(111), int64(222), "old_user", 333)
 	require.NoError(t, err)
 
-	_, err = locator.db.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
-		int64(222), locator.db.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
+	_, err = locator.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
+		int64(222), locator.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
 	require.NoError(t, err)
-	_, err = locator.db.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
-		int64(223), locator.db.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
+	_, err = locator.Exec(`INSERT INTO spam (user_id, gid, time, checks) VALUES (?, ?, ?, ?)`,
+		int64(223), locator.GID(), oldTime, `[{"Name":"old_test","Spam":true,"Details":"old spam"}]`)
 	require.NoError(t, err)
 
 	require.NoError(t, locator.cleanupMessages(ctx))
 	require.NoError(t, locator.cleanupSpam())
 
 	var msgCountAfter, spamCountAfter int
-	err = locator.db.Get(&msgCountAfter, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator.db.GID())
+	err = locator.Get(&msgCountAfter, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator.GID())
 	require.NoError(t, err)
-	err = locator.db.Get(&spamCountAfter, `SELECT COUNT(*) FROM spam WHERE gid = ?`, locator.db.GID())
+	err = locator.Get(&spamCountAfter, `SELECT COUNT(*) FROM spam WHERE gid = ?`, locator.GID())
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, msgCountAfter, "messages should be cleaned up")
@@ -129,13 +129,13 @@ func TestLocator_CleanupLogic(t *testing.T) {
 	require.NoError(t, err)
 	defer db2.Close()
 
-	_, err = locator2.db.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
+	_, err = locator2.Exec(`INSERT INTO messages (hash, gid, time, chat_id, user_id, user_name, msg_id) 
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"gr2_hash", locator2.db.GID(), oldTime, int64(111), int64(222), "gr2_user", 333)
+		"gr2_hash", locator2.GID(), oldTime, int64(111), int64(222), "gr2_user", 333)
 	require.NoError(t, err)
 
 	var gr2Count int
-	err = locator2.db.Get(&gr2Count, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator2.db.GID())
+	err = locator2.Get(&gr2Count, `SELECT COUNT(*) FROM messages WHERE gid = ?`, locator2.GID())
 	require.NoError(t, err)
 	assert.Equal(t, 1, gr2Count, "messages in gr2 should remain")
 }
@@ -157,7 +157,7 @@ func TestLocator_SpamUnmarshalFailure(t *testing.T) {
 	// Insert invalid JSON data directly into the database
 	userID := int64(456)
 	invalidJSON := "invalid json"
-	_, err := locator.db.Exec(`INSERT INTO spam (user_id, time, checks) VALUES (?, ?, ?)`, userID, time.Now(), invalidJSON)
+	_, err := locator.Exec(`INSERT INTO spam (user_id, time, checks) VALUES (?, ?, ?)`, userID, time.Now(), invalidJSON)
 	require.NoError(t, err)
 
 	// Attempt to retrieve the spam data, which should fail during unmarshalling
@@ -248,7 +248,7 @@ func TestLocator_Migration(t *testing.T) {
 		defer db.Close()
 
 		// create schema with new tables including gid
-		createSchema, err := engine.PickQuery(locatorQueries, db.Type(), CmdCreateLocatorTables)
+		createSchema, err := locatorQueries.Pick(db.Type(), CmdCreateLocatorTables)
 		require.NoError(t, err)
 		_, err = db.Exec(createSchema)
 		require.NoError(t, err)

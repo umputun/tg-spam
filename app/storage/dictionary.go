@@ -19,47 +19,40 @@ const (
 	CmdCreateDictionaryIndexes
 )
 
-// queries holds all dictionary-related queries
-var dictionaryQueries = engine.QueryMap{
-	engine.Sqlite: {
-		CmdCreateDictionaryTable: `
-			CREATE TABLE IF NOT EXISTS dictionary (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				gid TEXT DEFAULT '',
-				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-				type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
-				data TEXT NOT NULL,
-				UNIQUE(gid, data)
-			)`,
-		CmdCreateDictionaryIndexes: `
-			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
-		CmdAddGIDColumn: "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
-	},
-	engine.Postgres: {
-		CmdCreateDictionaryTable: `
-			CREATE TABLE IF NOT EXISTS dictionary (
-				id SERIAL PRIMARY KEY,
-				gid TEXT DEFAULT '',
-				timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
-				data TEXT NOT NULL,
-				UNIQUE(gid, data)
-			)`,
-		CmdCreateDictionaryIndexes: `
-			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
-			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
-		CmdAddGIDColumn: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
-	},
-}
+// all dictionary-related queries
+var dictionaryQueries = engine.NewQueryMap().
+	Add(CmdCreateDictionaryTable, engine.Query{
+		Sqlite: `CREATE TABLE IF NOT EXISTS dictionary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gid TEXT DEFAULT '',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+            data TEXT NOT NULL,
+            UNIQUE(gid, data)
+        )`,
+		Postgres: `CREATE TABLE IF NOT EXISTS dictionary (
+            id SERIAL PRIMARY KEY,
+            gid TEXT DEFAULT '',
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+            data TEXT NOT NULL,
+            UNIQUE(gid, data)
+        )`,
+	}).
+	AddSame(CmdCreateDictionaryIndexes, `
+        CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)
+    `).
+	Add(CmdAddGIDColumn, engine.Query{
+		Sqlite:   "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
+		Postgres: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	})
 
 // Dictionary is a storage for stop words/phrases and ignored words
 type Dictionary struct {
-	db *engine.SQL
+	*engine.SQL
 	engine.RWLocker
 }
 
@@ -77,7 +70,7 @@ func NewDictionary(ctx context.Context, db *engine.SQL) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
-	res := &Dictionary{db: db, RWLocker: db.MakeLock()}
+	res := &Dictionary{SQL: db, RWLocker: db.MakeLock()}
 	cfg := engine.TableConfig{
 		Name:          "dictionary",
 		CreateTable:   CmdCreateDictionaryTable,
@@ -104,7 +97,7 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 	defer d.Unlock()
 
 	// start transaction
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
@@ -112,7 +105,7 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 
 	// try to insert, if it fails due to UNIQUE constraint - that's ok
 	query := `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`
-	if _, err = tx.ExecContext(ctx, query, t, data, d.db.GID()); err != nil {
+	if _, err = tx.ExecContext(ctx, query, t, data, d.GID()); err != nil {
 		return fmt.Errorf("failed to add data: %w", err)
 	}
 
@@ -127,7 +120,7 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 	d.Lock()
 	defer d.Unlock()
 
-	result, err := d.db.ExecContext(ctx, `DELETE FROM dictionary WHERE id = ?`, id)
+	result, err := d.ExecContext(ctx, `DELETE FROM dictionary WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to remove phrase: %w", err)
 	}
@@ -153,7 +146,7 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 
 	var data []string
 	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
-	if err := d.db.SelectContext(ctx, &data, query, t, d.db.GID()); err != nil {
+	if err := d.SelectContext(ctx, &data, query, t, d.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get data: %w", err)
 	}
 	return data, nil
@@ -182,7 +175,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
 
 	d.RLock()
-	rows, err := d.db.QueryxContext(ctx, query, t, d.db.GID())
+	rows, err := d.QueryxContext(ctx, query, t, d.GID())
 	d.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query phrases: %w", err)
@@ -216,13 +209,13 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	d.Lock()
 
 	// start transaction
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		d.Unlock()
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
-	gid := d.db.GID()
+	gid := d.GID()
 
 	// remove all entries with the same type if requested
 	if withCleanup {
@@ -306,15 +299,16 @@ func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
 	d.RLock()
 	defer d.RUnlock()
 
-	query := `
+	query := d.Adopt(`
         SELECT 
             COUNT(CASE WHEN type = ? THEN 1 END) as stop_phrases_count,
             COUNT(CASE WHEN type = ? THEN 1 END) as ignored_words_count
         FROM dictionary
-        WHERE gid = ?`
+        WHERE gid = ?`,
+	)
 
 	var stats DictionaryStats
-	if err := d.db.GetContext(ctx, &stats, query, DictionaryTypeStopPhrase, DictionaryTypeIgnoredWord, d.db.GID()); err != nil {
+	if err := d.GetContext(ctx, &stats, query, DictionaryTypeStopPhrase, DictionaryTypeIgnoredWord, d.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil

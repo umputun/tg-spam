@@ -103,6 +103,7 @@ func setSqlitePragma(db *sqlx.DB) error {
 	// Set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
 	// to make sure if it is worth having 2 more DB-related files for WAL and SHM.
 	pragmas := map[string]string{
+		"journal_mode": "DELETE", // explicitly set to DELETE mode to prevent WAL files
 		// "journal_mode": "WAL",
 		// "synchronous":  "NORMAL",
 		// "busy_timeout": "5000",
@@ -124,7 +125,7 @@ type TableConfig struct {
 	CreateTable   DBCmd
 	CreateIndexes DBCmd
 	MigrateFunc   func(ctx context.Context, tx *sqlx.Tx, gid string) error
-	QueriesMap    QueryMap
+	QueriesMap    *QueryMap
 }
 
 // InitTable initializes database table with schema and handles migration in a transaction
@@ -140,7 +141,7 @@ func InitTable(ctx context.Context, db *SQL, cfg TableConfig) error {
 	defer tx.Rollback()
 
 	// create table first
-	createSchema, err := PickQuery(cfg.QueriesMap, db.Type(), cfg.CreateTable)
+	createSchema, err := cfg.QueriesMap.Pick(db.Type(), cfg.CreateTable)
 	if err != nil {
 		return fmt.Errorf("failed to get create table query: %w", err)
 	}
@@ -154,7 +155,7 @@ func InitTable(ctx context.Context, db *SQL, cfg TableConfig) error {
 	}
 
 	// create indices after migration when all columns exist
-	createIndexes, err := PickQuery(cfg.QueriesMap, db.Type(), cfg.CreateIndexes)
+	createIndexes, err := cfg.QueriesMap.Pick(db.Type(), cfg.CreateIndexes)
 	if err != nil {
 		return fmt.Errorf("failed to get create indexes query: %w", err)
 	}

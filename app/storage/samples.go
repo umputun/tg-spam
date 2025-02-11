@@ -16,7 +16,7 @@ import (
 
 // Samples is a storage for samples. It supports both ham and spam, as well as preset samples and user's samples
 type Samples struct {
-	db *engine.SQL
+	*engine.SQL
 	engine.RWLocker
 }
 
@@ -46,53 +46,45 @@ const (
 )
 
 // queries holds all samples-related queries
-var samplesQueries = engine.QueryMap{
-	engine.Sqlite: {
-		CmdCreateSamplesTable: `
-			CREATE TABLE IF NOT EXISTS samples (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				gid TEXT NOT NULL DEFAULT '',
-				timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-				type TEXT CHECK (type IN ('ham', 'spam')),
-				origin TEXT CHECK (origin IN ('preset', 'user')),
-				message TEXT NOT NULL,
-				UNIQUE(gid, message)
-			)`,
-		CmdCreateSamplesIndexes: `
-			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
-			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
-			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
-		CmdAddGIDColumn: "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
-	},
-	engine.Postgres: {
-		CmdCreateSamplesTable: `
-			CREATE TABLE IF NOT EXISTS samples (
-				id SERIAL PRIMARY KEY,
-				gid TEXT NOT NULL DEFAULT '',
-				timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				type TEXT CHECK (type IN ('ham', 'spam')),
-				origin TEXT CHECK (origin IN ('preset', 'user')),
-				message TEXT NOT NULL,
-				UNIQUE(gid, message)
-			)`,
-		CmdCreateSamplesIndexes: `
-			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
-			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
-			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
-		CmdAddGIDColumn: "ALTER TABLE samples ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
-	},
-}
+var samplesQueries = engine.NewQueryMap().
+	Add(CmdCreateSamplesTable, engine.Query{
+		Sqlite: `CREATE TABLE IF NOT EXISTS samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gid TEXT NOT NULL DEFAULT '',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('ham', 'spam')),
+            origin TEXT CHECK (origin IN ('preset', 'user')),
+            message TEXT NOT NULL,
+            UNIQUE(gid, message)
+        )`,
+		Postgres: `CREATE TABLE IF NOT EXISTS samples (
+            id SERIAL PRIMARY KEY,
+            gid TEXT NOT NULL DEFAULT '',
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('ham', 'spam')),
+            origin TEXT CHECK (origin IN ('preset', 'user')),
+            message TEXT NOT NULL,
+            UNIQUE(gid, message)
+        )`,
+	}).
+	AddSame(CmdCreateSamplesIndexes, `
+        CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+        CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+        CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+        CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)
+    `).
+	Add(CmdAddGIDColumn, engine.Query{
+		Sqlite:   "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
+		Postgres: "ALTER TABLE samples ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	})
 
 // NewSamples creates a new Samples storage
 func NewSamples(ctx context.Context, db *engine.SQL) (*Samples, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
-	res := &Samples{db: db, RWLocker: db.MakeLock()}
+	res := &Samples{SQL: db, RWLocker: db.MakeLock()}
 	cfg := engine.TableConfig{
 		Name:          "samples",
 		CreateTable:   CmdCreateSamplesTable,
@@ -132,7 +124,7 @@ func (s *Samples) Add(ctx context.Context, t SampleType, o SampleOrigin, message
 
 	// try to insert, if it fails due to UNIQUE constraint - that's ok
 	query := `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`
-	if _, err := s.db.ExecContext(ctx, query, s.db.GID(), t, o, message); err != nil {
+	if _, err := s.ExecContext(ctx, query, s.GID(), t, o, message); err != nil {
 		return fmt.Errorf("failed to add sample: %w", err)
 	}
 
@@ -145,7 +137,7 @@ func (s *Samples) Delete(ctx context.Context, id int64) error {
 	s.Lock()
 	defer s.Unlock()
 
-	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE id = ?`, id)
+	result, err := s.ExecContext(ctx, `DELETE FROM samples WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to remove sample: %w", err)
 	}
@@ -168,15 +160,15 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 
 	// First verify the message exists in this group
 	var count int
-	gid := s.db.GID()
-	if err := s.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, gid, message); err != nil {
+	gid := s.GID()
+	if err := s.GetContext(ctx, &count, `SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`, gid, message); err != nil {
 		return fmt.Errorf("failed to check sample existence: %w", err)
 	}
 	if count == 0 {
 		return fmt.Errorf("sample not found: gid=%s, message=%s", gid, message)
 	}
 
-	result, err := s.db.ExecContext(ctx, `DELETE FROM samples WHERE gid = ? AND message = ?`, gid, message)
+	result, err := s.ExecContext(ctx, `DELETE FROM samples WHERE gid = ? AND message = ?`, gid, message)
 	if err != nil {
 		return fmt.Errorf("failed to remove sample: %w", err)
 	}
@@ -208,7 +200,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 		args    []any
 		samples []string
 	)
-	gid := s.db.GID()
+	gid := s.GID()
 	if o == SampleOriginAny {
 		query = `SELECT message FROM samples WHERE gid = ? AND type = ?`
 		args = []any{gid, t}
@@ -217,7 +209,7 @@ func (s *Samples) Read(ctx context.Context, t SampleType, o SampleOrigin) ([]str
 		args = []any{gid, t, o}
 	}
 
-	if err := s.db.SelectContext(ctx, &samples, query, args...); err != nil {
+	if err := s.SelectContext(ctx, &samples, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to get samples: %w", err)
 	}
 	log.Printf("[DEBUG] read %d samples: gid=%s, type=%s, origin=%s", len(samples), gid, t, o)
@@ -236,7 +228,7 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 
 	var query string
 	var args []any
-	gid := s.db.GID()
+	gid := s.GID()
 
 	if o == SampleOriginAny {
 		query = `SELECT message FROM samples WHERE gid = ? AND  type = ? ORDER BY timestamp DESC`
@@ -248,7 +240,7 @@ func (s *Samples) Reader(ctx context.Context, t SampleType, o SampleOrigin) (io.
 
 	s.RLock()
 	defer s.RUnlock()
-	rows, err := s.db.QueryxContext(ctx, query, args...)
+	rows, err := s.QueryxContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query samples: %w", err)
 	}
@@ -269,7 +261,7 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 
 	var query string
 	var args []any
-	gid := s.db.GID()
+	gid := s.GID()
 
 	if o == SampleOriginAny {
 		query = `SELECT message FROM samples WHERE gid = ? AND type = ? ORDER BY timestamp DESC`
@@ -280,7 +272,7 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 	}
 
 	s.RLock()
-	rows, err := s.db.QueryxContext(ctx, query, args...)
+	rows, err := s.QueryxContext(ctx, query, args...)
 	s.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query samples: %w", err)
@@ -336,13 +328,13 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	if r == nil {
 		return nil, fmt.Errorf("reader cannot be nil")
 	}
-	gid := s.db.GID()
+	gid := s.GID()
 
 	s.Lock()
 	defer s.Unlock()
 
 	// start transaction
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
@@ -455,7 +447,7 @@ func (s *Samples) stats(ctx context.Context) (*SamplesStats, error) {
         WHERE gid = ?`
 
 	var stats SamplesStats
-	if err := s.db.GetContext(ctx, &stats, query, s.db.GID()); err != nil {
+	if err := s.GetContext(ctx, &stats, query, s.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil

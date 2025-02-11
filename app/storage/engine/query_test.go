@@ -7,17 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPickQuery(t *testing.T) {
-	qmap := QueryMap{
-		Sqlite: {
-			1: "SELECT * FROM test WHERE id = ?",
-			2: "INSERT INTO test VALUES (?)",
-		},
-		Postgres: {
-			1: "SELECT * FROM test WHERE id = $1",
-			2: "INSERT INTO test VALUES ($1)",
-		},
-	}
+func TestQueryMap(t *testing.T) {
+	qmap := NewQueryMap().
+		Add(1, Query{
+			Sqlite:   "SELECT * FROM test WHERE id = ?",
+			Postgres: "SELECT * FROM test WHERE id = $1",
+		}).
+		Add(2, Query{
+			Sqlite:   "INSERT INTO test VALUES (?)",
+			Postgres: "INSERT INTO test VALUES ($1)",
+		})
 
 	tests := []struct {
 		name    string
@@ -54,7 +53,7 @@ func TestPickQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := PickQuery(qmap, tt.dbType, tt.cmd)
+			got, err := qmap.Pick(tt.dbType, tt.cmd)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -65,10 +64,67 @@ func TestPickQuery(t *testing.T) {
 	}
 }
 
-type mockQueryProvider struct {
-	qmap QueryMap
+func TestQueryMap_AddSame(t *testing.T) {
+	qmap := NewQueryMap().
+		AddSame(1, "SELECT * FROM test")
+
+	sqliteQuery, err := qmap.Pick(Sqlite, 1)
+	require.NoError(t, err)
+	pgQuery, err := qmap.Pick(Postgres, 1)
+	require.NoError(t, err)
+
+	assert.Equal(t, "SELECT * FROM test", sqliteQuery)
+	assert.Equal(t, "SELECT * FROM test", pgQuery)
 }
 
-func (m *mockQueryProvider) Map() QueryMap {
-	return m.qmap
+func TestQueryMap_ChainedOperations(t *testing.T) {
+	// test method chaining and overwriting
+	qmap := NewQueryMap().
+		Add(1, Query{
+			Sqlite:   "query1 sqlite",
+			Postgres: "query1 postgres",
+		}).
+		Add(1, Query{ // overwrite previous query
+			Sqlite:   "query1 sqlite new",
+			Postgres: "query1 postgres new",
+		})
+
+	query, err := qmap.Pick(Sqlite, 1)
+	assert.NoError(t, err)
+	assert.Equal(t, "query1 sqlite new", query)
+}
+
+func TestQueryMap_EmptyQueries(t *testing.T) {
+	qmap := NewQueryMap().
+		Add(1, Query{
+			Sqlite:   "", // empty sqlite query
+			Postgres: "not empty",
+		})
+
+	// Empty queries are valid
+	query, err := qmap.Pick(Sqlite, 1)
+	assert.NoError(t, err)
+	assert.Empty(t, query)
+}
+
+// This test verifies that AddSame maintains consistency between dialects
+func TestQueryMap_AddSameConsistency(t *testing.T) {
+	query := "SELECT * FROM test"
+	qmap := NewQueryMap().
+		AddSame(1, query).
+		Add(1, Query{ // try to overwrite just one dialect
+			Sqlite:   "different query",
+			Postgres: "another query",
+		}).
+		AddSame(1, query) // restore consistency
+
+	sqlite, err := qmap.Pick(Sqlite, 1)
+	assert.NoError(t, err)
+	postgres, err := qmap.Pick(Postgres, 1)
+	assert.NoError(t, err)
+
+	// Verify both dialects have the same query after AddSame
+	assert.Equal(t, query, sqlite)
+	assert.Equal(t, query, postgres)
+	assert.Equal(t, sqlite, postgres)
 }
