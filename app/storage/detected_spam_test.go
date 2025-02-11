@@ -141,10 +141,11 @@ func (s *StorageTestSuite) TestDetectedSpam_Write() {
 	}
 }
 
-func (s *StorageTestSuite) TestSetAddedToSamplesFlag() {
+func (s *StorageTestSuite) TestDetectedSpam_SetAddedToSamplesFlag() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
 		db := dbt.DB
+
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
 			ds, err := NewDetectedSpam(ctx, db)
 			s.Require().NoError(err)
