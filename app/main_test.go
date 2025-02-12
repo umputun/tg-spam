@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -217,6 +218,7 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.Server.ListenAddr = ":9988"
 	opts.Server.AuthPasswd = "auto"
 	opts.InstanceID = "gr1"
+	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
 
 	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
 

@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
@@ -27,6 +29,33 @@ type SQL struct {
 	sqlx.DB
 	gid    string // group id, to allow per-group storage in the same database
 	dbType Type   // type of the database engine
+}
+
+// New creates a new database engine with a connection URL and group id.
+// It detects the database engine type based on the connection URL and initializes
+// the appropriate driver. Supports sqlite and postgres database types.
+func New(ctx context.Context, connURL, gid string) (*SQL, error) {
+	log.Printf("[INFO] new database engine, conn: %s, gid: %s", connURL, gid)
+	if connURL == "" {
+		return &SQL{}, fmt.Errorf("connection URL is empty")
+	}
+
+	switch {
+	case connURL == ":memory:":
+		return NewSqlite(connURL, gid)
+	case strings.HasPrefix(connURL, "file://"):
+		return NewSqlite(strings.TrimPrefix(connURL, "file://"), gid)
+	case strings.HasPrefix(connURL, "file:"):
+		return NewSqlite(strings.TrimPrefix(connURL, "file:"), gid)
+	case strings.HasPrefix(connURL, "sqlite://"):
+		return NewSqlite(strings.TrimPrefix(connURL, "sqlite://"), gid)
+	case strings.HasSuffix(connURL, ".sqlite") || strings.HasSuffix(connURL, ".db"):
+		return NewSqlite(connURL, gid)
+	case strings.HasPrefix(connURL, "postgres://"):
+		return NewPostgres(ctx, connURL, gid)
+	}
+
+	return &SQL{}, fmt.Errorf("unsupported database type in connection string %q", connURL)
 }
 
 // NewSqlite creates a new sqlite database

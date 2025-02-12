@@ -37,7 +37,8 @@ import (
 )
 
 type options struct {
-	InstanceID string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -220,21 +221,9 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
 
-	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	log.Printf("[DEBUG] data db: %s", dbFile)
-
-	// make backup of db on version change
-	if opts.MaxBackups > 0 {
-		if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
-			return fmt.Errorf("backup on version change failed, %w", err)
-		}
-	} else {
-		log.Print("[WARN] database backups disabled")
-	}
-
-	dataDB, err := engine.NewSqlite(dbFile, opts.InstanceID)
+	dataDB, err := makeDB(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
+		return fmt.Errorf("can't make db, %w", err)
 	}
 
 	// make detector with all sample files loaded
@@ -260,7 +249,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
-	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dbFile, count)
+	log.Printf("[DEBUG] approved users loaded: %d", count)
 
 	// make locator
 	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
@@ -333,6 +322,44 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
+}
+
+// makeDB creates database connection based on options
+// if dbURL is a file name, uses sqlite with dynamic data path, otherwise uses dbURL as is
+func makeDB(ctx context.Context, opts options) (*engine.SQL, error) {
+	if opts.DataBaseURL == "" {
+		return nil, errors.New("empty database URL")
+	}
+	dbURL := opts.DataBaseURL // default to what is set in options
+
+	// if dbURL has no path separator, assume it is a file name and add dynamic data path for sqlite
+	if !strings.Contains(dbURL, "/") && !strings.Contains(dbURL, "\\") {
+		dbURL = filepath.Join(opts.Files.DynamicDataPath, dbURL)
+	}
+	log.Printf("[DEBUG] data db: %s", dbURL)
+
+	db, err := engine.New(ctx, dbURL, opts.InstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("can't make db %s, %w", opts.DataBaseURL, err)
+	}
+
+	// backup db on version change for sqlite
+	if db.Type() == engine.Sqlite {
+		// get file name from dbURL for sqlite
+		dbFile := dbURL
+		dbFile = strings.TrimPrefix(dbFile, "file://")
+		dbFile = strings.TrimPrefix(dbFile, "file:")
+
+		// make backup of db on version change for sqlite
+		if opts.MaxBackups > 0 {
+			if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
+				return nil, fmt.Errorf("backup on version change failed, %w", err)
+			}
+		} else {
+			log.Print("[WARN] database backups disabled")
+		}
+	}
+	return db, nil
 }
 
 // checkVolumeMount checks if dynamic files location mounted in docker and shows warning if not

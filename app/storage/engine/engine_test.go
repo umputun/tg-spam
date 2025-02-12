@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -10,6 +11,87 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNew(t *testing.T) {
+	temp := t.TempDir()
+
+	tests := []struct {
+		name    string
+		url     string
+		gid     string
+		want    Type
+		wantErr string
+	}{
+		{
+			name: "in-memory sqlite",
+			url:  ":memory:",
+			gid:  "gr1",
+			want: Sqlite,
+		},
+		{
+			name: "file:// prefix",
+			url:  "file://" + filepath.Join(temp, "file1.db"),
+			gid:  "gr2",
+			want: Sqlite,
+		},
+		{
+			name: "file: prefix",
+			url:  "file:" + filepath.Join(temp, "file2.db"),
+			gid:  "gr2",
+			want: Sqlite,
+		},
+		{
+			name: "sqlite:// prefix",
+			url:  "sqlite://" + filepath.Join(temp, "file3.db"),
+			gid:  "gr2",
+			want: Sqlite,
+		},
+		{
+			name: ".sqlite suffix",
+			url:  filepath.Join(temp, "file4.sqlite"),
+			gid:  "gr2",
+			want: Sqlite,
+		},
+		{
+			name: ".db suffix",
+			url:  filepath.Join(temp, "file5.db"),
+			gid:  "gr2",
+			want: Sqlite,
+		},
+		{
+			name:    "postgres ok format",
+			url:     "postgres://user:pass@localhost/db",
+			gid:     "gr3",
+			want:    Postgres,
+			wantErr: "failed to connect to postgres", // can't connect but format is ok
+		},
+		{
+			name:    "empty url",
+			url:     "",
+			wantErr: "connection URL is empty",
+		},
+		{
+			name:    "unsupported",
+			url:     "unsupported://localhost/db",
+			wantErr: "unsupported database type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := New(context.Background(), tt.url, tt.gid)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			defer res.Close()
+			assert.Equal(t, tt.want, res.Type())
+			assert.Equal(t, tt.gid, res.GID())
+		})
+	}
+}
 
 func TestEngine(t *testing.T) {
 	t.Run("type and gid", func(t *testing.T) {
