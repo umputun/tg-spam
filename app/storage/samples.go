@@ -91,11 +91,10 @@ var samplesQueries = engine.NewQueryMap().
 			CREATE INDEX IF NOT EXISTS idx_samples_lookup ON samples(gid, type, origin);
 			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
 		Postgres: `
-			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
-			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
 			CREATE INDEX IF NOT EXISTS idx_samples_lookup ON samples(gid, type, origin);
+            CREATE INDEX IF NOT EXISTS idx_samples_gid_type_origin_ts ON samples(gid, type, origin, timestamp DESC);
+			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(gid,origin);
 			CREATE INDEX IF NOT EXISTS idx_samples_message_hash ON samples(message_hash);`,
 	}).
 	Add(CmdAddGIDColumn, engine.Query{

@@ -68,9 +68,11 @@ var detectedSpamQueries = engine.NewQueryMap().
         )`,
 	}).
 	AddSame(CmdCreateDetectedSpamIndexes, `
-        CREATE INDEX IF NOT EXISTS idx_detected_spam_timestamp ON detected_spam(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)
-    `).
+      	CREATE INDEX IF NOT EXISTS idx_detected_spam_gid_ts ON detected_spam(gid, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_detected_spam_user_id_gid ON detected_spam(user_id, gid);
+		CREATE INDEX IF NOT EXISTS idx_spam_gid_time ON detected_spam(gid, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`,
+	).
 	Add(CmdAddGIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE detected_spam ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE detected_spam ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",

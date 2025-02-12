@@ -60,13 +60,19 @@ var locatorQueries = engine.NewQueryMap().
             checks TEXT
         )`,
 	}).
-	AddSame(CmdCreateLocatorIndexes, `
-        CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
-        CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name);
-        CREATE INDEX IF NOT EXISTS idx_spam_time ON spam(time);
-        CREATE INDEX IF NOT EXISTS idx_messages_gid ON messages(gid);
-        CREATE INDEX IF NOT EXISTS idx_spam_gid ON spam(gid)
-    `).
+	Add(CmdCreateLocatorIndexes, engine.Query{
+		Sqlite: `
+			CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+			CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name);
+			CREATE INDEX IF NOT EXISTS idx_spam_time ON spam(time);
+			CREATE INDEX IF NOT EXISTS idx_messages_gid ON messages(gid);
+			CREATE INDEX IF NOT EXISTS idx_spam_gid ON spam(gid) `,
+		Postgres: `
+			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_id ON messages(gid, user_id);
+			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_name ON messages(gid, user_name);
+			CREATE INDEX IF NOT EXISTS idx_spam_gid_time ON spam(gid, time DESC);
+			CREATE INDEX IF NOT EXISTS idx_spam_user_id_gid ON spam(user_id, gid)`,
+	}).
 	Add(CmdAddGIDColumnMessages, engine.Query{
 		Sqlite:   "ALTER TABLE messages ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE messages ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",

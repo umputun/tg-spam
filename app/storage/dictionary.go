@@ -41,12 +41,16 @@ var dictionaryQueries = engine.NewQueryMap().
             UNIQUE(gid, data)
         )`,
 	}).
-	AddSame(CmdCreateDictionaryIndexes, `
-        CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)
-    `).
+	Add(CmdCreateDictionaryIndexes, engine.Query{
+		Sqlite: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
+		Postgres: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid_type_ts ON dictionary(gid, type, timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid_data ON dictionary(gid, data)`,
+	}).
 	Add(CmdAddGIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
