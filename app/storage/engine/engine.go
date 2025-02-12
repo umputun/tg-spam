@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -70,11 +71,49 @@ func NewSqlite(file, gid string) (*SQL, error) {
 	return &SQL{DB: *db, gid: gid, dbType: Sqlite}, nil
 }
 
-// NewPostgres creates a new postgres database
+// NewPostgres creates a new postgres database. If the database doesn't exist, it will be created
 func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
-	db, err := sqlx.ConnectContext(ctx, "postgres", connURL)
+	u, err := url.Parse(connURL)
 	if err != nil {
-		return &SQL{}, fmt.Errorf("failed to connect to postgres: %w", err)
+		return nil, fmt.Errorf("invalid postgres connection url: %w", err)
+	}
+
+	dbName := strings.TrimPrefix(u.Path, "/")
+	if dbName == "" {
+		return nil, fmt.Errorf("database name not specified in connection URL")
+	}
+
+	// try to connect first - database might exist
+	db, err := sqlx.ConnectContext(ctx, "postgres", connURL)
+	if err == nil {
+		return &SQL{DB: *db, gid: gid, dbType: Postgres}, nil
+	}
+
+	// create URL for postgres database
+	u.Path = "/postgres"
+	baseURL := u.String()
+
+	// connect to default postgres database
+	baseDB, err := sqlx.ConnectContext(ctx, "postgres", baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+	defer baseDB.Close()
+
+	// create database
+	_, err = baseDB.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %q`, dbName))
+	if err != nil {
+		// Ignore error if database already exists
+		if !strings.Contains(err.Error(), "already exists") {
+			return nil, fmt.Errorf("failed to create database: %w", err)
+		}
+	}
+	log.Printf("[INFO] created database %s", dbName)
+
+	// connect to the new database
+	db, err = sqlx.ConnectContext(ctx, "postgres", connURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to created database: %w", err)
 	}
 	return &SQL{DB: *db, gid: gid, dbType: Postgres}, nil
 }

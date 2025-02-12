@@ -6,10 +6,13 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestNew(t *testing.T) {
@@ -340,4 +343,86 @@ func TestInitTable(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get create table query")
 	})
+}
+
+func TestNewPostgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
+	ctx := context.Background()
+
+	t.Log("starting postgres container")
+	req := testcontainers.ContainerRequest{
+		Image:        "postgres:17",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_PASSWORD": "secret",
+			"POSTGRES_DB":       "postgres",
+		},
+		WaitingFor: wait.ForAll(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+			wait.ForListeningPort("5432/tcp"),
+		).WithDeadline(1 * time.Minute),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Log("postgres container started")
+	defer func() { assert.NoError(t, container.Terminate(ctx)) }()
+
+	// give postgres a moment to fully initialize
+	time.Sleep(time.Second)
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, "5432")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		connStr string
+		wantErr string
+	}{
+		{
+			name:    "create new database",
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/test_db1?sslmode=disable", host, port.Int()),
+		},
+		{
+			name:    "connect to existing database",
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/test_db1?sslmode=disable", host, port.Int()),
+		},
+		{
+			name:    "invalid url",
+			connStr: "postgres://invalid::url", // truly invalid URL format
+			wantErr: "invalid postgres connection url",
+		},
+		{
+			name:    "empty database name",
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/?sslmode=disable", host, port.Int()),
+			wantErr: "database name not specified",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := NewPostgres(ctx, tt.connStr, "test")
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			defer db.Close()
+
+			// verify we can execute queries
+			var result int
+			err = db.Get(&result, "SELECT 1")
+			assert.NoError(t, err)
+			assert.Equal(t, 1, result)
+		})
+	}
 }

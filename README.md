@@ -59,26 +59,11 @@ There are some important customizations available:
 
 By default, the bot reports back to the group with the message `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently. It is possible to suppress those reports with `--no-spam-reply, [$NO_SPAM_REPLY]` parameter.
 
-- persintency of the data.
+### Persistence of the data.
 
-The bot can store the list of approved users and other meta-information about detected spam and received messages. The bot will not ban approved users and won't check their messages for spam because they have already passed the initial check. All this info is stored in the internal storage under `--files.dynamic=, [$FILES_DYNAMIC]` directory. User should mount this directory from the host to keep the data persistent. All the files in this directory are handled by bot automatically. 
+The bot stores the list of spam samples, ham samples, approved users, and other meta-information about detected spam and received messages in the database. Both SQLite and PostgreSQL databases are supported. The bot will use SQLite by default, but the user can switch to PostgreSQL by setting the `--db=, [$DB]` parameter. The parameter can be set either to `sqlite://path/to/db.db` or `postgres://user:password@host:port/dbname`. If nothing is set, the bot will use SQLite with the database stored under the `--files.dynamic=, [$FILES_DYNAMIC]` directory for backward compatibility. All the files in this directory are handled by the bot automatically.
 
-For users of Docker containers, it is recommended to use a mounted volume for this directory and not to set the location to anything else. I.e., do not pass `--files.dynamic=` and do not set `$FILES_DYNAMIC`; let `tg-spam` pick the default one. By default, the container will use the internal `/srv/data` directory for this purpose, which should be mounted as a volume to any place on the host filesystem.
-
-### Legacy way of storing data in text files
-
-**Important**: Starting with version 1.16.0, the bot uses a database to store all the data. The database is created automatically on the first run inside the `$FILES_DYNAMIC` directory. The bot will also migrate all the data from the text files to the database. For more details, see the [Database Migration for samples (spam and ham), stop words, and exclude tokens, after version (v1.16.0+)](#database-migration-for-samples-spam-and-ham-stop-words-and-exclude-tokens-after-version-v1160) section below. This section is about **the old way of storing data** in text files.
-
-Another thing to customize is the sample files; the bot uses some data files to detect spam. They are located in the `/srv/data` directory of the container and can be mounted from the host. The files are: `spam-samples.txt`, `ham-samples.txt`, `exclude-tokens.txt`, and `stop-words.txt`. Users can specify a custom location for them with the `--files.samples=, [$FILES_SAMPLES]` parameters. This should be a directory where all the files are located.
-
-There are 4 files used by the bot to detect spam:
-
-- `spam-samples.txt` - list of spam samples. Each line in this file is a full text of spam message with removed EOL. I.e. the original message represented as a single line. EOLs can be replaced by spaces
-- `ham-samples.txt` - list of ham (non-spam) samples. Each line in this file is a full text of ham message with removed EOL
-- `exclude-tokens.txt` - list of tokens to exclude from spam detection, usually common words. Each line in this file is a single token (word), or a comma-separated list of words in dbl-quotes.
-- `stop-words.txt` - list of stop words to detect spam right away. Each line in this file is a single phrase (can be one or more words). The bot checks if any of those phrases are present in the message and if so, it marks the message as spam.
-
-The bot dynamically reloads all 4 files, so user can change them on the fly without restarting the bot.
+For users of Docker containers, it is recommended to use a mounted volume for this directory and not to set the location to anything else. That is, do not pass `--files.dynamic=` and do not set `$FILES_DYNAMIC`; let `tg-spam` pick the default one. By default, the container will use the internal `/srv/data` directory for this purpose, which should be mounted as a volume to any place on the host filesystem.
 
 ### Configuring spam detection modules and parameters
 

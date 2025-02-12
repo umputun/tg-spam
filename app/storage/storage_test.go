@@ -45,7 +45,7 @@ func (s *StorageTestSuite) SetupSuite() {
 		ctx := context.Background()
 
 		req := testcontainers.ContainerRequest{
-			Image:        "postgres:15",
+			Image:        "postgres:17",
 			ExposedPorts: []string{"5432/tcp"},
 			Env: map[string]string{
 				"POSTGRES_PASSWORD": "secret",
