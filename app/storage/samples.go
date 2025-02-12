@@ -66,19 +66,20 @@ var samplesQueries = engine.NewQueryMap().
             type TEXT CHECK (type IN ('ham', 'spam')),
             origin TEXT CHECK (origin IN ('preset', 'user')),
             message TEXT NOT NULL,
-            UNIQUE(gid, message)
+            message_hash TEXT GENERATED ALWAYS AS (encode(sha256(message::bytea), 'hex')) STORED,
+            UNIQUE(gid, message_hash)
         )`,
 	}).
 	Add(CmdAddSample, engine.Query{
 		Sqlite: `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`,
 		Postgres: `INSERT INTO samples (gid, type, origin, message) VALUES ($1, $2, $3, $4) 
-                  ON CONFLICT (gid, message) DO UPDATE SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
+                  ON CONFLICT (gid, message_hash) DO UPDATE SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
 	}).
 	Add(CmdImportSample, engine.Query{
 		Sqlite: `INSERT OR REPLACE INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`,
 		Postgres: `INSERT INTO samples (gid, type, origin, message) 
                   VALUES ($1, $2, $3, $4) 
-                  ON CONFLICT (gid, message) DO UPDATE 
+                  ON CONFLICT (gid, message_hash) DO UPDATE 
                   SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
 	}).
 	Add(CmdCreateSamplesIndexes, engine.Query{
@@ -95,7 +96,7 @@ var samplesQueries = engine.NewQueryMap().
 			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
 			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
 			CREATE INDEX IF NOT EXISTS idx_samples_lookup ON samples(gid, type, origin);
-			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples USING hash(message);`,
+			CREATE INDEX IF NOT EXISTS idx_samples_message_hash ON samples(message_hash);`,
 	}).
 	Add(CmdAddGIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
