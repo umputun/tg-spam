@@ -5,14 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
-	"testing"
 	"time"
-
-	"github.com/jmoiron/sqlx"
-	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
 )
@@ -1288,7 +1283,6 @@ func (s *StorageTestSuite) TestSamples_ReaderUnlock() {
 			r2.Close()
 		})
 	}
-
 }
 
 // errorReader implements io.Reader interface and always returns an error
@@ -1298,20 +1292,4 @@ type errorReader struct {
 
 func (r *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, r.err
-}
-
-func setupTestDB(t *testing.T) (res *engine.SQL, teardown func()) {
-	t.Helper()
-	tmpFile := os.TempDir() + "/test.db"
-	t.Log("db file:", tmpFile)
-	db, err := sqlx.Connect("sqlite", tmpFile)
-	require.NoError(t, err)
-	require.NotNil(t, db)
-	engine, err := engine.NewSqlite(tmpFile, "gr1")
-	require.NoError(t, err)
-
-	return engine, func() {
-		db.Close()
-		os.Remove(tmpFile)
-	}
 }

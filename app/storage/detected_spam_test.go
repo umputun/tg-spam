@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -184,7 +183,7 @@ func (s *StorageTestSuite) TestDetectedSpam_SetAddedToSamplesFlag() {
 	}
 }
 
-func (s *StorageTestSuite) TestDetectedSpam_Read() { // removed t *testing.T parameter
+func (s *StorageTestSuite) TestDetectedSpam_Read() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
 		db := dbt.DB
@@ -193,40 +192,28 @@ func (s *StorageTestSuite) TestDetectedSpam_Read() { // removed t *testing.T par
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE detected_spam")
 
-			spamEntry := DetectedSpamInfo{
-				Text:      "spam message",
-				UserID:    1,
-				UserName:  "Spammer",
-				Timestamp: time.Now(),
+			// add a sample first
+			entry := DetectedSpamInfo{
+				GID:       "gr1", // use the store's GID here
+				Text:      "test spam",
+				UserID:    456,
+				UserName:  "spammer",
+				Timestamp: time.Now().UTC().Truncate(time.Second), // ensure consistent time comparison
 			}
+			checks := []spamcheck.Response{{Name: "test", Spam: true, Details: "test details"}}
 
-			checks := []spamcheck.Response{
-				{
-					Name:    "Check1",
-					Spam:    true,
-					Details: "Details 1",
-				},
-			}
-
-			checksJSON, err := json.Marshal(checks)
-			s.Require().NoError(err)
-			query := db.Adopt("INSERT INTO detected_spam (text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?)")
-			_, err = db.Exec(query, spamEntry.Text, spamEntry.UserID, spamEntry.UserName, spamEntry.Timestamp, checksJSON)
+			err = ds.Write(ctx, entry, checks)
 			s.Require().NoError(err)
 
 			entries, err := ds.Read(ctx)
 			s.Require().NoError(err)
 			s.Require().Len(entries, 1)
 
-			s.Equal(spamEntry.Text, entries[0].Text)
-			s.Equal(spamEntry.UserID, entries[0].UserID)
-			s.Equal(spamEntry.UserName, entries[0].UserName)
-
-			var retrievedChecks []spamcheck.Response
-			err = json.Unmarshal([]byte(entries[0].ChecksJSON), &retrievedChecks)
-			s.Require().NoError(err)
-			s.Equal(checks, retrievedChecks)
-			s.T().Logf("retrieved checks: %+v", retrievedChecks) // use s.T() for logging
+			s.Equal(entry.GID, entries[0].GID)
+			s.Equal(entry.Text, entries[0].Text)
+			s.Equal(entry.UserID, entries[0].UserID)
+			s.Equal(entry.UserName, entries[0].UserName)
+			s.Equal(checks, entries[0].Checks)
 		})
 	}
 }
@@ -240,23 +227,17 @@ func (s *StorageTestSuite) TestDetectedSpam_Read_LimitExceeded() {
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE detected_spam")
 
+			// Add maxDetectedSpamEntries + 10 entries
 			for i := 0; i < maxDetectedSpamEntries+10; i++ {
 				spamEntry := DetectedSpamInfo{
+					GID:       "gr1", // use the correct GID
 					Text:      "spam message",
-					UserID:    int64(i + 1),
+					UserID:    int64(i + 500),
 					UserName:  "Spammer",
 					Timestamp: time.Now(),
-					GID:       "group123",
 				}
 
-				checks := []spamcheck.Response{
-					{
-						Name:    "Check1",
-						Spam:    true,
-						Details: "Details 1",
-					},
-				}
-
+				checks := []spamcheck.Response{{Name: "test", Spam: true}}
 				err = ds.Write(ctx, spamEntry, checks)
 				s.Require().NoError(err)
 			}
@@ -269,48 +250,49 @@ func (s *StorageTestSuite) TestDetectedSpam_Read_LimitExceeded() {
 }
 
 func (s *StorageTestSuite) TestDetectedSpam() {
-	tests := []struct {
-		name    string
-		entry   DetectedSpamInfo
-		checks  []spamcheck.Response
-		wantErr bool
-	}{
-		{
-			name: "basic spam entry",
-			entry: DetectedSpamInfo{
-				GID:       "group123",
-				Text:      "spam message",
-				UserID:    1,
-				UserName:  "Spammer",
-				Timestamp: time.Now(),
-			},
-			checks: []spamcheck.Response{{
-				Name:    "Check1",
-				Spam:    true,
-				Details: "Details 1",
-			}},
-		},
-		{
-			name: "empty gid",
-			entry: DetectedSpamInfo{
-				Text:      "spam message",
-				UserID:    1,
-				UserName:  "Spammer",
-				Timestamp: time.Now(),
-			},
-			checks: []spamcheck.Response{{
-				Name:    "Check1",
-				Spam:    true,
-				Details: "Details 1",
-			}},
-			wantErr: true,
-		},
-	}
-
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
 		db := dbt.DB
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			tests := []struct {
+				name    string
+				entry   DetectedSpamInfo
+				checks  []spamcheck.Response
+				wantErr bool
+			}{
+				{
+					name: "basic spam entry",
+					entry: DetectedSpamInfo{
+						GID:       "gr1", // Use the store's GID here
+						Text:      "spam message",
+						UserID:    1,
+						UserName:  "Spammer",
+						Timestamp: time.Now(),
+					},
+					checks: []spamcheck.Response{{
+						Name:    "Check1",
+						Spam:    true,
+						Details: "Details 1",
+					}},
+					wantErr: false,
+				},
+				{
+					name: "empty gid",
+					entry: DetectedSpamInfo{
+						Text:      "spam message",
+						UserID:    1,
+						UserName:  "Spammer",
+						Timestamp: time.Now(),
+					},
+					checks: []spamcheck.Response{{
+						Name:    "Check1",
+						Spam:    true,
+						Details: "Details 1",
+					}},
+					wantErr: true,
+				},
+			}
+
 			for _, tt := range tests {
 				s.Run(tt.name, func() {
 					ds, err := NewDetectedSpam(ctx, db)

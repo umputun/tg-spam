@@ -131,14 +131,14 @@ func (ds *DetectedSpam) SetAddedToSamplesFlag(ctx context.Context, id int64) err
 	return nil
 }
 
-// Read returns all detected spam entries
+// Read returns the latest detected spam entries, up to maxDetectedSpamEntries
 func (ds *DetectedSpam) Read(ctx context.Context) ([]DetectedSpamInfo, error) {
 	ds.RLock()
 	defer ds.RUnlock()
 
-	query := ds.Adopt("SELECT * FROM detected_spam ORDER BY timestamp DESC LIMIT ?")
+	query := ds.Adopt("SELECT * FROM detected_spam WHERE gid = ? ORDER BY timestamp DESC LIMIT ?")
 	var entries []DetectedSpamInfo
-	err := ds.SelectContext(ctx, &entries, query, maxDetectedSpamEntries)
+	err := ds.SelectContext(ctx, &entries, query, ds.GID(), maxDetectedSpamEntries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get detected spam entries: %w", err)
 	}
