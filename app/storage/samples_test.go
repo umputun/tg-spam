@@ -1285,6 +1285,91 @@ func (s *StorageTestSuite) TestSamples_ReaderUnlock() {
 	}
 }
 
+func (s *StorageTestSuite) TestSamples_LongMessages() {
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			defer db.Exec("DROP TABLE IF EXISTS samples")
+			samples, err := NewSamples(context.Background(), db)
+			s.Require().NoError(err)
+
+			tests := []struct {
+				name    string
+				message string
+			}{
+				{
+					name:    "small message",
+					message: "hello world",
+				},
+				{
+					name:    "medium message",
+					message: strings.Repeat("x", 1000),
+				},
+				{
+					name:    "large message",
+					message: strings.Repeat("y", 10000),
+				},
+				{
+					name:    "very large message",
+					message: strings.Repeat("z", 100000),
+				},
+			}
+
+			for _, tt := range tests {
+				s.Run(tt.name, func() {
+					// add sample
+					err := samples.Add(context.Background(), SampleTypeSpam, SampleOriginUser, tt.message)
+					s.Require().NoError(err, "should add message")
+
+					// verify it can be read back
+					msgs, err := samples.Read(context.Background(), SampleTypeSpam, SampleOriginUser)
+					s.Require().NoError(err)
+					s.Require().Contains(msgs, tt.message)
+
+					// verify it can be found and deleted
+					err = samples.DeleteMessage(context.Background(), tt.message)
+					s.Require().NoError(err, "should delete message")
+
+					// verify it's gone
+					msgs, err = samples.Read(context.Background(), SampleTypeSpam, SampleOriginUser)
+					s.Require().NoError(err)
+					s.Require().NotContains(msgs, tt.message)
+				})
+			}
+		})
+	}
+}
+
+func (s *StorageTestSuite) TestSamples_DuplicateLongMessages() {
+	longMsg := strings.Repeat("x", 50000)
+
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			defer db.Exec("DROP TABLE IF EXISTS samples")
+			samples, err := NewSamples(context.Background(), db)
+			s.Require().NoError(err)
+
+			// add same long message multiple times
+			for i := 0; i < 3; i++ {
+				err := samples.Add(context.Background(), SampleTypeSpam, SampleOriginUser, longMsg)
+				s.Require().NoError(err, "should add message attempt %d", i)
+			}
+
+			// verify only one instance exists
+			msgs, err := samples.Read(context.Background(), SampleTypeSpam, SampleOriginUser)
+			s.Require().NoError(err)
+			count := 0
+			for _, msg := range msgs {
+				if msg == longMsg {
+					count++
+				}
+			}
+			s.Equal(1, count, "should have only one instance of the message")
+		})
+	}
+}
+
 // errorReader implements io.Reader interface and always returns an error
 type errorReader struct {
 	err error

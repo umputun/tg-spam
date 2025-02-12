@@ -81,13 +81,22 @@ var samplesQueries = engine.NewQueryMap().
                   ON CONFLICT (gid, message) DO UPDATE 
                   SET type = EXCLUDED.type, origin = EXCLUDED.origin`,
 	}).
-	AddSame(CmdCreateSamplesIndexes, `
-        CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
-        CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
-        CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
-        CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)
-    `).
+	Add(CmdCreateSamplesIndexes, engine.Query{
+		Sqlite: `
+			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_lookup ON samples(gid, type, origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples(message)`,
+		Postgres: `
+			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
+			CREATE INDEX IF NOT EXISTS idx_samples_timestamp ON samples(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_samples_type ON samples(type);
+			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_lookup ON samples(gid, type, origin);
+			CREATE INDEX IF NOT EXISTS idx_samples_message ON samples USING hash(message);`,
+	}).
 	Add(CmdAddGIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
 		Postgres: "ALTER TABLE samples ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
