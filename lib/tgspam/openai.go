@@ -37,13 +37,17 @@ type openAIClient interface {
 }
 
 const defaultPrompt = `
-I'll give you a text from the messaging application, and you will return me a JSON with three fields: {"spam": true/false, "reason": "why this is spam", "confidence": 1-100}.
+I'll give you a text from the messaging application, and you will return me a JSON with three fields: {"spam": true/false, "reason": "why this is spam", "confidence": 1-100}. Ypu should determine if the message is spam or not.
 Set spam:true only if the confidence is above 80. Return JSON only, with no extra formatting!
 
 Consider the following additional criteria:
-  - If the message is a short, generic reaction without meaningful context (e.g. "Какая красота, но зачем?"), 
-    or obviously auto-generated fluff that doesn't add real value to the conversation, treat it as spam.
+  - If the message looks like an attempt to sell something, promote a service treat it as spam.
+  - If the message promote some questionable content or service (e.g. adult, gambling, crypto, etc.), treat it as spam.
+  - If the message seems like a generated text (e.g. random words, gibberish), treat it as spam.
+  - If the message text resembles spam patterns, or typical spam topics, treat it as spam.
   - If history of previous messages is provided, use it for context to see if this message is relevant.
+  - If the message is a short, generic reaction without meaningful context (e.g. "Какая красота, но зачем?"), 
+    or obviously auto-generated fluff that doesn't add real value to the conversation, treat it as spam. Buy make sure to consider the context, because sometimes such messages are valid.
   - If the user's profile data (like suspicious links in username or avatar pattern) is provided, factor it in.
 `
 
