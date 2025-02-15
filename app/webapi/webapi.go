@@ -656,10 +656,30 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// convert entries to jsonl format
+	type jsonSpamInfo struct {
+		ID        int64                `json:"id"`
+		GID       string               `json:"gid"`
+		Text      string               `json:"text"`
+		UserID    int64                `json:"user_id"`
+		UserName  string               `json:"user_name"`
+		Timestamp time.Time            `json:"timestamp"`
+		Added     bool                 `json:"added"`
+		Checks    []spamcheck.Response `json:"checks"`
+	}
+
+	// convert entries to jsonl format with lowercase fields
 	lines := make([]string, 0, len(spam))
 	for _, entry := range spam {
-		data, err := json.Marshal(entry)
+		data, err := json.Marshal(jsonSpamInfo{
+			ID:        entry.ID,
+			GID:       entry.GID,
+			Text:      entry.Text,
+			UserID:    entry.UserID,
+			UserName:  entry.UserName,
+			Timestamp: entry.Timestamp,
+			Added:     entry.Added,
+			Checks:    entry.Checks,
+		})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			rest.RenderJSON(w, rest.JSON{"error": "can't marshal entry", "details": err.Error()})

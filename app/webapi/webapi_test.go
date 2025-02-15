@@ -1279,24 +1279,31 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		handler := http.HandlerFunc(server.downloadDetectedSpamHandler)
 		handler.ServeHTTP(rr, req)
 
-		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Equal(t, "application/x-jsonlines", rr.Header().Get("Content-Type"))
-		assert.Contains(t, rr.Header().Get("Content-Disposition"), "detected_spam.jsonl")
+		t.Run("verify headers", func(t *testing.T) {
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, "application/x-jsonlines", rr.Header().Get("Content-Type"))
+			assert.Contains(t, rr.Header().Get("Content-Disposition"), "detected_spam.jsonl")
+		})
 
-		// verify content
-		var info storage.DetectedSpamInfo
-		err = json.Unmarshal([]byte(strings.TrimSpace(rr.Body.String())), &info)
-		require.NoError(t, err)
-
-		t.Run("verify fields", func(t *testing.T) {
+		t.Run("verify content", func(t *testing.T) {
+			var info struct {
+				ID        int64                `json:"id"`
+				GID       string               `json:"gid"`
+				Text      string               `json:"text"`
+				UserID    int64                `json:"user_id"`
+				UserName  string               `json:"user_name"`
+				Timestamp time.Time            `json:"timestamp"`
+				Added     bool                 `json:"added"`
+				Checks    []spamcheck.Response `json:"checks"`
+			}
+			err = json.Unmarshal([]byte(strings.TrimSpace(rr.Body.String())), &info)
+			require.NoError(t, err)
 			assert.Equal(t, int64(123), info.ID)
 			assert.Equal(t, "gid123", info.GID)
 			assert.Equal(t, "spam example", info.Text)
+			assert.Equal(t, int64(123), info.UserID)
 			assert.Equal(t, "user", info.UserName)
 			assert.Equal(t, testTime, info.Timestamp)
-		})
-
-		t.Run("verify checks", func(t *testing.T) {
 			require.Len(t, info.Checks, 1)
 			assert.Equal(t, "test", info.Checks[0].Name)
 			assert.Equal(t, "details", info.Checks[0].Details)
@@ -1327,10 +1334,15 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		assert.Len(t, lines, 2)
 
 		for i, line := range lines {
-			var info storage.DetectedSpamInfo
+			var info struct {
+				ID    int64  `json:"id"`
+				Text  string `json:"text"`
+				Added bool   `json:"added"`
+			}
 			err = json.Unmarshal([]byte(line), &info)
 			require.NoError(t, err)
 			assert.Equal(t, int64(i+1), info.ID)
+			assert.Equal(t, []string{"first", "second"}[i], info.Text)
 		}
 	})
 
