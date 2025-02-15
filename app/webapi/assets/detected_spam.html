@@ -11,7 +11,10 @@
     <div class="row" id="spam-list">
         <div class="col-md-12">
             <div id="error-message" class="alert alert-danger d-none" role="alert"></div>
-            <h4>Detected Spam ({{.TotalDetectedSpam}})</h4>
+            <h4>
+                Detected Spam ({{.TotalDetectedSpam}})
+                <a href="/download/detected_spam" class="btn btn-custom-blue btn-sm">Download</a>
+            </h4>
             <table class="table table-striped">
                 <thead class="custom-table-header">
                 <tr>
