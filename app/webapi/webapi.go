@@ -199,6 +199,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 			r.HandleFunc("GET /ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
 				return ham, "ham.txt"
 			}))
+			r.HandleFunc("GET /detected_spam", s.downloadDetectedSpamHandler)
 		})
 
 		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
@@ -645,6 +646,37 @@ func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(img)
 }
+
+func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	spam, err := s.DetectedSpam.Read(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't get detected spam", "details": err.Error()})
+		return
+	}
+
+	// convert entries to jsonl format
+	lines := make([]string, 0, len(spam))
+	for _, entry := range spam {
+		data, err := json.Marshal(entry)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "can't marshal entry", "details": err.Error()})
+			return
+		}
+		lines = append(lines, string(data))
+	}
+
+	body := strings.Join(lines, "\n")
+	w.Header().Set("Content-Type", "application/x-jsonlines")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "detected_spam.jsonl"))
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(body))
+}
+
+// helper function to format checks
 
 func (s *Server) spinnerHandler(w http.ResponseWriter, _ *http.Request) {
 	img, err := templateFS.ReadFile("assets/spinner.svg")
