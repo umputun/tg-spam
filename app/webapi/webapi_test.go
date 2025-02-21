@@ -816,53 +816,65 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 }
 
 func TestServer_htmlDetectedSpamHandler(t *testing.T) {
-	calls := 0
-	ds := &mocks.DetectedSpamMock{
-		ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
-			calls++
-			if calls > 1 {
-				return nil, errors.New("test error")
-			}
-			return []storage.DetectedSpamInfo{
-				{
-					Text:      "spam1 12345'",
-					UserID:    12345,
-					UserName:  "user1",
-					Timestamp: time.Now(),
-				},
-				{
-					Text:      "spam2",
-					UserID:    67890,
-					UserName:  "user2",
-					Timestamp: time.Now(),
-				},
-			}, nil
-		},
-	}
-	server := NewServer(Config{DetectedSpam: ds})
-
 	t.Run("successful rendering", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
+				ts := time.Now()
+				return []storage.DetectedSpamInfo{
+					{
+						Text:      "spam1 12345'",
+						UserID:    12345,
+						UserName:  "user1",
+						Timestamp: ts,
+					},
+					{
+						Text:      "spam2",
+						UserID:    67890,
+						UserName:  "user2",
+						Timestamp: ts,
+					},
+				}, nil
+			},
+		}
+		server := NewServer(Config{DetectedSpam: ds})
+
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.htmlDetectedSpamHandler)
-
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "<h4>Detected Spam (2)</h4>")
-		assert.Contains(t, rr.Body.String(), "spam1 12345 ")
-		t.Log(rr.Body.String())
+		body := rr.Body.String()
+
+		// check main elements
+		assert.Contains(t, body, "Detected Spam (2)")
+		assert.Contains(t, body, `href="/download/detected_spam"`)
+		assert.Contains(t, body, `class="btn btn-custom-blue btn-sm"`)
+
+		// check data
+		assert.Contains(t, body, "spam1 12345")
+		assert.Contains(t, body, "user1")
+		assert.Contains(t, body, "12345")
+		assert.Contains(t, body, "spam2")
+		assert.Contains(t, body, "user2")
+		assert.Contains(t, body, "67890")
 	})
 
-	t.Run("detected spam reading failure", func(t *testing.T) {
+	t.Run("read failure", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
+				return nil, errors.New("test error")
+			},
+		}
+		server := NewServer(Config{DetectedSpam: ds})
+
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.htmlDetectedSpamHandler)
-
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -1291,4 +1303,128 @@ func TestServer_renderSamples(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Ham Samples (2)")
 	assert.Contains(t, w.Body.String(), "ham1")
 	assert.Contains(t, w.Body.String(), "ham2")
+}
+
+func TestServer_downloadDetectedSpamHandler(t *testing.T) {
+	testTime := time.Date(2025, 1, 25, 10, 0, 0, 0, time.UTC)
+
+	t.Run("successful download", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
+				return []storage.DetectedSpamInfo{
+					{
+						ID:        123,
+						GID:       "gid123",
+						Text:      "spam example",
+						UserID:    123,
+						UserName:  "user",
+						Checks:    []spamcheck.Response{{Spam: true, Name: "test", Details: "details"}},
+						Timestamp: testTime,
+					},
+				}, nil
+			},
+		}
+
+		server := NewServer(Config{DetectedSpam: ds})
+		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.downloadDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		t.Run("verify headers", func(t *testing.T) {
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, "application/x-jsonlines", rr.Header().Get("Content-Type"))
+			assert.Contains(t, rr.Header().Get("Content-Disposition"), "detected_spam.jsonl")
+		})
+
+		t.Run("verify content", func(t *testing.T) {
+			var info struct {
+				ID        int64                `json:"id"`
+				GID       string               `json:"gid"`
+				Text      string               `json:"text"`
+				UserID    int64                `json:"user_id"`
+				UserName  string               `json:"user_name"`
+				Timestamp time.Time            `json:"timestamp"`
+				Added     bool                 `json:"added"`
+				Checks    []spamcheck.Response `json:"checks"`
+			}
+			err = json.Unmarshal([]byte(strings.TrimSpace(rr.Body.String())), &info)
+			require.NoError(t, err)
+			assert.Equal(t, int64(123), info.ID)
+			assert.Equal(t, "gid123", info.GID)
+			assert.Equal(t, "spam example", info.Text)
+			assert.Equal(t, int64(123), info.UserID)
+			assert.Equal(t, "user", info.UserName)
+			assert.Equal(t, testTime, info.Timestamp)
+			require.Len(t, info.Checks, 1)
+			assert.Equal(t, "test", info.Checks[0].Name)
+			assert.Equal(t, "details", info.Checks[0].Details)
+			assert.True(t, info.Checks[0].Spam)
+		})
+	})
+
+	t.Run("multiple entries", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
+				return []storage.DetectedSpamInfo{
+					{ID: 1, Text: "first"},
+					{ID: 2, Text: "second"},
+				}, nil
+			},
+		}
+
+		server := NewServer(Config{DetectedSpam: ds})
+		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.downloadDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		lines := strings.Split(strings.TrimSpace(rr.Body.String()), "\n")
+		assert.Len(t, lines, 2)
+
+		for i, line := range lines {
+			var info struct {
+				ID    int64  `json:"id"`
+				Text  string `json:"text"`
+				Added bool   `json:"added"`
+			}
+			err = json.Unmarshal([]byte(line), &info)
+			require.NoError(t, err)
+			assert.Equal(t, int64(i+1), info.ID)
+			assert.Equal(t, []string{"first", "second"}[i], info.Text)
+		}
+	})
+
+	t.Run("error handling", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) {
+				return nil, errors.New("test error")
+			},
+		}
+
+		server := NewServer(Config{DetectedSpam: ds})
+		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.downloadDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+
+		var resp struct {
+			Error   string `json:"error"`
+			Details string `json:"details"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, "can't get detected spam", resp.Error)
+		assert.Equal(t, "test error", resp.Details)
+	})
 }
