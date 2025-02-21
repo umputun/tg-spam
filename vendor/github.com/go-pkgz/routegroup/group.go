@@ -23,14 +23,12 @@ type Bundle struct {
 
 // New creates a new Group.
 func New(mux *http.ServeMux) *Bundle {
-	b := &Bundle{mux: mux}
-	return b
+	return &Bundle{mux: mux}
 }
 
 // Mount creates a new group with a specified base path.
 func Mount(mux *http.ServeMux, basePath string) *Bundle {
-	b := &Bundle{mux: mux, basePath: basePath}
-	return b
+	return &Bundle{mux: mux, basePath: basePath}
 }
 
 // ServeHTTP implements the http.Handler interface
@@ -51,26 +49,14 @@ func (b *Bundle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Group creates a new group with the same middleware stack as the original on top of the existing bundle.
 func (b *Bundle) Group() *Bundle {
-	// copy the middlewares to avoid modifying the original
-	middlewares := make([]func(http.Handler) http.Handler, len(b.middlewares))
-	copy(middlewares, b.middlewares)
-	return &Bundle{
-		mux:         b.mux,
-		basePath:    b.basePath,
-		middlewares: middlewares,
-	}
+	return b.clone() // copy the middlewares to avoid modifying the original
 }
 
 // Mount creates a new group with a specified base path on top of the existing bundle.
 func (b *Bundle) Mount(basePath string) *Bundle {
-	// copy the middlewares to avoid modifying the original
-	middlewares := make([]func(http.Handler) http.Handler, len(b.middlewares))
-	copy(middlewares, b.middlewares)
-	return &Bundle{
-		mux:         b.mux,
-		basePath:    b.basePath + basePath,
-		middlewares: middlewares,
-	}
+	g := b.clone() // copy the middlewares to avoid modifying the original
+	g.basePath += basePath
+	return g
 }
 
 // Use adds middleware(s) to the Group.
@@ -88,11 +74,7 @@ func (b *Bundle) With(middleware func(http.Handler) http.Handler, more ...func(h
 	copy(newMiddlewares, b.middlewares)
 	newMiddlewares = append(newMiddlewares, middleware)
 	newMiddlewares = append(newMiddlewares, more...)
-	return &Bundle{
-		mux:         b.mux,
-		basePath:    b.basePath,
-		middlewares: newMiddlewares,
-	}
+	return &Bundle{mux: b.mux, basePath: b.basePath, middlewares: newMiddlewares}
 }
 
 // Handle adds a new route to the Group's mux, applying all middlewares to the handler.
@@ -152,7 +134,7 @@ func (b *Bundle) NotFoundHandler(handler http.HandlerFunc) {
 }
 
 // Matches non-space characters, spaces, then anything, i.e. "GET /path/to/resource"
-var reGo122 = regexp.MustCompile(`^(\S*)\s+(.*)$`)
+var reGo122 = regexp.MustCompile(`^(\S+)\s+(.+)$`)
 
 func (b *Bundle) register(pattern string, handler http.HandlerFunc) {
 	matches := reGo122.FindStringSubmatch(pattern)
@@ -191,10 +173,16 @@ func (b *Bundle) wrapMiddleware(handler http.Handler) http.Handler {
 	return handler
 }
 
+func (b *Bundle) clone() *Bundle {
+	middlewares := make([]func(http.Handler) http.Handler, len(b.middlewares))
+	copy(middlewares, b.middlewares)
+	return &Bundle{mux: b.mux, basePath: b.basePath, middlewares: middlewares}
+}
+
 // Wrap directly wraps the handler with the provided middleware(s).
 func Wrap(handler http.Handler, mw1 func(http.Handler) http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(mws) - 1; i >= 0; i-- {
 		handler = mws[i](handler)
 	}
-	return mw1(handler)
+	return mw1(handler) // apply the first middleware
 }

@@ -2,217 +2,166 @@
 
 ![Tests](https://github.com/forPelevin/gomoji/actions/workflows/tests.yml/badge.svg) [![Go Report](https://goreportcard.com/badge/github.com/forPelevin/gomoji)](https://goreportcard.com/report/github.com/forPelevin/gomoji) [![codecov](https://codecov.io/gh/forPelevin/gomoji/branch/github-actions/graph/badge.svg?token=34X68AXAMS)](https://codecov.io/gh/forPelevin/gomoji)
 
-GoMoji is a Go package that provides a 🚀[fast](#performance) and ✨[simple](#check-string-contains-emoji) way to work with emojis in strings.
-It has features such as:
- * [check whether string contains emoji](#check-string-contains-emoji) 🔎
- * [find all emojis in string](#find-all) 👪
- * [get all emojis](#get-all) 🌐
- * [remove all emojis from string](#remove-all-emojis) 🧹
- * [replace all emojis in a string with a specified rune](#replace-all-emojis-with-a-specified-rune) ↔️
-* [custom emojis replacements in a string](#replace-all-emojis-with-the-result-of-custom-replacer-function) ↕️
- * [get emoji description](#get-emoji-info) 🧐
+A high-performance Go library for working with emojis in strings, offering fast emoji detection, manipulation, and information retrieval.
 
-Getting Started
-===============
+## Table of Contents
 
-## Installing
+- [Installation](#installation)
+- [Features](#features)
+- [Usage Examples](#usage-examples)
+  - [Check for Emojis](#check-for-emojis)
+  - [Find All Emojis](#find-all-emojis)
+  - [Remove Emojis](#remove-emojis)
+  - [Replace Emojis](#replace-emojis)
+  - [Get Emoji Information](#get-emoji-information)
+- [API Documentation](#api-documentation)
+- [Performance](#performance)
+- [Contributing](#contributing)
+- [License](#license)
 
-To start using GoMoji, install Go and run `go get`:
+## Installation
+
+### Prerequisites
+
+- Go 1.11 or higher (for module support)
+
+### Installing
 
 ```sh
-$ go get -u github.com/forPelevin/gomoji
+go get -u github.com/forPelevin/gomoji
 ```
 
-This will retrieve the package.
+## Features
 
-## Check string contains emoji
+- 🔎 Fast emoji detection in strings
+- 👪 Find all emoji occurrences with detailed information
+- 🌐 Access comprehensive emoji database
+- 🧹 Remove emojis from strings
+- ↔️ Replace emojis with custom characters
+- ↕️ Custom emoji replacement functions
+- 🧐 Detailed emoji information lookup
+
+## Usage Examples
+
+### Check for Emojis
+
 ```go
 package main
 
-import (
-    "github.com/forPelevin/gomoji"
-)
+import "github.com/forPelevin/gomoji"
 
 func main() {
-    res := gomoji.ContainsEmoji("hello world")
-    println(res) // false
-    
-    res = gomoji.ContainsEmoji("hello world 🤗")
-    println(res) // true
+    hasEmoji := gomoji.ContainsEmoji("hello world 🤗")
+    println(hasEmoji) // true
 }
 ```
 
-## Find all
-The function searches for all emoji occurrences in a string. It returns a nil slice if there are no emojis.
+### Find All Emojis
+
 ```go
-package main
-
-import (
-    "github.com/forPelevin/gomoji"
-)
-
-func main() {
-    res := gomoji.FindAll("🧖 hello 🦋 world")
-    println(res)
-}
+emojis := gomoji.FindAll("🧖 hello 🦋 world")
+// Returns slice of Emoji structs with detailed information
 ```
 
-Result:
+### Remove Emojis
 
 ```go
-[]gomoji.Emoji{
-    {
-        Slug:        "person-in-steamy-room",
-        Character:   "🧖",
-        UnicodeName: "E5.0 person in steamy room",
-        CodePoint:   "1F9D6",
-        Group:       "People & Body",
-        SubGroup:    "person-activity",
-    },
-    {
-        Slug:        "butterfly",
-        Character:   "🦋",
-        UnicodeName: "E3.0 butterfly",
-        CodePoint:   "1F98B",
-        Group:       "Animals & Nature",
-        SubGroup:    "animal-bug",
-    },
-}
+cleaned := gomoji.RemoveEmojis("🧖 hello 🦋 world")
+println(cleaned) // "hello world"
 ```
 
-## Get all
-The function returns all existing emojis. You can do whatever you need with the list.
- ```go
- package main
- 
- import (
-     "github.com/forPelevin/gomoji"
- )
- 
- func main() {
-     emojis := gomoji.AllEmojis()
-     println(emojis)
- }
- ```
-
-## Remove all emojis
-
-The function removes all emojis from given string:
+### Replace Emojis
 
 ```go
-res := gomoji.RemoveEmojis("🧖 hello 🦋world")
-println(res) // "hello world"
-```
+// Replace with a specific character
+replaced := gomoji.ReplaceEmojisWith("🧖 hello 🦋 world", '_')
+println(replaced) // "_ hello _ world"
 
-## Replace all emojis with a specified rune
-
-The function replaces all emojis in a string with a given rune:
-
-```go
-res := gomoji.ReplaceEmojisWith("🧖 hello 🦋world", '_')
-println(res) // "_ hello _world"
-```
-
-## Replace all emojis with the result of custom replacer function
-
-The function replaces all emojis in a string with the result of given replacer function:
-
-```go
-res := gomoji.ReplaceEmojisWithFunc("🧖 hello 🦋 world", func(em Emoji) string {
+// Replace with custom function
+customReplaced := gomoji.ReplaceEmojisWithFunc("🧖 hello 🦋 world", func(em Emoji) string {
     return em.Slug
 })
-println(res) // "person-in-steamy-room hello butterfly world"
+println(customReplaced) // "person-in-steamy-room hello butterfly world"
 ```
 
-## Get emoji info
-
-The function returns info about provided emoji:
+### Get Emoji Information
 
 ```go
-info, err := gomoji.GetInfo("1") // error: the string is not emoji
-info, err := gomoji.GetInfo("1️⃣")
-println(info)
-```
-
-Result:
-
-```go
-gomoji.Entity{
-    Slug:        "keycap-1",
-    Character:   "1️⃣",
-    UnicodeName: "E0.6 keycap: 1",
-    CodePoint:   "0031 FE0F 20E3",
-    Group:       "Symbols",
-    SubGroup:    "keycap",
+info, err := gomoji.GetInfo("🦋")
+if err == nil {
+    println(info.Slug)        // "butterfly"
+    println(info.UnicodeName) // "E3.0 butterfly"
+    println(info.Group)       // "Animals & Nature"
 }
 ```
 
-## Emoji entity
-All searching methods return the Emoji entity which contains comprehensive info about emoji.
+## API Documentation
+
+### Emoji Structure
+
 ```go
 type Emoji struct {
-    Slug        string `json:"slug"`
-    Character   string `json:"character"`
-    UnicodeName string `json:"unicode_name"`
-    CodePoint   string `json:"code_point"`
-    Group       string `json:"group"`
-    SubGroup    string `json:"sub_group"`
+    Slug        string `json:"slug"`        // Unique identifier
+    Character   string `json:"character"`   // The emoji character
+    UnicodeName string `json:"unicode_name"` // Official Unicode name
+    CodePoint   string `json:"code_point"`  // Unicode code point
+    Group       string `json:"group"`       // Emoji group category
+    SubGroup    string `json:"sub_group"`   // Emoji subgroup category
 }
- ```
-Example:
-```go
-[]gomoji.Emoji{
-    {
-        Slug:        "butterfly",
-        Character:   "🦋",
-        UnicodeName: "E3.0 butterfly",
-        CodePoint:   "1F98B",
-        Group:       "Animals & Nature",
-        SubGroup:    "animal-bug",
-    },
-    {
-        Slug:        "roll-of-paper",
-        Character:   "🧻",
-        UnicodeName: "E11.0 roll of paper",
-        CodePoint:   "1F9FB",
-        Group:       "Objects",
-        SubGroup:    "household",
-    },
-}
- ```
+```
+
+### Core Functions
+
+- `ContainsEmoji(s string) bool` - Checks if a string contains any emoji
+- `FindAll(s string) []Emoji` - Finds all unique emojis in a string
+- `RemoveEmojis(s string) string` - Removes all emojis from a string
+- `ReplaceEmojisWith(s string, c rune) string` - Replaces emojis with a specified character
+- `GetInfo(emoji string) (Emoji, error)` - Gets detailed information about an emoji
+- `AllEmojis() []Emoji` - Returns all available emojis
 
 ## Performance
 
-GoMoji Benchmarks
+GoMoji is designed for high performance, with parallel processing capabilities for optimal speed. Here are the key benchmarks:
+
+| Operation         | Sequential Performance | Parallel Performance | Allocations           |
+| ----------------- | ---------------------- | -------------------- | --------------------- |
+| Contains Emoji    | 57.49 ns/op            | 7.167 ns/op          | 0 B/op, 0 allocs/op   |
+| Remove Emojis     | 1454 ns/op             | 201.4 ns/op          | 68 B/op, 2 allocs/op  |
+| Find All          | 1494 ns/op             | 313.8 ns/op          | 288 B/op, 2 allocs/op |
+| Get Info          | 8.591 ns/op            | 1.139 ns/op          | 0 B/op, 0 allocs/op   |
+| Replace With Slug | 3822 ns/op             | 602.4 ns/op          | 160 B/op, 3 allocs/op |
+
+Full benchmark details:
 
 ```
 go test -bench=. -benchmem -v -run Benchmark ./...
 goos: darwin
 goarch: arm64
 pkg: github.com/forPelevin/gomoji
-BenchmarkContainsEmojiParallel
-BenchmarkContainsEmojiParallel-10       150872365                7.207 ns/op           0 B/op          0 allocs/op
-BenchmarkContainsEmoji
-BenchmarkContainsEmoji-10               20428110                58.86 ns/op            0 B/op          0 allocs/op
-BenchmarkRemoveEmojisParallel
-BenchmarkRemoveEmojisParallel-10         6463779               193.1 ns/op            68 B/op          2 allocs/op
-BenchmarkRemoveEmojis
-BenchmarkRemoveEmojis-10                  882298              1341 ns/op              68 B/op          2 allocs/op
-BenchmarkGetInfoParallel
-BenchmarkGetInfoParallel-10             447353414                2.428 ns/op           0 B/op          0 allocs/op
-BenchmarkGetInfo
-BenchmarkGetInfo-10                     57733017                20.32 ns/op            0 B/op          0 allocs/op
-BenchmarkFindAllParallel
-BenchmarkFindAllParallel-10              4001587               305.8 ns/op           296 B/op          4 allocs/op
-BenchmarkFindAll
-BenchmarkFindAll-10                       694861              1675 ns/op             296 B/op          4 allocs/op
-PASS
-ok      github.com/forPelevin/gomoji    11.192s
+cpu: Apple M1 Pro
+BenchmarkContainsEmojiParallel-10               164229604                7.167 ns/op           0 B/op             0 allocs/op
+BenchmarkContainsEmoji-10                       20967183                57.49 ns/op            0 B/op             0 allocs/op
+BenchmarkReplaceEmojisWithSlugParallel-10        2160638               602.4 ns/op           160 B/op             3 allocs/op
+BenchmarkReplaceEmojisWithSlug-10                 309879              3822 ns/op             160 B/op             3 allocs/op
+BenchmarkRemoveEmojisParallel-10                 5794255               201.4 ns/op            68 B/op             2 allocs/op
+BenchmarkRemoveEmojis-10                          830334              1454 ns/op              68 B/op             2 allocs/op
+BenchmarkGetInfoParallel-10                     989043939                1.139 ns/op           0 B/op             0 allocs/op
+BenchmarkGetInfo-10                             139558108                8.591 ns/op           0 B/op             0 allocs/op
+BenchmarkFindAllParallel-10                      4029028               313.8 ns/op           288 B/op             2 allocs/op
+BenchmarkFindAll-10                               751990              1494 ns/op             288 B/op             2 allocs/op
 ```
 
+> Note: Benchmarks were performed on Apple M1 Pro processor. Your results may vary depending on hardware.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 ## Contact
+
 Vlad Gukasov [@vgukasov](https://www.facebook.com/vgukasov)
 
 ## License
 
+GoMoji is available under the MIT [License](/LICENSE).
 GoMoji source code is available under the MIT [License](/LICENSE).

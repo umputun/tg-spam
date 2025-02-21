@@ -2597,11 +2597,29 @@ var (
 			SubGroup:    "tool",
 		},
 
+		"⛓‍💥": {
+			Slug:        "broken-chain",
+			Character:   "⛓‍💥",
+			UnicodeName: "E15.1 broken chain",
+			CodePoint:   "26D3 200D 1F4A5",
+			Group:       "Objects",
+			SubGroup:    "tool",
+		},
+
 		"⛓️": {
 			Slug:        "chains",
 			Character:   "⛓️",
 			UnicodeName: "E0.7 chains",
 			CodePoint:   "26D3 FE0F",
+			Group:       "Objects",
+			SubGroup:    "tool",
+		},
+
+		"⛓️‍💥": {
+			Slug:        "broken-chain",
+			Character:   "⛓️‍💥",
+			UnicodeName: "E15.1 broken chain",
+			CodePoint:   "26D3 FE0F 200D 1F4A5",
 			Group:       "Objects",
 			SubGroup:    "tool",
 		},
@@ -4825,6 +4843,15 @@ var (
 			Character:   "🇨🇵",
 			UnicodeName: "E2.0 flag: Clipperton Island",
 			CodePoint:   "1F1E8 1F1F5",
+			Group:       "Flags",
+			SubGroup:    "country-flag",
+		},
+
+		"🇨🇶": {
+			Slug:        "flag-sark",
+			Character:   "🇨🇶",
+			UnicodeName: "E16.0 flag: Sark",
+			CodePoint:   "1F1E8 1F1F6",
 			Group:       "Flags",
 			SubGroup:    "country-flag",
 		},
@@ -7772,6 +7799,15 @@ var (
 			SubGroup:    "plant-other",
 		},
 
+		"🍄‍🟫": {
+			Slug:        "brown-mushroom",
+			Character:   "🍄‍🟫",
+			UnicodeName: "E15.1 brown mushroom",
+			CodePoint:   "1F344 200D 1F7EB",
+			Group:       "Food & Drink",
+			SubGroup:    "food-vegetable",
+		},
+
 		"🍅": {
 			Slug:        "tomato",
 			Character:   "🍅",
@@ -7831,6 +7867,15 @@ var (
 			Character:   "🍋",
 			UnicodeName: "E1.0 lemon",
 			CodePoint:   "1F34B",
+			Group:       "Food & Drink",
+			SubGroup:    "food-fruit",
+		},
+
+		"🍋‍🟩": {
+			Slug:        "lime",
+			Character:   "🍋‍🟩",
+			UnicodeName: "E15.1 lime",
+			CodePoint:   "1F34B 200D 1F7E9",
 			Group:       "Food & Drink",
 			SubGroup:    "food-fruit",
 		},
@@ -9077,11 +9122,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃‍♀‍➡": {
+			Slug:        "woman-running-facing-right",
+			Character:   "🏃‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right",
+			CodePoint:   "1F3C3 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♀‍➡️": {
+			Slug:        "woman-running-facing-right",
+			Character:   "🏃‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right",
+			CodePoint:   "1F3C3 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃‍♀️": {
 			Slug:        "woman-running",
 			Character:   "🏃‍♀️",
 			UnicodeName: "E4.0 woman running",
 			CodePoint:   "1F3C3 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♀️‍➡": {
+			Slug:        "woman-running-facing-right",
+			Character:   "🏃‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right",
+			CodePoint:   "1F3C3 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right",
+			Character:   "🏃‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right",
+			CodePoint:   "1F3C3 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9095,11 +9176,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃‍♂‍➡": {
+			Slug:        "man-running-facing-right",
+			Character:   "🏃‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right",
+			CodePoint:   "1F3C3 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♂‍➡️": {
+			Slug:        "man-running-facing-right",
+			Character:   "🏃‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right",
+			CodePoint:   "1F3C3 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃‍♂️": {
 			Slug:        "man-running",
 			Character:   "🏃‍♂️",
 			UnicodeName: "E4.0 man running",
 			CodePoint:   "1F3C3 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♂️‍➡": {
+			Slug:        "man-running-facing-right",
+			Character:   "🏃‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right",
+			CodePoint:   "1F3C3 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍♂️‍➡️": {
+			Slug:        "man-running-facing-right",
+			Character:   "🏃‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right",
+			CodePoint:   "1F3C3 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍➡": {
+			Slug:        "person-running-facing-right",
+			Character:   "🏃‍➡",
+			UnicodeName: "E15.1 person running facing right",
+			CodePoint:   "1F3C3 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃‍➡️": {
+			Slug:        "person-running-facing-right",
+			Character:   "🏃‍➡️",
+			UnicodeName: "E15.1 person running facing right",
+			CodePoint:   "1F3C3 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9122,11 +9257,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏻‍♀‍➡": {
+			Slug:        "woman-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♀‍➡️": {
+			Slug:        "woman-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏻‍♀️": {
 			Slug:        "woman-running-light-skin-tone",
 			Character:   "🏃🏻‍♀️",
 			UnicodeName: "E4.0 woman running: light skin tone",
 			CodePoint:   "1F3C3 1F3FB 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♀️‍➡": {
+			Slug:        "woman-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9140,11 +9311,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏻‍♂‍➡": {
+			Slug:        "man-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♂‍➡️": {
+			Slug:        "man-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏻‍♂️": {
 			Slug:        "man-running-light-skin-tone",
 			Character:   "🏃🏻‍♂️",
 			UnicodeName: "E4.0 man running: light skin tone",
 			CodePoint:   "1F3C3 1F3FB 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♂️‍➡": {
+			Slug:        "man-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍♂️‍➡️": {
+			Slug:        "man-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍➡": {
+			Slug:        "person-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍➡",
+			UnicodeName: "E15.1 person running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏻‍➡️": {
+			Slug:        "person-running-facing-right-light-skin-tone",
+			Character:   "🏃🏻‍➡️",
+			UnicodeName: "E15.1 person running facing right: light skin tone",
+			CodePoint:   "1F3C3 1F3FB 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9167,11 +9392,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏼‍♀‍➡": {
+			Slug:        "woman-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♀‍➡️": {
+			Slug:        "woman-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏼‍♀️": {
 			Slug:        "woman-running-medium-light-skin-tone",
 			Character:   "🏃🏼‍♀️",
 			UnicodeName: "E4.0 woman running: medium-light skin tone",
 			CodePoint:   "1F3C3 1F3FC 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♀️‍➡": {
+			Slug:        "woman-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9185,11 +9446,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏼‍♂‍➡": {
+			Slug:        "man-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♂‍➡️": {
+			Slug:        "man-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏼‍♂️": {
 			Slug:        "man-running-medium-light-skin-tone",
 			Character:   "🏃🏼‍♂️",
 			UnicodeName: "E4.0 man running: medium-light skin tone",
 			CodePoint:   "1F3C3 1F3FC 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♂️‍➡": {
+			Slug:        "man-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍♂️‍➡️": {
+			Slug:        "man-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍➡": {
+			Slug:        "person-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍➡",
+			UnicodeName: "E15.1 person running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏼‍➡️": {
+			Slug:        "person-running-facing-right-medium-light-skin-tone",
+			Character:   "🏃🏼‍➡️",
+			UnicodeName: "E15.1 person running facing right: medium-light skin tone",
+			CodePoint:   "1F3C3 1F3FC 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9212,11 +9527,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏽‍♀‍➡": {
+			Slug:        "woman-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♀‍➡️": {
+			Slug:        "woman-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏽‍♀️": {
 			Slug:        "woman-running-medium-skin-tone",
 			Character:   "🏃🏽‍♀️",
 			UnicodeName: "E4.0 woman running: medium skin tone",
 			CodePoint:   "1F3C3 1F3FD 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♀️‍➡": {
+			Slug:        "woman-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9230,11 +9581,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏽‍♂‍➡": {
+			Slug:        "man-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♂‍➡️": {
+			Slug:        "man-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏽‍♂️": {
 			Slug:        "man-running-medium-skin-tone",
 			Character:   "🏃🏽‍♂️",
 			UnicodeName: "E4.0 man running: medium skin tone",
 			CodePoint:   "1F3C3 1F3FD 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♂️‍➡": {
+			Slug:        "man-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍♂️‍➡️": {
+			Slug:        "man-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍➡": {
+			Slug:        "person-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍➡",
+			UnicodeName: "E15.1 person running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏽‍➡️": {
+			Slug:        "person-running-facing-right-medium-skin-tone",
+			Character:   "🏃🏽‍➡️",
+			UnicodeName: "E15.1 person running facing right: medium skin tone",
+			CodePoint:   "1F3C3 1F3FD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9257,11 +9662,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏾‍♀‍➡": {
+			Slug:        "woman-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♀‍➡️": {
+			Slug:        "woman-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏾‍♀️": {
 			Slug:        "woman-running-medium-dark-skin-tone",
 			Character:   "🏃🏾‍♀️",
 			UnicodeName: "E4.0 woman running: medium-dark skin tone",
 			CodePoint:   "1F3C3 1F3FE 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♀️‍➡": {
+			Slug:        "woman-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9275,11 +9716,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏾‍♂‍➡": {
+			Slug:        "man-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♂‍➡️": {
+			Slug:        "man-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏾‍♂️": {
 			Slug:        "man-running-medium-dark-skin-tone",
 			Character:   "🏃🏾‍♂️",
 			UnicodeName: "E4.0 man running: medium-dark skin tone",
 			CodePoint:   "1F3C3 1F3FE 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♂️‍➡": {
+			Slug:        "man-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍♂️‍➡️": {
+			Slug:        "man-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍➡": {
+			Slug:        "person-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍➡",
+			UnicodeName: "E15.1 person running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏾‍➡️": {
+			Slug:        "person-running-facing-right-medium-dark-skin-tone",
+			Character:   "🏃🏾‍➡️",
+			UnicodeName: "E15.1 person running facing right: medium-dark skin tone",
+			CodePoint:   "1F3C3 1F3FE 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9302,11 +9797,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏿‍♀‍➡": {
+			Slug:        "woman-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♀‍➡",
+			UnicodeName: "E15.1 woman running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♀‍➡️": {
+			Slug:        "woman-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♀‍➡️",
+			UnicodeName: "E15.1 woman running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏿‍♀️": {
 			Slug:        "woman-running-dark-skin-tone",
 			Character:   "🏃🏿‍♀️",
 			UnicodeName: "E4.0 woman running: dark skin tone",
 			CodePoint:   "1F3C3 1F3FF 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♀️‍➡": {
+			Slug:        "woman-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♀️‍➡",
+			UnicodeName: "E15.1 woman running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♀️‍➡️": {
+			Slug:        "woman-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♀️‍➡️",
+			UnicodeName: "E15.1 woman running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -9320,11 +9851,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🏃🏿‍♂‍➡": {
+			Slug:        "man-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♂‍➡",
+			UnicodeName: "E15.1 man running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♂‍➡️": {
+			Slug:        "man-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♂‍➡️",
+			UnicodeName: "E15.1 man running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🏃🏿‍♂️": {
 			Slug:        "man-running-dark-skin-tone",
 			Character:   "🏃🏿‍♂️",
 			UnicodeName: "E4.0 man running: dark skin tone",
 			CodePoint:   "1F3C3 1F3FF 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♂️‍➡": {
+			Slug:        "man-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♂️‍➡",
+			UnicodeName: "E15.1 man running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍♂️‍➡️": {
+			Slug:        "man-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍♂️‍➡️",
+			UnicodeName: "E15.1 man running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍➡": {
+			Slug:        "person-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍➡",
+			UnicodeName: "E15.1 person running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🏃🏿‍➡️": {
+			Slug:        "person-running-facing-right-dark-skin-tone",
+			Character:   "🏃🏿‍➡️",
+			UnicodeName: "E15.1 person running facing right: dark skin tone",
+			CodePoint:   "1F3C3 1F3FF 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -11615,6 +12200,15 @@ var (
 			SubGroup:    "animal-bird",
 		},
 
+		"🐦‍🔥": {
+			Slug:        "phoenix",
+			Character:   "🐦‍🔥",
+			UnicodeName: "E15.1 phoenix",
+			CodePoint:   "1F426 200D 1F525",
+			Group:       "Animals & Nature",
+			SubGroup:    "animal-bird",
+		},
+
 		"🐧": {
 			Slug:        "penguin",
 			Character:   "🐧",
@@ -13316,6 +13910,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right",
+			Character:   "👨‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right",
+			CodePoint:   "1F468 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right",
+			Character:   "👨‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right",
+			CodePoint:   "1F468 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨‍🦰": {
 			Slug:        "man-red-hair",
 			Character:   "👨‍🦰",
@@ -13361,11 +13973,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right",
+			Character:   "👨‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right",
+			CodePoint:   "1F468 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right",
+			Character:   "👨‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right",
+			CodePoint:   "1F468 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨‍🦽": {
 			Slug:        "man-in-manual-wheelchair",
 			Character:   "👨‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair",
 			CodePoint:   "1F468 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right",
+			Character:   "👨‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right",
+			CodePoint:   "1F468 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right",
+			Character:   "👨‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right",
+			CodePoint:   "1F468 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -13793,6 +14441,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏻‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏻‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏻‍🦰": {
 			Slug:        "man-light-skin-tone,-red-hair",
 			Character:   "👨🏻‍🦰",
@@ -13838,11 +14504,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏻‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏻‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏻‍🦽": {
 			Slug:        "man-in-manual-wheelchair-light-skin-tone",
 			Character:   "👨🏻‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair: light skin tone",
 			CodePoint:   "1F468 1F3FB 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏻‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏻‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "👨🏻‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F468 1F3FB 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -14270,6 +14972,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏼‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏼‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏼‍🦰": {
 			Slug:        "man-medium-light-skin-tone,-red-hair",
 			Character:   "👨🏼‍🦰",
@@ -14315,11 +15035,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏼‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏼‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏼‍🦽": {
 			Slug:        "man-in-manual-wheelchair-medium-light-skin-tone",
 			Character:   "👨🏼‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair: medium-light skin tone",
 			CodePoint:   "1F468 1F3FC 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏼‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏼‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👨🏼‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F468 1F3FC 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -14747,6 +15503,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏽‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏽‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏽‍🦰": {
 			Slug:        "man-medium-skin-tone,-red-hair",
 			Character:   "👨🏽‍🦰",
@@ -14792,11 +15566,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏽‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏽‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏽‍🦽": {
 			Slug:        "man-in-manual-wheelchair-medium-skin-tone",
 			Character:   "👨🏽‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair: medium skin tone",
 			CodePoint:   "1F468 1F3FD 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏽‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏽‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👨🏽‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F468 1F3FD 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -15224,6 +16034,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏾‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏾‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏾‍🦰": {
 			Slug:        "man-medium-dark-skin-tone,-red-hair",
 			Character:   "👨🏾‍🦰",
@@ -15269,11 +16097,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏾‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏾‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏾‍🦽": {
 			Slug:        "man-in-manual-wheelchair-medium-dark-skin-tone",
 			Character:   "👨🏾‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair: medium-dark skin tone",
 			CodePoint:   "1F468 1F3FE 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏾‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏾‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👨🏾‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F468 1F3FE 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -15701,6 +16565,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏿‍🦯‍➡": {
+			Slug:        "man-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦯‍➡",
+			UnicodeName: "E15.1 man with white cane facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏿‍🦯‍➡️": {
+			Slug:        "man-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦯‍➡️",
+			UnicodeName: "E15.1 man with white cane facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏿‍🦰": {
 			Slug:        "man-dark-skin-tone,-red-hair",
 			Character:   "👨🏿‍🦰",
@@ -15746,11 +16628,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👨🏿‍🦼‍➡": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦼‍➡",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏿‍🦼‍➡️": {
+			Slug:        "man-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦼‍➡️",
+			UnicodeName: "E15.1 man in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👨🏿‍🦽": {
 			Slug:        "man-in-manual-wheelchair-dark-skin-tone",
 			Character:   "👨🏿‍🦽",
 			UnicodeName: "E12.0 man in manual wheelchair: dark skin tone",
 			CodePoint:   "1F468 1F3FF 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏿‍🦽‍➡": {
+			Slug:        "man-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦽‍➡",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👨🏿‍🦽‍➡️": {
+			Slug:        "man-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👨🏿‍🦽‍➡️",
+			UnicodeName: "E15.1 man in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F468 1F3FF 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -16124,6 +17042,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right",
+			Character:   "👩‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right",
+			CodePoint:   "1F469 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right",
+			Character:   "👩‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right",
+			CodePoint:   "1F469 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩‍🦰": {
 			Slug:        "woman-red-hair",
 			Character:   "👩‍🦰",
@@ -16169,11 +17105,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right",
+			Character:   "👩‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right",
+			CodePoint:   "1F469 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right",
+			Character:   "👩‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right",
+			CodePoint:   "1F469 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩‍🦽": {
 			Slug:        "woman-in-manual-wheelchair",
 			Character:   "👩‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair",
 			CodePoint:   "1F469 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right",
+			Character:   "👩‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right",
+			CodePoint:   "1F469 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right",
+			Character:   "👩‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right",
+			CodePoint:   "1F469 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -16808,6 +17780,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏻‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏻‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏻‍🦰": {
 			Slug:        "woman-light-skin-tone,-red-hair",
 			Character:   "👩🏻‍🦰",
@@ -16853,11 +17843,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏻‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏻‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏻‍🦽": {
 			Slug:        "woman-in-manual-wheelchair-light-skin-tone",
 			Character:   "👩🏻‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair: light skin tone",
 			CodePoint:   "1F469 1F3FB 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏻‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏻‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "👩🏻‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F469 1F3FB 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -17501,6 +18527,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏼‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏼‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏼‍🦰": {
 			Slug:        "woman-medium-light-skin-tone,-red-hair",
 			Character:   "👩🏼‍🦰",
@@ -17546,11 +18590,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏼‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏼‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏼‍🦽": {
 			Slug:        "woman-in-manual-wheelchair-medium-light-skin-tone",
 			Character:   "👩🏼‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair: medium-light skin tone",
 			CodePoint:   "1F469 1F3FC 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏼‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏼‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "👩🏼‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F469 1F3FC 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -18194,6 +19274,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏽‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏽‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏽‍🦰": {
 			Slug:        "woman-medium-skin-tone,-red-hair",
 			Character:   "👩🏽‍🦰",
@@ -18239,11 +19337,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏽‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏽‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏽‍🦽": {
 			Slug:        "woman-in-manual-wheelchair-medium-skin-tone",
 			Character:   "👩🏽‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair: medium skin tone",
 			CodePoint:   "1F469 1F3FD 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏽‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏽‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "👩🏽‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F469 1F3FD 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -18887,6 +20021,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏾‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏾‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏾‍🦰": {
 			Slug:        "woman-medium-dark-skin-tone,-red-hair",
 			Character:   "👩🏾‍🦰",
@@ -18932,11 +20084,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏾‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏾‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏾‍🦽": {
 			Slug:        "woman-in-manual-wheelchair-medium-dark-skin-tone",
 			Character:   "👩🏾‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair: medium-dark skin tone",
 			CodePoint:   "1F469 1F3FE 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏾‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏾‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "👩🏾‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F469 1F3FE 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -19580,6 +20768,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏿‍🦯‍➡": {
+			Slug:        "woman-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦯‍➡",
+			UnicodeName: "E15.1 woman with white cane facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏿‍🦯‍➡️": {
+			Slug:        "woman-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦯‍➡️",
+			UnicodeName: "E15.1 woman with white cane facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏿‍🦰": {
 			Slug:        "woman-dark-skin-tone,-red-hair",
 			Character:   "👩🏿‍🦰",
@@ -19625,11 +20831,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"👩🏿‍🦼‍➡": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦼‍➡",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏿‍🦼‍➡️": {
+			Slug:        "woman-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦼‍➡️",
+			UnicodeName: "E15.1 woman in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"👩🏿‍🦽": {
 			Slug:        "woman-in-manual-wheelchair-dark-skin-tone",
 			Character:   "👩🏿‍🦽",
 			UnicodeName: "E12.0 woman in manual wheelchair: dark skin tone",
 			CodePoint:   "1F469 1F3FF 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏿‍🦽‍➡": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦽‍➡",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"👩🏿‍🦽‍➡️": {
+			Slug:        "woman-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "👩🏿‍🦽‍➡️",
+			UnicodeName: "E15.1 woman in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F469 1F3FF 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -29390,6 +30632,42 @@ var (
 			SubGroup:    "face-smiling",
 		},
 
+		"🙂‍↔": {
+			Slug:        "head-shaking-horizontally",
+			Character:   "🙂‍↔",
+			UnicodeName: "E15.1 head shaking horizontally",
+			CodePoint:   "1F642 200D 2194",
+			Group:       "Smileys & Emotion",
+			SubGroup:    "face-neutral-skeptical",
+		},
+
+		"🙂‍↔️": {
+			Slug:        "head-shaking-horizontally",
+			Character:   "🙂‍↔️",
+			UnicodeName: "E15.1 head shaking horizontally",
+			CodePoint:   "1F642 200D 2194 FE0F",
+			Group:       "Smileys & Emotion",
+			SubGroup:    "face-neutral-skeptical",
+		},
+
+		"🙂‍↕": {
+			Slug:        "head-shaking-vertically",
+			Character:   "🙂‍↕",
+			UnicodeName: "E15.1 head shaking vertically",
+			CodePoint:   "1F642 200D 2195",
+			Group:       "Smileys & Emotion",
+			SubGroup:    "face-neutral-skeptical",
+		},
+
+		"🙂‍↕️": {
+			Slug:        "head-shaking-vertically",
+			Character:   "🙂‍↕️",
+			UnicodeName: "E15.1 head shaking vertically",
+			CodePoint:   "1F642 200D 2195 FE0F",
+			Group:       "Smileys & Emotion",
+			SubGroup:    "face-neutral-skeptical",
+		},
+
 		"🙂🏽": {
 			Slug:        "slightly-smiling-face(ye)",
 			Character:   "🙂🏽",
@@ -32747,11 +34025,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶‍♀‍➡": {
+			Slug:        "woman-walking-facing-right",
+			Character:   "🚶‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right",
+			CodePoint:   "1F6B6 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right",
+			Character:   "🚶‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right",
+			CodePoint:   "1F6B6 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶‍♀️": {
 			Slug:        "woman-walking",
 			Character:   "🚶‍♀️",
 			UnicodeName: "E4.0 woman walking",
 			CodePoint:   "1F6B6 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right",
+			Character:   "🚶‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right",
+			CodePoint:   "1F6B6 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right",
+			Character:   "🚶‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right",
+			CodePoint:   "1F6B6 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32765,11 +34079,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶‍♂‍➡": {
+			Slug:        "man-walking-facing-right",
+			Character:   "🚶‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right",
+			CodePoint:   "1F6B6 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♂‍➡️": {
+			Slug:        "man-walking-facing-right",
+			Character:   "🚶‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right",
+			CodePoint:   "1F6B6 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶‍♂️": {
 			Slug:        "man-walking",
 			Character:   "🚶‍♂️",
 			UnicodeName: "E4.0 man walking",
 			CodePoint:   "1F6B6 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♂️‍➡": {
+			Slug:        "man-walking-facing-right",
+			Character:   "🚶‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right",
+			CodePoint:   "1F6B6 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right",
+			Character:   "🚶‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right",
+			CodePoint:   "1F6B6 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍➡": {
+			Slug:        "person-walking-facing-right",
+			Character:   "🚶‍➡",
+			UnicodeName: "E15.1 person walking facing right",
+			CodePoint:   "1F6B6 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶‍➡️": {
+			Slug:        "person-walking-facing-right",
+			Character:   "🚶‍➡️",
+			UnicodeName: "E15.1 person walking facing right",
+			CodePoint:   "1F6B6 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32792,11 +34160,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏻‍♀‍➡": {
+			Slug:        "woman-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏻‍♀️": {
 			Slug:        "woman-walking-light-skin-tone",
 			Character:   "🚶🏻‍♀️",
 			UnicodeName: "E4.0 woman walking: light skin tone",
 			CodePoint:   "1F6B6 1F3FB 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32810,11 +34214,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏻‍♂‍➡": {
+			Slug:        "man-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♂‍➡️": {
+			Slug:        "man-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏻‍♂️": {
 			Slug:        "man-walking-light-skin-tone",
 			Character:   "🚶🏻‍♂️",
 			UnicodeName: "E4.0 man walking: light skin tone",
 			CodePoint:   "1F6B6 1F3FB 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♂️‍➡": {
+			Slug:        "man-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍➡": {
+			Slug:        "person-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍➡",
+			UnicodeName: "E15.1 person walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏻‍➡️": {
+			Slug:        "person-walking-facing-right-light-skin-tone",
+			Character:   "🚶🏻‍➡️",
+			UnicodeName: "E15.1 person walking facing right: light skin tone",
+			CodePoint:   "1F6B6 1F3FB 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32837,11 +34295,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏼‍♀‍➡": {
+			Slug:        "woman-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏼‍♀️": {
 			Slug:        "woman-walking-medium-light-skin-tone",
 			Character:   "🚶🏼‍♀️",
 			UnicodeName: "E4.0 woman walking: medium-light skin tone",
 			CodePoint:   "1F6B6 1F3FC 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32855,11 +34349,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏼‍♂‍➡": {
+			Slug:        "man-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♂‍➡️": {
+			Slug:        "man-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏼‍♂️": {
 			Slug:        "man-walking-medium-light-skin-tone",
 			Character:   "🚶🏼‍♂️",
 			UnicodeName: "E4.0 man walking: medium-light skin tone",
 			CodePoint:   "1F6B6 1F3FC 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♂️‍➡": {
+			Slug:        "man-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍➡": {
+			Slug:        "person-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍➡",
+			UnicodeName: "E15.1 person walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏼‍➡️": {
+			Slug:        "person-walking-facing-right-medium-light-skin-tone",
+			Character:   "🚶🏼‍➡️",
+			UnicodeName: "E15.1 person walking facing right: medium-light skin tone",
+			CodePoint:   "1F6B6 1F3FC 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32882,11 +34430,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏽‍♀‍➡": {
+			Slug:        "woman-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏽‍♀️": {
 			Slug:        "woman-walking-medium-skin-tone",
 			Character:   "🚶🏽‍♀️",
 			UnicodeName: "E4.0 woman walking: medium skin tone",
 			CodePoint:   "1F6B6 1F3FD 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32900,11 +34484,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏽‍♂‍➡": {
+			Slug:        "man-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♂‍➡️": {
+			Slug:        "man-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏽‍♂️": {
 			Slug:        "man-walking-medium-skin-tone",
 			Character:   "🚶🏽‍♂️",
 			UnicodeName: "E4.0 man walking: medium skin tone",
 			CodePoint:   "1F6B6 1F3FD 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♂️‍➡": {
+			Slug:        "man-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍➡": {
+			Slug:        "person-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍➡",
+			UnicodeName: "E15.1 person walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏽‍➡️": {
+			Slug:        "person-walking-facing-right-medium-skin-tone",
+			Character:   "🚶🏽‍➡️",
+			UnicodeName: "E15.1 person walking facing right: medium skin tone",
+			CodePoint:   "1F6B6 1F3FD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32927,11 +34565,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏾‍♀‍➡": {
+			Slug:        "woman-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏾‍♀️": {
 			Slug:        "woman-walking-medium-dark-skin-tone",
 			Character:   "🚶🏾‍♀️",
 			UnicodeName: "E4.0 woman walking: medium-dark skin tone",
 			CodePoint:   "1F6B6 1F3FE 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32945,11 +34619,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏾‍♂‍➡": {
+			Slug:        "man-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♂‍➡️": {
+			Slug:        "man-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏾‍♂️": {
 			Slug:        "man-walking-medium-dark-skin-tone",
 			Character:   "🚶🏾‍♂️",
 			UnicodeName: "E4.0 man walking: medium-dark skin tone",
 			CodePoint:   "1F6B6 1F3FE 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♂️‍➡": {
+			Slug:        "man-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍➡": {
+			Slug:        "person-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍➡",
+			UnicodeName: "E15.1 person walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏾‍➡️": {
+			Slug:        "person-walking-facing-right-medium-dark-skin-tone",
+			Character:   "🚶🏾‍➡️",
+			UnicodeName: "E15.1 person walking facing right: medium-dark skin tone",
+			CodePoint:   "1F6B6 1F3FE 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32972,11 +34700,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏿‍♀‍➡": {
+			Slug:        "woman-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♀‍➡",
+			UnicodeName: "E15.1 woman walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♀‍➡️": {
+			Slug:        "woman-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♀‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏿‍♀️": {
 			Slug:        "woman-walking-dark-skin-tone",
 			Character:   "🚶🏿‍♀️",
 			UnicodeName: "E4.0 woman walking: dark skin tone",
 			CodePoint:   "1F6B6 1F3FF 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♀️‍➡": {
+			Slug:        "woman-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♀️‍➡",
+			UnicodeName: "E15.1 woman walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♀️‍➡️": {
+			Slug:        "woman-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♀️‍➡️",
+			UnicodeName: "E15.1 woman walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -32990,11 +34754,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🚶🏿‍♂‍➡": {
+			Slug:        "man-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♂‍➡",
+			UnicodeName: "E15.1 man walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♂‍➡️": {
+			Slug:        "man-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♂‍➡️",
+			UnicodeName: "E15.1 man walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🚶🏿‍♂️": {
 			Slug:        "man-walking-dark-skin-tone",
 			Character:   "🚶🏿‍♂️",
 			UnicodeName: "E4.0 man walking: dark skin tone",
 			CodePoint:   "1F6B6 1F3FF 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♂️‍➡": {
+			Slug:        "man-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♂️‍➡",
+			UnicodeName: "E15.1 man walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍♂️‍➡️": {
+			Slug:        "man-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍♂️‍➡️",
+			UnicodeName: "E15.1 man walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍➡": {
+			Slug:        "person-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍➡",
+			UnicodeName: "E15.1 person walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🚶🏿‍➡️": {
+			Slug:        "person-walking-facing-right-dark-skin-tone",
+			Character:   "🚶🏿‍➡️",
+			UnicodeName: "E15.1 person walking facing right: dark skin tone",
+			CodePoint:   "1F6B6 1F3FF 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39623,11 +41441,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right",
+			Character:   "🧎‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right",
+			CodePoint:   "1F9CE 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right",
+			Character:   "🧎‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right",
+			CodePoint:   "1F9CE 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎‍♀️": {
 			Slug:        "woman-kneeling",
 			Character:   "🧎‍♀️",
 			UnicodeName: "E12.0 woman kneeling",
 			CodePoint:   "1F9CE 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right",
+			Character:   "🧎‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right",
+			CodePoint:   "1F9CE 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right",
+			Character:   "🧎‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right",
+			CodePoint:   "1F9CE 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39641,11 +41495,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right",
+			Character:   "🧎‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right",
+			CodePoint:   "1F9CE 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right",
+			Character:   "🧎‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right",
+			CodePoint:   "1F9CE 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎‍♂️": {
 			Slug:        "man-kneeling",
 			Character:   "🧎‍♂️",
 			UnicodeName: "E12.0 man kneeling",
 			CodePoint:   "1F9CE 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right",
+			Character:   "🧎‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right",
+			CodePoint:   "1F9CE 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right",
+			Character:   "🧎‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right",
+			CodePoint:   "1F9CE 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍➡": {
+			Slug:        "person-kneeling-facing-right",
+			Character:   "🧎‍➡",
+			UnicodeName: "E15.1 person kneeling facing right",
+			CodePoint:   "1F9CE 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎‍➡️": {
+			Slug:        "person-kneeling-facing-right",
+			Character:   "🧎‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right",
+			CodePoint:   "1F9CE 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39668,11 +41576,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏻‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏻‍♀️": {
 			Slug:        "woman-kneeling-light-skin-tone",
 			Character:   "🧎🏻‍♀️",
 			UnicodeName: "E12.0 woman kneeling: light skin tone",
 			CodePoint:   "1F9CE 1F3FB 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39686,11 +41630,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏻‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏻‍♂️": {
 			Slug:        "man-kneeling-light-skin-tone",
 			Character:   "🧎🏻‍♂️",
 			UnicodeName: "E12.0 man kneeling: light skin tone",
 			CodePoint:   "1F9CE 1F3FB 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍➡": {
+			Slug:        "person-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍➡",
+			UnicodeName: "E15.1 person kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏻‍➡️": {
+			Slug:        "person-kneeling-facing-right-light-skin-tone",
+			Character:   "🧎🏻‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right: light skin tone",
+			CodePoint:   "1F9CE 1F3FB 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39713,11 +41711,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏼‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏼‍♀️": {
 			Slug:        "woman-kneeling-medium-light-skin-tone",
 			Character:   "🧎🏼‍♀️",
 			UnicodeName: "E12.0 woman kneeling: medium-light skin tone",
 			CodePoint:   "1F9CE 1F3FC 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39731,11 +41765,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏼‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏼‍♂️": {
 			Slug:        "man-kneeling-medium-light-skin-tone",
 			Character:   "🧎🏼‍♂️",
 			UnicodeName: "E12.0 man kneeling: medium-light skin tone",
 			CodePoint:   "1F9CE 1F3FC 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍➡": {
+			Slug:        "person-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍➡",
+			UnicodeName: "E15.1 person kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏼‍➡️": {
+			Slug:        "person-kneeling-facing-right-medium-light-skin-tone",
+			Character:   "🧎🏼‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right: medium-light skin tone",
+			CodePoint:   "1F9CE 1F3FC 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39758,11 +41846,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏽‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏽‍♀️": {
 			Slug:        "woman-kneeling-medium-skin-tone",
 			Character:   "🧎🏽‍♀️",
 			UnicodeName: "E12.0 woman kneeling: medium skin tone",
 			CodePoint:   "1F9CE 1F3FD 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39776,11 +41900,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏽‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏽‍♂️": {
 			Slug:        "man-kneeling-medium-skin-tone",
 			Character:   "🧎🏽‍♂️",
 			UnicodeName: "E12.0 man kneeling: medium skin tone",
 			CodePoint:   "1F9CE 1F3FD 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍➡": {
+			Slug:        "person-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍➡",
+			UnicodeName: "E15.1 person kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏽‍➡️": {
+			Slug:        "person-kneeling-facing-right-medium-skin-tone",
+			Character:   "🧎🏽‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right: medium skin tone",
+			CodePoint:   "1F9CE 1F3FD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39803,11 +41981,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏾‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏾‍♀️": {
 			Slug:        "woman-kneeling-medium-dark-skin-tone",
 			Character:   "🧎🏾‍♀️",
 			UnicodeName: "E12.0 woman kneeling: medium-dark skin tone",
 			CodePoint:   "1F9CE 1F3FE 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39821,11 +42035,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏾‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏾‍♂️": {
 			Slug:        "man-kneeling-medium-dark-skin-tone",
 			Character:   "🧎🏾‍♂️",
 			UnicodeName: "E12.0 man kneeling: medium-dark skin tone",
 			CodePoint:   "1F9CE 1F3FE 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍➡": {
+			Slug:        "person-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍➡",
+			UnicodeName: "E15.1 person kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏾‍➡️": {
+			Slug:        "person-kneeling-facing-right-medium-dark-skin-tone",
+			Character:   "🧎🏾‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right: medium-dark skin tone",
+			CodePoint:   "1F9CE 1F3FE 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39848,11 +42116,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏿‍♀‍➡": {
+			Slug:        "woman-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♀‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2640 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♀‍➡️": {
+			Slug:        "woman-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♀‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2640 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏿‍♀️": {
 			Slug:        "woman-kneeling-dark-skin-tone",
 			Character:   "🧎🏿‍♀️",
 			UnicodeName: "E12.0 woman kneeling: dark skin tone",
 			CodePoint:   "1F9CE 1F3FF 200D 2640 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♀️‍➡": {
+			Slug:        "woman-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♀️‍➡",
+			UnicodeName: "E15.1 woman kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2640 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♀️‍➡️": {
+			Slug:        "woman-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♀️‍➡️",
+			UnicodeName: "E15.1 woman kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2640 FE0F 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -39866,11 +42170,65 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧎🏿‍♂‍➡": {
+			Slug:        "man-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♂‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2642 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♂‍➡️": {
+			Slug:        "man-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♂‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2642 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧎🏿‍♂️": {
 			Slug:        "man-kneeling-dark-skin-tone",
 			Character:   "🧎🏿‍♂️",
 			UnicodeName: "E12.0 man kneeling: dark skin tone",
 			CodePoint:   "1F9CE 1F3FF 200D 2642 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♂️‍➡": {
+			Slug:        "man-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♂️‍➡",
+			UnicodeName: "E15.1 man kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2642 FE0F 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍♂️‍➡️": {
+			Slug:        "man-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍♂️‍➡️",
+			UnicodeName: "E15.1 man kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 2642 FE0F 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍➡": {
+			Slug:        "person-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍➡",
+			UnicodeName: "E15.1 person kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧎🏿‍➡️": {
+			Slug:        "person-kneeling-facing-right-dark-skin-tone",
+			Character:   "🧎🏿‍➡️",
+			UnicodeName: "E15.1 person kneeling facing right: dark skin tone",
+			CodePoint:   "1F9CE 1F3FF 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -40370,6 +42728,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right",
+			Character:   "🧑‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right",
+			CodePoint:   "1F9D1 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right",
+			Character:   "🧑‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right",
+			CodePoint:   "1F9D1 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑‍🦰": {
 			Slug:        "person-red-hair",
 			Character:   "🧑‍🦰",
@@ -40415,6 +42791,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right",
+			Character:   "🧑‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right",
+			CodePoint:   "1F9D1 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right",
+			Character:   "🧑‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right",
+			CodePoint:   "1F9D1 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑‍🦽": {
 			Slug:        "person-in-manual-wheelchair",
 			Character:   "🧑‍🦽",
@@ -40422,6 +42816,60 @@ var (
 			CodePoint:   "1F9D1 200D 1F9BD",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
+		},
+
+		"🧑‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right",
+			Character:   "🧑‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right",
+			CodePoint:   "1F9D1 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right",
+			Character:   "🧑‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right",
+			CodePoint:   "1F9D1 200D 1F9BD 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑‍🧑‍🧒": {
+			Slug:        "family-adult,-adult,-child",
+			Character:   "🧑‍🧑‍🧒",
+			UnicodeName: "E15.1 family: adult, adult, child",
+			CodePoint:   "1F9D1 200D 1F9D1 200D 1F9D2",
+			Group:       "People & Body",
+			SubGroup:    "person-symbol",
+		},
+
+		"🧑‍🧑‍🧒‍🧒": {
+			Slug:        "family-adult,-adult,-child,-child",
+			Character:   "🧑‍🧑‍🧒‍🧒",
+			UnicodeName: "E15.1 family: adult, adult, child, child",
+			CodePoint:   "1F9D1 200D 1F9D1 200D 1F9D2 200D 1F9D2",
+			Group:       "People & Body",
+			SubGroup:    "person-symbol",
+		},
+
+		"🧑‍🧒": {
+			Slug:        "family-adult,-child",
+			Character:   "🧑‍🧒",
+			UnicodeName: "E15.1 family: adult, child",
+			CodePoint:   "1F9D1 200D 1F9D2",
+			Group:       "People & Body",
+			SubGroup:    "person-symbol",
+		},
+
+		"🧑‍🧒‍🧒": {
+			Slug:        "family-adult,-child,-child",
+			Character:   "🧑‍🧒‍🧒",
+			UnicodeName: "E15.1 family: adult, child, child",
+			CodePoint:   "1F9D1 200D 1F9D2 200D 1F9D2",
+			Group:       "People & Body",
+			SubGroup:    "person-symbol",
 		},
 
 		"🧑‍🧣": {
@@ -40829,6 +43277,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏻‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏻‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏻‍🦰": {
 			Slug:        "person-light-skin-tone,-red-hair",
 			Character:   "🧑🏻‍🦰",
@@ -40874,11 +43340,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏻‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏻‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏻‍🦽": {
 			Slug:        "person-in-manual-wheelchair-light-skin-tone",
 			Character:   "🧑🏻‍🦽",
 			UnicodeName: "E12.1 person in manual wheelchair: light skin tone",
 			CodePoint:   "1F9D1 1F3FB 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏻‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏻‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right-light-skin-tone",
+			Character:   "🧑🏻‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: light skin tone",
+			CodePoint:   "1F9D1 1F3FB 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -41288,6 +43790,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏼‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏼‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏼‍🦰": {
 			Slug:        "person-medium-light-skin-tone,-red-hair",
 			Character:   "🧑🏼‍🦰",
@@ -41333,11 +43853,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏼‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏼‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏼‍🦽": {
 			Slug:        "person-in-manual-wheelchair-medium-light-skin-tone",
 			Character:   "🧑🏼‍🦽",
 			UnicodeName: "E12.1 person in manual wheelchair: medium-light skin tone",
 			CodePoint:   "1F9D1 1F3FC 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏼‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏼‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-light-skin-tone",
+			Character:   "🧑🏼‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium-light skin tone",
+			CodePoint:   "1F9D1 1F3FC 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -41738,6 +44294,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏽‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏽‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏽‍🦰": {
 			Slug:        "person-medium-skin-tone,-red-hair",
 			Character:   "🧑🏽‍🦰",
@@ -41783,11 +44357,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏽‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏽‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏽‍🦽": {
 			Slug:        "person-in-manual-wheelchair-medium-skin-tone",
 			Character:   "🧑🏽‍🦽",
 			UnicodeName: "E12.1 person in manual wheelchair: medium skin tone",
 			CodePoint:   "1F9D1 1F3FD 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏽‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏽‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-skin-tone",
+			Character:   "🧑🏽‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium skin tone",
+			CodePoint:   "1F9D1 1F3FD 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -42188,6 +44798,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏾‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏾‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏾‍🦰": {
 			Slug:        "person-medium-dark-skin-tone,-red-hair",
 			Character:   "🧑🏾‍🦰",
@@ -42233,11 +44861,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏾‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏾‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏾‍🦽": {
 			Slug:        "person-in-manual-wheelchair-medium-dark-skin-tone",
 			Character:   "🧑🏾‍🦽",
 			UnicodeName: "E12.1 person in manual wheelchair: medium-dark skin tone",
 			CodePoint:   "1F9D1 1F3FE 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏾‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏾‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right-medium-dark-skin-tone",
+			Character:   "🧑🏾‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: medium-dark skin tone",
+			CodePoint:   "1F9D1 1F3FE 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -42638,6 +45302,24 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏿‍🦯‍➡": {
+			Slug:        "person-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦯‍➡",
+			UnicodeName: "E15.1 person with white cane facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9AF 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏿‍🦯‍➡️": {
+			Slug:        "person-with-white-cane-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦯‍➡️",
+			UnicodeName: "E15.1 person with white cane facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9AF 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏿‍🦰": {
 			Slug:        "person-dark-skin-tone,-red-hair",
 			Character:   "🧑🏿‍🦰",
@@ -42683,11 +45365,47 @@ var (
 			SubGroup:    "person-activity",
 		},
 
+		"🧑🏿‍🦼‍➡": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦼‍➡",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9BC 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏿‍🦼‍➡️": {
+			Slug:        "person-in-motorized-wheelchair-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦼‍➡️",
+			UnicodeName: "E15.1 person in motorized wheelchair facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9BC 200D 27A1 FE0F",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
 		"🧑🏿‍🦽": {
 			Slug:        "person-in-manual-wheelchair-dark-skin-tone",
 			Character:   "🧑🏿‍🦽",
 			UnicodeName: "E12.1 person in manual wheelchair: dark skin tone",
 			CodePoint:   "1F9D1 1F3FF 200D 1F9BD",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏿‍🦽‍➡": {
+			Slug:        "person-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦽‍➡",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9BD 200D 27A1",
+			Group:       "People & Body",
+			SubGroup:    "person-activity",
+		},
+
+		"🧑🏿‍🦽‍➡️": {
+			Slug:        "person-in-manual-wheelchair-facing-right-dark-skin-tone",
+			Character:   "🧑🏿‍🦽‍➡️",
+			UnicodeName: "E15.1 person in manual wheelchair facing right: dark skin tone",
+			CodePoint:   "1F9D1 1F3FF 200D 1F9BD 200D 27A1 FE0F",
 			Group:       "People & Body",
 			SubGroup:    "person-activity",
 		},
@@ -45896,6 +48614,24 @@ var (
 			SubGroup:    "musical-instrument",
 		},
 
+		"🪉": {
+			Slug:        "harp",
+			Character:   "🪉",
+			UnicodeName: "E16.0 harp",
+			CodePoint:   "1FA89",
+			Group:       "Objects",
+			SubGroup:    "musical-instrument",
+		},
+
+		"🪏": {
+			Slug:        "shovel",
+			Character:   "🪏",
+			UnicodeName: "E16.0 shovel",
+			CodePoint:   "1FA8F",
+			Group:       "Objects",
+			SubGroup:    "tool",
+		},
+
 		"🪐": {
 			Slug:        "ringed-planet",
 			Character:   "🪐",
@@ -46310,6 +49046,15 @@ var (
 			SubGroup:    "animal-bird",
 		},
 
+		"🪾": {
+			Slug:        "leafless-tree",
+			Character:   "🪾",
+			UnicodeName: "E16.0 leafless tree",
+			CodePoint:   "1FABE",
+			Group:       "Animals & Nature",
+			SubGroup:    "plant-other",
+		},
+
 		"🪿": {
 			Slug:        "goose",
 			Character:   "🪿",
@@ -46508,6 +49253,15 @@ var (
 			SubGroup:    "person-role",
 		},
 
+		"🫆": {
+			Slug:        "fingerprint",
+			Character:   "🫆",
+			UnicodeName: "E16.0 fingerprint",
+			CodePoint:   "1FAC6",
+			Group:       "People & Body",
+			SubGroup:    "person-symbol",
+		},
+
 		"🫎": {
 			Slug:        "moose",
 			Character:   "🫎",
@@ -46634,6 +49388,24 @@ var (
 			SubGroup:    "food-vegetable",
 		},
 
+		"🫜": {
+			Slug:        "root-vegetable",
+			Character:   "🫜",
+			UnicodeName: "E16.0 root vegetable",
+			CodePoint:   "1FADC",
+			Group:       "Food & Drink",
+			SubGroup:    "food-vegetable",
+		},
+
+		"🫟": {
+			Slug:        "splatter",
+			Character:   "🫟",
+			UnicodeName: "E16.0 splatter",
+			CodePoint:   "1FADF",
+			Group:       "Symbols",
+			SubGroup:    "other-symbol",
+		},
+
 		"🫠": {
 			Slug:        "melting-face",
 			Character:   "🫠",
@@ -46713,6 +49485,15 @@ var (
 			CodePoint:   "1FAE8",
 			Group:       "Smileys & Emotion",
 			SubGroup:    "face-neutral-skeptical",
+		},
+
+		"🫩": {
+			Slug:        "face-with-bags-under-eyes",
+			Character:   "🫩",
+			UnicodeName: "E16.0 face with bags under eyes",
+			CodePoint:   "1FAE9",
+			Group:       "Smileys & Emotion",
+			SubGroup:    "face-sleepy",
 		},
 
 		"🫰": {

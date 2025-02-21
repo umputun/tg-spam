@@ -132,9 +132,9 @@ group.Route(func(b *routegroup.Bundle) {
 It is possible to set a custom `NotFoundHandler` for the group. This handler will be called when no other route matches the request:
 
 ```go
-    group.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        http.Error(w, "404 page not found, something is wrong!", http.StatusNotFound)
-    })
+group.NotFoundHandler(func(w http.ResponseWriter, _ *http.Request) {
+    http.Error(w, "404 page not found, something is wrong!", http.StatusNotFound)
+}
 ```
 
 If a custom `NotFoundHandler` is not configured, `routegroup` will default to using a handler from the standard library (`http.NotFoundHandler()`). It is important to note that the `NotFoundHandler` serves as a catch-all route, which influences "Method Not Allowed"  (405) responses. Consequently, if an incorrect method is called, the response will be 404 (or the custom status specified by the `NotFoundHandler`) rather than 405. This behavior aligns with the standard `http.ServeMux` and [may be improved](https://github.com/golang/go/issues/65648) in future versions of Go.
