@@ -1,11 +1,16 @@
 # tg-spam Development Guidelines
 
 ## Build & Test Commands
-- Build: `make build`
+- Build: `go build -o tg-spam ./app`
 - Run tests: `go test -race ./...`
 - Run single test: `go test -v -race ./path/to/package -run TestName`
 - Lint: `golangci-lint run`
-- Coverage report: `make test`
+- Coverage report: `go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
+
+## Important Workflow Notes
+- Always run tests and linter before committing: `go test -race ./... && golangci-lint run`
+- Run tests after making significant changes to verify functionality
+- Go version: 1.24+
 
 ## Libraries
 - Logging: `github.com/go-pkgz/lgr`
@@ -14,8 +19,9 @@
 - Middleware: `github.com/didip/tollbooth/v8`
 - Database: `github.com/jmoiron/sqlx` with `modernc.org/sqlite`
 - Testing: `github.com/stretchr/testify`
-- Color output: `github.com/fatih/color`
-- For frontend, HTMX v2
+- Mock generation: `github.com/matryer/moq`
+- OpenAI: `github.com/sashabaranov/go-openai`
+- Frontend: HTMX v2
 
 ## Web Server Setup
 - Create server with routegroup: `router := routegroup.New(http.NewServeMux())`
@@ -29,4 +35,7 @@
 - Error handling: Return errors with context, use multierror for aggregation
 - Naming: CamelCase for variables, PascalCase for exported types/functions
 - Test tables: Use table-driven tests with descriptive test cases
-- Comments: All exported functions and types must be documented
+- Comments: Keep in-code comments lowercase
+- Documentation: All exported functions and types must be documented with standard Go comments
+- Interfaces: Define interfaces in consumer packages
+- Mocks: Generate with github.com/matryer/moq and store in mocks package
