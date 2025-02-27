@@ -1,0 +1,22 @@
+spec:
+  name: tg-spam
+  services:
+    - name: tg-spam
+      image:
+        registry_type: DOCKER_HUB
+        registry: umputun
+        repository: tg-spam
+        tag: master
+      instance_size_slug: basic-xxs
+      health_check:
+        http_path: /ping
+      envs:
+        - key: TELEGRAM_TOKEN
+          scope: RUN_TIME
+          value: "Replace with your Telegram token"
+        - key: TELEGRAM_GROUP
+          scope: RUN_TIME
+          value: "Replace with your Telegram group name (without @) or id"
+        - key: SERVER_ENABLED
+          scope: RUN_TIME
+          value: "true"
