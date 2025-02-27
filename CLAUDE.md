@@ -11,6 +11,7 @@
 - Always run tests and linter before committing: `go test -race ./... && golangci-lint run`
 - Run tests after making significant changes to verify functionality
 - Go version: 1.24+
+- Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
 
 ## Libraries
 - Logging: `github.com/go-pkgz/lgr`
