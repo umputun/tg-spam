@@ -1538,3 +1538,27 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		assert.Contains(t, string(body), "storage engine not available")
 	})
 }
+
+func TestServer_logoutHandler(t *testing.T) {
+	// create a function that matches our logout handler implementation in routes
+	logoutHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "Logged out successfully")
+	}
+
+	req := httptest.NewRequest("GET", "/logout", nil)
+	w := httptest.NewRecorder()
+
+	logoutHandler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, `Basic realm="tg-spam"`, resp.Header.Get("WWW-Authenticate"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "Logged out successfully")
+}

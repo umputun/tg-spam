@@ -241,6 +241,13 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
 
+		// handle logout - force Basic Auth re-authentication
+		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(w, "Logged out successfully")
+		})
+
 		// serve only specific static files at root level
 		staticFiles := newStaticFS(templateFS,
 			staticFileMapping{urlPath: "styles.css", filesysPath: "assets/styles.css"},
