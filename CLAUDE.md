@@ -6,12 +6,18 @@
 - Run single test: `go test -v -race ./path/to/package -run TestName`
 - Lint: `golangci-lint run`
 - Coverage report: `go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
+- Normalize code comments: `go install github.com/umputun/unfuck-ai-comments@latest && unfuck-ai-comments run -fmt ./...`
 
 ## Important Workflow Notes
 - Always run tests and linter before committing: `go test -race ./... && golangci-lint run`
-- Run tests after making significant changes to verify functionality
+- For linter use `golangci-lint run`
+- Run tests and linter after making significant changes to verify functionality
 - Go version: 1.24+
 - Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
+- Do not add comments that describe changes, progress, or historical modifications. Avoid comments like “new function,” “added test,” “now we changed this,” or “previously used X, now using Y.” Comments should only describe the current state and purpose of the code, not its history or evolution.
+- Don't add comments to the code intdicating progress, or state. For example, don't add "new function" or "added test" comments. 
+- Use `go:generate` for generating mocks, never modify generated files manually. Mocks are generated with `moq` and stored in the `mocks` package.
+- After important functionality added, update README.md accordingly
 
 ## Libraries
 - Logging: `github.com/go-pkgz/lgr`
@@ -22,7 +28,7 @@
 - Testing: `github.com/stretchr/testify`
 - Mock generation: `github.com/matryer/moq`
 - OpenAI: `github.com/sashabaranov/go-openai`
-- Frontend: HTMX v2
+- Frontend: HTMX v2. Try to avoid using JS.
 
 ## Web Server Setup
 - Create server with routegroup: `router := routegroup.New(http.NewServeMux())`

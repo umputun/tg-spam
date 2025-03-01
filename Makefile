@@ -40,5 +40,8 @@ build_site: prep_site
 	pip3 install -r requirements.txt &&\
 	mkdocs build -d public
 
+unfuck-ai-comments:
+	@echo "unfuck ai comments"
+	unfuck-ai-comments run --fmt --skip=mocks ./...
 
 .PHONY: docker race_test prep_site release build test
