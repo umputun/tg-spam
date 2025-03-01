@@ -59,3 +59,14 @@ body, #result{
 .htmx-request.htmx-indicator{
     opacity:1
 }
+
+/* Fix dropdown toggle styling */
+.no-focus-highlight,
+.no-focus-highlight:focus,
+.no-focus-highlight:active,
+.no-focus-highlight.show {
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
