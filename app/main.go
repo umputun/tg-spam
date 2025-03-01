@@ -463,16 +463,17 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:   opts.Server.ListenAddr,
-		Detector:     sf.Detector,
-		SpamFilter:   sf,
-		Locator:      loc,
-		DetectedSpam: detectedSpamStore,
-		AuthPasswd:   authPassswd,
-		AuthHash:     opts.Server.AuthHash,
-		Version:      revision,
-		Dbg:          opts.Dbg,
-		Settings:     settings,
+		ListenAddr:    opts.Server.ListenAddr,
+		Detector:      sf.Detector,
+		SpamFilter:    sf,
+		Locator:       loc,
+		DetectedSpam:  detectedSpamStore,
+		StorageEngine: db, // add database engine for backup functionality
+		AuthPasswd:    authPassswd,
+		AuthHash:      opts.Server.AuthHash,
+		Version:       revision,
+		Dbg:           opts.Dbg,
+		Settings:      settings,
 	}}
 
 	go func() {

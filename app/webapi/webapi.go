@@ -2,6 +2,7 @@
 package webapi
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha1" //nolint
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"math/big"
 	"net/http"
@@ -25,6 +27,7 @@ import (
 	"github.com/go-pkgz/routegroup"
 
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -33,6 +36,7 @@ import (
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
+//go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -45,16 +49,17 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version      string       // version to show in /ping
-	ListenAddr   string       // listen address
-	Detector     Detector     // spam detector
-	SpamFilter   SpamFilter   // spam filter (bot)
-	DetectedSpam DetectedSpam // detected spam accessor
-	Locator      Locator      // locator for user info
-	AuthPasswd   string       // basic auth password for user "tg-spam"
-	AuthHash     string       // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
-	Dbg          bool         // debug mode
-	Settings     Settings     // application settings
+	Version       string        // version to show in /ping
+	ListenAddr    string        // listen address
+	Detector      Detector      // spam detector
+	SpamFilter    SpamFilter    // spam filter (bot)
+	DetectedSpam  DetectedSpam  // detected spam accessor
+	Locator       Locator       // locator for user info
+	StorageEngine StorageEngine // database engine access for backups
+	AuthPasswd    string        // basic auth password for user "tg-spam"
+	AuthHash      string        // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
+	Dbg           bool          // debug mode
+	Settings      Settings      // application settings
 }
 
 // Settings contains all application settings
@@ -130,6 +135,11 @@ type DetectedSpam interface {
 	FindByUserID(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
 }
 
+// StorageEngine provides access to the database engine for operations like backup
+type StorageEngine interface {
+	Backup(ctx context.Context, w io.Writer) error
+}
+
 // NewServer creates a new web API server.
 func NewServer(config Config) *Server {
 	return &Server{Config: config}
@@ -202,6 +212,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 				return ham, "ham.txt"
 			}))
 			r.HandleFunc("GET /detected_spam", s.downloadDetectedSpamHandler)
+			r.HandleFunc("GET /backup", s.downloadBackupHandler)
 		})
 
 		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
@@ -798,4 +809,58 @@ func GenerateRandomPassword(length int) (string, error) {
 	}
 
 	return password.String(), nil
+}
+
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// set filename based on database type and timestamp
+	dbType := "db"
+	sqlEng, ok := s.StorageEngine.(*engine.SQL)
+	if ok {
+		dbType = string(sqlEng.Type())
+	}
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
+
+	// check if client accepts gzip
+	acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+
+	// set headers for file download
+	w.Header().Set("Content-Type", "application/sql")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	var backupWriter io.Writer = w
+	var gzipWriter *gzip.Writer
+
+	// apply gzip compression
+	if acceptsGzip {
+		w.Header().Set("Content-Encoding", "gzip")
+		gzipWriter = gzip.NewWriter(w)
+		backupWriter = gzipWriter
+		defer gzipWriter.Close()
+	}
+
+	// stream backup directly to response (through gzip if enabled)
+	if err := s.StorageEngine.Backup(r.Context(), backupWriter); err != nil {
+		log.Printf("[ERROR] failed to create backup: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		// just log the error and return
+		return
+	}
+
+	// ensure gzip writer is properly flushed and closed
+	if gzipWriter != nil {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}
 }

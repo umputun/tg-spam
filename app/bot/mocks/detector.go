@@ -94,15 +94,15 @@ type DetectorMock struct {
 	calls struct {
 		// AddApprovedUser holds details about calls to the AddApprovedUser method.
 		AddApprovedUser []struct {
-			// User is the user argument value.
+			// user is the user argument value.
 			User approved.UserInfo
 		}
 		// ApprovedUsers holds details about calls to the ApprovedUsers method.
 		ApprovedUsers []struct {
 		}
-		// Check holds details about calls to the Check method.
+		// check holds details about calls to the Check method.
 		Check []struct {
-			// Request is the request argument value.
+			// request is the request argument value.
 			Request spamcheck.Request
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
@@ -121,7 +121,7 @@ type DetectorMock struct {
 		}
 		// LoadStopWords holds details about calls to the LoadStopWords method.
 		LoadStopWords []struct {
-			// Readers is the readers argument value.
+			// readers is the readers argument value.
 			Readers []io.Reader
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
@@ -131,22 +131,22 @@ type DetectorMock struct {
 		}
 		// RemoveHam holds details about calls to the RemoveHam method.
 		RemoveHam []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
 		// RemoveSpam holds details about calls to the RemoveSpam method.
 		RemoveSpam []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
 		// UpdateSpam holds details about calls to the UpdateSpam method.
 		UpdateSpam []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
 	}

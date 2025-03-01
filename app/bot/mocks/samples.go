@@ -51,32 +51,32 @@ type SamplesStoreMock struct {
 	calls struct {
 		// DeleteMessage holds details about calls to the DeleteMessage method.
 		DeleteMessage []struct {
-			// Ctx is the ctx argument value.
+			// ctx is the ctx argument value.
 			Ctx context.Context
-			// Message is the message argument value.
+			// message is the message argument value.
 			Message string
 		}
-		// Read holds details about calls to the Read method.
+		// read holds details about calls to the Read method.
 		Read []struct {
-			// Ctx is the ctx argument value.
+			// ctx is the ctx argument value.
 			Ctx context.Context
-			// T is the t argument value.
+			// t is the t argument value.
 			T storage.SampleType
-			// O is the o argument value.
+			// o is the o argument value.
 			O storage.SampleOrigin
 		}
-		// Reader holds details about calls to the Reader method.
+		// reader holds details about calls to the Reader method.
 		Reader []struct {
-			// Ctx is the ctx argument value.
+			// ctx is the ctx argument value.
 			Ctx context.Context
-			// T is the t argument value.
+			// t is the t argument value.
 			T storage.SampleType
-			// O is the o argument value.
+			// o is the o argument value.
 			O storage.SampleOrigin
 		}
-		// Stats holds details about calls to the Stats method.
+		// stats holds details about calls to the Stats method.
 		Stats []struct {
-			// Ctx is the ctx argument value.
+			// ctx is the ctx argument value.
 			Ctx context.Context
 		}
 	}

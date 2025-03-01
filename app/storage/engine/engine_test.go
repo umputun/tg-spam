@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -231,6 +232,47 @@ func TestConcurrentDBAccess(t *testing.T) {
 	assert.Equal(t, 10, count)
 }
 
+func TestBackupSqlite(t *testing.T) {
+	ctx := context.Background()
+
+	// setup SQLite database
+	db, err := NewSqlite(":memory:", "test_gid")
+	require.NoError(t, err)
+	defer db.Close()
+
+	// create test table
+	_, err = db.Exec(`CREATE TABLE test_backup (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		gid TEXT NOT NULL,
+		name TEXT NOT NULL,
+		value TEXT,
+		created DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	// insert test data
+	_, err = db.Exec(`INSERT INTO test_backup (gid, name, value) VALUES (?, ?, ?)`, "test_gid", "name1", "value1")
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO test_backup (gid, name, value) VALUES (?, ?, ?)`, "test_gid", "name2", "value2")
+	require.NoError(t, err)
+
+	// test backup
+	var buf bytes.Buffer
+	err = db.Backup(ctx, &buf)
+	require.NoError(t, err)
+
+	// verify backup contains expected data
+	backup := buf.String()
+	assert.Contains(t, backup, "CREATE TABLE test_backup")
+	assert.Contains(t, backup, "INSERT INTO test_backup")
+	assert.Contains(t, backup, "name1")
+	assert.Contains(t, backup, "name2")
+	assert.Contains(t, backup, "value1")
+	assert.Contains(t, backup, "value2")
+	assert.Contains(t, backup, "-- SQLite database backup")
+	assert.Contains(t, backup, "-- GID: test_gid")
+}
+
 func TestInitTable(t *testing.T) {
 	const (
 		cmdCreateTable DBCmd = iota + 1000
@@ -343,6 +385,92 @@ func TestInitTable(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get create table query")
 	})
+}
+
+func TestBackupPostgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres backup test in short mode")
+	}
+
+	ctx := context.Background()
+
+	// start PostgreSQL container
+	t.Log("starting postgres container")
+	req := testcontainers.ContainerRequest{
+		Image:        "postgres:17",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_PASSWORD": "secret",
+			"POSTGRES_DB":       "backup_test",
+		},
+		WaitingFor: wait.ForAll(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+			wait.ForListeningPort("5432/tcp"),
+		).WithDeadline(1 * time.Minute),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Log("postgres container started")
+	defer func() { assert.NoError(t, container.Terminate(ctx)) }()
+
+	// give postgres a moment to fully initialize
+	time.Sleep(time.Second)
+
+	host, err := container.Host(ctx)
+	require.NoError(t, err)
+	port, err := container.MappedPort(ctx, "5432")
+	require.NoError(t, err)
+
+	connStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/backup_test?sslmode=disable", host, port.Int())
+	db, err := NewPostgres(ctx, connStr, "test_gid")
+	require.NoError(t, err)
+	defer db.Close()
+
+	// create test tables and data
+	_, err = db.Exec(`CREATE TABLE test_backup (
+		id SERIAL PRIMARY KEY,
+		gid TEXT NOT NULL,
+		name TEXT NOT NULL,
+		value TEXT,
+		created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	// insert test data
+	_, err = db.Exec(`INSERT INTO test_backup (gid, name, value) VALUES ($1, $2, $3)`, "test_gid", "name1", "value1")
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO test_backup (gid, name, value) VALUES ($1, $2, $3)`, "test_gid", "name2", "value2")
+	require.NoError(t, err)
+	// insert data with different GID that should not be included in backup
+	_, err = db.Exec(`INSERT INTO test_backup (gid, name, value) VALUES ($1, $2, $3)`, "other_gid", "name3", "value3")
+	require.NoError(t, err)
+
+	// create index
+	_, err = db.Exec(`CREATE INDEX idx_test_backup_gid ON test_backup(gid)`)
+	require.NoError(t, err)
+
+	// test backup
+	var buf bytes.Buffer
+	err = db.Backup(ctx, &buf)
+	require.NoError(t, err)
+
+	// verify backup contains expected data
+	backup := buf.String()
+	assert.Contains(t, backup, "CREATE TABLE test_backup")
+	assert.Contains(t, backup, "COPY test_backup")
+	assert.Contains(t, backup, "name1")
+	assert.Contains(t, backup, "name2")
+	assert.Contains(t, backup, "value1")
+	assert.Contains(t, backup, "value2")
+	assert.NotContains(t, backup, "name3")  // other GID data should not be included
+	assert.NotContains(t, backup, "value3") // other GID data should not be included
+	assert.Contains(t, backup, "CREATE INDEX idx_test_backup_gid")
+	assert.Contains(t, backup, "-- PostgreSQL database backup")
+	assert.Contains(t, backup, "-- GID: test_gid")
 }
 
 func TestNewPostgres(t *testing.T) {

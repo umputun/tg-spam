@@ -41,17 +41,17 @@ type SampleUpdaterMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// Append holds details about calls to the Append method.
+		// append holds details about calls to the Append method.
 		Append []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
-		// Reader holds details about calls to the Reader method.
+		// reader holds details about calls to the Reader method.
 		Reader []struct {
 		}
-		// Remove holds details about calls to the Remove method.
+		// remove holds details about calls to the Remove method.
 		Remove []struct {
-			// Msg is the msg argument value.
+			// msg is the msg argument value.
 			Msg string
 		}
 	}
