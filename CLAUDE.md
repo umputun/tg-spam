@@ -28,6 +28,8 @@
 - Mock generation: `github.com/matryer/moq`
 - OpenAI: `github.com/sashabaranov/go-openai`
 - Frontend: HTMX v2. Try to avoid using JS.
+- For containerized tests use `github.com/go-pkgz/testutils`
+- To access libraries, figure how to use ang check their documentation, use `go doc` command and `gh` tool
 
 ## Web Server Setup
 - Create server with routegroup: `router := routegroup.New(http.NewServeMux())`
