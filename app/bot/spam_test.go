@@ -412,7 +412,7 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 			}
 			assert.NoError(t, err)
 
-			// Check IsApprovedUser
+			// check IsApprovedUser
 			result := s.IsApprovedUser(tc.userID)
 			if tc.operation == "add" && !tc.expectError {
 				assert.True(t, result)
@@ -507,7 +507,7 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 			}
 			assert.NoError(t, err)
 
-			// Verify all required methods were called
+			// verify all required methods were called
 			assert.Equal(t, 1, len(det.LoadSamplesCalls()))
 			assert.Equal(t, 1, len(det.LoadStopWordsCalls()))
 			assert.Equal(t, 1, len(samplesStore.StatsCalls()))

@@ -286,7 +286,7 @@ func TestInitTable(t *testing.T) {
 		assert.True(t, exists, "index should exist")
 	})
 
-	// Rest of the test cases remain unchanged as they don't interact with QueryMap structure
+	// rest of the test cases remain unchanged as they don't interact with QueryMap structure
 	t.Run("nil db", func(t *testing.T) {
 		cfg := TableConfig{
 			Name:          "test_table",

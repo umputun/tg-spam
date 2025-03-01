@@ -183,7 +183,7 @@ func (s *Samples) DeleteMessage(ctx context.Context, message string) error {
 	s.Lock()
 	defer s.Unlock()
 
-	// First verify the message exists in this group
+	// first verify the message exists in this group
 	var count int
 	gid := s.GID()
 	query := s.Adopt(`SELECT COUNT(*) FROM samples WHERE gid = ? AND message = ?`)
@@ -389,7 +389,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 		return nil, fmt.Errorf("failed to get import query: %w", err)
 	}
 	scanner := bufio.NewScanner(r)
-	// Set custom buffer size and max token size for large lines
+	// set custom buffer size and max token size for large lines
 	const maxScanTokenSize = 64 * 1024 // 64KB max line length
 	buf := make([]byte, maxScanTokenSize)
 	scanner.Buffer(buf, maxScanTokenSize)

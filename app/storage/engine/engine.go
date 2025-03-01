@@ -103,7 +103,7 @@ func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
 	// create database
 	_, err = baseDB.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %q`, dbName))
 	if err != nil {
-		// Ignore error if database already exists
+		// ignore error if database already exists
 		if !strings.Contains(err.Error(), "already exists") {
 			return nil, fmt.Errorf("failed to create database: %w", err)
 		}
@@ -168,7 +168,7 @@ func (e *SQL) Adopt(q string) string {
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
-	// Set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
+	// set pragmas for SQLite. Commented out pragmas as they are not used in the code yet because we need
 	// to make sure if it is worth having 2 more DB-related files for WAL and SHM.
 	pragmas := map[string]string{
 		"journal_mode": "DELETE", // explicitly set to DELETE mode to prevent WAL files

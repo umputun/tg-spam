@@ -706,8 +706,8 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 			if !scriptFound {
 				// check for mathematical alphanumeric symbols and letterlike symbols
 				if unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic) ||
-					(r >= '\U0001D400' && r <= '\U0001D7FF') || // Mathematical Alphanumeric Symbols
-					(r >= '\u2100' && r <= '\u214F') { // Letterlike Symbols
+					(r >= '\U0001D400' && r <= '\U0001D7FF') || // mathematical Alphanumeric Symbols
+					(r >= '\u2100' && r <= '\u214F') { // letterlike Symbols
 					scripts["Mathematical"] = true
 					if len(scripts) > 1 {
 						return true

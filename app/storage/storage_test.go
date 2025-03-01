@@ -32,14 +32,14 @@ func TestStorageSuite(t *testing.T) {
 func (s *StorageTestSuite) SetupSuite() {
 	s.dbs = make(map[string]*engine.SQL)
 
-	// Setup SQLite with file-based db
+	// setup SQLite with file-based db
 	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
 	s.T().Logf("sqlite file: %s", s.sqliteFile)
 	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "gr1")
 	s.Require().NoError(err)
 	s.dbs["sqlite"] = sqliteDB
 
-	// Setup Postgres
+	// setup Postgres
 	if !testing.Short() {
 		s.T().Log("start postgres container")
 		ctx := context.Background()
@@ -118,7 +118,7 @@ func (s *StorageTestSuite) getTestDB() []struct {
 func (s *StorageTestSuite) TestIsolation() {
 	ctx := context.Background()
 	s.Run("sqlite isolation via separate files", func() {
-		// Create two separate SQLite databases with different GIDs
+		// create two separate SQLite databases with different GIDs
 		tmpFile1 := filepath.Join(os.TempDir(), "test_db1.sqlite")
 		tmpFile2 := filepath.Join(os.TempDir(), "test_db2.sqlite")
 		defer os.Remove(tmpFile1)
@@ -132,7 +132,7 @@ func (s *StorageTestSuite) TestIsolation() {
 		s.Require().NoError(err)
 		defer db2.Close()
 
-		// Test Samples isolation
+		// test Samples isolation
 		s.Run("samples isolation", func() {
 			samples1, err := NewSamples(ctx, db1)
 			s.Require().NoError(err)
@@ -155,7 +155,7 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.Equal("test2 message", msgs2[0])
 		})
 
-		// Test Dictionary isolation
+		// test Dictionary isolation
 		s.Run("dictionary isolation", func() {
 			dict1, err := NewDictionary(ctx, db1)
 			s.Require().NoError(err)
@@ -178,7 +178,7 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.Equal("test2 phrase", phrases2[0])
 		})
 
-		// Test DetectedSpam isolation
+		// test DetectedSpam isolation
 		s.Run("detected spam isolation", func() {
 			spam1, err := NewDetectedSpam(ctx, db1)
 			s.Require().NoError(err)
@@ -217,7 +217,7 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.Equal("spam2", entries2[0].Text)
 		})
 
-		// Test ApprovedUsers isolation
+		// test ApprovedUsers isolation
 		s.Run("approved users isolation", func() {
 			au1, err := NewApprovedUsers(ctx, db1)
 			s.Require().NoError(err)
@@ -243,7 +243,7 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.Equal("user2", users2[0].UserName)
 		})
 
-		// Test Locator isolation
+		// test Locator isolation
 		s.Run("locator isolation", func() {
 			loc1, err := NewLocator(ctx, time.Hour, 10, db1)
 			s.Require().NoError(err)
@@ -272,12 +272,12 @@ func (s *StorageTestSuite) TestIsolation() {
 	})
 
 	s.Run("postgres isolation via gid column", func() {
-		// Skip if postgres is not available
+		// skip if postgres is not available
 		if testing.Short() {
 			s.T().Skip("skipping postgres test in short mode")
 		}
 
-		// Get existing postgres container connection
+		// get existing postgres container connection
 		var pgDB *engine.SQL
 		for _, dbt := range s.getTestDB() {
 			if dbt.DB.Type() == engine.Postgres {
@@ -289,16 +289,16 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.T().Skip("postgres is not available")
 		}
 
-		// Get container connection details
+		// get container connection details
 		host, err := s.pgContainer.Host(ctx)
 		s.Require().NoError(err)
 		port, err := s.pgContainer.MappedPort(ctx, "5432")
 		s.Require().NoError(err)
 
-		// Create connection string using container details
+		// create connection string using container details
 		pgConnStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
 
-		// Create two separate connections with different GIDs
+		// create two separate connections with different GIDs
 		db1, err := engine.NewPostgres(ctx, pgConnStr, "gr1")
 		s.Require().NoError(err)
 		defer db1.Close()
@@ -307,7 +307,7 @@ func (s *StorageTestSuite) TestIsolation() {
 		s.Require().NoError(err)
 		defer db2.Close()
 
-		// Same test sub-cases as for SQLite
+		// same test sub-cases as for SQLite
 		s.Run("samples isolation", func() {
 			samples1, err := NewSamples(ctx, db1)
 			s.Require().NoError(err)

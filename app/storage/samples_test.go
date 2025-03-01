@@ -113,15 +113,15 @@ func (s *StorageTestSuite) TestSamples_AddSample() {
 					name:    "duplicate message same type and origin",
 					sType:   SampleTypeHam,
 					origin:  SampleOriginPreset,
-					message: "test ham message", // Same as first test case
-					wantErr: false,              // Should succeed and replace
+					message: "test ham message", // same as first test case
+					wantErr: false,              // should succeed and replace
 				},
 				{
 					name:    "duplicate message different type",
 					sType:   SampleTypeSpam,
 					origin:  SampleOriginPreset,
-					message: "test ham message", // Same message, different type
-					wantErr: false,              // Should succeed and replace
+					message: "test ham message", // same message, different type
+					wantErr: false,              // should succeed and replace
 				},
 			}
 
@@ -480,13 +480,13 @@ func (s *StorageTestSuite) TestSamples_Concurrent() {
 	for _, dbt := range s.getTestDB() {
 		db := dbt.DB
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
-			// Initialize samples with schema
+			// initialize samples with schema
 			samples, err := NewSamples(ctx, db)
 			s.Require().NoError(err)
 			s.Require().NotNil(samples)
 			defer db.Exec("DROP TABLE samples")
 
-			// Verify table exists and is accessible
+			// verify table exists and is accessible
 			err = samples.Add(ctx, SampleTypeHam, SampleOriginPreset, "test message")
 			s.Require().NoError(err, "Failed to insert initial test record")
 
@@ -565,7 +565,7 @@ func (s *StorageTestSuite) TestSamples_Iterator() {
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE samples")
 
-			// Insert test data
+			// insert test data
 			testData := []struct {
 				sType   SampleType
 				origin  SampleOrigin
@@ -582,7 +582,7 @@ func (s *StorageTestSuite) TestSamples_Iterator() {
 				s.Require().NoError(err)
 			}
 
-			// Test cases
+			// test cases
 			tests := []struct {
 				name         string
 				sType        SampleType
@@ -650,7 +650,7 @@ func (s *StorageTestSuite) TestSamples_IteratorOrder() {
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE samples")
 
-			// Insert test data
+			// insert test data
 			testData := []struct {
 				sType   SampleType
 				origin  SampleOrigin
@@ -947,7 +947,7 @@ func (s *StorageTestSuite) TestSamples_ReaderEdgeCases() {
 			defer db.Exec("DROP TABLE samples")
 
 			s.Run("large message handling", func() {
-				// Postgres has an 8191 byte limit for indexed columns
+				// postgres has an 8191 byte limit for indexed columns
 				msgSize := 1024 * 1024 // 1MB for SQLite
 				if db.Type() == engine.Postgres {
 					msgSize = 4096 // 4KB for Postgres

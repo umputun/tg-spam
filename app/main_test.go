@@ -242,7 +242,7 @@ func Test_activateServerOnly(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait for server to be ready
+	// wait for server to be ready
 	require.Eventually(t, func() bool {
 		resp, err := http.Get("http://localhost:9988/ping")
 		if err != nil {
@@ -372,12 +372,12 @@ func Test_expandPath(t *testing.T) {
 			case strings.Contains(tt.path, "~"):
 				assert.Equal(t, filepath.Join(home, tt.path[1:]), got)
 			case tt.path == ".", strings.HasPrefix(tt.path, ".."), strings.Contains(tt.path, "/"):
-				// For relative paths, paths starting with "..", and paths with special characters
+				// for relative paths, paths starting with "..", and paths with special characters
 				expected, err := filepath.Abs(tt.path)
 				require.NoError(t, err)
 				assert.Equal(t, expected, got)
 			default:
-				// For absolute paths and invalid paths
+				// for absolute paths and invalid paths
 				assert.Equal(t, tt.want, got)
 			}
 		})

@@ -101,7 +101,7 @@ func TestQueryMap_EmptyQueries(t *testing.T) {
 			Postgres: "not empty",
 		})
 
-	// Empty queries are valid
+	// empty queries are valid
 	query, err := qmap.Pick(Sqlite, 1)
 	assert.NoError(t, err)
 	assert.Empty(t, query)
@@ -123,7 +123,7 @@ func TestQueryMap_AddSameConsistency(t *testing.T) {
 	postgres, err := qmap.Pick(Postgres, 1)
 	assert.NoError(t, err)
 
-	// Verify both dialects have the same query after AddSame
+	// verify both dialects have the same query after AddSame
 	assert.Equal(t, query, sqlite)
 	assert.Equal(t, query, postgres)
 	assert.Equal(t, sqlite, postgres)

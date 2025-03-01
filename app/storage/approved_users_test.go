@@ -33,7 +33,7 @@ func (s *StorageTestSuite) TestApprovedUsers_NewApprovedUsers() {
 				}
 				defer db.Exec("DROP TABLE approved_users")
 
-				// Create table with updated columns
+				// create table with updated columns
 				_, err := db.Exec(`CREATE TABLE approved_users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     uid TEXT NOT NULL UNIQUE,
@@ -46,7 +46,7 @@ func (s *StorageTestSuite) TestApprovedUsers_NewApprovedUsers() {
 				_, err = NewApprovedUsers(ctx, db)
 				s.Require().NoError(err)
 
-				// Verify that the existing structure has not changed
+				// verify that the existing structure has not changed
 				var columnCount int
 				err = db.Get(&columnCount, "SELECT COUNT(*) FROM pragma_table_info('approved_users')")
 				s.Require().NoError(err)

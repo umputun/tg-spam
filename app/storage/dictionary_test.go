@@ -385,13 +385,13 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 	for _, dbt := range s.getTestDB() {
 		db := dbt.DB
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
-			// Initialize dictionary with schema
+			// initialize dictionary with schema
 			d, err := NewDictionary(ctx, db)
 			s.Require().NoError(err)
 			s.Require().NotNil(d)
 			defer db.Exec("DROP TABLE dictionary")
 
-			// Verify table exists and is accessible
+			// verify table exists and is accessible
 			err = d.Add(ctx, DictionaryTypeStopPhrase, "test phrase")
 			s.Require().NoError(err, "Failed to insert initial test phrase")
 
@@ -401,7 +401,7 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 			var wg sync.WaitGroup
 			errCh := make(chan error, numWorkers*2)
 
-			// Start readers
+			// start readers
 			for i := 0; i < numWorkers; i++ {
 				wg.Add(1)
 				go func(workerID int) {
@@ -418,7 +418,7 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 				}(i)
 			}
 
-			// Start writers
+			// start writers
 			for i := 0; i < numWorkers; i++ {
 				wg.Add(1)
 				go func(workerID int) {
@@ -440,16 +440,16 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 				}(i)
 			}
 
-			// Wait for all goroutines to finish
+			// wait for all goroutines to finish
 			wg.Wait()
 			close(errCh)
 
-			// Check for any errors
+			// check for any errors
 			for err := range errCh {
 				s.T().Errorf("concurrent operation failed: %v", err)
 			}
 
-			// Verify the final state
+			// verify the final state
 			stats, err := d.Stats(ctx)
 			s.Require().NoError(err)
 			s.Require().NotNil(stats)

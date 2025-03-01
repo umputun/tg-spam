@@ -124,7 +124,7 @@ func TestLastRequestsVeryLong(t *testing.T) {
 
 	history.Push(req)
 
-	// Retrieve and verify
+	// retrieve and verify
 	lastMsgs := history.Last(1)
 	require.Len(t, lastMsgs, 1)
 	assert.Len(t, lastMsgs[0].Msg, 1024, "Message should be truncated to max length")

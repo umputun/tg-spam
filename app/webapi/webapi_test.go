@@ -117,7 +117,7 @@ func TestServer_RunAuth(t *testing.T) {
 				close(done)
 			}()
 
-			// Wait for server to be ready
+			// wait for server to be ready
 			require.Eventually(t, func() bool {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
 				if err != nil {
@@ -660,7 +660,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 		spamFilterMock.ResetCalls()
 		req, err := http.NewRequest("POST", "/delete/ham", http.NoBody)
 		require.NoError(t, err)
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		// set form htmx request, msg in r.FormValue("msg")
 		req.Form = url.Values{}
@@ -754,7 +754,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 
 		req, err := http.NewRequest("POST", "/users/add", http.NoBody)
 		require.NoError(t, err)
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		req.Form = url.Values{}
 		req.Form.Set("user_id", "123")
@@ -944,7 +944,7 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		req, err := http.NewRequest("POST", "/check", strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.checkMsgHandler)
@@ -1190,7 +1190,7 @@ func Test_downloadSampleHandler(t *testing.T) {
 func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 	mockSpamFilter := &mocks.SpamFilterMock{
 		ReloadSamplesFunc: func() error {
-			return nil // Simulate successful reload
+			return nil // simulate successful reload
 		},
 	}
 
@@ -1219,7 +1219,7 @@ func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 
 	t.Run("error during reload", func(t *testing.T) {
 		mockSpamFilter.ReloadSamplesFunc = func() error {
-			return errors.New("test error") // Simulate error during reload
+			return errors.New("test error") // simulate error during reload
 		}
 
 		req, err := http.NewRequest("PUT", "/samples", http.NoBody)

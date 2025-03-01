@@ -33,8 +33,8 @@ type DetectedSpamInfo struct {
 	UserName   string               `db:"user_name"`
 	Timestamp  time.Time            `db:"timestamp"`
 	Added      bool                 `db:"added"`  // added to samples
-	ChecksJSON string               `db:"checks"` // Store as JSON
-	Checks     []spamcheck.Response `db:"-"`      // Don't store in DB directly
+	ChecksJSON string               `db:"checks"` // store as JSON
+	Checks     []spamcheck.Response `db:"-"`      // don't store in DB directly
 }
 
 // detected spam query commands

@@ -67,13 +67,13 @@ type Entity struct {
 	Type   string
 	Offset int
 	Length int
-	URL    string `json:",omitempty"` // For “text_link” only, url that will be opened after user taps on the text
-	User   *User  `json:",omitempty"` // For “text_mention” only, the mentioned user
+	URL    string `json:",omitempty"` // for “text_link” only, url that will be opened after user taps on the text
+	User   *User  `json:",omitempty"` // for “text_mention” only, the mentioned user
 }
 
 // Image represents image
 type Image struct {
-	// FileID corresponds to Telegram file_id
+	// fileID corresponds to Telegram file_id
 	FileID   string
 	Width    int
 	Height   int

@@ -227,7 +227,7 @@ func (s *StorageTestSuite) TestDetectedSpam_Read_LimitExceeded() {
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE detected_spam")
 
-			// Add maxDetectedSpamEntries + 10 entries
+			// add maxDetectedSpamEntries + 10 entries
 			for i := 0; i < maxDetectedSpamEntries+10; i++ {
 				spamEntry := DetectedSpamInfo{
 					GID:       "gr1", // use the correct GID
@@ -263,7 +263,7 @@ func (s *StorageTestSuite) TestDetectedSpam() {
 				{
 					name: "basic spam entry",
 					entry: DetectedSpamInfo{
-						GID:       "gr1", // Use the store's GID here
+						GID:       "gr1", // use the store's GID here
 						Text:      "spam message",
 						UserID:    1,
 						UserName:  "Spammer",
