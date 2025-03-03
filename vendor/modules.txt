@@ -227,7 +227,7 @@ github.com/samber/lo/mutable
 # github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
 ## explicit; go 1.18
 github.com/sandwich-go/gpt3-encoder
-# github.com/sashabaranov/go-openai v1.37.0
+# github.com/sashabaranov/go-openai v1.38.0
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
@@ -306,8 +306,8 @@ go.opentelemetry.io/otel/metric/noop
 go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
 go.opentelemetry.io/otel/trace/noop
-# golang.org/x/crypto v0.33.0
-## explicit; go 1.20
+# golang.org/x/crypto v0.35.0
+## explicit; go 1.23.0
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
@@ -318,7 +318,7 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa
+# golang.org/x/exp v0.0.0-20250228200357-dead58393ab7
 ## explicit; go 1.23.0
 golang.org/x/exp/constraints
 # golang.org/x/net v0.25.0
@@ -386,7 +386,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.8.2
 ## explicit; go 1.21
 modernc.org/memory
-# modernc.org/sqlite v1.35.0
+# modernc.org/sqlite v1.36.0
 ## explicit; go 1.21
 modernc.org/sqlite
 modernc.org/sqlite/lib
