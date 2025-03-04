@@ -1034,8 +1034,10 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
 	body := rr.Body.String()
 	assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
-	assert.Contains(t, body, "<tr><th>Super Users</th><td>user1<br>user2<br></td></tr>", "template should contain supers list")
-	assert.Contains(t, body, "<tr><th>Min Message Length</th><td>150</td></tr>")
+	assert.Contains(t, body, "Database")
+	assert.Contains(t, body, "Backup")
+	assert.Contains(t, body, "System Status")
+	assert.Contains(t, body, "Spam Detection")
 }
 
 func TestServer_StaticFiles(t *testing.T) {

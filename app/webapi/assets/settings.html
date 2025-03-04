@@ -10,51 +10,219 @@
 
 <div class="container mt-4">
     <h2 class="text-center mb-4">Application Settings</h2>
-    <div class="row">
-        <div class="col-12">
-            <table class="table table-striped">
-                <tbody>
-                <tr><th>Version</th><td>{{.Version}}</td></tr>
-                <tr><th>Instance ID</th><td>{{.InstanceID}}</td></tr>
-                <tr><th>Primary Group</th><td>{{.PrimaryGroup}}</td></tr>
-                <tr><th>Admin Group</th><td>{{.AdminGroup}}</td></tr>
-                <tr><th>Disable Admin Spam Forward</th><td>{{.DisableAdminSpamForward}}</td></tr>
-                <tr><th>Logger Enabled</th><td>{{.LoggerEnabled}}</td></tr>
-                <tr><th>Super Users</th><td>{{range .SuperUsers}}{{.}}<br>{{end}}</td></tr>
-                <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
-                <tr><th>CAS Enabled</th><td>{{.CasEnabled}}</td></tr>
-                <tr><th>Meta Enabled</th><td>{{.MetaEnabled}}</td></tr>
-                <tr><th>Meta Links Limit</th><td>{{.MetaLinksLimit}}</td></tr>
-                <tr><th>Meta Links Only</th><td>{{.MetaLinksOnly}}</td></tr>
-                <tr><th>Meta Image Only</th><td>{{.MetaImageOnly}}</td></tr>
-                <tr><th>Meta Video Only</th><td>{{.MetaVideoOnly}}</td></tr>
-                <tr><th>Meta Audio Only</th><td>{{.MetaAudioOnly}}</td></tr>
-                <tr><th>Forward Prohibited</th><td>{{.MetaForwarded}}</td></tr>
-                <tr><th>Multi Lingual Words</th><td>{{.MultiLangLimit}}</td></tr>
-                <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpacingEnabled}}</td></tr>
-                <tr><th>OpenAI Enabled</th><td>{{.OpenAIEnabled}}</td></tr>
-                <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
-                <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
-                <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
-                <tr><th>Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
-                <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
-                <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
-                <tr><th>Similarity Threshold</th><td>{{.SimilarityThreshold}}</td></tr>
-                <tr><th>Min Message Length</th><td>{{.MinMsgLen}}</td></tr>
-                <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
-                <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}</td></tr>
-                <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
-                <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
-                <tr><th>Startup Message Enabled</th><td>{{.StartupMessageEnabled}}</td></tr>
-                <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
-                <tr><th>Soft Ban Enabled</th><td>{{.SoftBanEnabled}}</td></tr>
-                <tr><th>History Size</th><td>{{.HistorySize}}</td></tr>
-                <tr><th>Storage Timeout</th><td>{{.StorageTimeout}}</td></tr>
-                <tr><th>Debug Mode Enabled</th><td>{{.DebugModeEnabled}}</td></tr>
-                <tr><th>Dry Mode Enabled</th><td>{{.DryModeEnabled}}</td></tr>
-                <tr><th>TG Debug Mode Enabled</th><td>{{.TGDebugModeEnabled}}</td></tr>
-                </tbody>
-            </table>
+    
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header" style="background-color: #7c8994; color: white;">
+                    <h5 class="mb-0">System Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <thead style="background-color: #e8e8e8; border-bottom: none;">
+                                    <tr><th colspan="2" style="border-bottom: none;">Telegram Bot</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><th style="width: 50%">Version</th><td>{{.Version}}</td></tr>
+                                    <tr><th>Uptime</th><td>{{.System.Uptime}}</td></tr>
+                                    <tr><th>Instance ID</th><td>{{.InstanceID}}</td></tr>
+                                    <tr><th>Primary Group</th><td>{{.PrimaryGroup}}</td></tr>
+                                    <tr><th>Admin Group</th><td>{{.AdminGroup}}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <thead style="background-color: #e8e8e8; border-bottom: none;">
+                                    <tr><th colspan="2" style="border-bottom: none;">Database</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><th style="width: 50%">Type</th><td>{{.Database.Type}}</td></tr>
+                                    <tr><th>Group ID</th><td>{{.Database.GID}}</td></tr>
+                                    <tr><th>Status</th><td>
+                                        {{if eq .Database.Status "Connected"}}
+                                            <span class="badge" style="background-color: #28a745;">{{.Database.Status}}</span>
+                                        {{else}}
+                                            <span class="badge" style="background-color: #e74c3c;">{{.Database.Status}}</span>
+                                        {{end}}
+                                    </td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header" style="background-color: #7c8994; color: white;">
+                    <h5 class="mb-0">Backup & Recovery</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Download a backup of your database to protect your data.</p>
+                    <div class="d-grid gap-2">
+                        <a href="{{.Backup.URL}}" class="btn btn-custom-blue" download="{{.Backup.Filename}}">
+                            <i class="bi bi-download me-1"></i> Download Database Backup
+                        </a>
+                    </div>
+                    <p class="small text-muted mt-2">
+                        Compressed SQL backup file with all your data.
+                        Store this file in a safe location.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings sections grouped by function -->
+    <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="spam-detection-tab" data-bs-toggle="tab" data-bs-target="#spam-detection" type="button" role="tab">
+                <i class="bi bi-shield-check me-1"></i>Spam Detection
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="meta-checks-tab" data-bs-toggle="tab" data-bs-target="#meta-checks" type="button" role="tab">
+                <i class="bi bi-check-circle me-1"></i>Meta Checks
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai-settings" type="button" role="tab">
+                <i class="bi bi-chat-square-text me-1"></i>OpenAI
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="data-storage-tab" data-bs-toggle="tab" data-bs-target="#data-storage" type="button" role="tab">
+                <i class="bi bi-hdd-stack me-1"></i>Data Storage
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="behavior-tab" data-bs-toggle="tab" data-bs-target="#behavior" type="button" role="tab">
+                <i class="bi bi-gear me-1"></i>Bot Behavior
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
+                <i class="bi bi-tools me-1"></i>System
+            </button>
+        </li>
+    </ul>
+    
+    <div class="tab-content p-3 border border-top-0 rounded-bottom mb-4 bg-light" id="settingsTabsContent">
+        <!-- Spam Detection Settings -->
+        <div class="tab-pane fade show active" id="spam-detection" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">Spam Detection Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Similarity Threshold</th><td>{{.SimilarityThreshold}}</td></tr>
+                        <tr><th>Min Message Length</th><td>{{.MinMsgLen}}</td></tr>
+                        <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
+                        <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}</td></tr>
+                        <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
+                        <tr><th>Multi Lingual Words</th><td>{{.MultiLangLimit}}</td></tr>
+                        <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpacingEnabled}}</td></tr>
+                        <tr><th>History Size</th><td>{{.HistorySize}}</td></tr>
+                        <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
+                        <tr><th>Forward Prohibited</th><td>{{.MetaForwarded}}</td></tr>
+                        <tr><th>CAS Enabled</th><td>{{.CasEnabled}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Meta Checks Settings -->
+        <div class="tab-pane fade" id="meta-checks" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">Meta Checks Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Meta Enabled</th><td>{{.MetaEnabled}}</td></tr>
+                        <tr><th>Meta Links Limit</th><td>{{.MetaLinksLimit}}</td></tr>
+                        <tr><th>Meta Links Only</th><td>{{.MetaLinksOnly}}</td></tr>
+                        <tr><th>Meta Image Only</th><td>{{.MetaImageOnly}}</td></tr>
+                        <tr><th>Meta Video Only</th><td>{{.MetaVideoOnly}}</td></tr>
+                        <tr><th>Meta Audio Only</th><td>{{.MetaAudioOnly}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- OpenAI Settings -->
+        <div class="tab-pane fade" id="openai-settings" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">OpenAI Integration Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">OpenAI Enabled</th><td>{{.OpenAIEnabled}}</td></tr>
+                        <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
+                        <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
+                        <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Data Storage Settings -->
+        <div class="tab-pane fade" id="data-storage" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">Data Storage Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
+                        <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
+                        <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
+                        <tr><th>Storage Timeout</th><td>{{.StorageTimeout}}</td></tr>
+                        <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Bot Behavior Settings -->
+        <div class="tab-pane fade" id="behavior" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">Bot Behavior Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Super Users</th><td>{{range .SuperUsers}}{{.}}<br>{{end}}</td></tr>
+                        <tr><th>Disable Admin Spam Forward</th><td>{{.DisableAdminSpamForward}}</td></tr>
+                        <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
+                        <tr><th>Startup Message Enabled</th><td>{{.StartupMessageEnabled}}</td></tr>
+                        <tr><th>Soft Ban Enabled</th><td>{{.SoftBanEnabled}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- System Settings -->
+        <div class="tab-pane fade" id="system" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">System Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Logger Enabled</th><td>{{.LoggerEnabled}}</td></tr>
+                        <tr><th>Debug Mode Enabled</th><td>{{.DebugModeEnabled}}</td></tr>
+                        <tr><th>Dry Mode Enabled</th><td>{{.DryModeEnabled}}</td></tr>
+                        <tr><th>TG Debug Mode Enabled</th><td>{{.TGDebugModeEnabled}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
