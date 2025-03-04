@@ -185,14 +185,14 @@ func (c *classifier) removeDuplicate(tokens ...string) []string {
 }
 
 // softmax converts log probabilities to normalized probabilities
-func softmax(scores map[spamClass]float64) map[spamClass]float64 {
-	if len(scores) == 0 {
+func softmax(logProbs map[spamClass]float64) map[spamClass]float64 {
+	if len(logProbs) == 0 {
 		return nil
 	}
 
 	// Step 1: Find the max value to subtract (prevents overflow)
 	maxVal := math.Inf(-1) // Start with negative infinity
-	for _, v := range scores {
+	for _, v := range logProbs {
 		if v > maxVal {
 			maxVal = v
 		}
@@ -201,7 +201,7 @@ func softmax(scores map[spamClass]float64) map[spamClass]float64 {
 	// Step 2: Compute exp(x - maxVal) and sum for normalization
 	expSum := 0.0
 	exps := make(map[spamClass]float64)
-	for cat, v := range scores {
+	for cat, v := range logProbs {
 		exps[cat] = math.Exp(v - maxVal) // Shift by maxVal keeps exp safe
 		expSum += exps[cat]
 	}
