@@ -838,28 +838,31 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	// always use a .gz extension as the content is always compressed
 	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
 
-	// set headers for file download
-	w.Header().Set("Content-Type", "application/sql")
+	// set headers for file download - note we're using application/octet-stream
+	// instead of application/sql to prevent browsers from trying to interpret the file
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
-	w.Header().Set("Content-Encoding", "gzip")
 
-	// always apply gzip compression
+	// create a gzip writer that streams to response
 	gzipWriter := gzip.NewWriter(w)
-	defer gzipWriter.Close()
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}()
 
 	// stream backup directly to response through gzip
 	if err := s.StorageEngine.Backup(r.Context(), gzipWriter); err != nil {
 		log.Printf("[ERROR] failed to create backup: %v", err)
 		// we've already started writing the response, so we can't send a proper error response
-		// just log the error and return
 		return
 	}
 
-	// ensure gzip writer is properly flushed and closed
-	if err := gzipWriter.Close(); err != nil {
-		log.Printf("[ERROR] failed to close gzip writer: %v", err)
+	// flush the gzip writer to ensure all data is written
+	if err := gzipWriter.Flush(); err != nil {
+		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
 	}
 }
