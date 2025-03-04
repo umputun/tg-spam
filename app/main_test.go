@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -27,7 +29,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
-	db, err := storage.NewSqliteDB(":memory:", "gr1")
+	db, err := engine.NewSqlite(":memory:", "gr1")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -190,7 +192,7 @@ func Test_makeSpamBot(t *testing.T) {
 		opts.Files.DynamicDataPath = tmpDir
 		opts.InstanceID = "gr1"
 		detector := makeDetector(opts)
-		db, err := storage.NewSqliteDB(path.Join(tmpDir, "tg-spam.db"), "gr1")
+		db, err := engine.NewSqlite(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -216,6 +218,7 @@ func Test_activateServerOnly(t *testing.T) {
 	opts.Server.ListenAddr = ":9988"
 	opts.Server.AuthPasswd = "auto"
 	opts.InstanceID = "gr1"
+	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
 
 	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
 
@@ -239,7 +242,7 @@ func Test_activateServerOnly(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait for server to be ready
+	// wait for server to be ready
 	require.Eventually(t, func() bool {
 		resp, err := http.Get("http://localhost:9988/ping")
 		if err != nil {
@@ -369,12 +372,12 @@ func Test_expandPath(t *testing.T) {
 			case strings.Contains(tt.path, "~"):
 				assert.Equal(t, filepath.Join(home, tt.path[1:]), got)
 			case tt.path == ".", strings.HasPrefix(tt.path, ".."), strings.Contains(tt.path, "/"):
-				// For relative paths, paths starting with "..", and paths with special characters
+				// for relative paths, paths starting with "..", and paths with special characters
 				expected, err := filepath.Abs(tt.path)
 				require.NoError(t, err)
 				assert.Equal(t, expected, got)
 			default:
-				// For absolute paths and invalid paths
+				// for absolute paths and invalid paths
 				assert.Equal(t, tt.want, got)
 			}
 		})
@@ -388,7 +391,7 @@ func Test_migrateSamples(t *testing.T) {
 	opts.InstanceID = "gr1"
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -436,7 +439,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -462,7 +465,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -488,7 +491,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		store, err := storage.NewSamples(context.Background(), db)
@@ -514,7 +517,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("full migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -548,7 +551,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("already migrated", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -582,7 +585,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("empty files", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)
@@ -603,7 +606,7 @@ func Test_migrateDicts(t *testing.T) {
 	})
 
 	t.Run("partial migration", func(t *testing.T) {
-		db, err := storage.NewSqliteDB(":memory:", "gr1")
+		db, err := engine.NewSqlite(":memory:", "gr1")
 		require.NoError(t, err)
 		defer db.Close()
 		dict, err := storage.NewDictionary(context.Background(), db)

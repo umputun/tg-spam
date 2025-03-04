@@ -1,7 +1,7 @@
 GO_FILES=$(shell find . -name '*.go' | grep -vE 'vendor')
 
 lint-fix:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.48.0
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.1
 	go install golang.org/x/tools/cmd/goimports@latest
 	goimports -w $(GO_FILES)
 	go fmt ./...

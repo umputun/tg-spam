@@ -7,12 +7,67 @@ import (
 	"io"
 	"iter"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
+
+// dictionary-related command constants
+const (
+	CmdCreateDictionaryTable engine.DBCmd = iota + 300
+	CmdCreateDictionaryIndexes
+	CmdAddDictionaryEntry
+	CmdImportDictionaryEntry
+)
+
+// all dictionary-related queries
+var dictionaryQueries = engine.NewQueryMap().
+	Add(CmdCreateDictionaryTable, engine.Query{
+		Sqlite: `CREATE TABLE IF NOT EXISTS dictionary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gid TEXT DEFAULT '',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+            data TEXT NOT NULL,
+            UNIQUE(gid, data)
+        )`,
+		Postgres: `CREATE TABLE IF NOT EXISTS dictionary (
+            id SERIAL PRIMARY KEY,
+            gid TEXT DEFAULT '',
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
+            data TEXT NOT NULL,
+            UNIQUE(gid, data)
+        )`,
+	}).
+	Add(CmdCreateDictionaryIndexes, engine.Query{
+		Sqlite: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid)`,
+		Postgres: `
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid_type_ts ON dictionary(gid, type, timestamp);
+			CREATE INDEX IF NOT EXISTS idx_dictionary_gid_data ON dictionary(gid, data)`,
+	}).
+	Add(CmdAddGIDColumn, engine.Query{
+		Sqlite:   "ALTER TABLE dictionary ADD COLUMN gid TEXT DEFAULT ''",
+		Postgres: "ALTER TABLE dictionary ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
+	}).
+	Add(CmdAddDictionaryEntry, engine.Query{
+		Sqlite:   `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`,
+		Postgres: `INSERT INTO dictionary (type, data, gid) VALUES ($1, $2, $3) ON CONFLICT (gid, data) DO NOTHING`,
+	}).
+	Add(CmdImportDictionaryEntry, engine.Query{
+		Sqlite:   `INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`,
+		Postgres: `INSERT INTO dictionary (type, data, gid) VALUES ($1, $2, $3) ON CONFLICT (gid, data) DO UPDATE SET type = EXCLUDED.type`,
+	})
 
 // Dictionary is a storage for stop words/phrases and ignored words
 type Dictionary struct {
-	db *Engine
-	RWLocker
+	*engine.SQL
+	engine.RWLocker
 }
 
 // DictionaryType represents the type of dictionary entry
@@ -25,42 +80,22 @@ const (
 )
 
 // NewDictionary creates a new Dictionary storage
-func NewDictionary(ctx context.Context, db *Engine) (*Dictionary, error) {
+func NewDictionary(ctx context.Context, db *engine.SQL) (*Dictionary, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")
 	}
-
-	// create schema in a single transaction
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	res := &Dictionary{SQL: db, RWLocker: db.MakeLock()}
+	cfg := engine.TableConfig{
+		Name:          "dictionary",
+		CreateTable:   CmdCreateDictionaryTable,
+		CreateIndexes: CmdCreateDictionaryIndexes,
+		MigrateFunc:   res.migrate,
+		QueriesMap:    dictionaryQueries,
 	}
-	defer tx.Rollback()
-
-	schema := `
-        CREATE TABLE IF NOT EXISTS dictionary (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            gid TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            type TEXT CHECK (type IN ('stop_phrase', 'ignored_word')),
-            data TEXT NOT NULL,
-            UNIQUE(gid, data)
-        );
-        CREATE INDEX IF NOT EXISTS idx_dictionary_timestamp ON dictionary(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_type ON dictionary(type);
-        CREATE INDEX IF NOT EXISTS idx_dictionary_phrase ON dictionary(data);
-		CREATE INDEX IF NOT EXISTS idx_dictionary_gid ON dictionary(gid);
-    `
-
-	if _, err = tx.ExecContext(ctx, schema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+	if err := engine.InitTable(ctx, db, cfg); err != nil {
+		return nil, fmt.Errorf("failed to init dictionary storage: %w", err)
 	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return &Dictionary{db: db, RWLocker: db.MakeLock()}, nil
+	return res, nil
 }
 
 // Add adds a stop phrase or ignored word to the dictionary
@@ -75,22 +110,16 @@ func (d *Dictionary) Add(ctx context.Context, t DictionaryType, data string) err
 	d.Lock()
 	defer d.Unlock()
 
-	// start transaction
-	tx, err := d.db.BeginTx(ctx, nil)
+	// get the appropriate query for current db type
+	query, err := dictionaryQueries.Pick(d.Type(), CmdAddDictionaryEntry)
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
+		return fmt.Errorf("failed to get insert query: %w", err)
 	}
-	defer tx.Rollback()
 
-	// try to insert, if it fails due to UNIQUE constraint - that's ok
-	query := `INSERT OR IGNORE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`
-	if _, err = tx.ExecContext(ctx, query, t, data, d.db.GID()); err != nil {
+	if _, err = d.ExecContext(ctx, query, t, data, d.GID()); err != nil {
 		return fmt.Errorf("failed to add data: %w", err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
 	return nil
 }
 
@@ -99,7 +128,7 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 	d.Lock()
 	defer d.Unlock()
 
-	result, err := d.db.ExecContext(ctx, `DELETE FROM dictionary WHERE id = ?`, id)
+	result, err := d.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("failed to remove phrase: %w", err)
 	}
@@ -124,8 +153,8 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 	}
 
 	var data []string
-	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
-	if err := d.db.SelectContext(ctx, &data, query, t, d.db.GID()); err != nil {
+	query := d.Adopt(`SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`)
+	if err := d.SelectContext(ctx, &data, query, t, d.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get data: %w", err)
 	}
 	return data, nil
@@ -151,10 +180,10 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 		return nil, err
 	}
 
-	query := `SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`
+	query := d.Adopt(`SELECT data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp`)
 
 	d.RLock()
-	rows, err := d.db.QueryxContext(ctx, query, t, d.db.GID())
+	rows, err := d.QueryxContext(ctx, query, t, d.GID())
 	d.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query phrases: %w", err)
@@ -177,6 +206,7 @@ func (d *Dictionary) Iterator(ctx context.Context, t DictionaryType) (iter.Seq[s
 // Import reads phrases from the reader and imports them into the storage.
 // If withCleanup is true removes all entries with the same type before import.
 // Input format is either a single phrase per line or a CSV file with multiple phrases.
+// Import reads phrases from the reader and imports them into the storage.
 func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, withCleanup bool) (*DictionaryStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
@@ -188,24 +218,31 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	d.Lock()
 
 	// start transaction
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		d.Unlock()
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
-	gid := d.db.GID()
+	gid := d.GID()
 
 	// remove all entries with the same type if requested
 	if withCleanup {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM dictionary WHERE type = ? AND gid = ?`, t, gid); err != nil {
+		if _, err = tx.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE type = ? AND gid = ?`), t, gid); err != nil {
 			d.Unlock()
 			return nil, fmt.Errorf("failed to remove old entries: %w", err)
 		}
 	}
 
+	// get the appropriate insert query for current db type
+	query, err := dictionaryQueries.Pick(d.Type(), CmdImportDictionaryEntry)
+	if err != nil {
+		d.Unlock()
+		return nil, fmt.Errorf("failed to get insert query: %w", err)
+	}
+
 	// prepare statement for inserts
-	insertStmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO dictionary (type, data, gid) VALUES (?, ?, ?)`)
+	insertStmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		d.Unlock()
 		return nil, fmt.Errorf("failed to prepare insert statement: %w", err)
@@ -278,16 +315,22 @@ func (d *Dictionary) Stats(ctx context.Context) (*DictionaryStats, error) {
 	d.RLock()
 	defer d.RUnlock()
 
-	query := `
+	query := d.Adopt(`
         SELECT 
             COUNT(CASE WHEN type = ? THEN 1 END) as stop_phrases_count,
             COUNT(CASE WHEN type = ? THEN 1 END) as ignored_words_count
         FROM dictionary
-        WHERE gid = ?`
+        WHERE gid = ?`,
+	)
 
 	var stats DictionaryStats
-	if err := d.db.GetContext(ctx, &stats, query, DictionaryTypeStopPhrase, DictionaryTypeIgnoredWord, d.db.GID()); err != nil {
+	if err := d.GetContext(ctx, &stats, query, DictionaryTypeStopPhrase, DictionaryTypeIgnoredWord, d.GID()); err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 	return &stats, nil
+}
+
+func (d *Dictionary) migrate(_ context.Context, _ *sqlx.Tx, _ string) error {
+	// no migrations yet
+	return nil
 }

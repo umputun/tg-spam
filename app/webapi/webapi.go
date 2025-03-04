@@ -2,6 +2,7 @@
 package webapi
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha1" //nolint
@@ -10,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
+	"io/fs"
 	"math/big"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +27,7 @@ import (
 	"github.com/go-pkgz/routegroup"
 
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -31,6 +36,7 @@ import (
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
+//go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -43,16 +49,17 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version      string       // version to show in /ping
-	ListenAddr   string       // listen address
-	Detector     Detector     // spam detector
-	SpamFilter   SpamFilter   // spam filter (bot)
-	DetectedSpam DetectedSpam // detected spam accessor
-	Locator      Locator      // locator for user info
-	AuthPasswd   string       // basic auth password for user "tg-spam"
-	AuthHash     string       // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
-	Dbg          bool         // debug mode
-	Settings     Settings     // application settings
+	Version       string        // version to show in /ping
+	ListenAddr    string        // listen address
+	Detector      Detector      // spam detector
+	SpamFilter    SpamFilter    // spam filter (bot)
+	DetectedSpam  DetectedSpam  // detected spam accessor
+	Locator       Locator       // locator for user info
+	StorageEngine StorageEngine // database engine access for backups
+	AuthPasswd    string        // basic auth password for user "tg-spam"
+	AuthHash      string        // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
+	Dbg           bool          // debug mode
+	Settings      Settings      // application settings
 }
 
 // Settings contains all application settings
@@ -128,6 +135,11 @@ type DetectedSpam interface {
 	FindByUserID(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
 }
 
+// StorageEngine provides access to the database engine for operations like backup
+type StorageEngine interface {
+	Backup(ctx context.Context, w io.Writer) error
+}
+
 // NewServer creates a new web API server.
 func NewServer(config Config) *Server {
 	return &Server{Config: config}
@@ -200,6 +212,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 				return ham, "ham.txt"
 			}))
 			r.HandleFunc("GET /detected_spam", s.downloadDetectedSpamHandler)
+			r.HandleFunc("GET /backup", s.downloadBackupHandler)
 		})
 
 		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
@@ -226,10 +239,22 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
 		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
-		webUI.HandleFunc("GET /styles.css", s.stylesHandler)                      // serve styles.css
-		webUI.HandleFunc("GET /logo.png", s.logoHandler)                          // serve logo.png
-		webUI.HandleFunc("GET /spinner.svg", s.spinnerHandler)                    // serve spinner.svg
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+
+		// handle logout - force Basic Auth re-authentication
+		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(w, "Logged out successfully")
+		})
+
+		// serve only specific static files at root level
+		staticFiles := newStaticFS(templateFS,
+			staticFileMapping{urlPath: "styles.css", filesysPath: "assets/styles.css"},
+			staticFileMapping{urlPath: "logo.png", filesysPath: "assets/logo.png"},
+			staticFileMapping{urlPath: "spinner.svg", filesysPath: "assets/spinner.svg"},
+		)
+		webUI.HandleFiles("/", http.FS(staticFiles))
 	})
 
 	return router
@@ -622,31 +647,6 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// stylesHandler handles GET /styles.css request. It returns styles.css file.
-func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
-	body, err := templateFS.ReadFile("assets/styles.css")
-	if err != nil {
-		log.Printf("[WARN] can't read styles.css: %v", err)
-		http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-// logoHandler handles GET /logo.png request. It returns assets/logo.png file.
-func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/logo.png")
-	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
-}
-
 func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	spam, err := s.DetectedSpam.Read(ctx)
@@ -694,19 +694,6 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
-}
-
-// helper function to format checks
-
-func (s *Server) spinnerHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/spinner.svg")
-	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "image/svg+xml")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
 }
 
 func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
@@ -780,6 +767,38 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 	return revSpam, revHam
 }
 
+// staticFS is a filtered filesystem that only exposes specific static files
+type staticFS struct {
+	fs        fs.FS
+	urlToPath map[string]string
+}
+
+// staticFileMapping defines a mapping between URL path and filesystem path
+type staticFileMapping struct {
+	urlPath     string
+	filesysPath string
+}
+
+func newStaticFS(fsys fs.FS, files ...staticFileMapping) *staticFS {
+	urlToPath := make(map[string]string)
+	for _, f := range files {
+		urlToPath[f.urlPath] = f.filesysPath
+	}
+
+	return &staticFS{
+		fs:        fsys,
+		urlToPath: urlToPath,
+	}
+}
+
+func (sfs *staticFS) Open(name string) (fs.File, error) {
+	name = path.Clean("/" + name)[1:]
+	if fsPath, ok := sfs.urlToPath[name]; ok {
+		return sfs.fs.Open(fsPath)
+	}
+	return nil, fs.ErrNotExist
+}
+
 // GenerateRandomPassword generates a random password of a given length
 func GenerateRandomPassword(length int) (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
@@ -797,4 +816,58 @@ func GenerateRandomPassword(length int) (string, error) {
 	}
 
 	return password.String(), nil
+}
+
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// set filename based on database type and timestamp
+	dbType := "db"
+	sqlEng, ok := s.StorageEngine.(*engine.SQL)
+	if ok {
+		dbType = string(sqlEng.Type())
+	}
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
+
+	// check if client accepts gzip
+	acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+
+	// set headers for file download
+	w.Header().Set("Content-Type", "application/sql")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	var backupWriter io.Writer = w
+	var gzipWriter *gzip.Writer
+
+	// apply gzip compression
+	if acceptsGzip {
+		w.Header().Set("Content-Encoding", "gzip")
+		gzipWriter = gzip.NewWriter(w)
+		backupWriter = gzipWriter
+		defer gzipWriter.Close()
+	}
+
+	// stream backup directly to response (through gzip if enabled)
+	if err := s.StorageEngine.Backup(r.Context(), backupWriter); err != nil {
+		log.Printf("[ERROR] failed to create backup: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		// just log the error and return
+		return
+	}
+
+	// ensure gzip writer is properly flushed and closed
+	if gzipWriter != nil {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}
 }

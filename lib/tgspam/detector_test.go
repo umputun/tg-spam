@@ -275,7 +275,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			d.Config.SimilarityThreshold = test.threshold // Update threshold for each test case
+			d.Config.SimilarityThreshold = test.threshold // update threshold for each test case
 			spam, cr := d.Check(spamcheck.Request{Msg: test.message})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
@@ -1347,7 +1347,7 @@ func TestCleanText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test regex-based implementation
+			// test regex-based implementation
 			result := d.cleanText(tt.input)
 			assert.Equal(t, tt.expected, result, "failed for case: %s", tt.name)
 		})

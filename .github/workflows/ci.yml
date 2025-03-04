@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: set up go 1.23
+    - name: set up go 1.24
       uses: actions/setup-go@v5
       with:
-        go-version: "1.23"
+        go-version: "1.24"
       id: go
 
     - name: Check out code into the Go module directory
@@ -48,12 +48,12 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.61
+        version: v1.64
 
     - name: golangci-lint on example directory
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.61
+        version: v1.64
         args: --config ../../.golangci.yml
         working-directory: _examples/simplechat
 

@@ -142,7 +142,7 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 	spam, details := s.Detector.Check(spamcheck.Request{Msg: content, UserID: string(username)})
 	if spam {
 		log.Printf("spam detected: %+v", details)
-		w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
+		w.WriteHeader(http.StatusOK) // use OK status for HTMX to process
 		data := struct {
 			Content string
 			Checks  []spamcheck.Response
@@ -165,7 +165,7 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 // dismissSpamReportHandler handles requests to dismiss a spam report
 func (s *Server) dismissSpamReportHandler(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
+	w.WriteHeader(http.StatusOK) // use OK status for HTMX to process
 }
 
 // loginHandler handles login requests.

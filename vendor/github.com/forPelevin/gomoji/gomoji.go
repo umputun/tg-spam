@@ -55,7 +55,7 @@ func RemoveEmojis(s string) string {
 // ReplaceEmojisWith replaces all emojis from the s string with the specified rune and returns a new string.
 func ReplaceEmojisWith(s string, c rune) string {
 	replacerStr := string(c)
-	return ReplaceEmojisWithFunc(s, func(em Emoji) string {
+	return ReplaceEmojisWithFunc(s, func(_ Emoji) string {
 		return replacerStr
 	})
 }
@@ -142,17 +142,22 @@ func CollectAll(s string) []Emoji {
 // FindAll finds all emojis in given string. If there are no emojis it returns a nil-slice.
 func FindAll(s string) []Emoji {
 	emojis := make(map[string]Emoji)
-
 	gr := uniseg.NewGraphemes(s)
-	for gr.Next() {
-		if em, ok := emojiMap[gr.Str()]; ok {
-			emojis[gr.Str()] = em
-		}
-	}
 
-	for _, r := range s {
-		if em, ok := emojiMap[string(r)]; ok {
-			emojis[string(r)] = em
+	for gr.Next() {
+		cluster := gr.Str()
+		if em, ok := emojiMap[cluster]; ok {
+			emojis[cluster] = em
+			continue
+		}
+
+		// Sub-cluster analysis for partial matches
+		for i := len(cluster); i > 0; i-- {
+			sub := cluster[:i]
+			if em, ok := emojiMap[sub]; ok {
+				emojis[sub] = em
+				break
+			}
 		}
 	}
 

@@ -504,7 +504,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to add user %d to approved list: %w", userID, err)
 	}
 
-	// Create the original forwarded message with new indication of "unbanned" and an empty keyboard
+	// create the original forwarded message with new indication of "unbanned" and an empty keyboard
 	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, a.sinceQuery(query))
 
 	// add spam info to the message

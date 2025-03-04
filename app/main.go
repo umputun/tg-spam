@@ -31,12 +31,14 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi"
 	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 type options struct {
-	InstanceID string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -219,21 +221,9 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
 
-	dbFile := filepath.Join(opts.Files.DynamicDataPath, dataFile)
-	log.Printf("[DEBUG] data db: %s", dbFile)
-
-	// make backup of db on version change
-	if opts.MaxBackups > 0 {
-		if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
-			return fmt.Errorf("backup on version change failed, %w", err)
-		}
-	} else {
-		log.Print("[WARN] database backups disabled")
-	}
-
-	dataDB, err := storage.NewSqliteDB(dbFile, opts.InstanceID)
+	dataDB, err := makeDB(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("can't make data db file %s, %w", dbFile, err)
+		return fmt.Errorf("can't make db, %w", err)
 	}
 
 	// make detector with all sample files loaded
@@ -259,7 +249,7 @@ func execute(ctx context.Context, opts options) error {
 	if err != nil {
 		return fmt.Errorf("can't load approved users, %w", err)
 	}
-	log.Printf("[DEBUG] approved users from: %s, loaded: %d", dbFile, count)
+	log.Printf("[DEBUG] approved users loaded: %d", count)
 
 	// make locator
 	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
@@ -334,6 +324,44 @@ func execute(ctx context.Context, opts options) error {
 	return nil
 }
 
+// makeDB creates database connection based on options
+// if dbURL is a file name, uses sqlite with dynamic data path, otherwise uses dbURL as is
+func makeDB(ctx context.Context, opts options) (*engine.SQL, error) {
+	if opts.DataBaseURL == "" {
+		return nil, errors.New("empty database URL")
+	}
+	dbURL := opts.DataBaseURL // default to what is set in options
+
+	// if dbURL has no path separator, assume it is a file name and add dynamic data path for sqlite
+	if !strings.Contains(dbURL, "/") && !strings.Contains(dbURL, "\\") {
+		dbURL = filepath.Join(opts.Files.DynamicDataPath, dbURL)
+	}
+	log.Printf("[DEBUG] data db: %s", dbURL)
+
+	db, err := engine.New(ctx, dbURL, opts.InstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("can't make db %s, %w", opts.DataBaseURL, err)
+	}
+
+	// backup db on version change for sqlite
+	if db.Type() == engine.Sqlite {
+		// get file name from dbURL for sqlite
+		dbFile := dbURL
+		dbFile = strings.TrimPrefix(dbFile, "file://")
+		dbFile = strings.TrimPrefix(dbFile, "file:")
+
+		// make backup of db on version change for sqlite
+		if opts.MaxBackups > 0 {
+			if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
+				return nil, fmt.Errorf("backup on version change failed, %w", err)
+			}
+		} else {
+			log.Print("[WARN] database backups disabled")
+		}
+	}
+	return db, nil
+}
+
 // checkVolumeMount checks if dynamic files location mounted in docker and shows warning if not
 // returns true if running not in docker or dynamic files dir mounted
 func checkVolumeMount(opts options) (ok bool) {
@@ -373,7 +401,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *storage.Engine) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -435,16 +463,17 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:   opts.Server.ListenAddr,
-		Detector:     sf.Detector,
-		SpamFilter:   sf,
-		Locator:      loc,
-		DetectedSpam: detectedSpamStore,
-		AuthPasswd:   authPassswd,
-		AuthHash:     opts.Server.AuthHash,
-		Version:      revision,
-		Dbg:          opts.Dbg,
-		Settings:     settings,
+		ListenAddr:    opts.Server.ListenAddr,
+		Detector:      sf.Detector,
+		SpamFilter:    sf,
+		Locator:       loc,
+		DetectedSpam:  detectedSpamStore,
+		StorageEngine: db, // add database engine for backup functionality
+		AuthPasswd:    authPassswd,
+		AuthHash:      opts.Server.AuthHash,
+		Version:       revision,
+		Dbg:           opts.Dbg,
+		Settings:      settings,
 	}}
 
 	go func() {
@@ -544,7 +573,7 @@ func makeDetector(opts options) *tgspam.Detector {
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, dataDB *storage.Engine, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	if dataDB == nil || detector == nil {
 		return nil, errors.New("nil datadb or detector")
 	}
@@ -614,7 +643,7 @@ func (n nopWriteCloser) Close() error { return nil }
 
 // makeSpamLogger creates spam logger to keep reports about spam messages
 // it writes json lines to the provided writer
-func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *storage.Engine) (events.SpamLogger, error) {
+func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *engine.SQL) (events.SpamLogger, error) {
 	// make store and load approved users
 	detectedSpamStore, auErr := storage.NewDetectedSpam(ctx, dataDB)
 	if auErr != nil {

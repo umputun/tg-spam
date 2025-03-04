@@ -15,6 +15,7 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
@@ -2094,7 +2095,7 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
 	f, err := os.CreateTemp("", "locator")
 	require.NoError(t, err)
-	db, err := storage.NewSqliteDB(f.Name(), "gr1")
+	db, err := engine.NewSqlite(f.Name(), "gr1")
 	require.NoError(t, err)
 
 	loc, err = storage.NewLocator(context.Background(), 10*time.Minute, 100, db)

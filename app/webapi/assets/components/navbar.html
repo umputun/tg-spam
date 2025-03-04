@@ -13,19 +13,33 @@
         <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
-                    <a class="nav-link" href="/">Checker</a>
+                    <a class="nav-link" href="/"><i class="bi bi-shield-check me-1"></i>Checker</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/manage_samples">Manage Samples</a>
+                    <a class="nav-link" href="/manage_samples"><i class="bi bi-collection me-1"></i>Manage Samples</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/manage_users">Manage Users</a>
+                    <a class="nav-link" href="/manage_users"><i class="bi bi-people me-1"></i>Manage Users</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/detected_spam">Detected Spam</a>
+                    <a class="nav-link" href="/detected_spam"><i class="bi bi-exclamation-triangle me-1"></i>Detected Spam</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/list_settings">Settings</a>
+                    <a class="nav-link" href="/list_settings"><i class="bi bi-gear me-1"></i>Settings</a>
+                </li>
+            </ul>
+            
+            <!-- User dropdown menu on right side -->
+            <ul class="navbar-nav">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle no-focus-highlight" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle"></i>&nbsp;&nbsp;tg-spam
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="/download/backup" download><i class="bi bi-download me-2"></i>Create Backup</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" hx-get="/logout" hx-push-url="true"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                    </ul>
                 </li>
             </ul>
         </div>

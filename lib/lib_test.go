@@ -12,7 +12,7 @@ import (
 
 // ExampleNewDetector demonstrates how to initialize a new Detector and use it to check a message for spam.
 func ExampleNewDetector() {
-	// Initialize a new Detector with a Config
+	// initialize a new Detector with a Config
 	detector := tgspam.NewDetector(tgspam.Config{
 		MaxAllowedEmoji:  5,
 		MinMsgLen:        10,
@@ -21,7 +21,7 @@ func ExampleNewDetector() {
 		HTTPClient:       &http.Client{},
 	})
 
-	// Load stop words
+	// load stop words
 	stopWords := strings.NewReader("\"word1\"\n\"word2\"\n\"hello world\"\n\"some phrase\", \"another phrase\"")
 	res, err := detector.LoadStopWords(stopWords)
 	if err != nil {
@@ -30,7 +30,7 @@ func ExampleNewDetector() {
 	}
 	fmt.Println("Loaded", res.StopWords, "stop words")
 
-	// Load spam and ham samples
+	// load spam and ham samples
 	spamSamples := strings.NewReader("spam sample 1\nspam sample 2\nspam sample 3")
 	hamSamples := strings.NewReader("ham sample 1\nham sample 2\nham sample 3")
 	excludedTokens := strings.NewReader("\"the\", \"a\", \"an\"")

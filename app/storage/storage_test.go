@@ -1,352 +1,444 @@
+// file: app/storage/storage_test.go
 package storage
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"os"
-	"strings"
-	"sync"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-func TestEngine(t *testing.T) {
-	t.Run("type and gid", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:", "gr1")
-		require.NoError(t, err)
-		defer db.Close()
-
-		assert.Equal(t, EngineTypeSqlite, db.Type())
-		assert.Equal(t, "gr1", db.GID())
-	})
-
-	t.Run("invalid file", func(t *testing.T) {
-		db, err := NewSqliteDB("/invalid/path", "gr1")
-		assert.Error(t, err)
-		assert.Equal(t, &Engine{}, db)
-	})
-
-	t.Run("default type", func(t *testing.T) {
-		e := &Engine{}
-		assert.Equal(t, EngineTypeUnknown, e.Type())
-		assert.Equal(t, "", e.GID())
-	})
+type StorageTestSuite struct {
+	suite.Suite
+	dbs         map[string]*engine.SQL
+	pgContainer testcontainers.Container
+	sqliteFile  string
 }
 
-func TestNoopLocker(t *testing.T) {
-	var l NoopLocker
-	done := make(chan bool)
-
-	go func() {
-		l.Lock()
-		l.RLock()
-		l.RUnlock()
-		l.Unlock()
-		done <- true
-	}()
-
-	select {
-	case <-done:
-		// success
-	case <-time.After(time.Second):
-		t.Error("deadlock in NoopLocker")
-	}
+func TestStorageSuite(t *testing.T) {
+	suite.Run(t, new(StorageTestSuite))
 }
 
-func TestRWLockerSelection(t *testing.T) {
-	t.Run("sqlite uses mutex", func(t *testing.T) {
-		db, err := NewSqliteDB(":memory:", "gr1")
-		require.NoError(t, err)
-		defer db.Close()
+func (s *StorageTestSuite) SetupSuite() {
+	s.dbs = make(map[string]*engine.SQL)
 
-		locker := db.MakeLock()
-		_, ok := locker.(*sync.RWMutex)
-		assert.True(t, ok)
-	})
+	// setup SQLite with file-based db
+	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
+	s.T().Logf("sqlite file: %s", s.sqliteFile)
+	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "gr1")
+	s.Require().NoError(err)
+	s.dbs["sqlite"] = sqliteDB
 
-	t.Run("unknown type uses noop", func(t *testing.T) {
-		e := &Engine{dbType: EngineTypeUnknown}
-		locker := e.MakeLock()
-		_, ok := locker.(*NoopLocker)
-		assert.True(t, ok)
-	})
-}
-
-func TestConcurrentDBAccess(t *testing.T) {
-	db, err := NewSqliteDB(":memory:", "gr1")
-	require.NoError(t, err)
-	defer db.Close()
-
-	// create test table
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, value TEXT)`)
-	require.NoError(t, err)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, 10)
-	locker := db.MakeLock()
-
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			locker.Lock()
-			_, err := db.Exec("INSERT INTO test (value) VALUES (?)", i)
-			locker.Unlock()
-			if err != nil {
-				errChan <- err
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	for err := range errChan {
-		t.Errorf("concurrent access error: %v", err)
-	}
-
-	var count int
-	err = db.Get(&count, "SELECT COUNT(*) FROM test")
-	require.NoError(t, err)
-	assert.Equal(t, 10, count)
-}
-
-func TestSampleUpdater(t *testing.T) {
-
-	t.Run("append and read with normal timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test spam message"))
-
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		assert.Equal(t, "test spam message\n", string(data))
-	})
-
-	t.Run("append multiple messages", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeHam, 1*time.Second)
-
-		messages := []string{"msg1", "msg2", "msg3"}
-		for _, msg := range messages {
-			require.NoError(t, updater.Append(msg))
-			time.Sleep(time.Millisecond) // ensure messages have different timestamps
-		}
-
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		result := strings.Split(strings.TrimSpace(string(data)), "\n")
-		assert.Equal(t, len(messages), len(result))
-		for _, msg := range messages {
-			assert.Contains(t, result, msg)
-		}
-	})
-
-	t.Run("timeout on append", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		err = updater.Append("timeout message")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "context deadline exceeded")
-	})
-
-	t.Run("tiny timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, 1)
-		assert.Error(t, updater.Append("test message"))
-	})
-
-	t.Run("verify user origin", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test message"))
-
-		// verify the message was stored with user origin
-		ctx := context.Background()
-		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "test message")
-
-		// verify it's not in preset origin
-		messages, err = samples.Read(ctx, SampleTypeSpam, SampleOriginPreset)
-		require.NoError(t, err)
-		assert.NotContains(t, messages, "test message")
-	})
-
-	t.Run("sample type consistency", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		spamUpdater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		hamUpdater := NewSampleUpdater(samples, SampleTypeHam, time.Second)
-
-		require.NoError(t, spamUpdater.Append("spam message"))
-		require.NoError(t, hamUpdater.Append("ham message"))
-
+	// setup Postgres
+	if !testing.Short() {
+		s.T().Log("start postgres container")
 		ctx := context.Background()
 
-		// verify spam messages
-		messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "spam message")
-		assert.NotContains(t, messages, "ham message")
+		req := testcontainers.ContainerRequest{
+			Image:        "postgres:17",
+			ExposedPorts: []string{"5432/tcp"},
+			Env: map[string]string{
+				"POSTGRES_PASSWORD": "secret",
+				"POSTGRES_DB":       "test",
+			},
+			WaitingFor: wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+				wait.ForListeningPort("5432/tcp"),
+			).WithDeadline(1 * time.Minute),
+		}
 
-		// verify ham messages
-		messages, err = samples.Read(ctx, SampleTypeHam, SampleOriginUser)
-		require.NoError(t, err)
-		assert.Contains(t, messages, "ham message")
-		assert.NotContains(t, messages, "spam message")
-	})
+		container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		})
+		s.Require().NoError(err)
+		s.pgContainer = container
 
-	t.Run("read empty", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
+		time.Sleep(time.Second)
 
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
+		host, err := container.Host(ctx)
+		s.Require().NoError(err)
+		port, err := container.MappedPort(ctx, "5432")
+		s.Require().NoError(err)
 
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
-
-		data, err := reader.Read(make([]byte, 100))
-		require.Equal(t, 0, data)
-		require.Equal(t, io.EOF, err)
-	})
-
-	t.Run("timeout triggers", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		require.Error(t, updater.Append("test"))
-	})
-
-	t.Run("no timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, 0)
-		require.NoError(t, updater.Append("test"))
-
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
-
-		data := make([]byte, 100)
-		n, err := reader.Read(data)
-		require.NoError(t, err)
-		assert.Equal(t, "test\n", string(data[:n]))
-	})
-
-	t.Run("remove message", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		require.NoError(t, updater.Append("test message"))
-		require.NoError(t, updater.Remove("test message"))
-
-		reader, err := updater.Reader()
-		require.NoError(t, err)
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		assert.Empty(t, string(data))
-	})
-
-	t.Run("remove with timeout", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Nanosecond)
-		time.Sleep(time.Microsecond)
-		err = updater.Remove("test message")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "context deadline exceeded")
-	})
-
-	t.Run("remove non-existent", func(t *testing.T) {
-		db, teardown := setupTestDB(t)
-		defer teardown()
-		samples, err := NewSamples(context.Background(), db)
-		require.NoError(t, err)
-		defer db.Close()
-
-		updater := NewSampleUpdater(samples, SampleTypeSpam, time.Second)
-		err = updater.Remove("non-existent message")
-		require.Error(t, err)
-	})
+		connStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
+		pgDB, err := engine.NewPostgres(ctx, connStr, "gr1")
+		s.Require().NoError(err)
+		s.dbs["postgres"] = pgDB
+	}
 }
 
-func setupTestDB(t *testing.T) (res *Engine, teardown func()) {
-	t.Helper()
-	tmpFile := os.TempDir() + "/test.db"
-	t.Log("db file:", tmpFile)
-	db, err := sqlx.Connect("sqlite", tmpFile)
-	require.NoError(t, err)
-	require.NotNil(t, db)
-	engine, err := NewSqliteDB(tmpFile, "gr1")
-	require.NoError(t, err)
-
-	return engine, func() {
+func (s *StorageTestSuite) TearDownSuite() {
+	for _, db := range s.dbs {
 		db.Close()
-		os.Remove(tmpFile)
 	}
+	if s.pgContainer != nil {
+		s.T().Log("terminating container")
+		s.Require().NoError(s.pgContainer.Terminate(context.Background()))
+	}
+	if s.sqliteFile != "" {
+		s.T().Logf("removing sqlite file: %s", s.sqliteFile)
+		err := os.Remove(s.sqliteFile)
+		s.Require().NoError(err)
+	}
+}
+
+func (s *StorageTestSuite) getTestDB() []struct {
+	DB   *engine.SQL
+	Type engine.Type
+} {
+	var res []struct {
+		DB   *engine.SQL
+		Type engine.Type
+	}
+	for name, db := range s.dbs {
+		res = append(res, struct {
+			DB   *engine.SQL
+			Type engine.Type
+		}{
+			DB:   db,
+			Type: engine.Type(name),
+		})
+	}
+	return res
+}
+
+// common tests
+
+func (s *StorageTestSuite) TestIsolation() {
+	ctx := context.Background()
+	s.Run("sqlite isolation via separate files", func() {
+		// create two separate SQLite databases with different GIDs
+		tmpFile1 := filepath.Join(os.TempDir(), "test_db1.sqlite")
+		tmpFile2 := filepath.Join(os.TempDir(), "test_db2.sqlite")
+		defer os.Remove(tmpFile1)
+		defer os.Remove(tmpFile2)
+
+		db1, err := engine.NewSqlite(tmpFile1, "gr1")
+		s.Require().NoError(err)
+		defer db1.Close()
+
+		db2, err := engine.NewSqlite(tmpFile2, "gr2")
+		s.Require().NoError(err)
+		defer db2.Close()
+
+		// test Samples isolation
+		s.Run("samples isolation", func() {
+			samples1, err := NewSamples(ctx, db1)
+			s.Require().NoError(err)
+			samples2, err := NewSamples(ctx, db2)
+			s.Require().NoError(err)
+
+			err = samples1.Add(ctx, SampleTypeHam, SampleOriginUser, "test1 message")
+			s.Require().NoError(err)
+			err = samples2.Add(ctx, SampleTypeHam, SampleOriginUser, "test2 message")
+			s.Require().NoError(err)
+
+			msgs1, err := samples1.Read(ctx, SampleTypeHam, SampleOriginUser)
+			s.Require().NoError(err)
+			s.Equal(1, len(msgs1))
+			s.Equal("test1 message", msgs1[0])
+
+			msgs2, err := samples2.Read(ctx, SampleTypeHam, SampleOriginUser)
+			s.Require().NoError(err)
+			s.Equal(1, len(msgs2))
+			s.Equal("test2 message", msgs2[0])
+		})
+
+		// test Dictionary isolation
+		s.Run("dictionary isolation", func() {
+			dict1, err := NewDictionary(ctx, db1)
+			s.Require().NoError(err)
+			dict2, err := NewDictionary(ctx, db2)
+			s.Require().NoError(err)
+
+			err = dict1.Add(ctx, DictionaryTypeStopPhrase, "test1 phrase")
+			s.Require().NoError(err)
+			err = dict2.Add(ctx, DictionaryTypeStopPhrase, "test2 phrase")
+			s.Require().NoError(err)
+
+			phrases1, err := dict1.Read(ctx, DictionaryTypeStopPhrase)
+			s.Require().NoError(err)
+			s.Equal(1, len(phrases1))
+			s.Equal("test1 phrase", phrases1[0])
+
+			phrases2, err := dict2.Read(ctx, DictionaryTypeStopPhrase)
+			s.Require().NoError(err)
+			s.Equal(1, len(phrases2))
+			s.Equal("test2 phrase", phrases2[0])
+		})
+
+		// test DetectedSpam isolation
+		s.Run("detected spam isolation", func() {
+			spam1, err := NewDetectedSpam(ctx, db1)
+			s.Require().NoError(err)
+			spam2, err := NewDetectedSpam(ctx, db2)
+			s.Require().NoError(err)
+
+			entry1 := DetectedSpamInfo{
+				GID:       "gr1",
+				Text:      "spam1",
+				UserID:    1,
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			}
+			entry2 := DetectedSpamInfo{
+				GID:       "gr2",
+				Text:      "spam2",
+				UserID:    2,
+				UserName:  "user2",
+				Timestamp: time.Now(),
+			}
+			checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+			err = spam1.Write(ctx, entry1, checks)
+			s.Require().NoError(err)
+			err = spam2.Write(ctx, entry2, checks)
+			s.Require().NoError(err)
+
+			entries1, err := spam1.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(entries1))
+			s.Equal("spam1", entries1[0].Text)
+
+			entries2, err := spam2.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(entries2))
+			s.Equal("spam2", entries2[0].Text)
+		})
+
+		// test ApprovedUsers isolation
+		s.Run("approved users isolation", func() {
+			au1, err := NewApprovedUsers(ctx, db1)
+			s.Require().NoError(err)
+			au2, err := NewApprovedUsers(ctx, db2)
+			s.Require().NoError(err)
+
+			user1 := approved.UserInfo{UserID: "1", UserName: "user1"}
+			user2 := approved.UserInfo{UserID: "2", UserName: "user2"}
+
+			err = au1.Write(ctx, user1)
+			s.Require().NoError(err)
+			err = au2.Write(ctx, user2)
+			s.Require().NoError(err)
+
+			users1, err := au1.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(users1))
+			s.Equal("user1", users1[0].UserName)
+
+			users2, err := au2.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(users2))
+			s.Equal("user2", users2[0].UserName)
+		})
+
+		// test Locator isolation
+		s.Run("locator isolation", func() {
+			loc1, err := NewLocator(ctx, time.Hour, 10, db1)
+			s.Require().NoError(err)
+			loc2, err := NewLocator(ctx, time.Hour, 10, db2)
+			s.Require().NoError(err)
+
+			err = loc1.AddMessage(ctx, "msg1", 1, 1, "user1", 1)
+			s.Require().NoError(err)
+			err = loc2.AddMessage(ctx, "msg2", 2, 2, "user2", 2)
+			s.Require().NoError(err)
+
+			meta1, found := loc1.Message(ctx, "msg1")
+			s.Require().True(found)
+			s.Equal(int64(1), meta1.UserID)
+
+			meta2, found := loc2.Message(ctx, "msg2")
+			s.Require().True(found)
+			s.Equal(int64(2), meta2.UserID)
+
+			// verify cross-visibility
+			_, found = loc1.Message(ctx, "msg2")
+			s.Require().False(found)
+			_, found = loc2.Message(ctx, "msg1")
+			s.Require().False(found)
+		})
+	})
+
+	s.Run("postgres isolation via gid column", func() {
+		// skip if postgres is not available
+		if testing.Short() {
+			s.T().Skip("skipping postgres test in short mode")
+		}
+
+		// get existing postgres container connection
+		var pgDB *engine.SQL
+		for _, dbt := range s.getTestDB() {
+			if dbt.DB.Type() == engine.Postgres {
+				pgDB = dbt.DB
+				break
+			}
+		}
+		if pgDB == nil {
+			s.T().Skip("postgres is not available")
+		}
+
+		// get container connection details
+		host, err := s.pgContainer.Host(ctx)
+		s.Require().NoError(err)
+		port, err := s.pgContainer.MappedPort(ctx, "5432")
+		s.Require().NoError(err)
+
+		// create connection string using container details
+		pgConnStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
+
+		// create two separate connections with different GIDs
+		db1, err := engine.NewPostgres(ctx, pgConnStr, "gr1")
+		s.Require().NoError(err)
+		defer db1.Close()
+
+		db2, err := engine.NewPostgres(ctx, pgConnStr, "gr2")
+		s.Require().NoError(err)
+		defer db2.Close()
+
+		// same test sub-cases as for SQLite
+		s.Run("samples isolation", func() {
+			samples1, err := NewSamples(ctx, db1)
+			s.Require().NoError(err)
+			samples2, err := NewSamples(ctx, db2)
+			s.Require().NoError(err)
+
+			err = samples1.Add(ctx, SampleTypeHam, SampleOriginUser, "test1 message")
+			s.Require().NoError(err)
+			err = samples2.Add(ctx, SampleTypeHam, SampleOriginUser, "test2 message")
+			s.Require().NoError(err)
+
+			msgs1, err := samples1.Read(ctx, SampleTypeHam, SampleOriginUser)
+			s.Require().NoError(err)
+			s.Equal(1, len(msgs1))
+			s.Equal("test1 message", msgs1[0])
+
+			msgs2, err := samples2.Read(ctx, SampleTypeHam, SampleOriginUser)
+			s.Require().NoError(err)
+			s.Equal(1, len(msgs2))
+			s.Equal("test2 message", msgs2[0])
+		})
+
+		s.Run("dictionary isolation", func() {
+			dict1, err := NewDictionary(ctx, db1)
+			s.Require().NoError(err)
+			dict2, err := NewDictionary(ctx, db2)
+			s.Require().NoError(err)
+
+			err = dict1.Add(ctx, DictionaryTypeStopPhrase, "test1 phrase")
+			s.Require().NoError(err)
+			err = dict2.Add(ctx, DictionaryTypeStopPhrase, "test2 phrase")
+			s.Require().NoError(err)
+
+			phrases1, err := dict1.Read(ctx, DictionaryTypeStopPhrase)
+			s.Require().NoError(err)
+			s.Equal(1, len(phrases1))
+			s.Equal("test1 phrase", phrases1[0])
+
+			phrases2, err := dict2.Read(ctx, DictionaryTypeStopPhrase)
+			s.Require().NoError(err)
+			s.Equal(1, len(phrases2))
+			s.Equal("test2 phrase", phrases2[0])
+		})
+
+		s.Run("detected spam isolation", func() {
+			spam1, err := NewDetectedSpam(ctx, db1)
+			s.Require().NoError(err)
+			spam2, err := NewDetectedSpam(ctx, db2)
+			s.Require().NoError(err)
+
+			entry1 := DetectedSpamInfo{
+				GID:       "gr1",
+				Text:      "spam1",
+				UserID:    1,
+				UserName:  "user1",
+				Timestamp: time.Now(),
+			}
+			entry2 := DetectedSpamInfo{
+				GID:       "gr2",
+				Text:      "spam2",
+				UserID:    2,
+				UserName:  "user2",
+				Timestamp: time.Now(),
+			}
+			checks := []spamcheck.Response{{Name: "test", Spam: true}}
+
+			err = spam1.Write(ctx, entry1, checks)
+			s.Require().NoError(err)
+			err = spam2.Write(ctx, entry2, checks)
+			s.Require().NoError(err)
+
+			entries1, err := spam1.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(entries1))
+			s.Equal("spam1", entries1[0].Text)
+
+			entries2, err := spam2.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(entries2))
+			s.Equal("spam2", entries2[0].Text)
+		})
+
+		s.Run("approved users isolation", func() {
+			au1, err := NewApprovedUsers(ctx, db1)
+			s.Require().NoError(err)
+			au2, err := NewApprovedUsers(ctx, db2)
+			s.Require().NoError(err)
+
+			user1 := approved.UserInfo{UserID: "1", UserName: "user1"}
+			user2 := approved.UserInfo{UserID: "2", UserName: "user2"}
+
+			err = au1.Write(ctx, user1)
+			s.Require().NoError(err)
+			err = au2.Write(ctx, user2)
+			s.Require().NoError(err)
+
+			users1, err := au1.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(users1))
+			s.Equal("user1", users1[0].UserName)
+
+			users2, err := au2.Read(ctx)
+			s.Require().NoError(err)
+			s.Equal(1, len(users2))
+			s.Equal("user2", users2[0].UserName)
+		})
+
+		s.Run("locator isolation", func() {
+			loc1, err := NewLocator(ctx, time.Hour, 10, db1)
+			s.Require().NoError(err)
+			loc2, err := NewLocator(ctx, time.Hour, 10, db2)
+			s.Require().NoError(err)
+
+			err = loc1.AddMessage(ctx, "msg1", 1, 1, "user1", 1)
+			s.Require().NoError(err)
+			err = loc2.AddMessage(ctx, "msg2", 2, 2, "user2", 2)
+			s.Require().NoError(err)
+
+			meta1, found := loc1.Message(ctx, "msg1")
+			s.Require().True(found)
+			s.Equal(int64(1), meta1.UserID)
+
+			meta2, found := loc2.Message(ctx, "msg2")
+			s.Require().True(found)
+			s.Equal(int64(2), meta2.UserID)
+
+			// verify cross-visibility
+			_, found = loc1.Message(ctx, "msg2")
+			s.Require().False(found)
+			_, found = loc2.Message(ctx, "msg1")
+			s.Require().False(found)
+		})
+	})
 }

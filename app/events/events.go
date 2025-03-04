@@ -115,12 +115,12 @@ type banRequest struct {
 // and must have the appropriate admin rights.
 // If channel is provided, it is banned instead of provided user, permanently.
 func banUserOrChannel(r banRequest) error {
-	// From Telegram Bot API documentation:
+	// from Telegram Bot API documentation:
 	// > If user is restricted for more than 366 days or less than 30 seconds from the current time,
 	// > they are considered to be restricted forever
-	// Because the API query uses unix timestamp rather than "ban duration",
+	// because the API query uses unix timestamp rather than "ban duration",
 	// you do not want to accidentally get into this 30-second window of a lifetime ban.
-	// In practice BanDuration is equal to ten minutes,
+	// in practice BanDuration is equal to ten minutes,
 	// so this `if` statement is unlikely to be evaluated to true.
 
 	bannedEntity := fmt.Sprintf("user %d", r.userID)

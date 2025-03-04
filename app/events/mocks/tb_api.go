@@ -55,27 +55,27 @@ type TbAPIMock struct {
 	calls struct {
 		// GetChat holds details about calls to the GetChat method.
 		GetChat []struct {
-			// Config is the config argument value.
+			// config is the config argument value.
 			Config tbapi.ChatInfoConfig
 		}
 		// GetChatAdministrators holds details about calls to the GetChatAdministrators method.
 		GetChatAdministrators []struct {
-			// Config is the config argument value.
+			// config is the config argument value.
 			Config tbapi.ChatAdministratorsConfig
 		}
 		// GetUpdatesChan holds details about calls to the GetUpdatesChan method.
 		GetUpdatesChan []struct {
-			// Config is the config argument value.
+			// config is the config argument value.
 			Config tbapi.UpdateConfig
 		}
-		// Request holds details about calls to the Request method.
+		// request holds details about calls to the Request method.
 		Request []struct {
-			// C is the c argument value.
+			// c is the c argument value.
 			C tbapi.Chattable
 		}
-		// Send holds details about calls to the Send method.
+		// send holds details about calls to the Send method.
 		Send []struct {
-			// C is the c argument value.
+			// c is the c argument value.
 			C tbapi.Chattable
 		}
 	}

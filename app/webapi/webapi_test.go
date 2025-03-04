@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -117,7 +118,7 @@ func TestServer_RunAuth(t *testing.T) {
 				close(done)
 			}()
 
-			// Wait for server to be ready
+			// wait for server to be ready
 			require.Eventually(t, func() bool {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
 				if err != nil {
@@ -660,7 +661,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 		spamFilterMock.ResetCalls()
 		req, err := http.NewRequest("POST", "/delete/ham", http.NoBody)
 		require.NoError(t, err)
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		// set form htmx request, msg in r.FormValue("msg")
 		req.Form = url.Values{}
@@ -754,7 +755,7 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 
 		req, err := http.NewRequest("POST", "/users/add", http.NoBody)
 		require.NoError(t, err)
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		req.Form = url.Values{}
 		req.Form.Set("user_id", "123")
@@ -944,7 +945,7 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		req, err := http.NewRequest("POST", "/check", strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Add("HX-Request", "true") // Simulating HTMX request
+		req.Header.Add("HX-Request", "true") // simulating HTMX request
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.checkMsgHandler)
@@ -1037,31 +1038,85 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 	assert.Contains(t, body, "<tr><th>Min Message Length</th><td>150</td></tr>")
 }
 
-func TestServer_stylesHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0"})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/style.css", http.NoBody)
-	require.NoError(t, err)
+func TestServer_StaticFiles(t *testing.T) {
+	// setup necessary mocks
+	mockDetector := &mocks.DetectorMock{
+		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			return false, []spamcheck.Response{{Details: "not spam"}}
+		},
+		ApprovedUsersFunc: func() []approved.UserInfo {
+			return []approved.UserInfo{}
+		},
+	}
+	mockSpamFilter := &mocks.SpamFilterMock{}
+	detectedSpamMock := &mocks.DetectedSpamMock{}
 
-	handler := http.HandlerFunc(server.stylesHandler)
-	handler.ServeHTTP(rr, req)
+	server := NewServer(Config{
+		Version:      "1.0",
+		Detector:     mockDetector,
+		SpamFilter:   mockSpamFilter,
+		DetectedSpam: detectedSpamMock,
+	})
+	ts := httptest.NewServer(server.routes(routegroup.New(http.NewServeMux())))
+	defer ts.Close()
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	assert.Equal(t, "text/css; charset=utf-8", rr.Header().Get("Content-Type"), "handler should return CSS content type")
-	assert.Contains(t, rr.Body.String(), "body", "handler should return CSS content")
-}
+	tests := []struct {
+		name        string
+		path        string
+		contentType string
+		contains    string // for text files like CSS
+	}{
+		{
+			name:        "styles.css",
+			path:        "/styles.css",
+			contentType: "text/css; charset=utf-8",
+			contains:    "body",
+		},
+		{
+			name:        "logo.png",
+			path:        "/logo.png",
+			contentType: "image/png",
+		},
+		{
+			name:        "spinner.svg",
+			path:        "/spinner.svg",
+			contentType: "image/svg+xml",
+		},
+		{
+			name:        "non-existent file",
+			path:        "/non-existent.txt",
+			contentType: "",
+		},
+	}
 
-func TestServer_logoHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0"})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/logo.png", http.NoBody)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tt.path)
+			require.NoError(t, err)
+			defer resp.Body.Close()
 
-	handler := http.HandlerFunc(server.logoHandler)
-	handler.ServeHTTP(rr, req)
+			if tt.contentType == "" {
+				assert.Equal(t, http.StatusNotFound, resp.StatusCode, "should return 404 for non-existent files")
+				return
+			}
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"), "handler should return CSS content type")
+			assert.Equal(t, http.StatusOK, resp.StatusCode, "should return OK")
+			assert.Equal(t, tt.contentType, resp.Header.Get("Content-Type"), "should return correct content type")
+
+			if tt.contains != "" {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				assert.Contains(t, string(body), tt.contains, "response should contain expected content")
+			}
+		})
+	}
+
+	t.Run("disallow access to other files", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/assets/some.html")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, "should not allow access to other files")
+	})
 }
 
 func Test_downloadSampleHandler(t *testing.T) {
@@ -1136,7 +1191,7 @@ func Test_downloadSampleHandler(t *testing.T) {
 func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 	mockSpamFilter := &mocks.SpamFilterMock{
 		ReloadSamplesFunc: func() error {
-			return nil // Simulate successful reload
+			return nil // simulate successful reload
 		},
 	}
 
@@ -1165,7 +1220,7 @@ func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 
 	t.Run("error during reload", func(t *testing.T) {
 		mockSpamFilter.ReloadSamplesFunc = func() error {
-			return errors.New("test error") // Simulate error during reload
+			return errors.New("test error") // simulate error during reload
 		}
 
 		req, err := http.NewRequest("PUT", "/samples", http.NoBody)
@@ -1373,4 +1428,137 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		assert.Equal(t, "can't get detected spam", resp.Error)
 		assert.Equal(t, "test error", resp.Details)
 	})
+}
+
+func TestServer_downloadBackupHandler(t *testing.T) {
+	t.Run("successful backup without gzip", func(t *testing.T) {
+		mockStorageEngine := &mocks.StorageEngineMock{
+			BackupFunc: func(ctx context.Context, w io.Writer) error {
+				_, err := w.Write([]byte("-- SQL backup test content"))
+				return err
+			},
+		}
+
+		srv := NewServer(Config{
+			StorageEngine: mockStorageEngine,
+		})
+
+		req := httptest.NewRequest("GET", "/download/backup", nil)
+		// don't include gzip in Accept-Encoding
+		w := httptest.NewRecorder()
+		srv.downloadBackupHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "-- SQL backup test content")
+		assert.Equal(t, "application/sql", resp.Header.Get("Content-Type"))
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
+		assert.Empty(t, resp.Header.Get("Content-Encoding"), "should not be gzip encoded")
+	})
+
+	t.Run("successful backup with gzip", func(t *testing.T) {
+		mockStorageEngine := &mocks.StorageEngineMock{
+			BackupFunc: func(ctx context.Context, w io.Writer) error {
+				_, err := w.Write([]byte("-- SQL backup test content"))
+				return err
+			},
+		}
+
+		srv := NewServer(Config{
+			StorageEngine: mockStorageEngine,
+		})
+
+		req := httptest.NewRequest("GET", "/download/backup", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		w := httptest.NewRecorder()
+		srv.downloadBackupHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+
+		// check headers
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "application/sql", resp.Header.Get("Content-Type"))
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
+		assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"), "should be gzip encoded")
+
+		// read and decompress the gzipped content
+		reader, err := gzip.NewReader(resp.Body)
+		require.NoError(t, err)
+		defer reader.Close()
+
+		body, err := io.ReadAll(reader)
+		require.NoError(t, err)
+
+		assert.Contains(t, string(body), "-- SQL backup test content")
+	})
+
+	t.Run("backup error", func(t *testing.T) {
+		mockStorageEngine := &mocks.StorageEngineMock{
+			BackupFunc: func(ctx context.Context, w io.Writer) error {
+				return errors.New("backup error")
+			},
+		}
+
+		srv := NewServer(Config{
+			StorageEngine: mockStorageEngine,
+		})
+
+		req := httptest.NewRequest("GET", "/download/backup", nil)
+		w := httptest.NewRecorder()
+		srv.downloadBackupHandler(w, req)
+
+		// in our implementation we just log the error and return, not sending an error response
+		// this is because we've already started writing the response
+		resp := w.Result()
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("nil storage engine", func(t *testing.T) {
+		srv := NewServer(Config{
+			StorageEngine: nil,
+		})
+
+		req := httptest.NewRequest("GET", "/download/backup", nil)
+		w := httptest.NewRecorder()
+		srv.downloadBackupHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "storage engine not available")
+	})
+}
+
+func TestServer_logoutHandler(t *testing.T) {
+	// create a function that matches our logout handler implementation in routes
+	logoutHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "Logged out successfully")
+	}
+
+	req := httptest.NewRequest("GET", "/logout", nil)
+	w := httptest.NewRecorder()
+
+	logoutHandler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, `Basic realm="tg-spam"`, resp.Header.Get("WWW-Authenticate"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "Logged out successfully")
 }

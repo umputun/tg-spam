@@ -23,10 +23,10 @@ type openAIChecker struct {
 // OpenAIConfig contains parameters for openAIChecker
 type OpenAIConfig struct {
 	// https://platform.openai.com/docs/api-reference/chat/create#chat/create-max_tokens
-	MaxTokensResponse int // Hard limit for the number of tokens in the response
-	// The OpenAI has a limit for the number of tokens in the request + response (4097)
-	MaxTokensRequest  int // Max request length in tokens
-	MaxSymbolsRequest int // Fallback: Max request length in symbols, if tokenizer was failed
+	MaxTokensResponse int // hard limit for the number of tokens in the response
+	// the OpenAI has a limit for the number of tokens in the request + response (4097)
+	MaxTokensRequest  int // max request length in tokens
+	MaxSymbolsRequest int // fallback: Max request length in symbols, if tokenizer was failed
 	Model             string
 	SystemPrompt      string
 	RetryCount        int
@@ -101,10 +101,10 @@ func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam boo
 }
 
 func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err error) {
-	// Reduce the request size with tokenizer and fallback to default reducer if it fails.
-	// The API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
-	// The response is limited to 1000 tokens, and OpenAI always reserved it for the result.
-	// So the max length of the request should be 3000 tokens or ~12000 characters
+	// reduce the request size with tokenizer and fallback to default reducer if it fails.
+	// the API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
+	// the response is limited to 1000 tokens, and OpenAI always reserved it for the result.
+	// so the max length of the request should be 3000 tokens or ~12000 characters
 	reduceRequest := func(text string) (result string) {
 		// defaultReducer is a fallback if tokenizer fails
 		defaultReducer := func(text string) (result string) {
@@ -152,7 +152,7 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 		return openAIResponse{}, err
 	}
 
-	// OpenAI platform supports returning multiple chat completion choices, but we use only the first one:
+	// openAI platform supports returning multiple chat completion choices, but we use only the first one:
 	// https://platform.openai.com/docs/api-reference/chat/create#chat/create-n
 	if len(resp.Choices) == 0 {
 		return openAIResponse{}, fmt.Errorf("no choices in response")
