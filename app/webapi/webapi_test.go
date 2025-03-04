@@ -1431,39 +1431,6 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 }
 
 func TestServer_downloadBackupHandler(t *testing.T) {
-	t.Run("successful backup without gzip", func(t *testing.T) {
-		mockStorageEngine := &mocks.StorageEngineMock{
-			BackupFunc: func(ctx context.Context, w io.Writer) error {
-				_, err := w.Write([]byte("-- SQL backup test content"))
-				return err
-			},
-		}
-
-		srv := NewServer(Config{
-			StorageEngine: mockStorageEngine,
-		})
-
-		req := httptest.NewRequest("GET", "/download/backup", nil)
-		// don't include gzip in Accept-Encoding
-		w := httptest.NewRecorder()
-		srv.downloadBackupHandler(w, req)
-
-		resp := w.Result()
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Contains(t, string(body), "-- SQL backup test content")
-		assert.Equal(t, "application/sql", resp.Header.Get("Content-Type"))
-		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
-		assert.Empty(t, resp.Header.Get("Content-Encoding"), "should not be gzip encoded")
-		
-		// Make sure the response is not actually gzipped
-		_, err = gzip.NewReader(bytes.NewReader(body))
-		assert.Error(t, err, "response should not be gzipped")
-	})
-
 	t.Run("successful backup with gzip", func(t *testing.T) {
 		mockStorageEngine := &mocks.StorageEngineMock{
 			BackupFunc: func(ctx context.Context, w io.Writer) error {
@@ -1477,7 +1444,6 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		})
 
 		req := httptest.NewRequest("GET", "/download/backup", nil)
-		req.Header.Set("Accept-Encoding", "gzip")
 		w := httptest.NewRecorder()
 		srv.downloadBackupHandler(w, req)
 
@@ -1488,11 +1454,12 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/sql", resp.Header.Get("Content-Type"))
 		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), ".sql.gz")
 		assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"), "should be gzip encoded")
 
 		// read and decompress the gzipped content
 		reader, err := gzip.NewReader(resp.Body)
-		require.NoError(t, err)
+		require.NoError(t, err, "Content should be properly gzipped")
 		defer reader.Close()
 
 		body, err := io.ReadAll(reader)

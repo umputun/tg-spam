@@ -818,7 +818,8 @@ func GenerateRandomPassword(length int) (string, error) {
 	return password.String(), nil
 }
 
-// downloadBackupHandler streams a database backup as an SQL file with gzip compression when supported
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+// Files are always compressed and always have .gz extension to ensure consistency
 func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.StorageEngine == nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -834,16 +835,8 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	timestamp := time.Now().Format("20060102-150405")
 
-	// check if client accepts gzip
-	acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
-
-	// set appropriate filename with or without .gz extension
-	var filename string
-	if acceptsGzip {
-		filename = fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
-	} else {
-		filename = fmt.Sprintf("tg-spam-backup-%s-%s.sql", dbType, timestamp)
-	}
+	// always use a .gz extension as the content is always compressed
+	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
 
 	// set headers for file download
 	w.Header().Set("Content-Type", "application/sql")
@@ -851,20 +844,14 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+	w.Header().Set("Content-Encoding", "gzip")
 
-	var backupWriter io.Writer = w
-	var gzipWriter *gzip.Writer
+	// always apply gzip compression
+	gzipWriter := gzip.NewWriter(w)
+	defer gzipWriter.Close()
 
-	// apply gzip compression only if client accepts it
-	if acceptsGzip {
-		w.Header().Set("Content-Encoding", "gzip")
-		gzipWriter = gzip.NewWriter(w)
-		backupWriter = gzipWriter
-		defer gzipWriter.Close()
-	}
-
-	// stream backup directly to response (through gzip if enabled)
-	if err := s.StorageEngine.Backup(r.Context(), backupWriter); err != nil {
+	// stream backup directly to response through gzip
+	if err := s.StorageEngine.Backup(r.Context(), gzipWriter); err != nil {
 		log.Printf("[ERROR] failed to create backup: %v", err)
 		// we've already started writing the response, so we can't send a proper error response
 		// just log the error and return
@@ -872,9 +859,7 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ensure gzip writer is properly flushed and closed
-	if gzipWriter != nil {
-		if err := gzipWriter.Close(); err != nil {
-			log.Printf("[ERROR] failed to close gzip writer: %v", err)
-		}
+	if err := gzipWriter.Close(); err != nil {
+		log.Printf("[ERROR] failed to close gzip writer: %v", err)
 	}
 }
