@@ -1458,6 +1458,10 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		assert.Equal(t, "application/sql", resp.Header.Get("Content-Type"))
 		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
 		assert.Empty(t, resp.Header.Get("Content-Encoding"), "should not be gzip encoded")
+		
+		// Make sure the response is not actually gzipped
+		_, err = gzip.NewReader(bytes.NewReader(body))
+		assert.Error(t, err, "response should not be gzipped")
 	})
 
 	t.Run("successful backup with gzip", func(t *testing.T) {

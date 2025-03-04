@@ -818,7 +818,7 @@ func GenerateRandomPassword(length int) (string, error) {
 	return password.String(), nil
 }
 
-// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression when supported
 func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.StorageEngine == nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -833,10 +833,17 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 		dbType = string(sqlEng.Type())
 	}
 	timestamp := time.Now().Format("20060102-150405")
-	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
 
 	// check if client accepts gzip
 	acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+
+	// set appropriate filename with or without .gz extension
+	var filename string
+	if acceptsGzip {
+		filename = fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
+	} else {
+		filename = fmt.Sprintf("tg-spam-backup-%s-%s.sql", dbType, timestamp)
+	}
 
 	// set headers for file download
 	w.Header().Set("Content-Type", "application/sql")
@@ -848,7 +855,7 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	var backupWriter io.Writer = w
 	var gzipWriter *gzip.Writer
 
-	// apply gzip compression
+	// apply gzip compression only if client accepts it
 	if acceptsGzip {
 		w.Header().Set("Content-Encoding", "gzip")
 		gzipWriter = gzip.NewWriter(w)
