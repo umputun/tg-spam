@@ -33,7 +33,7 @@
                 <tr>
                     <td class="ds-timestamp">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
                     <td>{{.UserID}}</td>
-                    <td>{{.UserName}}</td>
+                    <td class="ds-username">{{.UserName}}</td>
                     <td class="ds-text">{{.Text}}</td>
                     <td class="ds-checks">
                         {{range .Checks}}
