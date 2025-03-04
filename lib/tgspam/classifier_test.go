@@ -1,6 +1,7 @@
 package tgspam
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -247,4 +248,83 @@ func TestClassifier_Reset(t *testing.T) {
 		c.learn(doc)
 		assert.NotEmpty(t, c.learningResults)
 	})
+}
+
+func TestSoftmax(t *testing.T) {
+	tests := []struct {
+		name     string
+		logProbs map[spamClass]float64
+		expected map[spamClass]float64
+		desc     string
+	}{
+		{
+			name:     "normal case",
+			logProbs: map[spamClass]float64{good: -1.0, bad: 2.0},
+			expected: map[spamClass]float64{good: 0.0474, bad: 0.9526},
+			desc:     "Basic softmax calculation with normal values",
+		},
+		{
+			name:     "equal values",
+			logProbs: map[spamClass]float64{good: 1.0, bad: 1.0},
+			expected: map[spamClass]float64{good: 0.5, bad: 0.5},
+			desc:     "Equal log probabilities should produce equal probabilities",
+		},
+		{
+			name:     "large positive values",
+			logProbs: map[spamClass]float64{good: 1e308, bad: 1e308},
+			expected: map[spamClass]float64{good: 0.5, bad: 0.5},
+			desc:     "Very large positive values should not overflow",
+		},
+		{
+			name:     "large negative values",
+			logProbs: map[spamClass]float64{good: -745, bad: -744},
+			expected: map[spamClass]float64{good: 0.269, bad: 0.731},
+			desc:     "Very large negative values should not underflow",
+		},
+		{
+			name:     "extreme difference",
+			logProbs: map[spamClass]float64{good: -1e308, bad: 1e308},
+			expected: map[spamClass]float64{good: 0.0, bad: 1.0},
+			desc:     "Extreme differences should handle gracefully with clean underflow",
+		},
+		{
+			name:     "empty input",
+			logProbs: map[spamClass]float64{},
+			expected: nil,
+			desc:     "Empty input should return nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := softmax(tt.logProbs)
+
+			// check nil case
+			if tt.expected == nil {
+				assert.Nil(t, result)
+				return
+			}
+
+			// check result has same keys
+			assert.Equal(t, len(tt.expected), len(result), "Number of classes should match")
+
+			// for each expected class/value pair
+			for class, expected := range tt.expected {
+				actual, exists := result[class]
+				assert.True(t, exists, "Class %v should exist in result", class)
+				assert.InDelta(t, expected, actual, 0.001, "Probability for class %v should be close to expected", class)
+				assert.False(t, math.IsNaN(actual), "Probability should not be NaN")
+				assert.False(t, math.IsInf(actual, 0), "Probability should not be Inf")
+			}
+
+			// sum of probabilities should be 1.0 (or very close)
+			if len(result) > 0 {
+				sum := 0.0
+				for _, v := range result {
+					sum += v
+				}
+				assert.InDelta(t, 1.0, sum, 0.000001, "Sum of probabilities should be 1.0")
+			}
+		})
+	}
 }
