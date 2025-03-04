@@ -42,6 +42,9 @@ import (
 var templateFS embed.FS
 var tmpl = template.Must(template.ParseFS(templateFS, "assets/*.html", "assets/components/*.html"))
 
+// startTime tracks when the server started
+var startTime = time.Now()
+
 // Server is a web API server.
 type Server struct {
 	Config
@@ -632,12 +635,73 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+	// get database information if StorageEngine is available
+	var dbInfo struct {
+		DatabaseType   string `json:"database_type"`
+		GID            string `json:"gid"`
+		DatabaseStatus string `json:"database_status"`
+	}
+
+	if s.StorageEngine != nil {
+		// try to cast to SQL engine to get type information
+		if sqlEngine, ok := s.StorageEngine.(*engine.SQL); ok {
+			dbInfo.DatabaseType = string(sqlEngine.Type())
+			dbInfo.GID = sqlEngine.GID()
+			dbInfo.DatabaseStatus = "Connected"
+		} else {
+			dbInfo.DatabaseType = "Unknown"
+			dbInfo.DatabaseStatus = "Connected (unknown type)"
+		}
+	} else {
+		dbInfo.DatabaseStatus = "Not connected"
+	}
+
+	// get backup information
+	backupURL := "/download/backup"
+	backupFilename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbInfo.DatabaseType, time.Now().Format("20060102-150405"))
+
+	// get system info - uptime since server start
+	uptime := time.Since(startTime)
+
 	data := struct {
 		Settings
-		Version string
+		Version  string
+		Database struct {
+			Type   string
+			GID    string
+			Status string
+		}
+		Backup struct {
+			URL      string
+			Filename string
+		}
+		System struct {
+			Uptime string
+		}
 	}{
 		Settings: s.Settings,
 		Version:  s.Version,
+		Database: struct {
+			Type   string
+			GID    string
+			Status string
+		}{
+			Type:   dbInfo.DatabaseType,
+			GID:    dbInfo.GID,
+			Status: dbInfo.DatabaseStatus,
+		},
+		Backup: struct {
+			URL      string
+			Filename string
+		}{
+			URL:      backupURL,
+			Filename: backupFilename,
+		},
+		System: struct {
+			Uptime string
+		}{
+			Uptime: formatDuration(uptime),
+		},
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -645,6 +709,23 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
+}
+
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	}
+
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+
+	return fmt.Sprintf("%dm", minutes)
 }
 
 func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
