@@ -132,7 +132,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 				if err := l.adminHandler.MsgHandler(update); err != nil {
 					log.Printf("[WARN] failed to process admin chat message: %v", err)
-					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					if errResp != nil {
+						log.Printf("[WARN] failed to respond on error, %v", errResp)
+					}
 				}
 				continue
 			}
@@ -141,7 +144,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.CallbackQuery != nil {
 				if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
 					log.Printf("[WARN] failed to process callback: %v", err)
-					_ = l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID)
+					if errResp != nil {
+						log.Printf("[WARN] failed to respond on error, %v", errResp)
+					}
 				}
 				continue
 			}
@@ -171,26 +177,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			// handle spam reports from superusers
-			if update.Message.ReplyToMessage != nil && l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) {
-				if strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam") {
-					log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
-					if err := l.adminHandler.DirectSpamReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct spam report: %v", err)
-					}
-					continue
-				}
-				if strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban") {
-					log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
-					if err := l.adminHandler.DirectBanReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct ban request: %v", err)
-					}
-					continue
-				}
-				if strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn") {
-					log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
-					if err := l.adminHandler.DirectWarnReport(update); err != nil {
-						log.Printf("[WARN] failed to process direct warning request: %v", err)
-					}
+			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID)
+			if update.Message.ReplyToMessage != nil && fromSuper {
+				if l.procSuperReply(update) {
+					// superuser command processed, skip the rest
 					continue
 				}
 			}
@@ -286,6 +276,31 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	return errs.ErrorOrNil()
+}
+
+// procSuperReply processes superuser commands (reply) /spam, /ban, /warn
+func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
+	switch {
+	case strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam"):
+		log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
+		if err := l.adminHandler.DirectSpamReport(update); err != nil {
+			log.Printf("[WARN] failed to process direct spam report: %v", err)
+		}
+		return true
+	case strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban"):
+		log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
+		if err := l.adminHandler.DirectBanReport(update); err != nil {
+			log.Printf("[WARN] failed to process direct ban request: %v", err)
+		}
+		return true
+	case strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn"):
+		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
+		if err := l.adminHandler.DirectWarnReport(update); err != nil {
+			log.Printf("[WARN] failed to process direct warning request: %v", err)
+		}
+		return true
+	}
+	return false
 }
 
 // procNewChatMemberMessage saves new chat member message to locator. It is used to delete the message if the user kicked out
