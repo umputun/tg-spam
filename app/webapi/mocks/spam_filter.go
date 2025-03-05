@@ -66,22 +66,22 @@ type SpamFilterMock struct {
 		}
 		// RemoveDynamicHamSample holds details about calls to the RemoveDynamicHamSample method.
 		RemoveDynamicHamSample []struct {
-			// sample is the sample argument value.
+			// Sample is the sample argument value.
 			Sample string
 		}
 		// RemoveDynamicSpamSample holds details about calls to the RemoveDynamicSpamSample method.
 		RemoveDynamicSpamSample []struct {
-			// sample is the sample argument value.
+			// Sample is the sample argument value.
 			Sample string
 		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 		// UpdateSpam holds details about calls to the UpdateSpam method.
 		UpdateSpam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 	}

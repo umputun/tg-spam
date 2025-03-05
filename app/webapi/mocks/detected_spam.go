@@ -31,7 +31,7 @@ import (
 //
 //	}
 type DetectedSpamMock struct {
-	// findByUserIDFunc mocks the FindByUserID method.
+	// FindByUserIDFunc mocks the FindByUserID method.
 	FindByUserIDFunc func(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
 
 	// ReadFunc mocks the Read method.
@@ -42,21 +42,21 @@ type DetectedSpamMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// findByUserID holds details about calls to the FindByUserID method.
+		// FindByUserID holds details about calls to the FindByUserID method.
 		FindByUserID []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// UserID is the userID argument value.
 			UserID int64
 		}
-		// read holds details about calls to the Read method.
+		// Read holds details about calls to the Read method.
 		Read []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
 		// SetAddedToSamplesFlag holds details about calls to the SetAddedToSamplesFlag method.
 		SetAddedToSamplesFlag []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// ID is the id argument value.
 			ID int64

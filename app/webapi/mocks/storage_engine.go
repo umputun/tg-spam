@@ -5,6 +5,7 @@ package mocks
 
 import (
 	"context"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"io"
 	"sync"
 )
@@ -18,6 +19,12 @@ import (
 //			BackupFunc: func(ctx context.Context, w io.Writer) error {
 //				panic("mock out the Backup method")
 //			},
+//			BackupSqliteAsPostgresFunc: func(ctx context.Context, w io.Writer) error {
+//				panic("mock out the BackupSqliteAsPostgres method")
+//			},
+//			TypeFunc: func() engine.Type {
+//				panic("mock out the Type method")
+//			},
 //		}
 //
 //		// use mockedStorageEngine in code that requires webapi.StorageEngine
@@ -28,17 +35,35 @@ type StorageEngineMock struct {
 	// BackupFunc mocks the Backup method.
 	BackupFunc func(ctx context.Context, w io.Writer) error
 
+	// BackupSqliteAsPostgresFunc mocks the BackupSqliteAsPostgres method.
+	BackupSqliteAsPostgresFunc func(ctx context.Context, w io.Writer) error
+
+	// TypeFunc mocks the Type method.
+	TypeFunc func() engine.Type
+
 	// calls tracks calls to the methods.
 	calls struct {
-		// backup holds details about calls to the Backup method.
+		// Backup holds details about calls to the Backup method.
 		Backup []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// w is the w argument value.
+			// W is the w argument value.
 			W io.Writer
 		}
+		// BackupSqliteAsPostgres holds details about calls to the BackupSqliteAsPostgres method.
+		BackupSqliteAsPostgres []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// W is the w argument value.
+			W io.Writer
+		}
+		// Type holds details about calls to the Type method.
+		Type []struct {
+		}
 	}
-	lockBackup sync.RWMutex
+	lockBackup                 sync.RWMutex
+	lockBackupSqliteAsPostgres sync.RWMutex
+	lockType                   sync.RWMutex
 }
 
 // Backup calls BackupFunc.
@@ -84,9 +109,94 @@ func (mock *StorageEngineMock) ResetBackupCalls() {
 	mock.lockBackup.Unlock()
 }
 
+// BackupSqliteAsPostgres calls BackupSqliteAsPostgresFunc.
+func (mock *StorageEngineMock) BackupSqliteAsPostgres(ctx context.Context, w io.Writer) error {
+	if mock.BackupSqliteAsPostgresFunc == nil {
+		panic("StorageEngineMock.BackupSqliteAsPostgresFunc: method is nil but StorageEngine.BackupSqliteAsPostgres was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		W   io.Writer
+	}{
+		Ctx: ctx,
+		W:   w,
+	}
+	mock.lockBackupSqliteAsPostgres.Lock()
+	mock.calls.BackupSqliteAsPostgres = append(mock.calls.BackupSqliteAsPostgres, callInfo)
+	mock.lockBackupSqliteAsPostgres.Unlock()
+	return mock.BackupSqliteAsPostgresFunc(ctx, w)
+}
+
+// BackupSqliteAsPostgresCalls gets all the calls that were made to BackupSqliteAsPostgres.
+// Check the length with:
+//
+//	len(mockedStorageEngine.BackupSqliteAsPostgresCalls())
+func (mock *StorageEngineMock) BackupSqliteAsPostgresCalls() []struct {
+	Ctx context.Context
+	W   io.Writer
+} {
+	var calls []struct {
+		Ctx context.Context
+		W   io.Writer
+	}
+	mock.lockBackupSqliteAsPostgres.RLock()
+	calls = mock.calls.BackupSqliteAsPostgres
+	mock.lockBackupSqliteAsPostgres.RUnlock()
+	return calls
+}
+
+// ResetBackupSqliteAsPostgresCalls reset all the calls that were made to BackupSqliteAsPostgres.
+func (mock *StorageEngineMock) ResetBackupSqliteAsPostgresCalls() {
+	mock.lockBackupSqliteAsPostgres.Lock()
+	mock.calls.BackupSqliteAsPostgres = nil
+	mock.lockBackupSqliteAsPostgres.Unlock()
+}
+
+// Type calls TypeFunc.
+func (mock *StorageEngineMock) Type() engine.Type {
+	if mock.TypeFunc == nil {
+		panic("StorageEngineMock.TypeFunc: method is nil but StorageEngine.Type was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockType.Lock()
+	mock.calls.Type = append(mock.calls.Type, callInfo)
+	mock.lockType.Unlock()
+	return mock.TypeFunc()
+}
+
+// TypeCalls gets all the calls that were made to Type.
+// Check the length with:
+//
+//	len(mockedStorageEngine.TypeCalls())
+func (mock *StorageEngineMock) TypeCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockType.RLock()
+	calls = mock.calls.Type
+	mock.lockType.RUnlock()
+	return calls
+}
+
+// ResetTypeCalls reset all the calls that were made to Type.
+func (mock *StorageEngineMock) ResetTypeCalls() {
+	mock.lockType.Lock()
+	mock.calls.Type = nil
+	mock.lockType.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *StorageEngineMock) ResetCalls() {
 	mock.lockBackup.Lock()
 	mock.calls.Backup = nil
 	mock.lockBackup.Unlock()
+
+	mock.lockBackupSqliteAsPostgres.Lock()
+	mock.calls.BackupSqliteAsPostgres = nil
+	mock.lockBackupSqliteAsPostgres.Unlock()
+
+	mock.lockType.Lock()
+	mock.calls.Type = nil
+	mock.lockType.Unlock()
 }

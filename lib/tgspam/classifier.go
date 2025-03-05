@@ -190,23 +190,23 @@ func softmax(logProbs map[spamClass]float64) map[spamClass]float64 {
 		return nil
 	}
 
-	// Step 1: Find the max value to subtract (prevents overflow)
-	maxVal := math.Inf(-1) // Start with negative infinity
+	// step 1: Find the max value to subtract (prevents overflow)
+	maxVal := math.Inf(-1) // start with negative infinity
 	for _, v := range logProbs {
 		if v > maxVal {
 			maxVal = v
 		}
 	}
 
-	// Step 2: Compute exp(x - maxVal) and sum for normalization
+	// step 2: Compute exp(x - maxVal) and sum for normalization
 	expSum := 0.0
 	exps := make(map[spamClass]float64)
 	for cat, v := range logProbs {
-		exps[cat] = math.Exp(v - maxVal) // Shift by maxVal keeps exp safe
+		exps[cat] = math.Exp(v - maxVal) // shift by maxVal keeps exp safe
 		expSum += exps[cat]
 	}
 
-	// Step 3: Normalize to get probabilities
+	// step 3: Normalize to get probabilities
 	probs := make(map[spamClass]float64)
 	for cat, v := range exps {
 		probs[cat] = v / expSum // expSum > 0 since exp(x) > 0

@@ -130,6 +130,11 @@ func (e *SQL) Type() Type {
 	return e.dbType
 }
 
+// SetDBType sets the database engine type (used for testing)
+func (e *SQL) SetDBType(dbType Type) {
+	e.dbType = dbType
+}
+
 // MakeLock creates a new lock for the database engine
 func (e *SQL) MakeLock() RWLocker {
 	if e.dbType == Sqlite {
@@ -150,6 +155,13 @@ func (e *SQL) Backup(ctx context.Context, w io.Writer) error {
 	default:
 		return fmt.Errorf("backup not supported for database type: %s", e.dbType)
 	}
+}
+
+// BackupSqliteAsPostgres creates a PostgreSQL-compatible backup from a SQLite database
+// and writes it to the provided writer.
+func (e *SQL) BackupSqliteAsPostgres(ctx context.Context, w io.Writer) error {
+	converter := NewConverter(e)
+	return converter.SqliteToPostgres(ctx, w)
 }
 
 // Adopt adopts placeholders in a query for the database engine

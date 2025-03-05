@@ -141,6 +141,8 @@ type DetectedSpam interface {
 // StorageEngine provides access to the database engine for operations like backup
 type StorageEngine interface {
 	Backup(ctx context.Context, w io.Writer) error
+	Type() engine.Type
+	BackupSqliteAsPostgres(ctx context.Context, w io.Writer) error
 }
 
 // NewServer creates a new web API server.
@@ -216,6 +218,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 			}))
 			r.HandleFunc("GET /detected_spam", s.downloadDetectedSpamHandler)
 			r.HandleFunc("GET /backup", s.downloadBackupHandler)
+			r.HandleFunc("GET /export-to-postgres", s.downloadExportToPostgresHandler)
 		})
 
 		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
@@ -777,6 +780,102 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 	_, _ = w.Write([]byte(body))
 }
 
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+// Files are always compressed and always have .gz extension to ensure consistency
+func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// set filename based on database type and timestamp
+	dbType := "db"
+	sqlEng, ok := s.StorageEngine.(*engine.SQL)
+	if ok {
+		dbType = string(sqlEng.Type())
+	}
+	timestamp := time.Now().Format("20060102-150405")
+
+	// always use a .gz extension as the content is always compressed
+	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
+
+	// set headers for file download - note we're using application/octet-stream
+	// instead of application/sql to prevent browsers from trying to interpret the file
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// create a gzip writer that streams to response
+	gzipWriter := gzip.NewWriter(w)
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}()
+
+	// stream backup directly to response through gzip
+	if err := s.StorageEngine.Backup(r.Context(), gzipWriter); err != nil {
+		log.Printf("[ERROR] failed to create backup: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		return
+	}
+
+	// flush the gzip writer to ensure all data is written
+	if err := gzipWriter.Flush(); err != nil {
+		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
+	}
+}
+
+// downloadExportToPostgresHandler streams a PostgreSQL-compatible export from a SQLite database
+func (s *Server) downloadExportToPostgresHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// check if the database is SQLite
+	if s.StorageEngine.Type() != engine.Sqlite {
+		w.WriteHeader(http.StatusBadRequest)
+		rest.RenderJSON(w, rest.JSON{"error": "source database must be SQLite"})
+		return
+	}
+
+	// set filename based on timestamp
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("tg-spam-sqlite-to-postgres-%s.sql.gz", timestamp)
+
+	// set headers for file download
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// create a gzip writer that streams to response
+	gzipWriter := gzip.NewWriter(w)
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}()
+
+	// stream export directly to response through gzip
+	if err := s.StorageEngine.BackupSqliteAsPostgres(r.Context(), gzipWriter); err != nil {
+		log.Printf("[ERROR] failed to create export: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		return
+	}
+
+	// flush the gzip writer to ensure all data is written
+	if err := gzipWriter.Flush(); err != nil {
+		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
+	}
+}
+
 func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
@@ -897,53 +996,4 @@ func GenerateRandomPassword(length int) (string, error) {
 	}
 
 	return password.String(), nil
-}
-
-// downloadBackupHandler streams a database backup as an SQL file with gzip compression
-// Files are always compressed and always have .gz extension to ensure consistency
-func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
-	if s.StorageEngine == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
-		return
-	}
-
-	// set filename based on database type and timestamp
-	dbType := "db"
-	sqlEng, ok := s.StorageEngine.(*engine.SQL)
-	if ok {
-		dbType = string(sqlEng.Type())
-	}
-	timestamp := time.Now().Format("20060102-150405")
-
-	// always use a .gz extension as the content is always compressed
-	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
-
-	// set headers for file download - note we're using application/octet-stream
-	// instead of application/sql to prevent browsers from trying to interpret the file
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
-
-	// create a gzip writer that streams to response
-	gzipWriter := gzip.NewWriter(w)
-	defer func() {
-		if err := gzipWriter.Close(); err != nil {
-			log.Printf("[ERROR] failed to close gzip writer: %v", err)
-		}
-	}()
-
-	// stream backup directly to response through gzip
-	if err := s.StorageEngine.Backup(r.Context(), gzipWriter); err != nil {
-		log.Printf("[ERROR] failed to create backup: %v", err)
-		// we've already started writing the response, so we can't send a proper error response
-		return
-	}
-
-	// flush the gzip writer to ensure all data is written
-	if err := gzipWriter.Flush(); err != nil {
-		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
-	}
 }
