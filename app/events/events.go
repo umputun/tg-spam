@@ -17,6 +17,7 @@ import (
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
+//go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {

@@ -63,7 +63,7 @@ type BotMock struct {
 		AddApprovedUser []struct {
 			// ID is the id argument value.
 			ID int64
-			// name is the name argument value.
+			// Name is the name argument value.
 			Name string
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
@@ -73,7 +73,7 @@ type BotMock struct {
 		}
 		// OnMessage holds details about calls to the OnMessage method.
 		OnMessage []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg bot.Message
 			// CheckOnly is the checkOnly argument value.
 			CheckOnly bool
@@ -85,12 +85,12 @@ type BotMock struct {
 		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 		// UpdateSpam holds details about calls to the UpdateSpam method.
 		UpdateSpam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 	}

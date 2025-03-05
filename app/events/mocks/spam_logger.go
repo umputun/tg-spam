@@ -29,11 +29,11 @@ type SpamLoggerMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// save holds details about calls to the Save method.
+		// Save holds details about calls to the Save method.
 		Save []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg *bot.Message
-			// response is the response argument value.
+			// Response is the response argument value.
 			Response *bot.Response
 		}
 	}
