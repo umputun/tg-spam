@@ -79,6 +79,7 @@ type options struct {
 		VideosOnly bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 		AudiosOnly bool `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		Forward    bool `long:"forward" env:"FORWARD" description:"enable forward check"`
+		Keyboard   bool `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -431,13 +432,14 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		StorageTimeout:          opts.StorageTimeout,
 		NoSpamReply:             opts.NoSpamReply,
 		CasEnabled:              opts.CAS.API != "",
-		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.LinksOnly,
+		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard,
 		MetaLinksLimit:          opts.Meta.LinksLimit,
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MetaVideoOnly:           opts.Meta.VideosOnly,
 		MetaAudioOnly:           opts.Meta.AudiosOnly,
 		MetaForwarded:           opts.Meta.Forward,
+		MetaKeyboard:            opts.Meta.Keyboard,
 		MultiLangLimit:          opts.MultiLangWords,
 		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		OpenAIVeto:              opts.OpenAI.Veto,
@@ -566,6 +568,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Meta.Forward {
 		log.Printf("[INFO] forward check enabled")
 		metaChecks = append(metaChecks, tgspam.ForwardedCheck())
+	}
+	if opts.Meta.Keyboard {
+		log.Printf("[INFO] keyboard check enabled")
+		metaChecks = append(metaChecks, tgspam.KeyboardCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 

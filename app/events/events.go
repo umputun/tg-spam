@@ -301,6 +301,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}
+	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
+		message.WithKeyboard = true
+	}
 
 	// handle reply-to message if present
 	if msg.ReplyToMessage != nil {
