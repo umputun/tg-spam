@@ -11,8 +11,7 @@ services:
         max-size: "10m"
         max-file: "5"
     environment:
-      - TELEGRAM_TOKEN
-      - TELEGRAM_GROUP
-      - FILES_DYNAMIC=/srv/dynamic
+      - TELEGRAM_TOKEN # should be set in environment or in .env file
+      - TELEGRAM_GROUP # should be set in environment or in .env file
     volumes:
-      - var/tg-spam:/srv/dynamic # mount volume to store dynamic files
+      - ./var:/srv/data # mount volume to store persistent data on host's var directory
