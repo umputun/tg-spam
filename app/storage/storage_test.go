@@ -115,6 +115,177 @@ func (s *StorageTestSuite) getTestDB() []struct {
 
 // common tests
 
+func TestPrepareStoreURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		connURL  string
+		wantType engine.Type
+		wantConn string
+		wantErr  bool
+	}{
+		{
+			name:     "sqlite file",
+			connURL:  "test.db",
+			wantType: engine.Sqlite,
+			wantConn: "test.db",
+			wantErr:  false,
+		},
+		{
+			name:     "sqlite file with extension",
+			connURL:  "test.sqlite",
+			wantType: engine.Sqlite,
+			wantConn: "test.sqlite",
+			wantErr:  false,
+		},
+		{
+			name:     "sqlite url",
+			connURL:  "sqlite:/path/to/db",
+			wantType: engine.Sqlite,
+			wantConn: "file:/path/to/db",
+			wantErr:  false,
+		},
+		{
+			name:     "sqlite3 url",
+			connURL:  "sqlite3:/path/to/db",
+			wantType: engine.Sqlite,
+			wantConn: "file:/path/to/db",
+			wantErr:  false,
+		},
+		{
+			name:     "memory",
+			connURL:  "memory",
+			wantType: engine.Sqlite,
+			wantConn: ":memory:",
+			wantErr:  false,
+		},
+		{
+			name:     "memory url",
+			connURL:  "memory://",
+			wantType: engine.Sqlite,
+			wantConn: ":memory:",
+			wantErr:  false,
+		},
+		{
+			name:     "mem url",
+			connURL:  "mem://",
+			wantType: engine.Sqlite,
+			wantConn: ":memory:",
+			wantErr:  false,
+		},
+		{
+			name:     "in-memory",
+			connURL:  "file::memory:",
+			wantType: engine.Sqlite,
+			wantConn: ":memory:",
+			wantErr:  false,
+		},
+		{
+			name:     "postgres url",
+			connURL:  "postgres://user:pass@host:5432/db",
+			wantType: engine.Postgres,
+			wantConn: "postgres://user:pass@host:5432/db",
+			wantErr:  false,
+		},
+		{
+			name:     "mysql without parseTime",
+			connURL:  "user:pass@tcp(host:3306)/db",
+			wantType: engine.Mysql,
+			wantConn: "user:pass@tcp(host:3306)/db?parseTime=true",
+			wantErr:  false,
+		},
+		{
+			name:     "mysql with other params",
+			connURL:  "user:pass@tcp(host:3306)/db?charset=utf8",
+			wantType: engine.Mysql,
+			wantConn: "user:pass@tcp(host:3306)/db?charset=utf8&parseTime=true",
+			wantErr:  false,
+		},
+		{
+			name:     "mysql with parseTime",
+			connURL:  "user:pass@tcp(host:3306)/db?parseTime=true",
+			wantType: engine.Mysql,
+			wantConn: "user:pass@tcp(host:3306)/db?parseTime=true",
+			wantErr:  false,
+		},
+		{
+			name:     "unsupported url",
+			connURL:  "invalid-url",
+			wantType: engine.Unknown,
+			wantConn: "",
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbType, conn, err := prepareStoreURL(tc.connURL)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("prepareStoreURL(%q) returned no error, expected an error", tc.connURL)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("prepareStoreURL(%q) returned unexpected error: %v", tc.connURL, err)
+			}
+			if dbType != tc.wantType {
+				t.Errorf("prepareStoreURL(%q) returned dbType = %v, want %v", tc.connURL, dbType, tc.wantType)
+			}
+			if conn != tc.wantConn {
+				t.Errorf("prepareStoreURL(%q) returned conn = %q, want %q", tc.connURL, conn, tc.wantConn)
+			}
+		})
+	}
+}
+
+func TestNew(t *testing.T) {
+	ctx := context.Background()
+
+	// test creating SQLite in-memory database
+	t.Run("sqlite in-memory", func(t *testing.T) {
+		db, err := New(ctx, "memory", "test-group")
+		if err != nil {
+			t.Fatalf("New(ctx, 'memory', 'test-group') failed: %v", err)
+		}
+		defer db.Close()
+
+		if db.Type() != engine.Sqlite {
+			t.Errorf("New(ctx, 'memory', 'test-group') returned type = %v, want %v", db.Type(), engine.Sqlite)
+		}
+	})
+
+	// test creating SQLite file database
+	t.Run("sqlite file", func(t *testing.T) {
+		tmpFile := filepath.Join(os.TempDir(), "test-new-func.db")
+		defer os.Remove(tmpFile)
+
+		db, err := New(ctx, tmpFile, "test-group")
+		if err != nil {
+			t.Fatalf("New(ctx, %q, 'test-group') failed: %v", tmpFile, err)
+		}
+		defer db.Close()
+
+		if db.Type() != engine.Sqlite {
+			t.Errorf("New(ctx, %q, 'test-group') returned type = %v, want %v", tmpFile, db.Type(), engine.Sqlite)
+		}
+	})
+
+	// test with invalid URL
+	t.Run("invalid url", func(t *testing.T) {
+		_, err := New(ctx, "invalid-url", "test-group")
+		if err == nil {
+			t.Error("New(ctx, 'invalid-url', 'test-group') returned no error, expected an error")
+		}
+	})
+
+	// skip Postgres tests if short mode (similar to what the suite does)
+	if !testing.Short() {
+		// we could add a PostgreSQL test here, but it would require setting up a container
+		// which is already well tested in the StorageTestSuite
+		t.Skip("skipping postgres test in standalone mode - already tested in suite")
+	}
+}
+
 func (s *StorageTestSuite) TestIsolation() {
 	ctx := context.Background()
 	s.Run("sqlite isolation via separate files", func() {

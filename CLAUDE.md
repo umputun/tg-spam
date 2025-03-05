@@ -6,7 +6,7 @@
 - Run single test: `go test -v -race ./path/to/package -run TestName`
 - Lint: `golangci-lint run`
 - Coverage report: `go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
-- Normalize code comments: `go install github.com/umputun/unfuck-ai-comments@latest && unfuck-ai-comments run -fmt ./...`
+- Normalize code comments: `command -v unfuck-ai-comments >/dev/null || go install github.com/umputun/unfuck-ai-comments@latest; unfuck-ai-comments run --fmt --skip=mocks ./...`
 
 ## Important Workflow Notes
 - Always run tests and linter before committing: `go test -race ./... && golangci-lint run`

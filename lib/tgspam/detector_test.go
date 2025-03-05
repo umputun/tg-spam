@@ -1410,6 +1410,40 @@ func Test_cleanEmoji(t *testing.T) {
 	}
 }
 
+func TestDetector_RemoveHam(t *testing.T) {
+	// setup a test detector with mock updater
+	updMock := &mocks.SampleUpdaterMock{
+		RemoveFunc: func(msg string) error {
+			return nil
+		},
+		AppendFunc: func(msg string) error {
+			return nil
+		},
+	}
+
+	d := NewDetector(Config{})
+	d.WithHamUpdater(updMock)
+
+	// setup the classifier with ham samples
+	hamSamples := strings.NewReader("test message\nhello world")
+	lr, err := d.LoadSamples(strings.NewReader(""), nil, []io.Reader{hamSamples})
+	require.NoError(t, err)
+	require.Equal(t, 2, lr.HamSamples)
+
+	// test removing a ham sample that exists
+	assert.NoError(t, d.RemoveHam("test message"))
+	assert.Equal(t, 1, len(updMock.RemoveCalls()))
+	assert.Equal(t, "test message", updMock.RemoveCalls()[0].Msg)
+
+	// test error handling
+	updMock.RemoveFunc = func(msg string) error {
+		return errors.New("remove error")
+	}
+	err = d.RemoveHam("hello world")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "remove error")
+}
+
 func TestDetector_RemoveSpamHam(t *testing.T) {
 	updSpam := &mocks.SampleUpdaterMock{
 		RemoveFunc: func(msg string) error {

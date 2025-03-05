@@ -250,6 +250,48 @@ func TestVideosCheck(t *testing.T) {
 	}
 }
 
+func TestForwardedCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name: "message is forwarded",
+			req: spamcheck.Request{
+				Meta: spamcheck.MetaData{
+					HasForward: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "forward",
+				Spam:    true,
+				Details: "forwarded message",
+			},
+		},
+		{
+			name: "message is not forwarded",
+			req: spamcheck.Request{
+				Meta: spamcheck.MetaData{
+					HasForward: false,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "forward",
+				Spam:    false,
+				Details: "not a forwarded message",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := ForwardedCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestAudioCheck(t *testing.T) {
 	tests := []struct {
 		name     string

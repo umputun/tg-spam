@@ -12,6 +12,47 @@ import (
 	"github.com/umputun/tg-spam/app/events/mocks"
 )
 
+func TestSpamLoggerFunc_Save(t *testing.T) {
+	// Create a test message and response
+	msg := &bot.Message{
+		ID:     123,
+		ChatID: 456,
+		Text:   "test message",
+		From: bot.User{
+			ID:          789,
+			Username:    "testuser",
+			DisplayName: "Test User",
+		},
+	}
+	
+	response := &bot.Response{
+		Text:        "test response",
+		Send:        true,
+		BanInterval: time.Minute,
+		User: bot.User{
+			ID:          789,
+			Username:    "testuser",
+			DisplayName: "Test User",
+		},
+	}
+
+	// Create a counter to check if the function was called
+	counter := 0
+	
+	// Create a SpamLoggerFunc that increments the counter
+	loggerFunc := SpamLoggerFunc(func(m *bot.Message, r *bot.Response) {
+		counter++
+		assert.Equal(t, msg, m)
+		assert.Equal(t, response, r)
+	})
+	
+	// Call the Save method
+	loggerFunc.Save(msg, response)
+	
+	// Check that the function was called once
+	assert.Equal(t, 1, counter)
+}
+
 func TestEvents_escapeMarkDownV1Text(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -183,6 +224,57 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 				Text:        "Forwarded message",
 				ChatID:      123456,
 				WithForward: true,
+			},
+		},
+		{
+			name: "Message with reply",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Text:      "Reply to message",
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 29,
+					Date:      1578627400,
+					Text:      "Original message",
+					From: &tbapi.User{
+						ID:        100000002,
+						UserName:  "original_user",
+						FirstName: "Original",
+						LastName:  "User",
+					},
+				},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+				},
+				Sent:   time.Unix(1578627415, 0),
+				Text:   "Reply to message",
+				ChatID: 123456,
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+				}{
+					Sent: time.Unix(1578627400, 0),
+					Text: "Original message",
+					From: bot.User{
+						ID:          100000002,
+						Username:    "original_user",
+						DisplayName: "Original User",
+					},
+				},
 			},
 		},
 		{
@@ -411,6 +503,97 @@ func TestTelegramListener_transformEntities(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, transform(tt.input))
+		})
+	}
+}
+
+func TestTelegramListener_transformReplyTo(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "reply with spaces in display name",
+			in: &tbapi.Message{
+				MessageID: 100,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "reply message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				ReplyToMessage: &tbapi.Message{
+					Text: "original message",
+					From: &tbapi.User{
+						ID:        789,
+						UserName:  "user2",
+						FirstName: "  John  ",
+						LastName:  " Doe ",
+					},
+				},
+			},
+			out: bot.Message{
+				ID:     100,
+				ChatID: 123,
+				Text:   "reply message",
+				From:   bot.User{ID: 456, Username: "user1"},
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+				}{
+					Text: "original message",
+					From: bot.User{
+						ID:          789,
+						Username:    "user2",
+						DisplayName: "  John    Doe ",
+					},
+				},
+			},
+		},
+		{
+			name: "reply with empty last name",
+			in: &tbapi.Message{
+				MessageID: 101,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "reply message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				ReplyToMessage: &tbapi.Message{
+					Text: "original message",
+					From: &tbapi.User{
+						ID:        789,
+						UserName:  "user2",
+						FirstName: "John",
+						LastName:  "",
+					},
+				},
+			},
+			out: bot.Message{
+				ID:     101,
+				ChatID: 123,
+				Text:   "reply message",
+				From:   bot.User{ID: 456, Username: "user1"},
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+				}{
+					Text: "original message",
+					From: bot.User{
+						ID:          789,
+						Username:    "user2",
+						DisplayName: "John ",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.ReplyTo.From, res.ReplyTo.From)
+			assert.Equal(t, tt.out.ReplyTo.Text, res.ReplyTo.Text)
 		})
 	}
 }

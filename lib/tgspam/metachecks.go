@@ -113,7 +113,10 @@ func ForwardedCheck() MetaCheck {
 				Details: "forwarded message",
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "forward", Details: "not forwarded message"}
+		return spamcheck.Response{
+			Name:    "forward",
+			Spam:    false,
+			Details: "not a forwarded message",
+		}
 	}
-
 }
