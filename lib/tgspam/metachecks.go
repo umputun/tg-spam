@@ -120,3 +120,22 @@ func ForwardedCheck() MetaCheck {
 		}
 	}
 }
+
+// KeyboardCheck is a function that returns a MetaCheck function.
+// It checks if the message has a keyboard (buttons).
+func KeyboardCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasKeyboard {
+			return spamcheck.Response{
+				Name:    "keyboard",
+				Spam:    true,
+				Details: "message with keyboard",
+			}
+		}
+		return spamcheck.Response{
+			Name:    "keyboard",
+			Spam:    false,
+			Details: "no keyboard",
+		}
+	}
+}

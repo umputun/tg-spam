@@ -16,16 +16,17 @@ type Request struct {
 
 // MetaData is a meta-info about the message, provided by the client.
 type MetaData struct {
-	Images     int  `json:"images"`      // number of images in the message
-	Links      int  `json:"links"`       // number of links in the message
-	HasVideo   bool `json:"has_video"`   // true if the message has a video or video note
-	HasAudio   bool `json:"has_audio"`   // true if the message has an audio
-	HasForward bool `json:"has_forward"` // true if the message has a forward
+	Images      int  `json:"images"`       // number of images in the message
+	Links       int  `json:"links"`        // number of links in the message
+	HasVideo    bool `json:"has_video"`    // true if the message has a video or video note
+	HasAudio    bool `json:"has_audio"`    // true if the message has an audio
+	HasForward  bool `json:"has_forward"`  // true if the message has a forward
+	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, has_video:%v, has_audio:%v, has_forward:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward)
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v",
+		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard)
 }
 
 // Response is a result of spam check.

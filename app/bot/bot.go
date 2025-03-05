@@ -59,6 +59,7 @@ type Message struct {
 	WithVideoNote bool `json:",omitempty"`
 	WithForward   bool `json:",omitempty"`
 	WithAudio     bool `json:",omitempty"`
+	WithKeyboard  bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.

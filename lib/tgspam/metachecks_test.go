@@ -341,3 +341,57 @@ func TestAudioCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyboardCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name: "No keyboard",
+			req: spamcheck.Request{
+				Msg: "This is a message with text.",
+				Meta: spamcheck.MetaData{
+					HasKeyboard: false,
+				},
+			},
+			expected: spamcheck.Response{Name: "keyboard", Spam: false, Details: "no keyboard"},
+		},
+		{
+			name: "Message with keyboard",
+			req: spamcheck.Request{
+				Msg: "This is a message with text and buttons.",
+				Meta: spamcheck.MetaData{
+					HasKeyboard: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "keyboard",
+				Spam:    true,
+				Details: "message with keyboard",
+			},
+		},
+		{
+			name: "Empty message with keyboard",
+			req: spamcheck.Request{
+				Msg: "",
+				Meta: spamcheck.MetaData{
+					HasKeyboard: true,
+				},
+			},
+			expected: spamcheck.Response{
+				Name:    "keyboard",
+				Spam:    true,
+				Details: "message with keyboard",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := KeyboardCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
