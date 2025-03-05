@@ -62,7 +62,6 @@
                     <h5 class="mb-0">Backup & Recovery</h5>
                 </div>
                 <div class="card-body">
-                    <p class="card-text">Download a backup of your database to protect your data.</p>
                     <div class="d-grid gap-2">
                         <a href="{{.Backup.URL}}" class="btn btn-custom-blue" download="{{.Backup.Filename}}">
                             <i class="bi bi-download me-1"></i> Download Database Backup
@@ -72,14 +71,10 @@
                         <a href="/download/export-to-postgres" class="btn btn-outline-primary mt-2">
                             <i class="bi bi-download me-1"></i> Export to PostgreSQL
                         </a>
-                        <p class="small text-muted mt-1">
-                            Convert SQLite database to PostgreSQL format for migration.
-                        </p>
                         {{end}}
                     </div>
                     <p class="small text-muted mt-2">
-                        Compressed SQL backup file with all your data.
-                        Store this file in a safe location.
+                        Store backup files in a safe location.
                     </p>
                 </div>
             </div>
