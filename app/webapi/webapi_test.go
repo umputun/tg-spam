@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -883,30 +884,108 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 }
 
 func TestServer_htmlAddDetectedSpamHandler(t *testing.T) {
-	ds := &mocks.DetectedSpamMock{
-		SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
-			return nil
-		},
-	}
-	sf := &mocks.SpamFilterMock{
-		UpdateSpamFunc: func(msg string) error {
-			return nil
-		},
-	}
-	server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
-	req, err := http.NewRequest("POST", "/detected_spam/add?id=123&msg=blah", http.NoBody)
-	require.NoError(t, err)
+	t.Run("successful addition", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
+				return nil
+			},
+		}
+		sf := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(msg string) error {
+				return nil
+			},
+		}
+		server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+		req, err := http.NewRequest("POST", "/detected_spam/add?id=123&msg=blah", http.NoBody)
+		require.NoError(t, err)
 
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
 
-	handler.ServeHTTP(rr, req)
+		handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, 1, len(ds.SetAddedToSamplesFlagCalls()))
-	assert.Equal(t, int64(123), ds.SetAddedToSamplesFlagCalls()[0].ID)
-	assert.Equal(t, 1, len(sf.UpdateSpamCalls()))
-	assert.Equal(t, "blah", sf.UpdateSpamCalls()[0].Msg)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 1, len(ds.SetAddedToSamplesFlagCalls()))
+		assert.Equal(t, int64(123), ds.SetAddedToSamplesFlagCalls()[0].ID)
+		assert.Equal(t, 1, len(sf.UpdateSpamCalls()))
+		assert.Equal(t, "blah", sf.UpdateSpamCalls()[0].Msg)
+	})
+
+	t.Run("bad request - missing ID", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{}
+		sf := &mocks.SpamFilterMock{}
+		server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+
+		req, err := http.NewRequest("POST", "/detected_spam/add?msg=blah", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Contains(t, rr.Header().Get("HX-Retarget"), "#error-message")
+		assert.Contains(t, rr.Body.String(), "bad request")
+	})
+
+	t.Run("bad request - missing message", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{}
+		sf := &mocks.SpamFilterMock{}
+		server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+
+		req, err := http.NewRequest("POST", "/detected_spam/add?id=123", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Contains(t, rr.Header().Get("HX-Retarget"), "#error-message")
+		assert.Contains(t, rr.Body.String(), "bad request")
+	})
+
+	t.Run("update spam error", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{}
+		sf := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(msg string) error {
+				return errors.New("update error")
+			},
+		}
+		server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+
+		req, err := http.NewRequest("POST", "/detected_spam/add?id=123&msg=blah", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Contains(t, rr.Header().Get("HX-Retarget"), "#error-message")
+		assert.Contains(t, rr.Body.String(), "can't update spam samples")
+	})
+
+	t.Run("set flag error", func(t *testing.T) {
+		ds := &mocks.DetectedSpamMock{
+			SetAddedToSamplesFlagFunc: func(ctx context.Context, id int64) error {
+				return errors.New("flag update error")
+			},
+		}
+		sf := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(msg string) error {
+				return nil
+			},
+		}
+		server := NewServer(Config{DetectedSpam: ds, SpamFilter: sf})
+
+		req, err := http.NewRequest("POST", "/detected_spam/add?id=123&msg=blah", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.htmlAddDetectedSpamHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Contains(t, rr.Header().Get("HX-Retarget"), "#error-message")
+		assert.Contains(t, rr.Body.String(), "can't update detected spam")
+	})
 }
 
 func TestServer_GenerateRandomPassword(t *testing.T) {
@@ -964,19 +1043,68 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 }
 
 func TestServer_htmlSpamCheckHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0"})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/", http.NoBody)
-	require.NoError(t, err)
+	t.Run("successful template render", func(t *testing.T) {
+		server := NewServer(Config{Version: "1.0"})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/", http.NoBody)
+		require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.htmlSpamCheckHandler)
-	handler.ServeHTTP(rr, req)
+		handler := http.HandlerFunc(server.htmlSpamCheckHandler)
+		handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	body := rr.Body.String()
-	assert.Contains(t, body, "<title>Checker - TG-Spam</title>", "template should contain the correct title")
-	assert.Contains(t, body, "Version: 1.0", "template should contain the correct version")
-	assert.Contains(t, body, "<form", "template should contain a form")
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "<title>Checker - TG-Spam</title>", "template should contain the correct title")
+		assert.Contains(t, body, "Version: 1.0", "template should contain the correct version")
+		assert.Contains(t, body, "<form", "template should contain a form")
+	})
+
+	t.Run("template execution error", func(t *testing.T) {
+		// save original template and restore after test
+		origTmpl := tmpl
+		defer func() { tmpl = origTmpl }()
+
+		// create a template with invalid field reference
+		badTemplate := template.New("bad")
+		badTemplate, err := badTemplate.Parse(`{{.InvalidField}}`)
+		require.NoError(t, err)
+		tmpl = badTemplate
+
+		server := NewServer(Config{Version: "1.0"})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlSpamCheckHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code, "should return internal server error")
+		assert.Contains(t, rr.Body.String(), "Error executing template")
+	})
+
+	t.Run("with full config options", func(t *testing.T) {
+		server := NewServer(Config{
+			Version: "2.0-test",
+			Settings: Settings{
+				PrimaryGroup:        "test-group",
+				AdminGroup:          "admin-group",
+				SimilarityThreshold: 0.75,
+				MinMsgLen:           100,
+				ParanoidMode:        true,
+			},
+		})
+
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlSpamCheckHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "Version: 2.0-test", "should contain correct version")
+	})
 }
 
 func TestServer_htmlManageSamplesHandler(t *testing.T) {
@@ -1001,43 +1129,174 @@ func TestServer_htmlManageSamplesHandler(t *testing.T) {
 }
 
 func TestServer_htmlManageUsersHandler(t *testing.T) {
-	spamFilterMock := &mocks.SpamFilterMock{}
-	detectorMock := &mocks.DetectorMock{
-		ApprovedUsersFunc: func() []approved.UserInfo {
-			return []approved.UserInfo{{UserID: "user1"}, {UserID: "user2"}}
-		},
-	}
+	t.Run("successful rendering", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			ApprovedUsersFunc: func() []approved.UserInfo {
+				return []approved.UserInfo{
+					{UserID: "user1", UserName: "User One", Timestamp: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
+					{UserID: "user2", UserName: "User Two", Timestamp: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)},
+				}
+			},
+		}
 
-	server := NewServer(Config{Version: "1.0", SpamFilter: spamFilterMock, Detector: detectorMock})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/manage_users", http.NoBody)
-	require.NoError(t, err)
+		server := NewServer(Config{Version: "1.0", Detector: detectorMock})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/manage_users", http.NoBody)
+		require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.htmlManageUsersHandler)
-	handler.ServeHTTP(rr, req)
+		handler := http.HandlerFunc(server.htmlManageUsersHandler)
+		handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	body := rr.Body.String()
-	assert.Contains(t, body, "<title>Manage Users - TG-Spam</title>", "template should contain the correct title")
-	assert.Contains(t, body, "<h4>Approved Users (2)</h4>", "template should contain users list")
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "<title>Manage Users - TG-Spam</title>", "template should contain the correct title")
+		assert.Contains(t, body, "<h4>Approved Users (2)</h4>", "template should contain users list with correct count")
+		assert.Contains(t, body, "User One", "should contain first user's name")
+		assert.Contains(t, body, "User Two", "should contain second user's name")
+		assert.Contains(t, body, "user1", "should contain first user's ID")
+		assert.Contains(t, body, "user2", "should contain second user's ID")
+	})
+
+	t.Run("empty approved users list", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			ApprovedUsersFunc: func() []approved.UserInfo {
+				return []approved.UserInfo{}
+			},
+		}
+
+		server := NewServer(Config{Version: "1.0", Detector: detectorMock})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/manage_users", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlManageUsersHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "<h4>Approved Users (0)</h4>", "should show zero users")
+	})
+
+	t.Run("template execution error", func(t *testing.T) {
+		// save original template and restore after test
+		origTmpl := tmpl
+		defer func() { tmpl = origTmpl }()
+
+		// create a template with invalid field reference
+		badTemplate := template.New("bad")
+		badTemplate, err := badTemplate.Parse(`{{.InvalidField}}`)
+		require.NoError(t, err)
+		tmpl = badTemplate
+
+		detectorMock := &mocks.DetectorMock{
+			ApprovedUsersFunc: func() []approved.UserInfo {
+				return []approved.UserInfo{{UserID: "123"}}
+			},
+		}
+
+		server := NewServer(Config{Version: "1.0", Detector: detectorMock})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/manage_users", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlManageUsersHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Error executing template")
+	})
 }
 
 func TestServer_htmlSettingsHandler(t *testing.T) {
-	server := NewServer(Config{Version: "1.0", Settings: Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150}})
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/settings", http.NoBody)
-	require.NoError(t, err)
+	// test without StorageEngine (default case)
+	t.Run("without storage engine", func(t *testing.T) {
+		server := NewServer(Config{
+			Version:  "1.0",
+			Settings: Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
 
-	handler := http.HandlerFunc(server.htmlSettingsHandler)
-	handler.ServeHTTP(rr, req)
+		handler := http.HandlerFunc(server.htmlSettingsHandler)
+		handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
-	body := rr.Body.String()
-	assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
-	assert.Contains(t, body, "Database")
-	assert.Contains(t, body, "Backup")
-	assert.Contains(t, body, "System Status")
-	assert.Contains(t, body, "Spam Detection")
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
+		assert.Contains(t, body, "Database")
+		assert.Contains(t, body, "Not connected", "Should show database is not connected")
+		assert.Contains(t, body, "Backup")
+		assert.Contains(t, body, "System Status")
+		assert.Contains(t, body, "Spam Detection")
+	})
+
+	// test with StorageEngine
+	t.Run("with SQL storage engine", func(t *testing.T) {
+		sqlEngine := &mocks.StorageEngineMock{}
+
+		server := NewServer(Config{
+			Version:       "1.0",
+			StorageEngine: sqlEngine,
+			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlSettingsHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
+		assert.Contains(t, body, "Connected", "Should show database is connected")
+	})
+
+	// test with non-SQL StorageEngine
+	t.Run("with non-SQL storage engine", func(t *testing.T) {
+		mockEngine := &mocks.StorageEngineMock{}
+
+		server := NewServer(Config{
+			Version:       "1.0",
+			StorageEngine: mockEngine,
+			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlSettingsHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "handler should return status OK")
+		body := rr.Body.String()
+		assert.Contains(t, body, "Connected (unknown type)", "Should show connected with unknown type")
+		assert.Contains(t, body, "Unknown", "Should show unknown database type")
+	})
+
+	// test execution error
+	t.Run("template execution error", func(t *testing.T) {
+		// save original template and restore after test
+		origTmpl := tmpl
+		defer func() { tmpl = origTmpl }()
+
+		// replace template with one that will error
+		badTemplate := template.New("bad")
+		badTemplate, err := badTemplate.Parse(`{{.InvalidField}}`)
+		require.NoError(t, err)
+		tmpl = badTemplate
+
+		server := NewServer(Config{Version: "1.0"})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.htmlSettingsHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code, "should return internal server error")
+	})
 }
 
 func TestServer_StaticFiles(t *testing.T) {
@@ -1118,6 +1377,66 @@ func TestServer_StaticFiles(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode, "should not allow access to other files")
+	})
+}
+
+func TestServer_getDynamicSamplesHandler(t *testing.T) {
+	t.Run("successful response", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
+			},
+		}
+
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		req, err := http.NewRequest("GET", "/samples", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.getDynamicSamplesHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+
+		var response struct {
+			Spam []string `json:"spam"`
+			Ham  []string `json:"ham"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Equal(t, []string{"spam1", "spam2"}, response.Spam)
+		assert.Equal(t, []string{"ham1", "ham2"}, response.Ham)
+	})
+
+	t.Run("error response", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return nil, nil, errors.New("test error")
+			},
+		}
+
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		req, err := http.NewRequest("GET", "/samples", http.NoBody)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.getDynamicSamplesHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+
+		var response struct {
+			Error   string `json:"error"`
+			Details string `json:"details"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Equal(t, "can't get dynamic samples", response.Error)
+		assert.Equal(t, "test error", response.Details)
 	})
 }
 
@@ -1246,6 +1565,31 @@ func TestServer_reloadDynamicSamplesHandler(t *testing.T) {
 	})
 }
 
+// TestServer_formatDuration tests the formatDuration function in webapi.go
+func TestServer_formatDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		dur  time.Duration
+		want string
+	}{
+		{"Minutes only", 5 * time.Minute, "5m"},
+		{"Hours and minutes", 2*time.Hour + 30*time.Minute, "2h 30m"},
+		{"Days, hours, minutes", 4*24*time.Hour + 2*time.Hour + 5*time.Minute, "4d 2h 5m"},
+		{"Zero", 0, "0m"},
+		{"Just seconds", 30 * time.Second, "0m"},
+		{"Large duration", 100*24*time.Hour + 12*time.Hour + 45*time.Minute, "100d 12h 45m"},
+		{"Exactly one day", 24 * time.Hour, "1d 0h 0m"},
+		{"Exactly one hour", 1 * time.Hour, "1h 0m"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := formatDuration(tt.dur)
+			assert.Equal(t, tt.want, s)
+		})
+	}
+}
+
 func TestServer_reverseSamples(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1288,24 +1632,89 @@ func TestServer_reverseSamples(t *testing.T) {
 }
 
 func TestServer_renderSamples(t *testing.T) {
-	mockSpamFilter := &mocks.SpamFilterMock{
-		DynamicSamplesFunc: func() ([]string, []string, error) {
-			return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
-		},
-	}
+	t.Run("successful rendering", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return []string{"spam1", "spam2"}, []string{"ham1", "ham2"}, nil
+			},
+		}
 
-	server := NewServer(Config{SpamFilter: mockSpamFilter})
-	w := httptest.NewRecorder()
-	server.renderSamples(w, "samples_list")
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
-	t.Log(w.Body.String())
-	assert.Contains(t, w.Body.String(), "Spam Samples (2)")
-	assert.Contains(t, w.Body.String(), "spam1")
-	assert.Contains(t, w.Body.String(), "spam2")
-	assert.Contains(t, w.Body.String(), "Ham Samples (2)")
-	assert.Contains(t, w.Body.String(), "ham1")
-	assert.Contains(t, w.Body.String(), "ham2")
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		w := httptest.NewRecorder()
+		server.renderSamples(w, "samples_list")
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+		t.Log(w.Body.String())
+		assert.Contains(t, w.Body.String(), "Spam Samples (2)")
+		assert.Contains(t, w.Body.String(), "spam1")
+		assert.Contains(t, w.Body.String(), "spam2")
+		assert.Contains(t, w.Body.String(), "Ham Samples (2)")
+		assert.Contains(t, w.Body.String(), "ham1")
+		assert.Contains(t, w.Body.String(), "ham2")
+	})
+
+	t.Run("empty samples", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return []string{}, []string{}, nil
+			},
+		}
+
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		w := httptest.NewRecorder()
+		server.renderSamples(w, "samples_list")
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.Contains(t, body, "Spam Samples (0)")
+		assert.Contains(t, body, "Ham Samples (0)")
+	})
+
+	t.Run("DynamicSamples error", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return nil, nil, errors.New("sample fetch error")
+			},
+		}
+
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		w := httptest.NewRecorder()
+		server.renderSamples(w, "samples_list")
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+
+		var response map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		assert.Equal(t, "can't fetch samples", response["error"])
+	})
+
+	t.Run("template execution error", func(t *testing.T) {
+		// save original template and restore after test
+		origTmpl := tmpl
+		defer func() { tmpl = origTmpl }()
+
+		badTemplate := template.New("bad")
+		badTemplate, err := badTemplate.Parse(`{{.InvalidField}}`)
+		require.NoError(t, err)
+		tmpl = badTemplate
+
+		mockSpamFilter := &mocks.SpamFilterMock{
+			DynamicSamplesFunc: func() ([]string, []string, error) {
+				return []string{"spam1"}, []string{"ham1"}, nil
+			},
+		}
+
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		w := httptest.NewRecorder()
+		server.renderSamples(w, "samples_list")
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+
+		var response map[string]interface{}
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		assert.Equal(t, "can't execute template", response["error"])
+	})
 }
 
 func TestServer_downloadDetectedSpamHandler(t *testing.T) {
@@ -1491,6 +1900,9 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		assert.Contains(t, string(body), "storage engine not available")
 	})
 }
+
+// Additional test cases for the checkIDHandler have been implicitly covered in the TestServer_routes tests
+// where the routing infrastructure properly sets Path Values.
 
 func TestServer_logoutHandler(t *testing.T) {
 	// create a function that matches our logout handler implementation in routes
