@@ -50,15 +50,15 @@ type DetectorMock struct {
 	calls struct {
 		// AddApprovedUser holds details about calls to the AddApprovedUser method.
 		AddApprovedUser []struct {
-			// user is the user argument value.
+			// User is the user argument value.
 			User approved.UserInfo
 		}
 		// ApprovedUsers holds details about calls to the ApprovedUsers method.
 		ApprovedUsers []struct {
 		}
-		// check holds details about calls to the Check method.
+		// Check holds details about calls to the Check method.
 		Check []struct {
-			// req is the req argument value.
+			// Req is the req argument value.
 			Req spamcheck.Request
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.

@@ -27,24 +27,24 @@ import (
 //
 //	}
 type LocatorMock struct {
-	// userIDByNameFunc mocks the UserIDByName method.
+	// UserIDByNameFunc mocks the UserIDByName method.
 	UserIDByNameFunc func(ctx context.Context, userName string) int64
 
-	// userNameByIDFunc mocks the UserNameByID method.
+	// UserNameByIDFunc mocks the UserNameByID method.
 	UserNameByIDFunc func(ctx context.Context, userID int64) string
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// userIDByName holds details about calls to the UserIDByName method.
+		// UserIDByName holds details about calls to the UserIDByName method.
 		UserIDByName []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// UserName is the userName argument value.
 			UserName string
 		}
-		// userNameByID holds details about calls to the UserNameByID method.
+		// UserNameByID holds details about calls to the UserNameByID method.
 		UserNameByID []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// UserID is the userID argument value.
 			UserID int64

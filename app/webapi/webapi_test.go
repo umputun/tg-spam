@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi/mocks"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -1890,6 +1891,95 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 		req := httptest.NewRequest("GET", "/download/backup", nil)
 		w := httptest.NewRecorder()
 		srv.downloadBackupHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "storage engine not available")
+	})
+}
+
+func TestServer_downloadExportToPostgresHandler(t *testing.T) {
+	t.Run("successful export with sqlite engine", func(t *testing.T) {
+		mockStorage := &mocks.StorageEngineMock{
+			TypeFunc: func() engine.Type {
+				return engine.Sqlite // return the string representation of Sqlite type
+			},
+			BackupSqliteAsPostgresFunc: func(ctx context.Context, w io.Writer) error {
+				_, err := w.Write([]byte("-- SQLite to PostgreSQL export test content"))
+				return err
+			},
+		}
+
+		srv := NewServer(Config{
+			StorageEngine: mockStorage,
+		})
+
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		w := httptest.NewRecorder()
+
+		srv.downloadExportToPostgresHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+
+		// check headers
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "application/octet-stream", resp.Header.Get("Content-Type"), "content type should be binary")
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=")
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "tg-spam-sqlite-to-postgres")
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), ".sql.gz")
+
+		// read the content
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// verify it's actually gzipped data by trying to decompress it
+		gzipReader, err := gzip.NewReader(bytes.NewReader(body))
+		require.NoError(t, err, "Content should be properly gzipped")
+		defer gzipReader.Close()
+
+		decompressedContent, err := io.ReadAll(gzipReader)
+		require.NoError(t, err)
+
+		assert.Contains(t, string(decompressedContent), "-- SQLite to PostgreSQL export test content")
+	})
+
+	t.Run("non-sqlite engine", func(t *testing.T) {
+		mockStorage := &mocks.StorageEngineMock{
+			TypeFunc: func() engine.Type {
+				return engine.Postgres // return the string representation of Postgres type
+			},
+		}
+
+		srv := NewServer(Config{
+			StorageEngine: mockStorage,
+		})
+
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		w := httptest.NewRecorder()
+		srv.downloadExportToPostgresHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, string(body), "source database must be SQLite")
+	})
+
+	t.Run("nil storage engine", func(t *testing.T) {
+		srv := NewServer(Config{
+			StorageEngine: nil,
+		})
+
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		w := httptest.NewRecorder()
+		srv.downloadExportToPostgresHandler(w, req)
 
 		resp := w.Result()
 		defer resp.Body.Close()

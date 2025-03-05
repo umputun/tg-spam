@@ -13,7 +13,7 @@ import (
 )
 
 func TestSpamLoggerFunc_Save(t *testing.T) {
-	// Create a test message and response
+	// create a test message and response
 	msg := &bot.Message{
 		ID:     123,
 		ChatID: 456,
@@ -24,7 +24,7 @@ func TestSpamLoggerFunc_Save(t *testing.T) {
 			DisplayName: "Test User",
 		},
 	}
-	
+
 	response := &bot.Response{
 		Text:        "test response",
 		Send:        true,
@@ -36,20 +36,20 @@ func TestSpamLoggerFunc_Save(t *testing.T) {
 		},
 	}
 
-	// Create a counter to check if the function was called
+	// create a counter to check if the function was called
 	counter := 0
-	
-	// Create a SpamLoggerFunc that increments the counter
+
+	// create a SpamLoggerFunc that increments the counter
 	loggerFunc := SpamLoggerFunc(func(m *bot.Message, r *bot.Response) {
 		counter++
 		assert.Equal(t, msg, m)
 		assert.Equal(t, response, r)
 	})
-	
-	// Call the Save method
+
+	// call the Save method
 	loggerFunc.Save(msg, response)
-	
-	// Check that the function was called once
+
+	// check that the function was called once
 	assert.Equal(t, 1, counter)
 }
 

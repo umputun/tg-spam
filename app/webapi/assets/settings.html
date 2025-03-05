@@ -67,6 +67,15 @@
                         <a href="{{.Backup.URL}}" class="btn btn-custom-blue" download="{{.Backup.Filename}}">
                             <i class="bi bi-download me-1"></i> Download Database Backup
                         </a>
+                        
+                        {{if eq .Database.Type "sqlite"}}
+                        <a href="/download/export-to-postgres" class="btn btn-outline-primary mt-2">
+                            <i class="bi bi-download me-1"></i> Export to PostgreSQL
+                        </a>
+                        <p class="small text-muted mt-1">
+                            Convert SQLite database to PostgreSQL format for migration.
+                        </p>
+                        {{end}}
                     </div>
                     <p class="small text-muted mt-2">
                         Compressed SQL backup file with all your data.
