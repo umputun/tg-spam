@@ -15,52 +15,112 @@
                 Detected Spam ({{.TotalDetectedSpam}})
                 <a href="/download/detected_spam" class="btn btn-custom-blue btn-sm">Download</a>
             </h4>
-            <table class="table table-striped">
-                <thead class="custom-table-header">
-                <tr>
-                    <th>Timestamp</th>
-                    <th>User ID</th>
-                    <th>User Name</th>
-                    <th>Text</th>
-                    <th>Checks</th>
-                </tr>
-                </thead>
-                <tbody>
+            <!-- Desktop view - normal table -->
+            <div class="d-none d-md-block">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="custom-table-header">
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>User ID</th>
+                            <th>User Name</th>
+                            <th>Text</th>
+                            <th>Checks</th>
+                        </tr>
+                        </thead>
+                    <tbody>
+                    {{range .DetectedSpamEntries}}
+                    {{$text := .Text}}
+                    {{$id := .ID}}
+                    {{$added := .Added}}
+                    <tr>
+                        <td class="ds-timestamp">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+                        <td>{{.UserID}}</td>
+                        <td class="ds-username">{{.UserName}}</td>
+                        <td class="ds-text">{{.Text}}</td>
+                        <td class="ds-checks">
+                            {{$hasClassifier := false}}
+                            {{range .Checks}}
+                                {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
+                                    {{$hasClassifier = true}}
+                                {{end}}
+                            {{end}}
+                            
+                            {{range .Checks}}
+                            <div class="{{if .Spam}}text-danger{{else}}text-success{{end}}">
+                                <strong>{{.Name}}:</strong> {{.Details}}
+                            </div>
+                            {{end}}
+                            
+                            {{if and (not $added) $hasClassifier}}
+                            <div class="mt-2">
+                                <button
+                                        hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}'
+                                        hx-target="this" hx-error="#error-message" hx-swap="outerHTML"
+                                        class="btn btn-sm btn-warning"
+                                        title="Add this message to spam samples">
+                                    Add to spam samples
+                                </button>
+                            </div>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="5">No detected spam found</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Mobile view - optimized cards -->
+            <div class="d-md-none">
                 {{range .DetectedSpamEntries}}
                 {{$text := .Text}}
                 {{$id := .ID}}
                 {{$added := .Added}}
-                <tr>
-                    <td class="ds-timestamp">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
-                    <td>{{.UserID}}</td>
-                    <td class="ds-username">{{.UserName}}</td>
-                    <td class="ds-text">{{.Text}}</td>
-                    <td class="ds-checks">
-                        {{range .Checks}}
-                        <div style="display: flex; align-items: center;">
-                            <div class="{{if .Spam}}text-danger{{else}}text-success{{end}}" style="flex-grow: 1;">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <strong>{{.UserName}}</strong> ({{.UserID}})
+                        <div class="float-end small">{{.Timestamp.Format "2006-01-02 15:04"}}</div>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">{{.Text}}</p>
+                        <hr>
+                        <div class="small">
+                            {{$hasClassifier := false}}
+                            {{range .Checks}}
+                                {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
+                                    {{$hasClassifier = true}}
+                                {{end}}
+                            {{end}}
+                            
+                            {{range .Checks}}
+                            <div class="{{if .Spam}}text-danger{{else}}text-success{{end}}">
                                 <strong>{{.Name}}:</strong> {{.Details}}
                             </div>
-                            {{if and (not .Spam) (not $added) (eq .Name "classifier")}}
-                            <button
-                                    hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}'
-                                    hx-target="this" hx-error="#error-message" hx-swap="outerHTML"
-                                    class="btn btn-sm btn-warning"
-                                    title="Add this message to spam samples">
-                                Add
-                            </button>
+                            {{end}}
+                            
+                            {{if and (not $added) $hasClassifier}}
+                            <div class="mt-2">
+                                <button
+                                        hx-post="/detected_spam/add" hx-vals='{"id": {{$id}}, "msg": "{{$text}}"}'
+                                        hx-target="this" hx-error="#error-message" hx-swap="outerHTML"
+                                        class="btn btn-sm btn-warning"
+                                        title="Add this message to spam samples">
+                                    Add to spam samples
+                                </button>
+                            </div>
                             {{end}}
                         </div>
-                        {{end}}
-                    </td>
-                </tr>
+                    </div>
+                </div>
                 {{else}}
-                <tr>
-                    <td colspan="7">No detected spam found</td>
-                </tr>
+                <div class="alert alert-info">No detected spam found</div>
                 {{end}}
-                </tbody>
-            </table>
+            </div>
         </div>
     </div>
 </div>

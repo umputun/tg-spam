@@ -21,7 +21,11 @@ body, #result{
     font-size: 1em;
     min-width: 200px;
     max-width: 500px;
-    overflow: hidden;
+    width: 500px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
 }
 
 .ds-username {
@@ -34,14 +38,48 @@ body, #result{
 
 .ds-checks {
     font-size: 0.9em;
-    min-width: 200px;
-    max-width: 500px;
-    overflow: hidden;
+    width: 280px;
+    max-width: 280px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+.ds-checks > div {
+    margin-bottom: 2px;
+}
+
+@media (max-width: 1200px) {
+    .ds-text {
+        max-width: 350px;
+        width: 350px;
+    }
+    .ds-checks {
+        max-width: 220px;
+        width: 220px;
+    }
 }
 
 @media (max-width: 768px) {
+    /* On mobile, we'll rely more on the table-responsive horizontal scrolling */
+    .ds-text {
+        max-width: 200px;
+        width: 200px;
+    }
+    .ds-checks {
+        max-width: 200px;
+        width: 200px;
+    }
+    
+    /* Reduce font sizes on mobile */
     .ds-text, .ds-checks {
-        max-width: 150px;
+        font-size: 0.85em;
+    }
+    
+    /* Make sure the timestamp is compact */
+    .ds-timestamp {
+        max-width: 120px;
+        white-space: normal;
     }
 }
 
