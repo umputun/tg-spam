@@ -3,15 +3,13 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/testutils/containers"
 	"github.com/stretchr/testify/suite"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
@@ -21,7 +19,7 @@ import (
 type StorageTestSuite struct {
 	suite.Suite
 	dbs         map[string]*engine.SQL
-	pgContainer testcontainers.Container
+	pgContainer *containers.PostgresTestContainer
 	sqliteFile  string
 }
 
@@ -44,34 +42,12 @@ func (s *StorageTestSuite) SetupSuite() {
 		s.T().Log("start postgres container")
 		ctx := context.Background()
 
-		req := testcontainers.ContainerRequest{
-			Image:        "postgres:17",
-			ExposedPorts: []string{"5432/tcp"},
-			Env: map[string]string{
-				"POSTGRES_PASSWORD": "secret",
-				"POSTGRES_DB":       "test",
-			},
-			WaitingFor: wait.ForAll(
-				wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-				wait.ForListeningPort("5432/tcp"),
-			).WithDeadline(1 * time.Minute),
-		}
+		// use testutils PostgresTestContainer
+		s.pgContainer = containers.NewPostgresTestContainerWithDB(ctx, s.T(), "test")
+		s.T().Log("postgres container started")
 
-		container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-			ContainerRequest: req,
-			Started:          true,
-		})
-		s.Require().NoError(err)
-		s.pgContainer = container
-
-		time.Sleep(time.Second)
-
-		host, err := container.Host(ctx)
-		s.Require().NoError(err)
-		port, err := container.MappedPort(ctx, "5432")
-		s.Require().NoError(err)
-
-		connStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
+		// create database connection using the container
+		connStr := s.pgContainer.ConnectionString()
 		pgDB, err := engine.NewPostgres(ctx, connStr, "gr1")
 		s.Require().NoError(err)
 		s.dbs["postgres"] = pgDB
@@ -84,7 +60,7 @@ func (s *StorageTestSuite) TearDownSuite() {
 	}
 	if s.pgContainer != nil {
 		s.T().Log("terminating container")
-		s.Require().NoError(s.pgContainer.Terminate(context.Background()))
+		s.pgContainer.Close(context.Background())
 	}
 	if s.sqliteFile != "" {
 		s.T().Logf("removing sqlite file: %s", s.sqliteFile)
@@ -460,14 +436,8 @@ func (s *StorageTestSuite) TestIsolation() {
 			s.T().Skip("postgres is not available")
 		}
 
-		// get container connection details
-		host, err := s.pgContainer.Host(ctx)
-		s.Require().NoError(err)
-		port, err := s.pgContainer.MappedPort(ctx, "5432")
-		s.Require().NoError(err)
-
-		// create connection string using container details
-		pgConnStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/test?sslmode=disable", host, port.Int())
+		// get connection string from the container
+		pgConnStr := s.pgContainer.ConnectionString()
 
 		// create two separate connections with different GIDs
 		db1, err := engine.NewPostgres(ctx, pgConnStr, "gr1")

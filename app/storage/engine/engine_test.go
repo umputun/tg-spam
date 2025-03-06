@@ -5,15 +5,14 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
-	"time"
 
+	"github.com/go-pkgz/testutils/containers"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestNew(t *testing.T) {
@@ -394,38 +393,14 @@ func TestBackupPostgres(t *testing.T) {
 
 	ctx := context.Background()
 
-	// start PostgreSQL container
+	// start PostgreSQL container using testutils
 	t.Log("starting postgres container")
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_PASSWORD": "secret",
-			"POSTGRES_DB":       "backup_test",
-		},
-		WaitingFor: wait.ForAll(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-			wait.ForListeningPort("5432/tcp"),
-		).WithDeadline(1 * time.Minute),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
+	pgContainer := containers.NewPostgresTestContainerWithDB(ctx, t, "backup_test")
+	defer pgContainer.Close(ctx)
 	t.Log("postgres container started")
-	defer func() { assert.NoError(t, container.Terminate(ctx)) }()
 
-	// give postgres a moment to fully initialize
-	time.Sleep(time.Second)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	connStr := fmt.Sprintf("postgres://postgres:secret@%s:%d/backup_test?sslmode=disable", host, port.Int())
+	// get connection string from the container
+	connStr := pgContainer.ConnectionString()
 	db, err := NewPostgres(ctx, connStr, "test_gid")
 	require.NoError(t, err)
 	defer db.Close()
@@ -480,35 +455,30 @@ func TestNewPostgres(t *testing.T) {
 
 	ctx := context.Background()
 
+	// start PostgreSQL container using testutils
 	t.Log("starting postgres container")
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_PASSWORD": "secret",
-			"POSTGRES_DB":       "postgres",
-		},
-		WaitingFor: wait.ForAll(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-			wait.ForListeningPort("5432/tcp"),
-		).WithDeadline(1 * time.Minute),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
+	pgContainer := containers.NewPostgresTestContainerWithDB(ctx, t, "postgres")
+	defer pgContainer.Close(ctx)
 	t.Log("postgres container started")
-	defer func() { assert.NoError(t, container.Terminate(ctx)) }()
 
-	// give postgres a moment to fully initialize
-	time.Sleep(time.Second)
+	// get host and port from the container connection string
+	connStr := pgContainer.ConnectionString()
+	// extract host and port for tests that need to manipulate the connection string
 
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
+	// parse the connection string to extract the host and port
+	// example connection string: postgres://postgres:secret@localhost:32768/postgres?sslmode=disable
+	var host, port string
+	parts := strings.Split(connStr, "@")
+	if len(parts) > 1 {
+		hostPortParts := strings.Split(parts[1], "/")
+		if len(hostPortParts) > 0 {
+			hostPort := strings.Split(hostPortParts[0], ":")
+			if len(hostPort) > 1 {
+				host = hostPort[0]
+				port = hostPort[1]
+			}
+		}
+	}
 
 	tests := []struct {
 		name    string
@@ -517,11 +487,11 @@ func TestNewPostgres(t *testing.T) {
 	}{
 		{
 			name:    "create new database",
-			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/test_db1?sslmode=disable", host, port.Int()),
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%s/test_db1?sslmode=disable", host, port),
 		},
 		{
 			name:    "connect to existing database",
-			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/test_db1?sslmode=disable", host, port.Int()),
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%s/test_db1?sslmode=disable", host, port),
 		},
 		{
 			name:    "invalid url",
@@ -530,7 +500,7 @@ func TestNewPostgres(t *testing.T) {
 		},
 		{
 			name:    "empty database name",
-			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%d/?sslmode=disable", host, port.Int()),
+			connStr: fmt.Sprintf("postgres://postgres:secret@%s:%s/?sslmode=disable", host, port),
 			wantErr: "database name not specified",
 		},
 	}
