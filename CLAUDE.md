@@ -9,7 +9,7 @@
 - Normalize code comments: `command -v unfuck-ai-comments >/dev/null || go install github.com/umputun/unfuck-ai-comments@latest; unfuck-ai-comments run --fmt --skip=mocks ./...`
 
 ## Important Workflow Notes
-- Always run tests and linter before committing: `go test -race ./... && golangci-lint run`
+- Always run tests, linter and normalize comments before committing
 - For linter use `golangci-lint run`
 - Run tests and linter after making significant changes to verify functionality
 - Go version: 1.24+
@@ -19,6 +19,7 @@
 - Use `go:generate` for generating mocks, never modify generated files manually. Mocks are generated with `moq` and stored in the `mocks` package.
 - After important functionality added, update README.md accordingly
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
+- Don't add "Test plan" section to PRs
 
 ## Libraries
 - Logging: `github.com/go-pkgz/lgr`
