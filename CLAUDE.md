@@ -14,6 +14,7 @@
 - Run tests and linter after making significant changes to verify functionality
 - Go version: 1.24+
 - Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
+- Do not include "Test plan" sections in PR descriptions
 - Do not add comments that describe changes, progress, or historical modifications. Avoid comments like “new function,” “added test,” “now we changed this,” or “previously used X, now using Y.” Comments should only describe the current state and purpose of the code, not its history or evolution.
 - Use `go:generate` for generating mocks, never modify generated files manually. Mocks are generated with `moq` and stored in the `mocks` package.
 - After important functionality added, update README.md accordingly

@@ -110,6 +110,10 @@ This is not a separate check, but rather a parameter to control the minimum mess
 
 This option is disabled by default. If set to a positive number, the bot will check the message for the number of links. If the number of links is greater than `--meta.links-limit=, [$META_LINKS_LIMIT]` (default is -1), the message will be marked as spam. Setting the limit to -1 will effectively disable this check.
 
+**Maximum mentions in message**
+
+This option is disabled by default. If set to a positive number, the bot will check the message for the number of mentions (@username). If the number of mentions is greater than `--meta.mentions-limit=, [$META_MENTIONS_LIMIT]` (default is -1), the message will be marked as spam. Setting the limit to -1 will effectively disable this check.
+
 **Links only check**
 
 This option is disabled by default. If set to `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
@@ -129,6 +133,10 @@ This option is disabled by default. If set to `true`, the bot will check the mes
 **Forward check**
 
 This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD` is `true`, the bot will check if the message forwarded. If the message is a forward, it will be marked as spam.
+
+**Keyboard check**
+
+This option is disabled by default. If `--meta.keyboard` set or `env:META_KEYBOARD` is `true`, the bot will check if the message contains a keyboard (buttons). If the message contains a keyboard, it will be marked as spam.
 
 **Multi-language words**
 
@@ -333,11 +341,13 @@ cas:
 
 meta:
       --meta.links-limit=               max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
+      --meta.mentions-limit=            max mentions in message, disabled by default (default: -1) [$META_MENTIONS_LIMIT]
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]
+      --meta.keyboard                   enable keyboard check [$META_KEYBOARD]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]

@@ -77,6 +77,7 @@ type Settings struct {
 	CasEnabled              bool          `json:"cas_enabled"`
 	MetaEnabled             bool          `json:"meta_enabled"`
 	MetaLinksLimit          int           `json:"meta_links_limit"`
+	MetaMentionsLimit       int           `json:"meta_mentions_limit"`
 	MetaLinksOnly           bool          `json:"meta_links_only"`
 	MetaImageOnly           bool          `json:"meta_image_only"`
 	MetaVideoOnly           bool          `json:"meta_video_only"`
