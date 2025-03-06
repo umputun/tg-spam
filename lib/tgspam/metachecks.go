@@ -139,3 +139,30 @@ func KeyboardCheck() MetaCheck {
 		}
 	}
 }
+
+// MentionsCheck is a function that returns a MetaCheck function.
+// It checks if the number of mentions in the message exceeds the specified limit.
+// If limit is negative, the check is disabled.
+func MentionsCheck(limit int) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if limit < 0 {
+			return spamcheck.Response{
+				Name:    "mentions",
+				Spam:    false,
+				Details: "check disabled",
+			}
+		}
+		if req.Meta.Mentions > limit {
+			return spamcheck.Response{
+				Name:    "mentions",
+				Spam:    true,
+				Details: fmt.Sprintf("too many mentions %d/%d", req.Meta.Mentions, limit),
+			}
+		}
+		return spamcheck.Response{
+			Name:    "mentions",
+			Spam:    false,
+			Details: fmt.Sprintf("mentions %d/%d", req.Meta.Mentions, limit),
+		}
+	}
+}

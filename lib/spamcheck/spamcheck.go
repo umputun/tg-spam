@@ -18,6 +18,7 @@ type Request struct {
 type MetaData struct {
 	Images      int  `json:"images"`       // number of images in the message
 	Links       int  `json:"links"`        // number of links in the message
+	Mentions    int  `json:"mentions"`     // number of mentions (@username) in the message
 	HasVideo    bool `json:"has_video"`    // true if the message has a video or video note
 	HasAudio    bool `json:"has_audio"`    // true if the message has an audio
 	HasForward  bool `json:"has_forward"`  // true if the message has a forward
@@ -25,8 +26,8 @@ type MetaData struct {
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard)
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v",
+		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard)
 }
 
 // Response is a result of spam check.

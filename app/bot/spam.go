@@ -95,6 +95,15 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		spamReq.Meta.HasKeyboard = true
 	}
 	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
+
+	// count mentions from entities
+	if msg.Entities != nil {
+		for _, entity := range *msg.Entities {
+			if entity.Type == "mention" || entity.Type == "text_mention" {
+				spamReq.Meta.Mentions++
+			}
+		}
+	}
 	isSpam, checkResults := s.Check(spamReq)
 	crs := []string{}
 	for _, cr := range checkResults {

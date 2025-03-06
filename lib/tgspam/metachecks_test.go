@@ -395,3 +395,105 @@ func TestKeyboardCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestMentionsCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		limit    int
+		expected spamcheck.Response
+	}{
+		{
+			name: "No mentions",
+			req: spamcheck.Request{
+				Msg: "This is a message without mentions.",
+				Meta: spamcheck.MetaData{
+					Mentions: 0,
+				},
+			},
+			limit:    5,
+			expected: spamcheck.Response{Name: "mentions", Spam: false, Details: "mentions 0/5"},
+		},
+		{
+			name: "Below limit",
+			req: spamcheck.Request{
+				Msg: "This message mentions @user1 and @user2.",
+				Meta: spamcheck.MetaData{
+					Mentions: 2,
+				},
+			},
+			limit:    5,
+			expected: spamcheck.Response{Name: "mentions", Spam: false, Details: "mentions 2/5"},
+		},
+		{
+			name: "At limit",
+			req: spamcheck.Request{
+				Msg: "This message mentions five users: @user1 @user2 @user3 @user4 @user5",
+				Meta: spamcheck.MetaData{
+					Mentions: 5,
+				},
+			},
+			limit:    5,
+			expected: spamcheck.Response{Name: "mentions", Spam: false, Details: "mentions 5/5"},
+		},
+		{
+			name: "Above limit",
+			req: spamcheck.Request{
+				Msg: "Message with too many mentions: @user1 @user2 @user3 @user4 @user5 @user6",
+				Meta: spamcheck.MetaData{
+					Mentions: 6,
+				},
+			},
+			limit: 5,
+			expected: spamcheck.Response{
+				Name:    "mentions",
+				Spam:    true,
+				Details: "too many mentions 6/5",
+			},
+		},
+		{
+			name: "Disabled check",
+			req: spamcheck.Request{
+				Msg: "Message with many mentions: @user1 @user2 @user3 @user4 @user5 @user6",
+				Meta: spamcheck.MetaData{
+					Mentions: 6,
+				},
+			},
+			limit:    -1,
+			expected: spamcheck.Response{Name: "mentions", Spam: false, Details: "check disabled"},
+		},
+		{
+			name: "Zero limit, no mentions",
+			req: spamcheck.Request{
+				Msg: "Message with no mentions",
+				Meta: spamcheck.MetaData{
+					Mentions: 0,
+				},
+			},
+			limit:    0,
+			expected: spamcheck.Response{Name: "mentions", Spam: false, Details: "mentions 0/0"},
+		},
+		{
+			name: "Zero limit, with mentions",
+			req: spamcheck.Request{
+				Msg: "Message with mentions: @user1",
+				Meta: spamcheck.MetaData{
+					Mentions: 1,
+				},
+			},
+			limit: 0,
+			expected: spamcheck.Response{
+				Name:    "mentions",
+				Spam:    true,
+				Details: "too many mentions 1/0",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := MentionsCheck(tt.limit)
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}

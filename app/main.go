@@ -73,13 +73,14 @@ type options struct {
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
 	Meta struct {
-		LinksLimit int  `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
-		ImageOnly  bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
-		LinksOnly  bool `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
-		VideosOnly bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
-		AudiosOnly bool `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
-		Forward    bool `long:"forward" env:"FORWARD" description:"enable forward check"`
-		Keyboard   bool `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
+		LinksLimit    int  `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
+		MentionsLimit int  `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
+		ImageOnly     bool `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
+		LinksOnly     bool `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
+		VideosOnly    bool `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
+		AudiosOnly    bool `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
+		Forward       bool `long:"forward" env:"FORWARD" description:"enable forward check"`
+		Keyboard      bool `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -432,8 +433,9 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		StorageTimeout:          opts.StorageTimeout,
 		NoSpamReply:             opts.NoSpamReply,
 		CasEnabled:              opts.CAS.API != "",
-		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard,
+		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard,
 		MetaLinksLimit:          opts.Meta.LinksLimit,
+		MetaMentionsLimit:       opts.Meta.MentionsLimit,
 		MetaLinksOnly:           opts.Meta.LinksOnly,
 		MetaImageOnly:           opts.Meta.ImageOnly,
 		MetaVideoOnly:           opts.Meta.VideosOnly,
@@ -560,6 +562,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Meta.LinksLimit >= 0 {
 		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
 		metaChecks = append(metaChecks, tgspam.LinksCheck(opts.Meta.LinksLimit))
+	}
+	if opts.Meta.MentionsLimit >= 0 {
+		log.Printf("[INFO] mentions check enabled, limit: %d", opts.Meta.MentionsLimit)
+		metaChecks = append(metaChecks, tgspam.MentionsCheck(opts.Meta.MentionsLimit))
 	}
 	if opts.Meta.LinksOnly {
 		log.Printf("[INFO] links only check enabled")
