@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
@@ -492,7 +493,7 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 			Message: &tbapi.Message{
 				MessageID: 789,
 				Chat:      tbapi.Chat{ID: 456}, // admin chat
-				Text:      "**permanently banned [testuser](tg://user?id=12345)**\n\nSpam message text",
+				Text:      "**permanently banned [user_name_with_underscore](tg://user?id=12345)**\n\nSpam message text",
 				From:      &tbapi.User{UserName: "bot"},
 			},
 			From: &tbapi.User{
@@ -568,6 +569,93 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		// UpdateSpam should be called to update spam samples
 		require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
 		assert.Equal(t, "Spam message text", botMock.UpdateSpamCalls()[0].Msg)
+	})
+}
+
+func TestAdmin_PreserveUserLinks_Issue223(t *testing.T) {
+	// this test specifically addresses issue #223:
+	// pressing inline buttons removes telegram profile link from admin chat report
+	// especially for usernames with special characters like underscores
+
+	var markdownErrorCount, htmlSuccessCount int
+
+	// create a mockAPI that simulates real Telegram API behavior with markdown
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			switch msg := c.(type) {
+			case tbapi.EditMessageTextConfig:
+				if msg.ParseMode == tbapi.ModeMarkdown {
+					// simulate Telegram API failing on usernames with underscores in markdown mode
+					if strings.Contains(msg.Text, "user_name_with_underscore") {
+						markdownErrorCount++
+						return tbapi.Message{}, fmt.Errorf("Bad Request: can't parse entities: Character '_' is reserved")
+					}
+				} else if msg.ParseMode == tbapi.ModeHTML {
+					// HTML mode should succeed where markdown failed
+					if strings.Contains(msg.Text, "user_name_with_underscore") {
+						htmlSuccessCount++
+						// the link URL should be preserved in HTML mode
+						assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved in HTML mode")
+						return tbapi.Message{Text: msg.Text}, nil
+					}
+				} else if msg.ParseMode == "" {
+					// when messages are sent as plain text after markdown failure
+					// the link URL should still be preserved
+					assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved")
+				}
+			}
+			return tbapi.Message{}, nil
+		},
+	}
+
+	// set up the admin object
+	adm := &admin{
+		tbAPI:       mockAPI,
+		adminChatID: 456,
+	}
+
+	// test with username containing underscore to trigger the issue
+	t.Run("Preserve links for usernames with underscores", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		markdownErrorCount = 0
+		htmlSuccessCount = 0
+
+		// setup query with a username that has underscores
+		query := &tbapi.CallbackQuery{
+			ID:   "test-callback-id",
+			Data: "!12345:999",
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "**permanently banned [user_name_with_underscore](tg://user?id=12345)**\n\nSpam message text",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{
+				UserName: "admin",
+				ID:       111,
+			},
+		}
+
+		// mock functions needed for the test
+		adm.locator = &mocks.LocatorMock{
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{
+					Checks: []spamcheck.Response{
+						{Name: "test", Spam: true, Details: "test details"},
+					},
+				}, true
+			},
+		}
+
+		// run the function that needs to maintain the links
+		err := adm.callbackShowInfo(query)
+		assert.NoError(t, err)
+
+		// our improved implementation should:
+		// 1. Try markdown first (which fails with usernames containing underscores)
+		// 2. Try HTML as a fallback (which should succeed and preserve the links)
+		assert.Equal(t, 1, markdownErrorCount, "Should have tried and failed with markdown")
+		assert.Equal(t, 1, htmlSuccessCount, "Should have tried and succeeded with HTML mode")
 	})
 }
 

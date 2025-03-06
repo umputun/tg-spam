@@ -87,10 +87,38 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 		return tbMsg // don't touch other types
 	}
 
-	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
+	// for issue #223: Special handling for messages containing profile links with usernames that have underscores
+	// these often fail in markdown mode because underscores are used for formatting, but we need to preserve the links
+	hasTelegramProfileLink := false
+	switch v := tbMsg.(type) {
+	case tbapi.EditMessageTextConfig:
+		// check if this message contains a Telegram user link, which we want to preserve
+		hasTelegramProfileLink = strings.Contains(v.Text, "tg://user?id=")
+	}
+
+	// try markdown first, as it's the nicer rendering
+	msg := withParseMode(tbMsg, tbapi.ModeMarkdown)
 	if _, err := tbAPI.Send(msg); err != nil {
 		log.Printf("[WARN] failed to send message as markdown, %v", err)
-		msg = withParseMode(tbMsg, "") // try plain text
+
+		// for messages with Telegram profile links, we need to ensure the links are preserved
+		// when falling back to plain text, even if markdown fails
+		if hasTelegramProfileLink {
+			// use HTML mode as a fallback, which better handles usernames with special characters
+			htmlMsg := withParseMode(tbMsg, tbapi.ModeHTML)
+			if _, err := tbAPI.Send(htmlMsg); err != nil {
+				// if HTML also fails, fall back to plain text
+				log.Printf("[WARN] failed to send message as HTML, %v", err)
+				plainMsg := withParseMode(tbMsg, "") // plain text
+				if _, err := tbAPI.Send(plainMsg); err != nil {
+					return fmt.Errorf("can't send message to telegram: %w", err)
+				}
+			}
+			return nil
+		}
+
+		// for regular messages, just fall back to plain text
+		msg = withParseMode(tbMsg, "")
 		if _, err := tbAPI.Send(msg); err != nil {
 			return fmt.Errorf("can't send message to telegram: %w", err)
 		}
