@@ -2,6 +2,7 @@
 package webapi
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/rand"
@@ -596,14 +597,86 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		ds[i] = d
 	}
 
+	// get filter from query param, default to "all"
+	filter := r.URL.Query().Get("filter")
+	if filter == "" {
+		filter = "all"
+	}
+
+	// apply filtering
+	var filteredDS []storage.DetectedSpamInfo
+	switch filter {
+	case "non-classified":
+		for _, entry := range ds {
+			hasClassifierHam := false
+			for _, check := range entry.Checks {
+				if check.Name == "classifier" && !check.Spam {
+					hasClassifierHam = true
+					break
+				}
+			}
+			if hasClassifierHam {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
+	case "openai":
+		for _, entry := range ds {
+			hasOpenAI := false
+			for _, check := range entry.Checks {
+				if check.Name == "openai" {
+					hasOpenAI = true
+					break
+				}
+			}
+			if hasOpenAI {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
+	default: // "all" or any other value
+		filteredDS = ds
+	}
+
 	tmplData := struct {
 		DetectedSpamEntries []storage.DetectedSpamInfo
 		TotalDetectedSpam   int
+		FilteredCount       int
+		Filter              string
 	}{
-		DetectedSpamEntries: ds,
+		DetectedSpamEntries: filteredDS,
 		TotalDetectedSpam:   len(ds),
+		FilteredCount:       len(filteredDS),
+		Filter:              filter,
 	}
 
+	// if it's an HTMX request, render both content and count display for OOB swap
+	if r.Header.Get("HX-Request") == "true" {
+		var buf bytes.Buffer
+
+		// first render the content template
+		if err := tmpl.ExecuteTemplate(&buf, "detected_spam_content", tmplData); err != nil {
+			log.Printf("[WARN] can't execute content template: %v", err)
+			http.Error(w, "Error executing template", http.StatusInternalServerError)
+			return
+		}
+
+		// then append OOB swap for the count display
+		countHTML := ""
+		if filter != "all" {
+			countHTML = fmt.Sprintf("(%d/%d)", len(filteredDS), len(ds))
+		} else {
+			countHTML = fmt.Sprintf("(%d)", len(ds))
+		}
+
+		buf.WriteString(fmt.Sprintf(`<span id="count-display" hx-swap-oob="true">%s</span>`, countHTML))
+
+		// write the combined response
+		if _, err := buf.WriteTo(w); err != nil {
+			log.Printf("[WARN] failed to write response: %v", err)
+		}
+		return
+	}
+
+	// full page render for normal requests
 	if err := tmpl.ExecuteTemplate(w, "detected_spam.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)

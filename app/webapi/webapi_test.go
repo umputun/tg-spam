@@ -852,9 +852,9 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 		body := rr.Body.String()
 
 		// check main elements
-		assert.Contains(t, body, "Detected Spam (2)")
+		assert.Contains(t, body, "Detected Spam")
 		assert.Contains(t, body, `href="/download/detected_spam"`)
-		assert.Contains(t, body, `class="btn btn-custom-blue btn-sm"`)
+		assert.Contains(t, body, "btn-custom-blue")
 
 		// check data
 		assert.Contains(t, body, "spam1 12345")

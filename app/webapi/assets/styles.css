@@ -38,8 +38,8 @@ body, #result{
 
 .ds-checks {
     font-size: 0.9em;
-    width: 280px;
-    max-width: 280px;
+    width: 300px;
+    max-width: 300px;
     overflow-wrap: break-word;
     word-wrap: break-word;
     word-break: break-word;
@@ -55,8 +55,8 @@ body, #result{
         width: 350px;
     }
     .ds-checks {
-        max-width: 220px;
-        width: 220px;
+        max-width: 240px;
+        width: 240px;
     }
 }
 
@@ -67,8 +67,8 @@ body, #result{
         width: 200px;
     }
     .ds-checks {
-        max-width: 200px;
-        width: 200px;
+        max-width: 220px;
+        width: 220px;
     }
     
     /* Reduce font sizes on mobile */
@@ -93,6 +93,24 @@ body, #result{
     color: #fff;
     background-color: #3286cb;
     border-color: #3d86e5;
+}
+
+.btn-custom-blue-outline {
+    color: #286ea7;
+    background-color: #fff;
+    border-color: #286ea7;
+}
+
+.btn-custom-blue-outline:hover,
+.btn-custom-blue-outline:focus,
+.btn-custom-blue-outline:active {
+    color: #fff;
+    background-color: #286ea7;
+    border-color: #286ea7;
+}
+
+.nowrap {
+    white-space: nowrap;
 }
 
 .htmx-indicator{
