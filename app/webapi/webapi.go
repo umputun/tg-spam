@@ -641,11 +641,13 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		TotalDetectedSpam   int
 		FilteredCount       int
 		Filter              string
+		OpenAIEnabled       bool
 	}{
 		DetectedSpamEntries: filteredDS,
 		TotalDetectedSpam:   len(ds),
 		FilteredCount:       len(filteredDS),
 		Filter:              filter,
+		OpenAIEnabled:       s.Settings.OpenAIEnabled,
 	}
 
 	// if it's an HTMX request, render both content and count display for OOB swap

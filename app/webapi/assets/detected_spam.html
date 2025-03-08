@@ -23,7 +23,9 @@
                         hx-target="#spam-list-content">
                     <option value="all" {{if eq .Filter "all"}}selected{{end}}>All</option>
                     <option value="non-classified" {{if eq .Filter "non-classified"}}selected{{end}}>Missed by Classifier</option>
+                    {{if .OpenAIEnabled}}
                     <option value="openai" {{if eq .Filter "openai"}}selected{{end}}>OpenAI</option>
+                    {{end}}
                 </select>
             </div>
         </div>
