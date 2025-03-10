@@ -143,7 +143,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	defer d.lock.RUnlock()
 
 	// approved user don't need to be checked
-	if d.FirstMessageOnly && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
+	if req.UserID != "" && d.FirstMessageOnly && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
 		return false, []spamcheck.Response{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
 	}
 
@@ -609,6 +609,9 @@ func (d *Detector) cosineSimilarity(a, b map[string]int) float64 {
 
 // isCasSpam checks if a given user ID is a spammer with CAS API.
 func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
+	if msgID == "" {
+		return spamcheck.Response{Spam: false, Name: "cas", Details: "check disabled"}
+	}
 	if _, err := strconv.ParseInt(msgID, 10, 64); err != nil {
 		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("invalid user id %q", msgID)}
 	}

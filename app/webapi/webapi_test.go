@@ -463,6 +463,14 @@ func TestServer_routes(t *testing.T) {
 func TestServer_checkHandler(t *testing.T) {
 	mockDetector := &mocks.DetectorMock{
 		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
+			if req.UserID == "" {
+				// for empty user ID, include a CAS check with "check disabled"
+				return false, []spamcheck.Response{
+					{Details: "not spam"},
+					{Name: "cas", Spam: false, Details: "check disabled"},
+				}
+			}
+
 			if req.Msg == "spam example" {
 				return true, []spamcheck.Response{{Spam: true, Name: "test", Details: "this was spam"}}
 			}
@@ -523,6 +531,42 @@ func TestServer_checkHandler(t *testing.T) {
 		assert.NoError(t, err, "error unmarshalling response")
 		assert.False(t, response.Spam, "expected not spam")
 		assert.Equal(t, "not spam", response.Checks[0].Details, "unexpected check result")
+	})
+
+	t.Run("empty user ID", func(t *testing.T) {
+		reqBody, err := json.Marshal(map[string]string{
+			"msg":     "test message",
+			"user_id": "",
+		})
+		require.NoError(t, err)
+		req, err := http.NewRequest("POST", "/check", bytes.NewBuffer(reqBody))
+		assert.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.checkMsgHandler)
+
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code, "handler returned wrong status code")
+
+		var response struct {
+			Spam   bool                 `json:"spam"`
+			Checks []spamcheck.Response `json:"checks"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &response)
+		assert.NoError(t, err, "error unmarshalling response")
+
+		// verify that the CAS check shows "check disabled"
+		var casCheck *spamcheck.Response
+		for _, check := range response.Checks {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+
+		require.NotNil(t, casCheck, "CAS check should be included in results")
+		assert.False(t, casCheck.Spam)
+		assert.Equal(t, "check disabled", casCheck.Details)
 	})
 
 	t.Run("bad request", func(t *testing.T) {

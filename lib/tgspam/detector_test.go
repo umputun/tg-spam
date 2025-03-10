@@ -247,6 +247,40 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 	}
 }
 
+func TestSpam_CheckIsCasSpamEmptyUserID(t *testing.T) {
+	mockedHTTPClient := &mocks.HTTPClientMock{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			assert.Fail(t, "HTTP client should not be called with empty userID")
+			return nil, nil
+		},
+	}
+
+	d := NewDetector(Config{
+		CasAPI:           "http://localhost",
+		HTTPClient:       mockedHTTPClient,
+		MaxAllowedEmoji:  -1,
+		FirstMessageOnly: true,
+	})
+	spam, cr := d.Check(spamcheck.Request{UserID: "", Msg: "test message"})
+	assert.False(t, spam)
+
+	// find the CAS check in the results
+	var casCheck *spamcheck.Response
+	for _, check := range cr {
+		if check.Name == "cas" {
+			casCheck = &check
+			break
+		}
+	}
+
+	require.NotNil(t, casCheck, "CAS check should be included in results")
+	assert.False(t, casCheck.Spam)
+	assert.Equal(t, "check disabled", casCheck.Details)
+
+	// verify HTTP client was never called
+	assert.Equal(t, 0, len(mockedHTTPClient.DoCalls()))
+}
+
 func TestDetector_CheckSimilarity(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")

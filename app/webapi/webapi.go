@@ -302,9 +302,9 @@ func (s *Server) checkMsgHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Msg == "" || req.UserID == "" || req.UserID == "0" {
+	if req.Msg == "" {
 		w.Header().Set("HX-Retarget", "#error-message")
-		fmt.Fprintln(w, "<div class='alert alert-danger'>userid and valid message required.</div>")
+		fmt.Fprintln(w, "<div class='alert alert-danger'>Valid message required.</div>")
 		return
 	}
 
