@@ -8,6 +8,23 @@ body, #result{
     color: white;
 }
 
+/* Version display styling */
+.table td {
+    word-break: break-word;
+    vertical-align: middle;
+}
+
+/* Prevent table headers from breaking across lines */
+.table th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Ensure consistent width for table cells */
+.table th[style*="width"] {
+    width: 30% !important;
+}
+
 
 .ds-timestamp {
     min-width: 50px;
