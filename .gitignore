@@ -34,3 +34,4 @@ site/public/
 _examples/simplechat/messages.db
 *.loaded
 var/
+tg-spam
