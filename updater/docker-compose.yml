@@ -2,7 +2,7 @@
 # updater gets samples from github repo "https://github.com/radio-t/tg-spam-samples.git and updates tg-spam samples
 services:
   tg-spam:
-    image: umputun/tg-spam:latest # use :master tag for latest (unstable) version
+    image: ghcr.io/umputun/tg-spam:latest # use :master tag for latest (unstable) version
     hostname: tg-spam
     restart: always
     container_name: tg-spam

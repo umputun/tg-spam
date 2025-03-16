@@ -1,7 +1,7 @@
 # example of a minimal compose file to run tg-spam
 services:
   tg-spam:
-    image: umputun/tg-spam:master # use :latest tag for production
+    image: ghcr.io/umputun/tg-spam:master # use :latest tag for production
     hostname: tg-spam
     restart: always
     container_name: tg-spam
