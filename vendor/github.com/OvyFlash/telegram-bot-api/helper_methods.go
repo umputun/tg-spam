@@ -63,7 +63,8 @@ func NewMessageToChannel(username string, text string) MessageConfig {
 		BaseChat: BaseChat{
 			ChatConfig: ChatConfig{
 				ChannelUsername: username,
-			}},
+			},
+		},
 		Text: text,
 	}
 }
@@ -218,7 +219,7 @@ func NewVoice(chatID int64, file RequestFileData) VoiceConfig {
 
 // NewMediaGroup creates a new media group. Files should be an array of
 // two to ten InputMediaPhoto or InputMediaVideo.
-func NewMediaGroup(chatID int64, files []interface{}) MediaGroupConfig {
+func NewMediaGroup(chatID int64, files []InputMedia) MediaGroupConfig {
 	return MediaGroupConfig{
 		BaseChat: BaseChat{
 			ChatConfig: ChatConfig{ChatID: chatID},
@@ -361,7 +362,6 @@ func NewUpdate(offset int) UpdateConfig {
 // link is the url parsable link you wish to get the updates.
 func NewWebhook(link string) (WebhookConfig, error) {
 	u, err := url.Parse(link)
-
 	if err != nil {
 		return WebhookConfig{}, err
 	}
@@ -377,7 +377,6 @@ func NewWebhook(link string) (WebhookConfig, error) {
 // file contains a string to a file, FileReader, or FileBytes.
 func NewWebhookWithCert(link string, file RequestFileData) (WebhookConfig, error) {
 	u, err := url.Parse(link)
-
 	if err != nil {
 		return WebhookConfig{}, err
 	}
@@ -616,7 +615,7 @@ func NewInlineQueryResultVenue(id, title, address string, latitude, longitude fl
 }
 
 // NewEditMessageMedia allows you to edit the media content of a message.
-func NewEditMessageMedia(chatID int64, messageID int, inputMedia interface{}) EditMessageMediaConfig {
+func NewEditMessageMedia(chatID int64, messageID int, inputMedia InputMedia) EditMessageMediaConfig {
 	return EditMessageMediaConfig{
 		BaseEdit: BaseEdit{
 			BaseChatMessage: BaseChatMessage{
@@ -632,27 +631,27 @@ func NewEditMessageMedia(chatID int64, messageID int, inputMedia interface{}) Ed
 
 // NewEditMessagePhoto allows you to edit the photo content of a message.
 func NewEditMessagePhoto(chatID int64, messageID int, inputPhoto InputMediaPhoto) EditMessageMediaConfig {
-	return NewEditMessageMedia(chatID, messageID, inputPhoto)
+	return NewEditMessageMedia(chatID, messageID, &inputPhoto)
 }
 
 // NewEditMessageVideo allows you to edit the video content of a message.
 func NewEditMessageVideo(chatID int64, messageID int, inputVideo InputMediaVideo) EditMessageMediaConfig {
-	return NewEditMessageMedia(chatID, messageID, inputVideo)
+	return NewEditMessageMedia(chatID, messageID, &inputVideo)
 }
 
 // NewEditMessageAnimation allows you to edit the animation content of a message.
 func NewEditMessageAnimation(chatID int64, messageID int, inputAnimation InputMediaAnimation) EditMessageMediaConfig {
-	return NewEditMessageMedia(chatID, messageID, inputAnimation)
+	return NewEditMessageMedia(chatID, messageID, &inputAnimation)
 }
 
 // NewEditMessageAudio allows you to edit the audio content of a message.
 func NewEditMessageAudio(chatID int64, messageID int, inputAudio InputMediaAudio) EditMessageMediaConfig {
-	return NewEditMessageMedia(chatID, messageID, inputAudio)
+	return NewEditMessageMedia(chatID, messageID, &inputAudio)
 }
 
 // NewEditMessageDocument allows you to edit the document content of a message.
 func NewEditMessageDocument(chatID int64, messageID int, inputDocument InputMediaDocument) EditMessageMediaConfig {
-	return NewEditMessageMedia(chatID, messageID, inputDocument)
+	return NewEditMessageMedia(chatID, messageID, &inputDocument)
 }
 
 // NewEditMessageText allows you to edit the text of a message.
@@ -1262,4 +1261,33 @@ func ValidateWebAppData(token, telegramInitData string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// NewPaidMedia creates a new PaidMediaConfig.
+// chatID is where to send it, starCount is the number of stars to charge,
+// and media is the InputPaidMedia to send.
+func NewPaidMedia(chatID, starCount int64, media *InputPaidMedia) PaidMediaConfig {
+	return PaidMediaConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{ChatID: chatID},
+		},
+		StarCount: starCount,
+		Media:     media,
+	}
+}
+
+// NewInputPaidMediaPhoto creates a new InputPaidMedia for photos.
+func NewInputPaidMediaPhoto(media *InputMediaPhoto) InputPaidMedia {
+	return InputPaidMedia{
+		Type:  "photo",
+		Media: media,
+	}
+}
+
+// NewInputPaidMediaVideo creates a new InputPaidMedia for videos.
+func NewInputPaidMediaVideo(media *InputMediaVideo) InputPaidMedia {
+	return InputPaidMedia{
+		Type:  "video",
+		Media: media,
+	}
 }

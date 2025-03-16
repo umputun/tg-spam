@@ -278,7 +278,6 @@ func (bot *BotAPI) UploadFilesWithContext(ctx context.Context, endpoint string, 
 // It requires the FileID.
 func (bot *BotAPI) GetFileDirectURL(fileID string) (string, error) {
 	file, err := bot.GetFile(FileConfig{fileID})
-
 	if err != nil {
 		return "", err
 	}

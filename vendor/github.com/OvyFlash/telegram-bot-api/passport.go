@@ -21,8 +21,7 @@ type PassportScope struct {
 
 // PassportScopeElementOneOfSeveral allows you to request any one of the
 // requested documents.
-type PassportScopeElementOneOfSeveral struct {
-}
+type PassportScopeElementOneOfSeveral struct{}
 
 // ScopeType is the scope type.
 func (eo *PassportScopeElementOneOfSeveral) ScopeType() string {
@@ -31,7 +30,7 @@ func (eo *PassportScopeElementOneOfSeveral) ScopeType() string {
 
 // PassportScopeElementOne requires the specified element be provided.
 type PassportScopeElementOne struct {
-	Type        string `json:"type"` // One of “personal_details”, “passport”, “driver_license”, “identity_card”, “internal_passport”, “address”, “utility_bill”, “bank_statement”, “rental_agreement”, “passport_registration”, “temporary_registration”, “phone_number”, “email”
+	Type        string `json:"type"` // One of "personal_details", "passport", "driver_license", "identity_card", "internal_passport", "address", "utility_bill", "bank_statement", "rental_agreement", "passport_registration", "temporary_registration", "phone_number", "email"
 	Selfie      bool   `json:"selfie"`
 	Translation bool   `json:"translation"`
 	NativeNames bool   `json:"native_name"`

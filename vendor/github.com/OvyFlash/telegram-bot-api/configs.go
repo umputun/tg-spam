@@ -597,7 +597,7 @@ func (config DocumentConfig) files() []RequestFile {
 
 // StickerConfig contains information about a SendSticker request.
 type StickerConfig struct {
-	//Emoji associated with the sticker; only for just uploaded stickers
+	// Emoji associated with the sticker; only for just uploaded stickers
 	Emoji string
 	BaseFile
 }
@@ -777,7 +777,7 @@ func (config VideoNoteConfig) files() []RequestFile {
 type PaidMediaConfig struct {
 	BaseChat
 	StarCount             int64
-	Media                 []InputPaidMedia
+	Media                 *InputPaidMedia
 	Payload               string          // optional
 	Caption               string          // optional
 	ParseMode             string          // optional
@@ -797,7 +797,9 @@ func (config PaidMediaConfig) params() (Params, error) {
 	params.AddNonEmpty("parse_mode", config.ParseMode)
 	params.AddBool("show_caption_above_media", config.ShowCaptionAboveMedia)
 
-	err = params.AddInterface("media", config.Media)
+	media := []InputMedia{config.Media}
+	newMedia := prepareInputMediaForParams(media)
+	err = params.AddInterface("media", newMedia[0])
 	if err != nil {
 		return params, err
 	}
@@ -807,17 +809,19 @@ func (config PaidMediaConfig) params() (Params, error) {
 
 func (config PaidMediaConfig) files() []RequestFile {
 	files := []RequestFile{}
-	for i, v := range config.Media {
+
+	if config.Media.getMedia().NeedsUpload() {
 		files = append(files, RequestFile{
-			Name: fmt.Sprintf("%s-%d", v.Type, i),
-			Data: v.Media,
+			Name: "file-0",
+			Data: config.Media.getMedia(),
 		})
-		if v.Thumb != nil {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("thumbnail-%d", i),
-				Data: v.Thumb,
-			})
-		}
+	}
+
+	if thumb := config.Media.getThumb(); thumb != nil && thumb.NeedsUpload() {
+		files = append(files, RequestFile{
+			Name: "file-0-thumb",
+			Data: thumb,
+		})
 	}
 
 	return files
@@ -904,7 +908,7 @@ type EditMessageLiveLocationConfig struct {
 	BaseEdit
 	Latitude             float64 // required
 	Longitude            float64 // required
-	LivePeriod           int     //optional
+	LivePeriod           int     // optional
 	HorizontalAccuracy   float64 // optional
 	Heading              int     // optional
 	ProximityAlertRadius int     // optional
@@ -1212,7 +1216,7 @@ func (config EditMessageCaptionConfig) method() string {
 type EditMessageMediaConfig struct {
 	BaseEdit
 
-	Media interface{}
+	Media InputMedia
 }
 
 func (EditMessageMediaConfig) method() string {
@@ -1225,13 +1229,37 @@ func (config EditMessageMediaConfig) params() (Params, error) {
 		return params, err
 	}
 
-	err = params.AddInterface("media", prepareInputMediaParam(config.Media, 0))
+	if config.Media.getMedia().NeedsUpload() {
+		config.Media.setUploadMedia(fmt.Sprintf("attach://file-%d", 0))
+	}
+
+	if thumb := config.Media.getThumb(); thumb != nil && thumb.NeedsUpload() {
+		config.Media.setUploadThumb(fmt.Sprintf("attach://file-%d-thumb", 0))
+	}
+
+	err = params.AddInterface("media", config.Media)
 
 	return params, err
 }
 
 func (config EditMessageMediaConfig) files() []RequestFile {
-	return prepareInputMediaFile(config.Media, 0)
+	files := []RequestFile{}
+
+	if config.Media.getMedia().NeedsUpload() {
+		files = append(files, RequestFile{
+			Name: "file-0",
+			Data: config.Media.getMedia(),
+		})
+	}
+
+	if thumb := config.Media.getThumb(); thumb != nil && thumb.NeedsUpload() {
+		files = append(files, RequestFile{
+			Name: "file-0-thumb",
+			Data: thumb,
+		})
+	}
+
+	return files
 }
 
 // EditMessageReplyMarkupConfig allows you to modify the reply markup
@@ -1406,7 +1434,7 @@ func (config DeleteWebhookConfig) params() (Params, error) {
 
 // InlineQueryResultsButton represents a button to be shown above inline query results. You must use exactly one of the optional fields.
 type InlineQueryResultsButton struct {
-	//Label text on the button
+	// Label text on the button
 	Text string `json:"text"`
 	//Description of the Web App that will be launched when the user presses the button. The Web App will be able to switch back to the inline mode using the method switchInlineQuery inside the Web App.
 	//
@@ -2056,12 +2084,12 @@ func (config InvoiceConfig) method() string {
 
 // InvoiceLinkConfig contains information for createInvoiceLink method
 type InvoiceLinkConfig struct {
-	Title                     string         //Required
-	Description               string         //Required
-	Payload                   string         //Required
-	ProviderToken             string         //Required
-	Currency                  string         //Required
-	Prices                    []LabeledPrice //Required
+	Title                     string         // Required
+	Description               string         // Required
+	Payload                   string         // Required
+	ProviderToken             string         // Required
+	Currency                  string         // Required
+	Prices                    []LabeledPrice // Required
 	MaxTipAmount              int
 	SuggestedTipAmounts       []int
 	ProviderData              string
@@ -2180,8 +2208,8 @@ func (config GetStarTransactionsConfig) params() (Params, error) {
 // RefundStarPaymentConfig refunds a successful payment in Telegram Stars.
 // Returns True on success.
 type RefundStarPaymentConfig struct {
-	UserID                  int64  //required
-	TelegramPaymentChargeID string //required
+	UserID                  int64  // required
+	TelegramPaymentChargeID string // required
 }
 
 func (config RefundStarPaymentConfig) method() string {
@@ -2410,7 +2438,7 @@ type NewStickerSetConfig struct {
 	Title           string
 	Stickers        []InputSticker
 	StickerType     string
-	NeedsRepainting bool //optional; Pass True if stickers in the sticker set must be repainted to the color of text when used in messages, the accent color if used as emoji status, white on chat photos, or another appropriate color based on context; for custom emoji sticker sets only
+	NeedsRepainting bool // optional; Pass True if stickers in the sticker set must be repainted to the color of text when used in messages, the accent color if used as emoji status, white on chat photos, or another appropriate color based on context; for custom emoji sticker sets only
 }
 
 func (config NewStickerSetConfig) method() string {
@@ -2892,7 +2920,7 @@ func (config UnpinAllGeneralForumTopicMessagesConfig) method() string {
 // Media consist of InputMedia items (InputMediaPhoto, InputMediaVideo).
 type MediaGroupConfig struct {
 	BaseChat
-	Media []interface{}
+	Media []InputMedia
 }
 
 func (config MediaGroupConfig) method() string {
@@ -2921,7 +2949,7 @@ type DiceConfig struct {
 	// Currently, must be one of 🎲, 🎯, 🏀, ⚽, 🎳, or 🎰.
 	// Dice can have values 1-6 for 🎲, 🎯, and 🎳, values 1-5 for 🏀 and ⚽,
 	// and values 1-64 for 🎰.
-	// Defaults to “🎲”
+	// Defaults to "🎲"
 	Emoji string
 }
 
@@ -3099,7 +3127,7 @@ func (config GetMyDescriptionConfig) params() (Params, error) {
 type SetMyDescriptionConfig struct {
 	// Pass an empty string to remove the dedicated description for the given language.
 	Description string
-	//If empty, the description will be applied to all users for whose language there is no dedicated description.
+	// If empty, the description will be applied to all users for whose language there is no dedicated description.
 	LanguageCode string
 }
 
@@ -3227,180 +3255,114 @@ func (config GetMyDefaultAdministratorRightsConfig) params() (Params, error) {
 	return params, nil
 }
 
-// prepareInputMediaParam evaluates a single InputMedia and determines if it
-// needs to be modified for a successful upload. If it returns nil, then the
-// value does not need to be included in the params. Otherwise, it will return
-// the same type as was originally provided.
-//
-// The idx is used to calculate the file field name. If you only have a single
-// file, 0 may be used. It is formatted into "attach://file-%d" for the primary
-// media and "attach://file-%d-thumb" for thumbnails.
-//
-// It is expected to be used in conjunction with prepareInputMediaFile.
-func prepareInputMediaParam(inputMedia interface{}, idx int) interface{} {
-	switch m := inputMedia.(type) {
-	case InputMediaPhoto:
-		if m.Media.NeedsUpload() {
-			m.Media = fileAttach(fmt.Sprintf("attach://file-%d", idx))
+// prepareInputMediaForParams processes media items for API parameters.
+// It creates a copy of the media array with files prepared for upload.
+func prepareInputMediaForParams(inputMedia []InputMedia) []InputMedia {
+	newMedias := cloneMediaSlice(inputMedia)
+	for idx, media := range newMedias {
+		if media.getMedia().NeedsUpload() {
+			media.setUploadMedia(fmt.Sprintf("attach://file-%d", idx))
 		}
 
-		return m
-	case InputMediaVideo:
-		if m.Media.NeedsUpload() {
-			m.Media = fileAttach(fmt.Sprintf("attach://file-%d", idx))
+		if thumb := media.getThumb(); thumb != nil && thumb.NeedsUpload() {
+			media.setUploadThumb(fmt.Sprintf("attach://file-%d-thumb", idx))
 		}
 
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			m.Thumb = fileAttach(fmt.Sprintf("attach://file-%d-thumb", idx))
-		}
-
-		return m
-	case InputMediaAudio:
-		if m.Media.NeedsUpload() {
-			m.Media = fileAttach(fmt.Sprintf("attach://file-%d", idx))
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			m.Thumb = fileAttach(fmt.Sprintf("attach://file-%d-thumb", idx))
-		}
-
-		return m
-	case InputMediaAnimation:
-		if m.Media.NeedsUpload() {
-			m.Media = fileAttach(fmt.Sprintf("attach://file-%d", idx))
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			m.Thumb = fileAttach(fmt.Sprintf("attach://file-%d-thumb", idx))
-		}
-
-		return m
-	case InputMediaDocument:
-		if m.Media.NeedsUpload() {
-			m.Media = fileAttach(fmt.Sprintf("attach://file-%d", idx))
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			m.Thumb = fileAttach(fmt.Sprintf("attach://file-%d-thumb", idx))
-		}
-
-		return m
+		newMedias[idx] = media
 	}
 
+	return newMedias
+}
+
+// prepareInputMediaForFiles generates RequestFile objects for media items
+// that need to be uploaded.
+func prepareInputMediaForFiles(inputMedia []InputMedia) []RequestFile {
+	files := []RequestFile{}
+
+	for idx, media := range inputMedia {
+		if media.getMedia().NeedsUpload() {
+			files = append(files, RequestFile{
+				Name: fmt.Sprintf("file-%d", idx),
+				Data: media.getMedia(),
+			})
+		}
+
+		if thumb := media.getThumb(); thumb != nil && thumb.NeedsUpload() {
+			files = append(files, RequestFile{
+				Name: fmt.Sprintf("file-%d-thumb", idx),
+				Data: thumb,
+			})
+		}
+	}
+
+	return files
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
+func cloneMediaSlice(media []InputMedia) []InputMedia {
+	cloned := make([]InputMedia, len(media))
+	for i, m := range media {
+		cloned[i] = cloneInputMedia(m)
+	}
+	return cloned
+}
+
+func cloneInputMedia(media InputMedia) InputMedia {
+	if media == nil {
+		return nil
+	}
+
+	switch m := media.(type) {
+	case *InputMediaPhoto:
+		return ptr(*m)
+	case *InputMediaVideo:
+		return ptr(*m)
+	case *InputMediaAnimation:
+		return ptr(*m)
+	case *InputMediaAudio:
+		return ptr(*m)
+	case *InputMediaDocument:
+		return ptr(*m)
+	case *InputPaidMedia:
+		clone := &InputPaidMedia{
+			Type:              m.Type,
+			Thumb:             m.Thumb,
+			Width:             m.Width,
+			Height:            m.Height,
+			Duration:          m.Duration,
+			SupportsStreaming: m.SupportsStreaming,
+		}
+		if m.Media != nil {
+			clone.Media = cloneInputMedia(m.Media)
+		}
+		return clone
+	case *PaidMediaConfig:
+		clone := &PaidMediaConfig{
+			BaseChat:              m.BaseChat,
+			StarCount:             m.StarCount,
+			Payload:               m.Payload,
+			Caption:               m.Caption,
+			ParseMode:             m.ParseMode,
+			CaptionEntities:       m.CaptionEntities,
+			ShowCaptionAboveMedia: m.ShowCaptionAboveMedia,
+		}
+		if m.Media != nil {
+			clone.Media = &InputPaidMedia{
+				Type:              m.Media.Type,
+				Thumb:             m.Media.Thumb,
+				Width:             m.Media.Width,
+				Height:            m.Media.Height,
+				Duration:          m.Media.Duration,
+				SupportsStreaming: m.Media.SupportsStreaming,
+			}
+			if m.Media.Media != nil {
+				clone.Media.Media = cloneInputMedia(m.Media.Media)
+			}
+		}
+		return clone
+	}
 	return nil
-}
-
-// prepareInputMediaFile generates an array of RequestFile to provide for
-// Fileable's files method. It returns an array as a single InputMedia may have
-// multiple files, for the primary media and a thumbnail.
-//
-// The idx parameter is used to generate file field names. It uses the names
-// "file-%d" for the main file and "file-%d-thumb" for the thumbnail.
-//
-// It is expected to be used in conjunction with prepareInputMediaParam.
-func prepareInputMediaFile(inputMedia interface{}, idx int) []RequestFile {
-	files := []RequestFile{}
-
-	switch m := inputMedia.(type) {
-	case InputMediaPhoto:
-		if m.Media.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Media,
-			})
-		}
-	case InputMediaVideo:
-		if m.Media.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Media,
-			})
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Thumb,
-			})
-		}
-	case InputMediaAnimation:
-		if m.Media.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Media,
-			})
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Thumb,
-			})
-		}
-	case InputMediaDocument:
-		if m.Media.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Media,
-			})
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Thumb,
-			})
-		}
-	case InputMediaAudio:
-		if m.Media.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Media,
-			})
-		}
-
-		if m.Thumb != nil && m.Thumb.NeedsUpload() {
-			files = append(files, RequestFile{
-				Name: fmt.Sprintf("file-%d", idx),
-				Data: m.Thumb,
-			})
-		}
-	}
-
-	return files
-}
-
-// prepareInputMediaForParams calls prepareInputMediaParam for each item
-// provided and returns a new array with the correct params for a request.
-//
-// It is expected that files will get data from the associated function,
-// prepareInputMediaForFiles.
-func prepareInputMediaForParams(inputMedia []interface{}) []interface{} {
-	newMedia := make([]interface{}, len(inputMedia))
-	copy(newMedia, inputMedia)
-
-	for idx, media := range inputMedia {
-		if param := prepareInputMediaParam(media, idx); param != nil {
-			newMedia[idx] = param
-		}
-	}
-
-	return newMedia
-}
-
-// prepareInputMediaForFiles calls prepareInputMediaFile for each item
-// provided and returns a new array with the correct files for a request.
-//
-// It is expected that params will get data from the associated function,
-// prepareInputMediaForParams.
-func prepareInputMediaForFiles(inputMedia []interface{}) []RequestFile {
-	files := []RequestFile{}
-
-	for idx, media := range inputMedia {
-		if file := prepareInputMediaFile(media, idx); file != nil {
-			files = append(files, file...)
-		}
-	}
-
-	return files
 }
