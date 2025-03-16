@@ -110,7 +110,7 @@ sudo systemctl enable docker
 ```yaml
 services:
   tg-spam:
-    image: umputun/tg-spam:latest
+    image: ghcr.io/umputun/tg-spam:latest
     restart: always
     environment:
       - TELEGRAM_TOKEN=YOUR_BOT_TOKEN_HERE

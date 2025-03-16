@@ -545,7 +545,7 @@ This is an example of a docker-compose.yml file to run the bot. It is using the 
 services:
   
   tg-spam:
-    image: umputun/tg-spam:latest
+    image: ghcr.io/umputun/tg-spam:latest
     hostname: tg-spam
     restart: always
     container_name: tg-spam
