@@ -140,6 +140,36 @@ group.NotFoundHandler(func(w http.ResponseWriter, _ *http.Request) {
 If a custom `NotFoundHandler` is not configured, `routegroup` will default to using a handler from the standard library (`http.NotFoundHandler()`). It is important to note that the `NotFoundHandler` serves as a catch-all route, which influences "Method Not Allowed"  (405) responses. Consequently, if an incorrect method is called, the response will be 404 (or the custom status specified by the `NotFoundHandler`) rather than 405. This behavior aligns with the standard `http.ServeMux` and [may be improved](https://github.com/golang/go/issues/65648) in future versions of Go.
 
 
+**Handling Root Paths Without Trailing Slashes**
+
+When working with mounted groups, you often need to handle requests to the group's root path without a trailing slash. For this purpose, `routegroup` provides the `HandleRoot` or `HandleRootFunc` methods:
+
+```go
+// Create mounted groups
+apiGroup := router.Mount("/api")
+v1Group := apiGroup.Mount("/v1")
+usersGroup := v1Group.Mount("/users")
+
+// Handle the root paths (no trailing slashes)
+apiGroup.HandleRoot("GET", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // This handles requests to "/api" (without trailing slash)
+    w.Write([]byte("API Documentation"))
+}))
+
+usersGroup.HandleRoot("GET", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // This handles requests to "/api/v1/users" (without trailing slash)
+    w.Write([]byte("List users"))
+}))
+
+// Different HTTP methods can be handled separately
+usersGroup.HandleRoot("POST", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // This handles POST requests to "/api/v1/users"
+    w.Write([]byte("Create user"))
+}))
+```
+
+While it's also possible to handle such paths using a trailing slash pattern (`"/"`) with the regular `Handle` or `HandleFunc` methods, that approach results in a redirect from non-trailing slash URLs (e.g., `/api`) to the trailing slash version (e.g., `/api/`). The `HandleRoot` method avoids this redirect, providing a more direct response and avoiding an extra round-trip, which is especially important for non-GET requests or when clients don't automatically follow redirects.
+
 ### Using derived groups
 
 In some instances, it's practical to create an initial group that includes a set of middlewares, and then derive all other groups from it. This approach guarantees that every group incorporates a common set of middlewares as a foundation, allowing each to add its specific middlewares. To facilitate this scenario, `routegroup` offers both `Bundle.Group` and `Bundle.Mount` methods, and it also implements the `http.Handler` interface. The following example illustrates how to use derived groups:

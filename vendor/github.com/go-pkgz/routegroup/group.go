@@ -165,6 +165,48 @@ func (b *Bundle) register(pattern string, handler http.HandlerFunc) {
 // Route allows for configuring the Group inside the configureFn function.
 func (b *Bundle) Route(configureFn func(*Bundle)) { configureFn(b) }
 
+// HandleRoot adds a handler for the group's root path (no trailing slash).
+// This method is needed to handle requests to a group's root path without causing redirects that would occur with trailing slash patterns.
+// Unlike registering a pattern with "/", which causes the standard ServeMux to redirect non-trailing slash requests to the trailing slash
+// version (301 Moved Permanently), HandleRoot registers the exact path without any special treatment,
+// avoiding the redirect behavior while still applying middleware.
+// Method parameter can be empty; in this case, the handler will be registered for all methods.
+func (b *Bundle) HandleRoot(method string, handler http.Handler) {
+	// for empty base path, use "/" to match the root
+	pattern := b.basePath
+	if pattern == "" {
+		pattern = "/"
+	}
+
+	// add method if specified
+	if method != "" {
+		pattern = method + " " + pattern
+	}
+
+	b.mux.Handle(pattern, b.wrapMiddleware(handler))
+}
+
+// HandleRootFunc register the handler function for the group's root path (no trailing slash).
+// This method is needed to handle requests to a group's root path without causing redirects that would occur with trailing slash patterns.
+// Unlike registering a pattern with "/", which causes the standard ServeMux to redirect non-trailing slash requests to the trailing slash
+// version (301 Moved Permanently), HandleRoot registers the exact path without any special treatment,
+// avoiding the redirect behavior while still applying middleware.
+// Method parameter can be empty; in this case, the handler will be registered for all methods.
+func (b *Bundle) HandleRootFunc(method string, handler http.HandlerFunc) {
+	// for empty base path, use "/" to match the root
+	pattern := b.basePath
+	if pattern == "" {
+		pattern = "/"
+	}
+
+	// add method if specified
+	if method != "" {
+		pattern = method + " " + pattern
+	}
+
+	b.mux.HandleFunc(pattern, b.wrapMiddleware(handler).ServeHTTP)
+}
+
 // wrapMiddleware applies the registered middlewares to a handler.
 func (b *Bundle) wrapMiddleware(handler http.Handler) http.Handler {
 	for i := len(b.middlewares) - 1; i >= 0; i-- {

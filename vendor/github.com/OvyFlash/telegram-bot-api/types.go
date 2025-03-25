@@ -298,7 +298,7 @@ func (u *User) String() string {
 type Chat struct {
 	// ID is a unique identifier for this chat
 	ID int64 `json:"id"`
-	// Type of chat, can be either “private”, “group”, “supergroup” or “channel”
+	// Type of chat, can be either "private", "group", "supergroup" or "channel"
 	Type string `json:"type"`
 	// Title for supergroups, channels and group chats
 	//
@@ -1020,43 +1020,43 @@ type MessageID struct {
 type MessageEntity struct {
 	// Type of the entity.
 	// Can be:
-	//  “mention” (@username),
-	//  “hashtag” (#hashtag),
-	//  “cashtag” ($USD),
-	//  “bot_command” (/start@jobs_bot),
-	//  “url” (https://telegram.org),
-	//  “email” (do-not-reply@telegram.org),
-	//  “phone_number” (+1-212-555-0123),
-	//  “bold” (bold text),
-	//  “italic” (italic text),
-	//  “underline” (underlined text),
-	//  “strikethrough” (strikethrough text),
+	//  "mention" (@username),
+	//  "hashtag" (#hashtag),
+	//  "cashtag" ($USD),
+	//  "bot_command" (/start@jobs_bot),
+	//  "url" (https://telegram.org),
+	//  "email" (do-not-reply@telegram.org),
+	//  "phone_number" (+1-212-555-0123),
+	//  "bold" (bold text),
+	//  "italic" (italic text),
+	//  "underline" (underlined text),
+	//  "strikethrough" (strikethrough text),
 	//  "spoiler" (spoiler message),
-	//  “blockquote” (block quotation),
-	//  “expandable_blockquote” (collapsed-by-default block quotation),
-	//  “code” (monowidth string),
-	//  “pre” (monowidth block),
-	//  “text_link” (for clickable text URLs),
-	//  “text_mention” (for users without usernames)
-	//  “text_mention” (for inline custom emoji stickers)
+	//  "blockquote" (block quotation),
+	//  "expandable_blockquote" (collapsed-by-default block quotation),
+	//  "code" (monowidth string),
+	//  "pre" (monowidth block),
+	//  "text_link" (for clickable text URLs),
+	//  "text_mention" (for users without usernames)
+	//  "text_mention" (for inline custom emoji stickers)
 	Type string `json:"type"`
 	// Offset in UTF-16 code units to the start of the entity
 	Offset int `json:"offset"`
 	// Length
 	Length int `json:"length"`
-	// URL for “text_link” only, url that will be opened after user taps on the text
+	// URL for "text_link" only, url that will be opened after user taps on the text
 	//
 	// optional
 	URL string `json:"url,omitempty"`
-	// User for “text_mention” only, the mentioned user
+	// User for "text_mention" only, the mentioned user
 	//
 	// optional
 	User *User `json:"user,omitempty"`
-	// Language for “pre” only, the programming language of the entity text
+	// Language for "pre" only, the programming language of the entity text
 	//
 	// optional
 	Language string `json:"language,omitempty"`
-	// CustomEmojiID for “custom_emoji” only, unique identifier of the custom emoji
+	// CustomEmojiID for "custom_emoji" only, unique identifier of the custom emoji
 	//
 	// optional
 	CustomEmojiID string `json:"custom_emoji_id"`
@@ -1894,8 +1894,7 @@ type ForumTopicCreated struct {
 
 // ForumTopicClosed represents a service message about a forum topic
 // closed in the chat. Currently holds no information.
-type ForumTopicClosed struct {
-}
+type ForumTopicClosed struct{}
 
 // ForumTopicEdited object represents a service message about an edited forum topic.
 type ForumTopicEdited struct {
@@ -1913,18 +1912,15 @@ type ForumTopicEdited struct {
 
 // ForumTopicReopened represents a service message about a forum topic
 // reopened in the chat. Currently holds no information.
-type ForumTopicReopened struct {
-}
+type ForumTopicReopened struct{}
 
 // GeneralForumTopicHidden represents a service message about General forum topic
 // hidden in the chat. Currently holds no information.
-type GeneralForumTopicHidden struct {
-}
+type GeneralForumTopicHidden struct{}
 
 // GeneralForumTopicUnhidden represents a service message about General forum topic
 // unhidden in the chat. Currently holds no information.
-type GeneralForumTopicUnhidden struct {
-}
+type GeneralForumTopicUnhidden struct{}
 
 // SharedUser contains information about a user that was
 // shared with the bot using a KeyboardButtonRequestUsers button.
@@ -2311,7 +2307,7 @@ type KeyboardButton struct {
 	// optional
 	RequestPoll *KeyboardButtonPollType `json:"request_poll,omitempty"`
 	// WebApp if specified, the described Web App will be launched when the button
-	// is pressed. The Web App will be able to send a “web_app_data” service
+	// is pressed. The Web App will be able to send a "web_app_data" service
 	// message. Available in private chats only.
 	//
 	// optional
@@ -2521,7 +2517,7 @@ type InlineKeyboardButton struct {
 	// optional
 	CallbackGame *CallbackGame `json:"callback_game,omitempty"`
 	// Pay specify True, to send a Pay button.
-	// Substrings “⭐” and “XTR” in the buttons's text will be replaced with a Telegram Star icon.
+	// Substrings "⭐" and "XTR" in the buttons's text will be replaced with a Telegram Star icon.
 	//
 	// NOTE: This type of button must always be the first button in the first row.
 	//
@@ -2659,7 +2655,7 @@ type ChatPhoto struct {
 // ChatInviteLink represents an invite link for a chat.
 type ChatInviteLink struct {
 	// InviteLink is the invite link. If the link was created by another chat
-	// administrator, then the second part of the link will be replaced with “…”.
+	// administrator, then the second part of the link will be replaced with "…".
 	InviteLink string `json:"invite_link"`
 	// Creator of the link.
 	Creator User `json:"creator"`
@@ -2728,12 +2724,12 @@ type ChatMember struct {
 	User *User `json:"user"`
 	// Status the member's status in the chat.
 	// Can be
-	//  “creator”,
-	//  “administrator”,
-	//  “member”,
-	//  “restricted”,
-	//  “left” or
-	//  “kicked”
+	//  "creator",
+	//  "administrator",
+	//  "member",
+	//  "restricted",
+	//  "left" or
+	//  "kicked"
 	Status string `json:"status"`
 	// CustomTitle owner and administrators only. Custom title for this user
 	//
@@ -3400,6 +3396,14 @@ type ResponseParameters struct {
 	RetryAfter int `json:"retry_after,omitempty"`
 }
 
+type InputMedia interface {
+	getType() string
+	getMedia() RequestFileData
+	getThumb() RequestFileData
+	setUploadMedia(string)
+	setUploadThumb(string)
+}
+
 // BaseInputMedia is a base type for the InputMedia types.
 type BaseInputMedia struct {
 	// Type of the result.
@@ -3407,7 +3411,7 @@ type BaseInputMedia struct {
 	// Media file to send. Pass a file_id to send a file
 	// that exists on the Telegram servers (recommended),
 	// pass an HTTP URL for Telegram to get a file from the Internet,
-	// or pass “attach://<file_attach_name>” to upload a new one
+	// or pass "attach://<file_attach_name>" to upload a new one
 	// using multipart/form-data under <file_attach_name> name.
 	Media RequestFileData `json:"media"`
 	// thumb intentionally missing as it is not currently compatible
@@ -3435,6 +3439,124 @@ type BaseInputMedia struct {
 	//
 	// optional
 	HasSpoiler bool `json:"has_spoiler,omitempty"`
+}
+
+// getType returns the type of the input media
+func (media *BaseInputMedia) getType() string {
+	return media.Type
+}
+
+// getMedia returns the media file data
+func (media *BaseInputMedia) getMedia() RequestFileData {
+	return media.Media
+}
+
+// getThumb returns nil for base media as it has no thumbnail
+func (media *BaseInputMedia) getThumb() RequestFileData {
+	return nil
+}
+
+// setUploadMedia sets the media to a file attachment reference
+func (media *BaseInputMedia) setUploadMedia(fileRef string) {
+	media.Media = fileAttach(fileRef)
+}
+
+// setUploadThumb does nothing for base media as it has no thumbnail
+func (media *BaseInputMedia) setUploadThumb(_ string) {
+	// Nothing to do for base media
+}
+
+// getThumb returns the thumbnail for video media
+func (media *InputMediaVideo) getThumb() RequestFileData {
+	return media.Thumb
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *InputMediaVideo) setUploadThumb(fileRef string) {
+	media.Thumb = fileAttach(fileRef)
+}
+
+// getThumb returns the thumbnail for animation media
+func (media *InputMediaAnimation) getThumb() RequestFileData {
+	return media.Thumb
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *InputMediaAnimation) setUploadThumb(fileRef string) {
+	media.Thumb = fileAttach(fileRef)
+}
+
+// getThumb returns the thumbnail for audio media
+func (media *InputMediaAudio) getThumb() RequestFileData {
+	return media.Thumb
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *InputMediaAudio) setUploadThumb(fileRef string) {
+	media.Thumb = fileAttach(fileRef)
+}
+
+// getThumb returns the thumbnail for document media
+func (media *InputMediaDocument) getThumb() RequestFileData {
+	return media.Thumb
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *InputMediaDocument) setUploadThumb(fileRef string) {
+	media.Thumb = fileAttach(fileRef)
+}
+
+// getType returns the type of the input paid media
+func (media *InputPaidMedia) getType() string {
+	return media.Type
+}
+
+// getMedia returns the media file data
+func (media *InputPaidMedia) getMedia() RequestFileData {
+	return media.Media.getMedia()
+}
+
+// getThumb returns the thumbnail for the paid media
+func (media *InputPaidMedia) getThumb() RequestFileData {
+	if media.Thumb != nil {
+		return media.Thumb
+	}
+	return media.Media.getThumb()
+}
+
+// setUploadMedia sets the media to a file attachment reference
+func (media *InputPaidMedia) setUploadMedia(fileRef string) {
+	media.Media.setUploadMedia(fileRef)
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *InputPaidMedia) setUploadThumb(fileRef string) {
+	media.Thumb = fileAttach(fileRef)
+}
+
+// getType returns the type of the input paid media
+func (media *PaidMediaConfig) getType() string {
+	return media.Media.getType()
+}
+
+// getMedia returns the media file data
+func (media *PaidMediaConfig) getMedia() RequestFileData {
+	return media.Media.getMedia()
+}
+
+// getThumb returns the thumbnail for the paid media
+func (media *PaidMediaConfig) getThumb() RequestFileData {
+	return media.Media.getThumb()
+}
+
+// setUploadMedia sets the media to a file attachment reference
+func (media *PaidMediaConfig) setUploadMedia(fileRef string) {
+	media.Media.setUploadMedia(fileRef)
+}
+
+// setUploadThumb sets the thumbnail to a file attachment reference
+func (media *PaidMediaConfig) setUploadThumb(fileRef string) {
+	media.Media.setUploadThumb(fileRef)
 }
 
 // InputMediaPhoto is a photo to send as part of a media group.
@@ -3546,15 +3668,15 @@ type InputPaidMedia struct {
 	Type string `json:"type"`
 	// File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended),
 	// pass an HTTP URL for Telegram to get a file from the Internet,
-	// or pass “attach://<file_attach_name>” to upload a new one using multipart/form-data under <file_attach_name> name.
+	// or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name.
 	// More information on https://core.telegram.org/bots/api#sending-files
-	Media RequestFileData `json:"media"`
+	Media InputMedia
 	// InputPaidMediaVideo only.
 	// Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side.
 	// The thumbnail should be in JPEG format and less than 200 kB in size.
 	// A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data.
 	// Thumbnails can't be reused and can be only uploaded as a new file,
-	//  so you can pass “attach://<file_attach_name>” if the thumbnail was uploaded using multipart/form-data under <file_attach_name>.
+	//  so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>.
 	//
 	// optional
 	Thumb RequestFileData `json:"thumbnail"`
@@ -3594,8 +3716,8 @@ type Sticker struct {
 	// which is supposed to be the same over time and for different bots.
 	// Can't be used to download or reuse the file.
 	FileUniqueID string `json:"file_unique_id"`
-	// Type is a type of the sticker, currently one of “regular”,
-	// “mask”, “custom_emoji”. The type of the sticker is independent
+	// Type is a type of the sticker, currently one of "regular",
+	// "mask", "custom_emoji". The type of the sticker is independent
 	// from its format, which is determined by the fields is_animated and is_video.
 	Type string `json:"type"`
 	// Width sticker width
@@ -3666,7 +3788,7 @@ type StickerSet struct {
 	Name string `json:"name"`
 	// Title sticker set title
 	Title string `json:"title"`
-	// StickerType of stickers in the set, currently one of “regular”, “mask”, “custom_emoji”
+	// StickerType of stickers in the set, currently one of "regular", "mask", "custom_emoji"
 	StickerType string `json:"sticker_type"`
 	// ContainsMasks true, if the sticker set contains masks
 	//
@@ -3697,7 +3819,7 @@ func (s StickerSet) IsCustomEmoji() bool {
 // by default.
 type MaskPosition struct {
 	// The part of the face relative to which the mask should be placed.
-	// One of “forehead”, “eyes”, “mouth”, or “chin”.
+	// One of "forehead", "eyes", "mouth", or "chin".
 	Point string `json:"point"`
 	// Shift by X-axis measured in widths of the mask scaled to the face size,
 	// from left to right. For example, choosing -1.0 will place mask just to
@@ -3713,18 +3835,18 @@ type MaskPosition struct {
 
 // InputSticker describes a sticker to be added to a sticker set.
 type InputSticker struct {
-	// The added sticker. Pass a file_id as a String to send a file that already exists on the Telegram servers, pass an HTTP URL as a String for Telegram to get a file from the Internet, upload a new one using multipart/form-data, or pass “attach://<file_attach_name>” to upload a new one using multipart/form-data under <file_attach_name> name. Animated and video stickers can't be uploaded via HTTP URL.
+	// The added sticker. Pass a file_id as a String to send a file that already exists on the Telegram servers, pass an HTTP URL as a String for Telegram to get a file from the Internet, upload a new one using multipart/form-data, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. Animated and video stickers can't be uploaded via HTTP URL.
 	Sticker RequestFile `json:"sticker"`
-	// 	Format of the added sticker, must be one of “static” for a
-	// .WEBP or .PNG image, “animated” for a .TGS animation, “video” for a WEBM video
+	// 	Format of the added sticker, must be one of "static" for a
+	// .WEBP or .PNG image, "animated" for a .TGS animation, "video" for a WEBM video
 	Format string `json:"format"`
 	// List of 1-20 emoji associated with the sticker
 	EmojiList []string `json:"emoji_list"`
-	// Position where the mask should be placed on faces. For “mask” stickers only.
+	// Position where the mask should be placed on faces. For "mask" stickers only.
 	//
 	// optional
 	MaskPosition *MaskPosition `json:"mask_position"`
-	// List of 0-20 search keywords for the sticker with total length of up to 64 characters. For “regular” and “custom_emoji” stickers only.
+	// List of 0-20 search keywords for the sticker with total length of up to 64 characters. For "regular" and "custom_emoji" stickers only.
 	//
 	// optional
 	Keywords []string `json:"keywords"`
@@ -3848,8 +3970,8 @@ type InlineQuery struct {
 	// Offset of the results to be returned, can be controlled by the bot.
 	Offset string `json:"offset"`
 	// Type of the chat, from which the inline query was sent. Can be either
-	// “sender” for a private chat with the inline query sender, “private”,
-	// “group”, “supergroup”, or “channel”. The chat type should be always known
+	// "sender" for a private chat with the inline query sender, "private",
+	// "group", "supergroup", or "channel". The chat type should be always known
 	// for requests sent from official clients and most third-party clients,
 	// unless the request was sent from a secret chat
 	//
@@ -4288,7 +4410,7 @@ type InlineQueryResultDocument struct {
 	Caption string `json:"caption,omitempty"`
 	// URL a valid url for the file
 	URL string `json:"document_url"`
-	// MimeType of the content of the file, either “application/pdf” or “application/zip”
+	// MimeType of the content of the file, either "application/pdf" or "application/zip"
 	MimeType string `json:"mime_type"`
 	// Description short description of the result
 	//
@@ -4326,7 +4448,7 @@ type InlineQueryResultGIF struct {
 	URL string `json:"gif_url"`
 	// ThumbURL url of the static (JPEG or GIF) or animated (MPEG4) thumbnail for the result.
 	ThumbURL string `json:"thumbnail_url"`
-	// MIME type of the thumbnail, must be one of “image/jpeg”, “image/gif”, or “video/mp4”. Defaults to “image/jpeg”
+	// MIME type of the thumbnail, must be one of "image/jpeg", "image/gif", or "video/mp4". Defaults to "image/jpeg"
 	ThumbMimeType string `json:"thumbnail_mime_type,omitempty"`
 	// Width of the GIF
 	//
@@ -4450,7 +4572,7 @@ type InlineQueryResultMPEG4GIF struct {
 	Duration int `json:"mpeg4_duration,omitempty"`
 	// ThumbURL url of the static (JPEG or GIF) or animated (MPEG4) thumbnail for the result.
 	ThumbURL string `json:"thumbnail_url"`
-	// MIME type of the thumbnail, must be one of “image/jpeg”, “image/gif”, or “video/mp4”. Defaults to “image/jpeg”
+	// MIME type of the thumbnail, must be one of "image/jpeg", "image/gif", or "video/mp4". Defaults to "image/jpeg"
 	ThumbMimeType string `json:"thumbnail_mime_type,omitempty"`
 	// Title for the result
 	//
@@ -4564,7 +4686,7 @@ type InlineQueryResultVenue struct {
 	// optional
 	FoursquareID string `json:"foursquare_id,omitempty"`
 	// FoursquareType foursquare type of the venue, if known.
-	// (For example, “arts_entertainment/default”, “arts_entertainment/aquarium” or “food/icecream”.)
+	// (For example, "arts_entertainment/default", "arts_entertainment/aquarium" or "food/icecream".)
 	//
 	// optional
 	FoursquareType string `json:"foursquare_type,omitempty"`
@@ -4606,7 +4728,7 @@ type InlineQueryResultVideo struct {
 	ID string `json:"id"`
 	// URL a valid url for the embedded video player or video file
 	URL string `json:"video_url"`
-	// MimeType of the content of video url, “text/html” or “video/mp4”
+	// MimeType of the content of video url, "text/html" or "video/mp4"
 	MimeType string `json:"mime_type"`
 	//
 	// ThumbURL url of the thumbnail (jpeg only) for the video
@@ -4842,7 +4964,7 @@ type InputInvoiceMessageContent struct {
 	//
 	// optional
 	ProviderToken string `json:"provider_token"`
-	// Three-letter ISO 4217 currency code. Pass “XTR” for payments in Telegram Stars.
+	// Three-letter ISO 4217 currency code. Pass "XTR" for payments in Telegram Stars.
 	Currency string `json:"currency"`
 	// Price breakdown, a JSON-serialized list of components (e.g. product
 	// price, tax, discount, delivery cost, delivery tax, bonus, etc.)
@@ -4934,7 +5056,7 @@ type Invoice struct {
 	Description string `json:"description"`
 	// StartParameter unique bot deep-linking parameter that can be used to generate this invoice
 	StartParameter string `json:"start_parameter"`
-	// Currency three-letter ISO 4217 currency code, or “XTR” for payments in Telegram Stars
+	// Currency three-letter ISO 4217 currency code, or "XTR" for payments in Telegram Stars
 	// (see https://core.telegram.org/bots/payments#supported-currencies)
 	Currency string `json:"currency"`
 	// TotalAmount total price in the smallest units of the currency (integer, not float/double).
@@ -4994,7 +5116,7 @@ type ShippingOption struct {
 
 // SuccessfulPayment contains basic information about a successful payment.
 type SuccessfulPayment struct {
-	// Currency three-letter ISO 4217 currency code, or “XTR” for payments in Telegram Stars
+	// Currency three-letter ISO 4217 currency code, or "XTR" for payments in Telegram Stars
 	// (see https://core.telegram.org/bots/payments#supported-currencies)
 	Currency string `json:"currency"`
 	// TotalAmount total price in the smallest units of the currency (integer, not float/double).
@@ -5023,8 +5145,8 @@ type SuccessfulPayment struct {
 // RefundPayment contains basic information about a refunded payment.
 type RefundedPayment struct {
 	// Three-letter ISO 4217 currency code (https://core.telegram.org/bots/payments#supported-currencies),
-	// or “XTR” for payments in Telegram Stars.
-	// Currently, always “XTR”
+	// or "XTR" for payments in Telegram Stars.
+	// Currently, always "XTR"
 	Currency string `json:"currency"`
 	// Total refunded price in the smallest units of the currency (integer, not float/double).
 	// For example, for a price of US$ 1.45, total_amount = 145.
@@ -5059,7 +5181,7 @@ type PreCheckoutQuery struct {
 	ID string `json:"id"`
 	// From user who sent the query
 	From *User `json:"from"`
-	// Currency three-letter ISO 4217 currency code, or “XTR” for payments in Telegram Stars
+	// Currency three-letter ISO 4217 currency code, or "XTR" for payments in Telegram Stars
 	//	// (see https://core.telegram.org/bots/payments#supported-currencies)
 	Currency string `json:"currency"`
 	// TotalAmount total price in the smallest units of the currency (integer, not float/double).
@@ -5100,10 +5222,10 @@ type RevenueWithdrawalState struct {
 	// 	- succeeded
 	//  - failed
 	Type string `json:"type"`
-	// 	Date the withdrawal was completed in Unix time. Represents only in “succeeded” state
+	// 	Date the withdrawal was completed in Unix time. Represents only in "succeeded" state
 	Date int64 `json:"date,omitempty"`
 	// An HTTPS URL that can be used to see transaction details.
-	// Represents only in “succeeded” state
+	// Represents only in "succeeded" state
 	URL string `json:"url,omitempty"`
 }
 
@@ -5113,7 +5235,7 @@ type RevenueWithdrawalState struct {
 //   - TransactionPartnerTelegramAds
 //   - TransactionPartnerOther
 type TransactionPartner struct {
-	//Type of the transaction partner. Must be one of:
+	// Type of the transaction partner. Must be one of:
 	//	- fragment
 	//	- user
 	//  - other
