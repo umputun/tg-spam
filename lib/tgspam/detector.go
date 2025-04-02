@@ -58,6 +58,7 @@ type Config struct {
 	MinMsgLen           int           // minimum message length to check
 	MaxAllowedEmoji     int           // maximum number of emojis allowed in a message
 	CasAPI              string        // CAS API URL
+	CasUserAgent        string        // CAS API User-Agent header value, set only if non-empty
 	FirstMessageOnly    bool          // if true, only the first message from a user is checked
 	FirstMessagesCount  int           // number of first messages to check for spam
 	HTTPClient          HTTPClient    // http client to use for requests
@@ -619,6 +620,10 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 	req, err := http.NewRequest("GET", reqURL, http.NoBody)
 	if err != nil {
 		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to make request %s: %v", reqURL, err)}
+	}
+
+	if d.CasUserAgent != "" {
+		req.Header.Set("User-Agent", d.CasUserAgent)
 	}
 
 	resp, err := d.HTTPClient.Do(req)
