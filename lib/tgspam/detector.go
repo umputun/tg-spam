@@ -152,7 +152,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for stop words if any stop words are loaded
 	if len(d.stopWords) > 0 {
-		cr = append(cr, d.isStopWord(cleanMsg))
+		cr = append(cr, d.isStopWord(cleanMsg, req))
 	}
 
 	// check for emojis if max allowed emojis is set
@@ -670,14 +670,32 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 		Details: fmt.Sprintf("probability of %s: %.2f%%", class, prob)}
 }
 
-// isStopWord checks if a given message contains any of the stop words.
-func (d *Detector) isStopWord(msg string) spamcheck.Response {
+// isStopWord checks if a given message or username contains any of the stop words.
+func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Response {
+	// check message text
 	cleanMsg := cleanEmoji(strings.ToLower(msg))
 	for _, word := range d.stopWords { // stop words are already lowercased
 		if strings.Contains(cleanMsg, strings.ToLower(word)) {
 			return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
 		}
 	}
+
+	// check username and user id if they are not empty for stop words
+	names := []string{}
+	if req.UserName != "" {
+		names = append(names, req.UserName)
+	}
+	if req.UserID != "" {
+		names = append(names, req.UserID)
+	}
+	for _, name := range names {
+		for _, word := range d.stopWords {
+			if strings.Contains(strings.ToLower(name), strings.ToLower(word)) {
+				return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
+			}
+		}
+	}
+
 	return spamcheck.Response{Name: "stopword", Spam: false, Details: "not found"}
 }
 

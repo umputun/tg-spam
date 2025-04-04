@@ -90,47 +90,92 @@ func TestDetector_CheckWithShort(t *testing.T) {
 
 func TestDetector_CheckStopWords(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
-	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсеМ прИвет"))
+	lr, err := d.LoadStopWords(bytes.NewBufferString("в личку\nвсеМ прИвет\nspambot\n12345"))
 	require.NoError(t, err)
-	assert.Equal(t, LoadResult{StopWords: 2}, lr)
+	assert.Equal(t, LoadResult{StopWords: 4}, lr)
 
 	tests := []struct {
 		name     string
 		message  string
+		username string
+		userID   string
 		expected bool
+		details  string
 	}{
 		{
-			name:     "Stop word present",
+			name:     "Stop word present in message",
 			message:  "Hello, please send me a message в личкУ",
+			username: "user1",
+			userID:   "987654321",
 			expected: true,
+			details:  "в личку",
 		},
 		{
 			name:     "Stop word present with emoji",
 			message:  "👋Всем привет\nИщу амбициозного человека к се6е в команду\nКто в поисках дополнительного заработка или хочет попробовать себя в новой  сфере деятельности! 👨🏻\u200d💻\nПишите в лс✍️",
+			username: "user1",
+			userID:   "987654321",
 			expected: true,
+			details:  "всем привет",
 		},
 		{
 			name:     "No stop word present",
 			message:  "Hello, how are you?",
+			username: "user1",
+			userID:   "987654321",
 			expected: false,
+			details:  "not found",
 		},
 		{
 			name:     "Case insensitive stop word present",
 			message:  "Hello, please send me a message В ЛИЧКУ",
+			username: "user1",
+			userID:   "987654321",
 			expected: true,
+			details:  "в личку",
+		},
+		{
+			name:     "Stop word in username",
+			message:  "Hello, how are you?",
+			username: "spambot_seller",
+			userID:   "987654321",
+			expected: true,
+			details:  "spambot",
+		},
+		{
+			name:     "Stop word in username case insensitive",
+			message:  "Hello, how are you?",
+			username: "SpAmBoT_seller",
+			userID:   "987654321",
+			expected: true,
+			details:  "spambot",
+		},
+		{
+			name:     "Stop word in user ID",
+			message:  "Hello, how are you?",
+			username: "normal_user",
+			userID:   "12345_account",
+			expected: true,
+			details:  "12345",
+		},
+		{
+			name:     "No stop word in anything",
+			message:  "Regular message",
+			username: "normal_user",
+			userID:   "987654321",
+			expected: false,
+			details:  "not found",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spam, cr := d.Check(spamcheck.Request{Msg: test.message})
+			spam, cr := d.Check(spamcheck.Request{Msg: test.message, UserName: test.username, UserID: test.userID})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
 			assert.Equal(t, "stopword", cr[0].Name)
+			assert.Equal(t, test.details, cr[0].Details)
 			t.Logf("%+v", cr[0].Details)
-			if test.expected {
-				assert.Subset(t, d.stopWords, []string{cr[0].Details})
-			}
 		})
 	}
 }
