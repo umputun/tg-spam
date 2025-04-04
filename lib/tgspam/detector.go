@@ -868,7 +868,7 @@ func countEmoji(s string) int {
 // isSpammyName проверяет, содержит ли имя пользователя запрещённые слова или символы.
 func isSpammyName(name string) bool {
 	// Список запрещённых слов и символов
-	blacklistedWords := []string{"spam", "bot", "promo"}
+	blacklistedWords := []string{"spam", "bot", "promo", "child", "porn", "sex", "adult", "money", "free", "click", "link"}
 	blacklistedChars := []string{"@", "#", "$"}
 
 	// Приводим имя к нижнему регистру для сравнения
@@ -889,4 +889,18 @@ func isSpammyName(name string) bool {
 	}
 
 	return false
+}
+
+var forbiddenWords = []string{
+	"child", "porn", "uvu28bot", "spam", "bot", "promo", "child", "porn", "sex", "adult", "money", "free", "click", "link",
+	// Add more words as needed
+}
+
+func isNicknameValid(nickname string) bool {
+	for _, word := range forbiddenWords {
+		if strings.Contains(strings.ToLower(nickname), word) {
+			return false // Никнейм содержит запрещенное слово
+		}
+	}
+	return true // Никнейм допустим
 }
