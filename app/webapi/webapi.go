@@ -85,6 +85,7 @@ type Settings struct {
 	MetaAudioOnly           bool          `json:"meta_audio_only"`
 	MetaForwarded           bool          `json:"meta_forwarded"`
 	MetaKeyboard            bool          `json:"meta_keyboard"`
+	MetaUsernameSymbols     string        `json:"meta_username_symbols"`
 	MultiLangLimit          int           `json:"multi_lang_limit"`
 	OpenAIEnabled           bool          `json:"openai_enabled"`
 	SamplesDataPath         string        `json:"samples_data_path"`
