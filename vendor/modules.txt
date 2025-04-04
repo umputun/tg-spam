@@ -14,7 +14,7 @@ github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
 github.com/Microsoft/go-winio/internal/stringbuffer
 github.com/Microsoft/go-winio/pkg/guid
-# github.com/OvyFlash/telegram-bot-api v0.0.0-20250325195858-41a575d47786
+# github.com/OvyFlash/telegram-bot-api v0.0.0-20250326000532-e3e08517d757
 ## explicit; go 1.23
 github.com/OvyFlash/telegram-bot-api
 # github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -554,8 +554,8 @@ gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# modernc.org/libc v1.61.13
-## explicit; go 1.21
+# modernc.org/libc v1.62.1
+## explicit; go 1.23.0
 modernc.org/libc
 modernc.org/libc/errno
 modernc.org/libc/fcntl
@@ -588,7 +588,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.9.1
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.36.2
+# modernc.org/sqlite v1.37.0
 ## explicit; go 1.23.0
 modernc.org/sqlite
 modernc.org/sqlite/lib
