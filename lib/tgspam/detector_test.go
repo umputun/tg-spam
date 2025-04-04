@@ -1739,3 +1739,22 @@ func BenchmarkLoadSamples(b *testing.B) {
 		})
 	}
 }
+
+func TestIsSpammyName(t *testing.T) {
+	cases := []struct {
+		name     string
+		expected bool
+	}{
+		{"normalUser", false},
+		{"bad@user", true},
+		{"Spambot", true},
+		{"goodName", false},
+	}
+
+	for _, c := range cases {
+		result := isSpammyName(c.name)
+		if result != c.expected {
+			t.Errorf("isSpammyName(%q) == %v, expected %v", c.name, result, c.expected)
+		}
+	}
+}

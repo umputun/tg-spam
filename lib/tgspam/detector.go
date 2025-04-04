@@ -864,3 +864,29 @@ func cleanEmoji(s string) string {
 func countEmoji(s string) int {
 	return len(gomoji.CollectAll(s))
 }
+
+// isSpammyName проверяет, содержит ли имя пользователя запрещённые слова или символы.
+func isSpammyName(name string) bool {
+	// Список запрещённых слов и символов
+	blacklistedWords := []string{"spam", "bot", "promo"}
+	blacklistedChars := []string{"@", "#", "$"}
+
+	// Приводим имя к нижнему регистру для сравнения
+	lowerName := strings.ToLower(name)
+
+	// Проверяем наличие запрещённых слов
+	for _, word := range blacklistedWords {
+		if strings.Contains(lowerName, word) {
+			return true
+		}
+	}
+
+	// Проверяем наличие запрещённых символов
+	for _, char := range blacklistedChars {
+		if strings.Contains(name, char) {
+			return true
+		}
+	}
+
+	return false
+}
