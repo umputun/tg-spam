@@ -497,3 +497,92 @@ func TestMentionsCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestUsernameSymbolsCheck(t *testing.T) {
+	tests := []struct {
+		name            string
+		req             spamcheck.Request
+		prohibitedSymbols string
+		expected        spamcheck.Response
+	}{
+		{
+			name: "No username",
+			req: spamcheck.Request{
+				UserName: "",
+			},
+			prohibitedSymbols: "@",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "no username",
+			},
+		},
+		{
+			name: "Disabled check",
+			req: spamcheck.Request{
+				UserName: "user@name",
+			},
+			prohibitedSymbols: "",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "check disabled",
+			},
+		},
+		{
+			name: "Username contains prohibited symbol",
+			req: spamcheck.Request{
+				UserName: "user@name",
+			},
+			prohibitedSymbols: "@",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    true,
+				Details: "username contains prohibited symbol '@'",
+			},
+		},
+		{
+			name: "Username contains one of multiple prohibited symbols",
+			req: spamcheck.Request{
+				UserName: "user#name",
+			},
+			prohibitedSymbols: "@#$",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    true,
+				Details: "username contains prohibited symbol '#'",
+			},
+		},
+		{
+			name: "Username does not contain prohibited symbols",
+			req: spamcheck.Request{
+				UserName: "username",
+			},
+			prohibitedSymbols: "@#$",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "no prohibited symbols in username",
+			},
+		},
+		{
+			name: "Username with special characters but not prohibited",
+			req: spamcheck.Request{
+				UserName: "user-name_123",
+			},
+			prohibitedSymbols: "@#$",
+			expected: spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "no prohibited symbols in username",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := UsernameSymbolsCheck(tt.prohibitedSymbols)
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
