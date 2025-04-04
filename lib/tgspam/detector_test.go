@@ -326,6 +326,61 @@ func TestSpam_CheckIsCasSpamEmptyUserID(t *testing.T) {
 	assert.Equal(t, 0, len(mockedHTTPClient.DoCalls()))
 }
 
+func TestSpam_CheckIsCasSpamUserAgent(t *testing.T) {
+	const customUserAgent = "MyCustomUserAgent/1.0"
+
+	tests := []struct {
+		name           string
+		userAgent      string
+		expectedHeader string
+	}{
+		{
+			name:           "with custom user agent",
+			userAgent:      customUserAgent,
+			expectedHeader: customUserAgent,
+		},
+		{
+			name:           "with default user agent",
+			userAgent:      "",
+			expectedHeader: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockedHTTPClient := &mocks.HTTPClientMock{
+				DoFunc: func(req *http.Request) (*http.Response, error) {
+					// check if User-Agent header is set correctly
+					if tt.expectedHeader != "" {
+						assert.Equal(t, tt.expectedHeader, req.Header.Get("User-Agent"))
+					} else {
+						// default User-Agent should be Go's default, let's just verify it's not our custom one
+						assert.NotEqual(t, customUserAgent, req.Header.Get("User-Agent"))
+					}
+
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "Not a spammer"}`)),
+					}, nil
+				},
+			}
+
+			d := NewDetector(Config{
+				CasAPI:           "http://localhost",
+				CasUserAgent:     tt.userAgent,
+				HTTPClient:       mockedHTTPClient,
+				MaxAllowedEmoji:  -1,
+				FirstMessageOnly: true,
+			})
+
+			d.Check(spamcheck.Request{UserID: "123", Msg: "test message"})
+
+			// verify HTTP client was called
+			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
+		})
+	}
+}
+
 func TestDetector_CheckSimilarity(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
 	spamSamples := strings.NewReader("win free iPhone\nlottery prize xyz")
