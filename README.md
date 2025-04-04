@@ -85,6 +85,8 @@ If stop words file is present, the bot will check the message for the presence o
 
 Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
 
+The default user agent is sometimes blocked by CDNs like CloudFlare. To use a custom User-Agent when querying CAS API, set `--cas.user-agent=, [$CAS_USER_AGENT]` to the desired value.
+
 **OpenAI integration**
 
 Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
@@ -342,6 +344,7 @@ logger:
 cas:
       --cas.api=                        CAS API (default: https://api.cas.chat) [$CAS_API]
       --cas.timeout=                    CAS timeout (default: 5s) [$CAS_TIMEOUT]
+      --cas.user-agent=                 User-Agent header for CAS API requests [$CAS_USER_AGENT]
 
 meta:
       --meta.links-limit=               max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
