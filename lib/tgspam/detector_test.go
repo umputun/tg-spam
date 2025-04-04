@@ -1758,3 +1758,18 @@ func TestIsSpammyName(t *testing.T) {
 		}
 	}
 }
+
+// Test for checking if a nickname is valid
+func main() {
+	testNicknames := []string{
+		"NormalUser", "child_porn_bot", "uvu28bot", "GoodName", "child", "porn", "uvu28bot", "spam", "bot", "promo", "child", "porn", "sex", "adult", "money", "free", "click", "link",
+	}
+
+	for _, nickname := range testNicknames {
+		if isNicknameValid(nickname) {
+			fmt.Printf("'%s' — допустимый никнейм.\n", nickname)
+		} else {
+			fmt.Printf("'%s' — запрещенный никнейм.\n", nickname)
+		}
+	}
+}

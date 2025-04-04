@@ -68,8 +68,9 @@ type options struct {
 	SuppressJoinMessage bool              `long:"suppress-join-message" env:"SUPPRESS_JOIN_MESSAGE" description:"delete join message if user is kicked out"`
 
 	CAS struct {
-		API     string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
-		Timeout time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
+		API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
+		Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
+		UserAgent string        `long:"user-agent" env:"USER_AGENT" description:"User-Agent header for CAS API requests"`
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
 
 	Meta struct {

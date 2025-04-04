@@ -891,6 +891,7 @@ func isSpammyName(name string) bool {
 	return false
 }
 
+// forbifdenWords is a list of words that are not allowed in nicknames
 var forbiddenWords = []string{
 	"child", "porn", "uvu28bot", "spam", "bot", "promo", "child", "porn", "sex", "adult", "money", "free", "click", "link",
 	// Add more words as needed
