@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -125,7 +126,30 @@ func NewDetector(p Config) *Detector {
 	}
 	return res
 }
+func isSpamUserName(userName string) bool {
+    // Стоп-слова для фильтрации
+    spamWords := []string{"spam", "badword", "fake"}
 
+    // Проверка на стоп-слова
+    for _, word := range spamWords {
+        if strings.Contains(strings.ToLower(userName), word) {
+            return true
+        }
+    }
+
+    // Проверка на запрещенные символы (например, "@")
+    if strings.Contains(userName, "@") {
+        return true
+    }
+
+    // Проверка на повторяющиеся символы (например, "aaa", "!!!!")
+    re := regexp.MustCompile(`(.)\1{2,}`)
+    if re.MatchString(userName) {
+        return true
+    }
+
+    return false
+}
 // Check checks if a given message is spam. Returns true if spam and also returns a list of check results.
 func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Response) {
 
@@ -136,6 +160,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			}
 		}
 		return false
+	}
+
+	isSpam := isSpamUserName(request.UserName)
+	if isSpam {
+    	return true, "Имя пользователя содержит спамные символы или слова"
 	}
 
 	cleanMsg := d.cleanText(req.Msg)
