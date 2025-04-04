@@ -166,3 +166,42 @@ func MentionsCheck(limit int) MetaCheck {
 		}
 	}
 }
+
+// UsernameSymbolsCheck is a function that returns a MetaCheck function.
+// It checks if the username contains any of the prohibited symbols.
+// If symbols is empty, the check is disabled.
+func UsernameSymbolsCheck(symbols string) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if symbols == "" {
+			return spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "check disabled",
+			}
+		}
+
+		if req.UserName == "" {
+			return spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "no username",
+			}
+		}
+
+		for _, symbol := range symbols {
+			if strings.ContainsRune(req.UserName, symbol) {
+				return spamcheck.Response{
+					Name:    "username-symbols",
+					Spam:    true,
+					Details: fmt.Sprintf("username contains prohibited symbol '%c'", symbol),
+				}
+			}
+		}
+
+		return spamcheck.Response{
+			Name:    "username-symbols",
+			Spam:    false,
+			Details: "no prohibited symbols in username",
+		}
+	}
+}

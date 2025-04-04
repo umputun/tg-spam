@@ -3,7 +3,7 @@ module github.com/umputun/tg-spam
 go 1.24
 
 require (
-	github.com/OvyFlash/telegram-bot-api v0.0.0-20250325195858-41a575d47786
+	github.com/OvyFlash/telegram-bot-api v0.0.0-20250326000532-e3e08517d757
 	github.com/didip/tollbooth/v8 v8.0.1
 	github.com/fatih/color v1.18.0
 	github.com/forPelevin/gomoji v1.3.0
@@ -20,7 +20,7 @@ require (
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/stretchr/testify v1.10.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.36.2
+	modernc.org/sqlite v1.37.0
 )
 
 require (
@@ -117,7 +117,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.61.13 // indirect
+	modernc.org/libc v1.62.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.9.1 // indirect
 )

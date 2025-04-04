@@ -778,7 +778,6 @@ type PaidMediaConfig struct {
 	BaseChat
 	StarCount             int64
 	Media                 *InputPaidMedia
-	Payload               string          // optional
 	Caption               string          // optional
 	ParseMode             string          // optional
 	CaptionEntities       []MessageEntity // optional
@@ -792,7 +791,6 @@ func (config PaidMediaConfig) params() (Params, error) {
 	}
 
 	params.AddNonZero64("star_count", config.StarCount)
-	params.AddNonEmpty("payload", config.Payload)
 	params.AddNonEmpty("caption", config.Caption)
 	params.AddNonEmpty("parse_mode", config.ParseMode)
 	params.AddBool("show_caption_above_media", config.ShowCaptionAboveMedia)
@@ -3280,7 +3278,7 @@ func prepareInputMediaForFiles(inputMedia []InputMedia) []RequestFile {
 	files := []RequestFile{}
 
 	for idx, media := range inputMedia {
-		if media.getMedia().NeedsUpload() {
+		if media.getMedia() != nil && media.getMedia().NeedsUpload() {
 			files = append(files, RequestFile{
 				Name: fmt.Sprintf("file-%d", idx),
 				Data: media.getMedia(),
@@ -3343,7 +3341,6 @@ func cloneInputMedia(media InputMedia) InputMedia {
 		clone := &PaidMediaConfig{
 			BaseChat:              m.BaseChat,
 			StarCount:             m.StarCount,
-			Payload:               m.Payload,
 			Caption:               m.Caption,
 			ParseMode:             m.ParseMode,
 			CaptionEntities:       m.CaptionEntities,
