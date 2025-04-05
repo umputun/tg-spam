@@ -88,6 +88,9 @@ type Settings struct {
 	MetaUsernameSymbols     string        `json:"meta_username_symbols"`
 	MultiLangLimit          int           `json:"multi_lang_limit"`
 	OpenAIEnabled           bool          `json:"openai_enabled"`
+	LuaPluginsEnabled       bool          `json:"lua_plugins_enabled"`
+	LuaPluginsDir           string        `json:"lua_plugins_dir"`
+	LuaEnabledPlugins       []string      `json:"lua_enabled_plugins"`
 	SamplesDataPath         string        `json:"samples_data_path"`
 	DynamicDataPath         string        `json:"dynamic_data_path"`
 	WatchIntervalSecs       int           `json:"watch_interval_secs"`
