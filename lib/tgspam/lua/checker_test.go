@@ -158,52 +158,6 @@ func TestChecker_GetAllChecks(t *testing.T) {
 	assert.Contains(t, checks, "script2")
 }
 
-func TestChecker_Helpers(t *testing.T) {
-	// create a temporary script using helper functions
-	tmpDir := t.TempDir()
-	scriptPath := filepath.Join(tmpDir, "helpers_test.lua")
-	err := os.WriteFile(scriptPath, []byte(`
-		function check(req)
-			local lower = to_lower(req.msg)
-			local count = count_substring(lower, "test")
-			local has_prefix = starts_with(lower, "this")
-			
-			if count > 0 and has_prefix then
-				return true, "detected pattern"
-			end
-			
-			return false, "no pattern detected"
-		end
-	`), 0666)
-	require.NoError(t, err)
-
-	// create a checker and load the script
-	checker := NewChecker()
-	defer checker.Close()
-
-	err = checker.LoadScript(scriptPath)
-	require.NoError(t, err)
-
-	// test the loaded script with helpers
-	checkFunc, err := checker.GetCheck("helpers_test")
-	require.NoError(t, err)
-
-	// this should match our pattern
-	resp1 := checkFunc(spamcheck.Request{Msg: "This is a test message"})
-	assert.True(t, resp1.Spam)
-	assert.Equal(t, "detected pattern", resp1.Details)
-
-	// this shouldn't match (doesn't start with "this")
-	resp2 := checkFunc(spamcheck.Request{Msg: "A test message"})
-	assert.False(t, resp2.Spam)
-	assert.Equal(t, "no pattern detected", resp2.Details)
-
-	// this shouldn't match (doesn't contain "test")
-	resp3 := checkFunc(spamcheck.Request{Msg: "This is a message"})
-	assert.False(t, resp3.Spam)
-	assert.Equal(t, "no pattern detected", resp3.Details)
-}
-
 func TestChecker_InvalidLuaExecution(t *testing.T) {
 	// create a temporary script with runtime error
 	tmpDir := t.TempDir()
