@@ -29,9 +29,9 @@ type HTTPClientMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// do holds details about calls to the Do method.
+		// Do holds details about calls to the Do method.
 		Do []struct {
-			// req is the req argument value.
+			// Req is the req argument value.
 			Req *http.Request
 		}
 	}

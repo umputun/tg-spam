@@ -16,9 +16,6 @@ import (
 //
 //		// make and configure a mocked bot.SamplesStore
 //		mockedSamplesStore := &SamplesStoreMock{
-//			DeleteMessageFunc: func(ctx context.Context, message string) error {
-//				panic("mock out the DeleteMessage method")
-//			},
 //			ReadFunc: func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error) {
 //				panic("mock out the Read method")
 //			},
@@ -35,9 +32,6 @@ import (
 //
 //	}
 type SamplesStoreMock struct {
-	// DeleteMessageFunc mocks the DeleteMessage method.
-	DeleteMessageFunc func(ctx context.Context, message string) error
-
 	// ReadFunc mocks the Read method.
 	ReadFunc func(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
 
@@ -49,84 +43,33 @@ type SamplesStoreMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// DeleteMessage holds details about calls to the DeleteMessage method.
-		DeleteMessage []struct {
-			// ctx is the ctx argument value.
-			Ctx context.Context
-			// message is the message argument value.
-			Message string
-		}
-		// read holds details about calls to the Read method.
+		// Read holds details about calls to the Read method.
 		Read []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// t is the t argument value.
+			// T is the t argument value.
 			T storage.SampleType
-			// o is the o argument value.
+			// O is the o argument value.
 			O storage.SampleOrigin
 		}
-		// reader holds details about calls to the Reader method.
+		// Reader holds details about calls to the Reader method.
 		Reader []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// t is the t argument value.
+			// T is the t argument value.
 			T storage.SampleType
-			// o is the o argument value.
+			// O is the o argument value.
 			O storage.SampleOrigin
 		}
-		// stats holds details about calls to the Stats method.
+		// Stats holds details about calls to the Stats method.
 		Stats []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
 	}
-	lockDeleteMessage sync.RWMutex
-	lockRead          sync.RWMutex
-	lockReader        sync.RWMutex
-	lockStats         sync.RWMutex
-}
-
-// DeleteMessage calls DeleteMessageFunc.
-func (mock *SamplesStoreMock) DeleteMessage(ctx context.Context, message string) error {
-	if mock.DeleteMessageFunc == nil {
-		panic("SamplesStoreMock.DeleteMessageFunc: method is nil but SamplesStore.DeleteMessage was just called")
-	}
-	callInfo := struct {
-		Ctx     context.Context
-		Message string
-	}{
-		Ctx:     ctx,
-		Message: message,
-	}
-	mock.lockDeleteMessage.Lock()
-	mock.calls.DeleteMessage = append(mock.calls.DeleteMessage, callInfo)
-	mock.lockDeleteMessage.Unlock()
-	return mock.DeleteMessageFunc(ctx, message)
-}
-
-// DeleteMessageCalls gets all the calls that were made to DeleteMessage.
-// Check the length with:
-//
-//	len(mockedSamplesStore.DeleteMessageCalls())
-func (mock *SamplesStoreMock) DeleteMessageCalls() []struct {
-	Ctx     context.Context
-	Message string
-} {
-	var calls []struct {
-		Ctx     context.Context
-		Message string
-	}
-	mock.lockDeleteMessage.RLock()
-	calls = mock.calls.DeleteMessage
-	mock.lockDeleteMessage.RUnlock()
-	return calls
-}
-
-// ResetDeleteMessageCalls reset all the calls that were made to DeleteMessage.
-func (mock *SamplesStoreMock) ResetDeleteMessageCalls() {
-	mock.lockDeleteMessage.Lock()
-	mock.calls.DeleteMessage = nil
-	mock.lockDeleteMessage.Unlock()
+	lockRead   sync.RWMutex
+	lockReader sync.RWMutex
+	lockStats  sync.RWMutex
 }
 
 // Read calls ReadFunc.
@@ -264,10 +207,6 @@ func (mock *SamplesStoreMock) ResetStatsCalls() {
 
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *SamplesStoreMock) ResetCalls() {
-	mock.lockDeleteMessage.Lock()
-	mock.calls.DeleteMessage = nil
-	mock.lockDeleteMessage.Unlock()
-
 	mock.lockRead.Lock()
 	mock.calls.Read = nil
 	mock.lockRead.Unlock()

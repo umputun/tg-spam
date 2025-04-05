@@ -554,12 +554,7 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 				},
 			}
 
-			samplesStore := &mocks.SamplesStoreMock{
-				DeleteMessageFunc: func(ctx context.Context, message string) error {
-					assert.Equal(t, tc.sample, message)
-					return tc.deleteErr
-				},
-			}
+			samplesStore := &mocks.SamplesStoreMock{}
 
 			dictStore := &mocks.DictStoreMock{
 				ReaderFunc: func(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error) {
@@ -734,12 +729,7 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 				},
 			}
 
-			samplesStore := &mocks.SamplesStoreMock{
-				DeleteMessageFunc: func(ctx context.Context, message string) error {
-					assert.Equal(t, tc.sample, message)
-					return tc.deleteErr
-				},
-			}
+			samplesStore := &mocks.SamplesStoreMock{}
 
 			dictStore := &mocks.DictStoreMock{}
 

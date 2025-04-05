@@ -34,6 +34,7 @@ import (
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi"
 	"github.com/umputun/tg-spam/lib/tgspam"
+	"github.com/umputun/tg-spam/lib/tgspam/lua"
 )
 
 type options struct {
@@ -97,6 +98,12 @@ type options struct {
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+
+	LuaPlugins struct {
+		Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
+		PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
+		EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
+	} `group:"lua-plugins" namespace:"lua-plugins" env-namespace:"LUA_PLUGINS"`
 
 	AbnormalSpacing struct {
 		Enabled                 bool    `long:"enabled" env:"ENABLED" description:"enable abnormal words check"`
@@ -590,6 +597,28 @@ func makeDetector(opts options) *tgspam.Detector {
 	detector.WithMetaChecks(metaChecks...)
 
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
+
+	// initialize Lua plugins if enabled
+	if opts.LuaPlugins.Enabled {
+		// copy Lua plugin settings to detector config
+		detector.LuaPlugins.Enabled = true
+		detector.LuaPlugins.PluginsDir = opts.LuaPlugins.PluginsDir
+		detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
+
+		// create and initialize the Lua engine
+		luaEngine := lua.NewChecker()
+		if err := detector.WithLuaEngine(luaEngine); err != nil {
+			log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
+		} else {
+			log.Printf("[INFO] Lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
+			if len(opts.LuaPlugins.EnabledPlugins) > 0 {
+				log.Printf("[INFO] Enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
+			} else {
+				log.Print("[INFO] All Lua plugins from directory are enabled")
+			}
+		}
+	}
+
 	return detector
 }
 
