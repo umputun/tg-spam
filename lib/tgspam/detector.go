@@ -441,6 +441,27 @@ func (d *Detector) RemoveApprovedUser(id string) error {
 	return nil
 }
 
+// GetLuaPluginNames returns the list of available Lua plugin names.
+func (d *Detector) GetLuaPluginNames() []string {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if d.luaEngine == nil || !d.LuaPlugins.Enabled {
+		return []string{}
+	}
+
+	allChecks := d.luaEngine.GetAllChecks()
+	result := make([]string, 0, len(allChecks))
+
+	for name := range allChecks {
+		result = append(result, name)
+	}
+
+	// sort the result for consistent output
+	sort.Strings(result)
+	return result
+}
+
 // LoadSamples loads spam samples from a reader and updates the classifier.
 // Reset spam, ham samples/classifier, and excluded tokens.
 func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (LoadResult, error) {

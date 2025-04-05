@@ -4,6 +4,7 @@ package tgspam
 
 import (
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -201,6 +202,66 @@ func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
 	assert.Equal(t, 1, len(mockLuaEngine.CloseCalls()))
 	assert.Nil(t, detector.luaEngine)
 	assert.Empty(t, detector.luaChecks)
+}
+
+func TestDetector_GetLuaPluginNames(t *testing.T) {
+	t.Run("no Lua engine", func(t *testing.T) {
+		detector := NewDetector(Config{})
+		assert.Empty(t, detector.GetLuaPluginNames())
+	})
+
+	t.Run("Lua disabled", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = false
+		detector := NewDetector(config)
+
+		// create mock Lua engine
+		mockLuaEngine := &mocks.LuaPluginEngineMock{
+			GetAllChecksFunc: func() map[string]lua.PluginCheck {
+				return map[string]lua.PluginCheck{
+					"plugin1": nil,
+					"plugin2": nil,
+				}
+			},
+		}
+
+		detector.luaEngine = mockLuaEngine
+		assert.Empty(t, detector.GetLuaPluginNames())
+		assert.Equal(t, 0, len(mockLuaEngine.GetAllChecksCalls()))
+	})
+
+	t.Run("with plugins", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		detector := NewDetector(config)
+
+		// create mock Lua engine with some plugins
+		mockLuaEngine := &mocks.LuaPluginEngineMock{
+			GetAllChecksFunc: func() map[string]lua.PluginCheck {
+				return map[string]lua.PluginCheck{
+					"plugin1": func(req spamcheck.Request) spamcheck.Response {
+						return spamcheck.Response{Name: "lua-plugin1", Spam: true, Details: "test"}
+					},
+					"plugin2": func(req spamcheck.Request) spamcheck.Response {
+						return spamcheck.Response{Name: "lua-plugin2", Spam: false, Details: "test"}
+					},
+					"plugin3": func(req spamcheck.Request) spamcheck.Response {
+						return spamcheck.Response{Name: "lua-plugin3", Spam: true, Details: "test"}
+					},
+				}
+			},
+		}
+
+		detector.luaEngine = mockLuaEngine
+		pluginNames := detector.GetLuaPluginNames()
+
+		assert.Equal(t, 1, len(mockLuaEngine.GetAllChecksCalls()))
+		assert.Len(t, pluginNames, 3)
+
+		// make sure the names are sorted
+		sort.Strings(pluginNames)
+		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, pluginNames)
+	})
 }
 
 func TestDetector_WithRealLuaPlugins(t *testing.T) {

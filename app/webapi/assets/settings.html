@@ -205,6 +205,19 @@
                                 Plugins disabled
                             {{end}}
                         </td></tr>
+                        <tr><th>Available Plugins</th><td>
+                            {{if .LuaPluginsEnabled}}
+                                {{if eq (len .LuaAvailablePlugins) 0}}
+                                    No plugins available
+                                {{else}}
+                                    {{range .LuaAvailablePlugins}}
+                                        {{.}}<br>
+                                    {{end}}
+                                {{end}}
+                            {{else}}
+                                Plugins disabled
+                            {{end}}
+                        </td></tr>
                     </tbody>
                 </table>
             </div>

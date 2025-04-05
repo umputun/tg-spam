@@ -613,11 +613,11 @@ func makeDetector(opts options) *tgspam.Detector {
 		if err := detector.WithLuaEngine(luaEngine); err != nil {
 			log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
 		} else {
-			log.Printf("[INFO] Lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
+			log.Printf("[INFO] lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
 			if len(opts.LuaPlugins.EnabledPlugins) > 0 {
-				log.Printf("[INFO] Enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
+				log.Printf("[INFO] enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
 			} else {
-				log.Print("[INFO] All Lua plugins from directory are enabled")
+				log.Print("[INFO] all Lua plugins from directory are enabled")
 			}
 		}
 	}

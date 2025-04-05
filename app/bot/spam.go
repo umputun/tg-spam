@@ -51,6 +51,7 @@ type Detector interface {
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
+	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
 
 // SamplesStore is a storage for spam samples

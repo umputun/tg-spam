@@ -207,6 +207,9 @@ func TestServer_routes(t *testing.T) {
 		RemoveApprovedUserFunc: func(id string) error {
 			return nil
 		},
+		GetLuaPluginNamesFunc: func() []string {
+			return []string{"plugin1", "plugin2", "plugin3"}
+		},
 	}
 	detectedSpamMock := &mocks.DetectedSpamMock{
 		FindByUserIDFunc: func(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error) {
@@ -1252,11 +1255,87 @@ func TestServer_htmlManageUsersHandler(t *testing.T) {
 	})
 }
 
+func TestServer_getSettingsHandler(t *testing.T) {
+	t.Run("with lua plugins", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{"plugin1", "plugin2", "plugin3"}
+			},
+		}
+
+		settings := Settings{
+			InstanceID:        "test",
+			LuaPluginsEnabled: true,
+			LuaPluginsDir:     "/path/to/plugins",
+			LuaEnabledPlugins: []string{"plugin1", "plugin2"},
+		}
+
+		server := NewServer(Config{Version: "1.0", Detector: detectorMock, Settings: settings})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.getSettingsHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+
+		var respSettings Settings
+		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
+		require.NoError(t, err)
+		assert.Equal(t, settings.InstanceID, respSettings.InstanceID)
+		assert.Equal(t, settings.LuaPluginsEnabled, respSettings.LuaPluginsEnabled)
+		assert.Equal(t, settings.LuaPluginsDir, respSettings.LuaPluginsDir)
+		assert.Equal(t, settings.LuaEnabledPlugins, respSettings.LuaEnabledPlugins)
+		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, respSettings.LuaAvailablePlugins)
+		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
+	})
+
+	t.Run("with lua plugins disabled", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{}
+			},
+		}
+
+		settings := Settings{
+			InstanceID:        "test",
+			LuaPluginsEnabled: false,
+		}
+
+		server := NewServer(Config{Version: "1.0", Detector: detectorMock, Settings: settings})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+
+		handler := http.HandlerFunc(server.getSettingsHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		
+		var respSettings Settings
+		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
+		require.NoError(t, err)
+		assert.Equal(t, settings.InstanceID, respSettings.InstanceID)
+		assert.Equal(t, settings.LuaPluginsEnabled, respSettings.LuaPluginsEnabled)
+		assert.Empty(t, respSettings.LuaAvailablePlugins)
+		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
+	})
+}
+
 func TestServer_htmlSettingsHandler(t *testing.T) {
 	// test without StorageEngine (default case)
 	t.Run("without storage engine", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{"plugin1", "plugin2", "plugin3"}
+			},
+		}
+		
 		server := NewServer(Config{
 			Version:  "1.0",
+			Detector: detectorMock,
 			Settings: Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
 		})
 		rr := httptest.NewRecorder()
@@ -1279,10 +1358,16 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 	// test with StorageEngine
 	t.Run("with SQL storage engine", func(t *testing.T) {
 		sqlEngine := &mocks.StorageEngineMock{}
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{"plugin1", "plugin2", "plugin3"}
+			},
+		}
 
 		server := NewServer(Config{
 			Version:       "1.0",
 			StorageEngine: sqlEngine,
+			Detector:      detectorMock,
 			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
 		})
 		rr := httptest.NewRecorder()
@@ -1296,15 +1381,22 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		body := rr.Body.String()
 		assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
 		assert.Contains(t, body, "Connected", "Should show database is connected")
+		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
 	})
 
 	// test with non-SQL StorageEngine
 	t.Run("with non-SQL storage engine", func(t *testing.T) {
 		mockEngine := &mocks.StorageEngineMock{}
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{"plugin1", "plugin2", "plugin3"}
+			},
+		}
 
 		server := NewServer(Config{
 			Version:       "1.0",
 			StorageEngine: mockEngine,
+			Detector:      detectorMock,
 			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
 		})
 		rr := httptest.NewRecorder()
@@ -1318,6 +1410,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		body := rr.Body.String()
 		assert.Contains(t, body, "Connected (unknown type)", "Should show connected with unknown type")
 		assert.Contains(t, body, "Unknown", "Should show unknown database type")
+		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
 	})
 
 	// test execution error
@@ -1332,7 +1425,16 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		require.NoError(t, err)
 		tmpl = badTemplate
 
-		server := NewServer(Config{Version: "1.0"})
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string {
+				return []string{"plugin1", "plugin2", "plugin3"}
+			},
+		}
+
+		server := NewServer(Config{
+			Version:  "1.0",
+			Detector: detectorMock,
+		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
 		require.NoError(t, err)
@@ -1341,6 +1443,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code, "should return internal server error")
+		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
 	})
 }
 
