@@ -31,11 +31,11 @@ type DictStoreMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// reader holds details about calls to the Reader method.
+		// Reader holds details about calls to the Reader method.
 		Reader []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// t is the t argument value.
+			// T is the t argument value.
 			T storage.DictionaryType
 		}
 	}

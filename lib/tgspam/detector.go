@@ -22,11 +22,13 @@ import (
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
+	"github.com/umputun/tg-spam/lib/tgspam/lua"
 )
 
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure --with-resets . SampleUpdater
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure --with-resets . HTTPClient
 //go:generate moq --out mocks/user_storage.go --pkg mocks --skip-ensure --with-resets . UserStorage
+//go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
 
 // Detector is a spam detector, thread-safe.
 // It uses a set of checks to determine if a message is spam, and also keeps a list of approved users.
@@ -35,10 +37,12 @@ type Detector struct {
 	classifier     classifier
 	openaiChecker  *openAIChecker
 	metaChecks     []MetaCheck
+	luaChecks      []lua.PluginCheck // separate field for Lua plugin checks
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
 	excludedTokens map[string]struct{}
+	luaEngine      LuaPluginEngine
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
@@ -67,6 +71,12 @@ type Config struct {
 	OpenAIHistorySize   int           // history size for openai
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
+
+	LuaPlugins struct {
+		Enabled        bool     // if true, enable Lua plugins
+		PluginsDir     string   // directory with Lua plugins
+		EnabledPlugins []string // list of enabled plugins (by name, without .lua extension)
+	}
 
 	AbnormalSpacing struct {
 		Enabled                 bool    // if true, enable check for abnormal spacing
@@ -97,6 +107,15 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// LuaPluginEngine defines an interface for the Lua plugin system
+type LuaPluginEngine interface {
+	LoadScript(path string) error                  // loads a single Lua script
+	LoadDirectory(dir string) error                // loads all Lua scripts from a directory
+	GetCheck(name string) (lua.PluginCheck, error) // returns a specific named plugin check
+	GetAllChecks() map[string]lua.PluginCheck      // returns all loaded plugin checks
+	Close()                                        // cleans up resources
+}
+
 // LoadResult is a result of loading samples.
 type LoadResult struct {
 	ExcludedTokens int // number of excluded tokens
@@ -112,8 +131,11 @@ func NewDetector(p Config) *Detector {
 		classifier:    newClassifier(),
 		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
+		metaChecks:    []MetaCheck{},
+		luaChecks:     []lua.PluginCheck{},
 		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
+		luaEngine:     nil, // will be set with WithLuaEngine if needed
 	}
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
@@ -163,6 +185,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for spam with meta-checks
 	for _, mc := range d.metaChecks {
 		cr = append(cr, mc(req))
+	}
+
+	// check for spam with Lua plugin checks
+	for _, lc := range d.luaChecks {
+		cr = append(cr, lc(req))
 	}
 
 	// check for spam with CAS API if CAS API URL is set
@@ -265,11 +292,53 @@ func (d *Detector) Reset() {
 	d.classifier.reset()
 	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
+
+	// close the Lua engine and reset Lua checks if it exists
+	if d.luaEngine != nil {
+		d.luaEngine.Close()
+		d.luaEngine = nil
+		d.luaChecks = nil
+	}
 }
 
 // WithOpenAIChecker sets an openAIChecker for spam checking.
 func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 	d.openaiChecker = newOpenAIChecker(client, config)
+}
+
+// WithLuaEngine sets a Lua plugin engine and loads plugins
+func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
+	d.luaEngine = engine
+
+	if !d.LuaPlugins.Enabled || d.LuaPlugins.PluginsDir == "" {
+		return nil
+	}
+
+	// load all plugins from the directory
+	if err := d.luaEngine.LoadDirectory(d.LuaPlugins.PluginsDir); err != nil {
+		return fmt.Errorf("failed to load Lua plugins: %w", err)
+	}
+
+	// register enabled plugins as Lua checks
+	if len(d.LuaPlugins.EnabledPlugins) > 0 {
+		for _, name := range d.LuaPlugins.EnabledPlugins {
+			pluginCheck, err := d.luaEngine.GetCheck(name)
+			if err != nil {
+				return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+			}
+			// add to luaChecks
+			d.luaChecks = append(d.luaChecks, pluginCheck)
+		}
+	} else {
+		// if no specific plugins are enabled, load all
+		allChecks := d.luaEngine.GetAllChecks()
+		for _, pluginCheck := range allChecks {
+			// add to luaChecks
+			d.luaChecks = append(d.luaChecks, pluginCheck)
+		}
+	}
+
+	return nil
 }
 
 // WithUserStorage sets a UserStorage for approved users and loads approved users from it.
@@ -370,6 +439,27 @@ func (d *Detector) RemoveApprovedUser(id string) error {
 		}
 	}
 	return nil
+}
+
+// GetLuaPluginNames returns the list of available Lua plugin names.
+func (d *Detector) GetLuaPluginNames() []string {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if d.luaEngine == nil || !d.LuaPlugins.Enabled {
+		return []string{}
+	}
+
+	allChecks := d.luaEngine.GetAllChecks()
+	result := make([]string, 0, len(allChecks))
+
+	for name := range allChecks {
+		result = append(result, name)
+	}
+
+	// sort the result for consistent output
+	sort.Strings(result)
+	return result
 }
 
 // LoadSamples loads spam samples from a reader and updates the classifier.

@@ -88,6 +88,10 @@ type Settings struct {
 	MetaUsernameSymbols     string        `json:"meta_username_symbols"`
 	MultiLangLimit          int           `json:"multi_lang_limit"`
 	OpenAIEnabled           bool          `json:"openai_enabled"`
+	LuaPluginsEnabled       bool          `json:"lua_plugins_enabled"`
+	LuaPluginsDir           string        `json:"lua_plugins_dir"`
+	LuaEnabledPlugins       []string      `json:"lua_enabled_plugins"`
+	LuaAvailablePlugins     []string      `json:"lua_available_plugins"` // the list of all available Lua plugins
 	SamplesDataPath         string        `json:"samples_data_path"`
 	DynamicDataPath         string        `json:"dynamic_data_path"`
 	WatchIntervalSecs       int           `json:"watch_interval_secs"`
@@ -117,6 +121,7 @@ type Detector interface {
 	ApprovedUsers() []approved.UserInfo
 	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
+	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
 
 // SpamFilter is a spam filter, bot interface.
@@ -237,9 +242,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 			r.HandleFunc("GET /", s.getApprovedUsersHandler)
 		})
 
-		authApi.HandleFunc("GET /settings", func(w http.ResponseWriter, _ *http.Request) {
-			rest.RenderJSON(w, s.Settings)
-		})
+		authApi.HandleFunc("GET /settings", s.getSettingsHandler) // get application settings
 	})
 
 	router.Route(func(webUI *routegroup.Bundle) {
@@ -539,6 +542,13 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.Detector.ApprovedUsers()})
 }
 
+// getSettingsHandler returns application settings, including the list of available Lua plugins
+func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+	// get the list of available Lua plugins before returning settings
+	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
+	rest.RenderJSON(w, s.Settings)
+}
+
 // htmlSpamCheckHandler handles GET / request.
 // It returns rendered spam_check.html template with all the components.
 func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
@@ -743,6 +753,9 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 
 	// get system info - uptime since server start
 	uptime := time.Since(startTime)
+
+	// get the list of available Lua plugins
+	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
 
 	data := struct {
 		Settings

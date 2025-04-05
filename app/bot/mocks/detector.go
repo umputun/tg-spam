@@ -26,6 +26,9 @@ import (
 //			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
+//			GetLuaPluginNamesFunc: func() []string {
+//				panic("mock out the GetLuaPluginNames method")
+//			},
 //			IsApprovedUserFunc: func(userID string) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
@@ -66,6 +69,9 @@ type DetectorMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
+	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
+	GetLuaPluginNamesFunc func() []string
+
 	// IsApprovedUserFunc mocks the IsApprovedUser method.
 	IsApprovedUserFunc func(userID string) bool
 
@@ -94,16 +100,19 @@ type DetectorMock struct {
 	calls struct {
 		// AddApprovedUser holds details about calls to the AddApprovedUser method.
 		AddApprovedUser []struct {
-			// user is the user argument value.
+			// User is the user argument value.
 			User approved.UserInfo
 		}
 		// ApprovedUsers holds details about calls to the ApprovedUsers method.
 		ApprovedUsers []struct {
 		}
-		// check holds details about calls to the Check method.
+		// Check holds details about calls to the Check method.
 		Check []struct {
-			// request is the request argument value.
+			// Request is the request argument value.
 			Request spamcheck.Request
+		}
+		// GetLuaPluginNames holds details about calls to the GetLuaPluginNames method.
+		GetLuaPluginNames []struct {
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
 		IsApprovedUser []struct {
@@ -121,7 +130,7 @@ type DetectorMock struct {
 		}
 		// LoadStopWords holds details about calls to the LoadStopWords method.
 		LoadStopWords []struct {
-			// readers is the readers argument value.
+			// Readers is the readers argument value.
 			Readers []io.Reader
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
@@ -131,28 +140,29 @@ type DetectorMock struct {
 		}
 		// RemoveHam holds details about calls to the RemoveHam method.
 		RemoveHam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 		// RemoveSpam holds details about calls to the RemoveSpam method.
 		RemoveSpam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 		// UpdateSpam holds details about calls to the UpdateSpam method.
 		UpdateSpam []struct {
-			// msg is the msg argument value.
+			// Msg is the msg argument value.
 			Msg string
 		}
 	}
 	lockAddApprovedUser    sync.RWMutex
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
+	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
 	lockLoadStopWords      sync.RWMutex
@@ -273,6 +283,40 @@ func (mock *DetectorMock) ResetCheckCalls() {
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
+}
+
+// GetLuaPluginNames calls GetLuaPluginNamesFunc.
+func (mock *DetectorMock) GetLuaPluginNames() []string {
+	if mock.GetLuaPluginNamesFunc == nil {
+		panic("DetectorMock.GetLuaPluginNamesFunc: method is nil but Detector.GetLuaPluginNames was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = append(mock.calls.GetLuaPluginNames, callInfo)
+	mock.lockGetLuaPluginNames.Unlock()
+	return mock.GetLuaPluginNamesFunc()
+}
+
+// GetLuaPluginNamesCalls gets all the calls that were made to GetLuaPluginNames.
+// Check the length with:
+//
+//	len(mockedDetector.GetLuaPluginNamesCalls())
+func (mock *DetectorMock) GetLuaPluginNamesCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetLuaPluginNames.RLock()
+	calls = mock.calls.GetLuaPluginNames
+	mock.lockGetLuaPluginNames.RUnlock()
+	return calls
+}
+
+// ResetGetLuaPluginNamesCalls reset all the calls that were made to GetLuaPluginNames.
+func (mock *DetectorMock) ResetGetLuaPluginNamesCalls() {
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = nil
+	mock.lockGetLuaPluginNames.Unlock()
 }
 
 // IsApprovedUser calls IsApprovedUserFunc.
@@ -608,6 +652,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
+
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = nil
+	mock.lockGetLuaPluginNames.Unlock()
 
 	mock.lockIsApprovedUser.Lock()
 	mock.calls.IsApprovedUser = nil

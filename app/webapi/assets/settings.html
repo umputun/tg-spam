@@ -99,6 +99,11 @@
             </button>
         </li>
         <li class="nav-item" role="presentation">
+            <button class="nav-link" id="lua-plugins-tab" data-bs-toggle="tab" data-bs-target="#lua-plugins" type="button" role="tab">
+                <i class="bi bi-code-square me-1"></i>Lua Plugins
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
             <button class="nav-link" id="data-storage-tab" data-bs-toggle="tab" data-bs-target="#data-storage" type="button" role="tab">
                 <i class="bi bi-hdd-stack me-1"></i>Data Storage
             </button>
@@ -174,6 +179,45 @@
                         <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
                         <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
                         <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Lua Plugins Settings -->
+        <div class="tab-pane fade" id="lua-plugins" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="custom-table-header">
+                        <tr><th colspan="2">Lua Plugins Settings</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th style="width: 30%">Lua Plugins Enabled</th><td>{{.LuaPluginsEnabled}}</td></tr>
+                        <tr><th>Plugins Directory</th><td>{{if eq .LuaPluginsDir ""}}Not set{{else}}{{.LuaPluginsDir}}{{end}}</td></tr>
+                        <tr><th>Enabled Plugins</th><td>
+                            {{if and .LuaPluginsEnabled (eq (len .LuaEnabledPlugins) 0)}}
+                                All plugins are enabled
+                            {{else if .LuaPluginsEnabled}}
+                                {{range .LuaEnabledPlugins}}
+                                    {{.}}<br>
+                                {{end}}
+                            {{else}}
+                                Plugins disabled
+                            {{end}}
+                        </td></tr>
+                        <tr><th>Available Plugins</th><td>
+                            {{if .LuaPluginsEnabled}}
+                                {{if eq (len .LuaAvailablePlugins) 0}}
+                                    No plugins available
+                                {{else}}
+                                    {{range .LuaAvailablePlugins}}
+                                        {{.}}<br>
+                                    {{end}}
+                                {{end}}
+                            {{else}}
+                                Plugins disabled
+                            {{end}}
+                        </td></tr>
                     </tbody>
                 </table>
             </div>

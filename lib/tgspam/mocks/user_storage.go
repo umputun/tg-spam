@@ -42,23 +42,23 @@ type UserStorageMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// delete holds details about calls to the Delete method.
+		// Delete holds details about calls to the Delete method.
 		Delete []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// ID is the id argument value.
 			ID string
 		}
-		// read holds details about calls to the Read method.
+		// Read holds details about calls to the Read method.
 		Read []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
-		// write holds details about calls to the Write method.
+		// Write holds details about calls to the Write method.
 		Write []struct {
-			// ctx is the ctx argument value.
+			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// au is the au argument value.
+			// Au is the au argument value.
 			Au approved.UserInfo
 		}
 	}
