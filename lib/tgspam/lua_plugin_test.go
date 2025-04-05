@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam/lua"
@@ -200,4 +201,114 @@ func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
 	assert.Equal(t, 1, len(mockLuaEngine.CloseCalls()))
 	assert.Nil(t, detector.luaEngine)
 	assert.Empty(t, detector.luaChecks)
+}
+
+func TestDetector_WithRealLuaPlugins(t *testing.T) {
+	// set up configuration to use testdata directory
+	config := Config{}
+	config.LuaPlugins.Enabled = true
+	config.LuaPlugins.PluginsDir = "./testdata"
+	config.LuaPlugins.EnabledPlugins = []string{"domain_blacklist", "repeat_chars", "simple_test"}
+
+	// create and initialize detector with real Lua plugins
+	detector := NewDetector(config)
+	engine := lua.NewChecker()
+	defer engine.Close()
+
+	err := detector.WithLuaEngine(engine)
+	require.NoError(t, err)
+
+	// verify that all plugins were loaded
+	assert.Len(t, detector.luaChecks, 3)
+
+	// helper function to find a specific check in the checks slice
+	findCheck := func(checks []spamcheck.Response, name string) *spamcheck.Response {
+		for _, check := range checks {
+			if check.Name == name {
+				return &check
+			}
+		}
+		return nil
+	}
+
+	t.Run("DomainBlacklist", func(t *testing.T) {
+		// test with blacklisted domain
+		req := spamcheck.Request{
+			Msg:      "Check out https://suspicious.xyz for great deals!",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks := detector.Check(req)
+		t.Logf("checks: %+v", checks)
+		assert.True(t, isSpam, "message with suspicious domain should be detected as spam")
+		domainCheck := findCheck(checks, "lua-domain_blacklist")
+		assert.NotNil(t, domainCheck, "domain_blacklist check should be present")
+		assert.True(t, domainCheck.Spam, "domain_blacklist should detect this as spam")
+		assert.Contains(t, domainCheck.Details, "blacklisted TLD: .xyz", "should contain details about the blacklisted TLD")
+
+		// test with legitimate domain
+		req = spamcheck.Request{
+			Msg:      "Check out https://legitimate.com for great deals!",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks = detector.Check(req)
+		assert.False(t, isSpam, "message with legitimate domain shouldn't be detected as spam")
+		domainCheck = findCheck(checks, "lua-domain_blacklist")
+		if domainCheck != nil {
+			assert.False(t, domainCheck.Spam, "legitimate domain shouldn't be detected as spam")
+		}
+	})
+
+	t.Run("RepeatChars", func(t *testing.T) {
+		req := spamcheck.Request{
+			Msg:      "Hellooooooo everyone!!!!!",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks := detector.Check(req)
+		assert.True(t, isSpam, "message with excessive repeating chars should be detected as spam")
+		repeatCheck := findCheck(checks, "lua-repeat_chars")
+		assert.NotNil(t, repeatCheck, "repeat_chars check should be present")
+		assert.True(t, repeatCheck.Spam, "repeat_chars should detect this as spam")
+		assert.Contains(t, repeatCheck.Details, "excessive repeated characters", "should contain details about excessive character repetition")
+
+		req = spamcheck.Request{
+			Msg:      "Hello everyone!",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks = detector.Check(req)
+		assert.False(t, isSpam, "normal message shouldn't be detected as spam")
+		repeatCheck = findCheck(checks, "lua-repeat_chars")
+		if repeatCheck != nil {
+			assert.False(t, repeatCheck.Spam, "normal message shouldn't be detected as spam")
+		}
+	})
+
+	t.Run("SimpleTest", func(t *testing.T) {
+		req := spamcheck.Request{
+			Msg:      "Great crypto investment opportunity!",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks := detector.Check(req)
+		assert.True(t, isSpam, "message with spam keyword should be detected as spam")
+		simpleCheck := findCheck(checks, "lua-simple_test")
+		assert.NotNil(t, simpleCheck, "simple_test check should be present")
+		assert.True(t, simpleCheck.Spam, "simple_test should detect this as spam")
+		assert.Contains(t, simpleCheck.Details, "detected spam keyword: crypto", "should contain details about the detected keyword")
+
+		req = spamcheck.Request{
+			Msg:      "Just a normal message without keywords.",
+			UserID:   "user1",
+			UserName: "testuser",
+		}
+		isSpam, checks = detector.Check(req)
+		assert.False(t, isSpam, "normal message shouldn't be detected as spam")
+		simpleCheck = findCheck(checks, "lua-simple_test")
+		if simpleCheck != nil {
+			assert.False(t, simpleCheck.Spam, "normal message shouldn't be detected as spam")
+		}
+	})
 }
