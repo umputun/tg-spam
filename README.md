@@ -262,7 +262,7 @@ Several helper functions are provided to Lua scripts:
 - `starts_with(text, prefix)` - Checks if text starts with prefix
 - `ends_with(text, suffix)` - Checks if text ends with suffix
 
-Example plugins are available in the [examples/lua_plugins](https://github.com/umputun/tg-spam/tree/master/examples/lua_plugins) directory.
+Example plugins are available in the [_examples/lua_plugins](https://github.com/umputun/tg-spam/tree/master/_examples/lua_plugins) directory.
 
 ### Logging
 
