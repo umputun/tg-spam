@@ -1,12 +1,15 @@
 package lua
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	lua "github.com/yuin/gopher-lua"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -233,4 +236,191 @@ func TestChecker_EdgeCaseHelpers(t *testing.T) {
 		resp := checkFunc(spamcheck.Request{Msg: "test_no_args"})
 		assert.False(t, resp.Spam)
 	})
+}
+
+func TestHTTPRequest(t *testing.T) {
+	// create a test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ok":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+		case "/headers":
+			headerValue := r.Header.Get("X-Test-Header")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(headerValue))
+		case "/post":
+			if r.Method != "POST" {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"received":true}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// test basic GET request
+	t.Run("basic GET", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		L.Push(lua.LString(server.URL + "/ok"))
+		ret := httpRequest(L)
+		assert.Equal(t, 3, ret)
+		assert.Equal(t, lua.LString(`{"status":"ok"}`), L.Get(-3))
+		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.Equal(t, lua.LNil, L.Get(-1))
+		L.Pop(3)
+	})
+
+	// test with custom headers
+	t.Run("with headers", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		L.Push(lua.LString(server.URL + "/headers"))
+		L.Push(lua.LString("GET"))
+		headers := L.NewTable()
+		headers.RawSetString("X-Test-Header", lua.LString("test-value"))
+		L.Push(headers)
+		ret := httpRequest(L)
+		assert.Equal(t, 3, ret)
+		assert.Equal(t, lua.LString("test-value"), L.Get(-3))
+		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.Equal(t, lua.LNil, L.Get(-1))
+		L.Pop(3)
+	})
+
+	// test POST request with body
+	t.Run("POST with body", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		L.Push(lua.LString(server.URL + "/post"))
+		L.Push(lua.LString("POST"))
+		L.Push(lua.LNil) // no headers
+		L.Push(lua.LString(`{"test":"data"}`))
+		ret := httpRequest(L)
+		assert.Equal(t, 3, ret)
+		assert.Equal(t, lua.LString(`{"received":true}`), L.Get(-3))
+		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.Equal(t, lua.LNil, L.Get(-1))
+		L.Pop(3)
+	})
+
+	// test 404 error
+	t.Run("404 error", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		L.Push(lua.LString(server.URL + "/not-found"))
+		ret := httpRequest(L)
+		assert.Equal(t, 3, ret)
+		assert.Equal(t, lua.LNumber(404), L.Get(-2))
+		L.Pop(3)
+	})
+
+	// test invalid URL
+	t.Run("invalid URL", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		L.Push(lua.LString("invalid-url"))
+		ret := httpRequest(L)
+		assert.Equal(t, 3, ret)
+		assert.Equal(t, lua.LNil, L.Get(-3))
+		assert.Equal(t, lua.LNumber(0), L.Get(-2))
+		assert.NotEqual(t, lua.LNil, L.Get(-1)) // should have error message
+		L.Pop(3)
+	})
+}
+
+func TestJSONEncodeDecode(t *testing.T) {
+	t.Run("encode and decode", func(t *testing.T) {
+		L := lua.NewState()
+		defer L.Close()
+
+		// create a test table
+		table := L.NewTable()
+		table.RawSetString("string", lua.LString("value"))
+		table.RawSetString("number", lua.LNumber(42))
+		table.RawSetString("bool", lua.LBool(true))
+
+		// create a nested table
+		nested := L.NewTable()
+		nested.RawSetString("key", lua.LString("nested value"))
+		table.RawSetString("nested", nested)
+
+		// create an array
+		array := L.NewTable()
+		array.RawSetInt(1, lua.LString("first"))
+		array.RawSetInt(2, lua.LString("second"))
+		table.RawSetString("array", array)
+
+		// encode to JSON
+		L.Push(table)
+		ret := jsonEncode(L)
+		assert.Equal(t, 2, ret)
+
+		// get encoded JSON and verify correct encoding
+		jsonStr := L.Get(-2).String()
+		assert.Contains(t, jsonStr, `"string":"value"`)
+		assert.Contains(t, jsonStr, `"number":42`)
+		assert.Contains(t, jsonStr, `"bool":true`)
+		assert.Contains(t, jsonStr, `"nested":{"key":"nested value"}`)
+		assert.Contains(t, jsonStr, `"array":["first","second"]`)
+
+		// create a new state for decode test to avoid any stack issues
+		L2 := lua.NewState()
+		defer L2.Close()
+
+		// now decode it back
+		L2.Push(lua.LString(jsonStr))
+		ret = jsonDecode(L2)
+		assert.Equal(t, 2, ret)
+		assert.Equal(t, lua.LNil, L2.Get(-1)) // no error
+
+		// check the decoded table
+		decoded := L2.Get(-2).(*lua.LTable)
+		assert.Equal(t, lua.LString("value"), decoded.RawGetString("string"))
+		assert.Equal(t, lua.LNumber(42), decoded.RawGetString("number"))
+		assert.Equal(t, lua.LBool(true), decoded.RawGetString("bool"))
+
+		// check nested objects
+		nestedDecoded := decoded.RawGetString("nested").(*lua.LTable)
+		assert.Equal(t, lua.LString("nested value"), nestedDecoded.RawGetString("key"))
+
+		// check array
+		arrayDecoded := decoded.RawGetString("array").(*lua.LTable)
+		assert.Equal(t, lua.LString("first"), arrayDecoded.RawGetInt(1))
+		assert.Equal(t, lua.LString("second"), arrayDecoded.RawGetInt(2))
+	})
+}
+
+func TestURLEncode(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"hello world", "hello+world"},
+		{"a=1&b=2", "a%3D1%26b%3D2"},
+		{"привет мир", "%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82+%D0%BC%D0%B8%D1%80"},
+		{"!@#$%^&*()", "%21%40%23%24%25%5E%26%2A%28%29"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			L := lua.NewState()
+			defer L.Close()
+
+			L.Push(lua.LString(tc.input))
+			ret := urlEncode(L)
+			assert.Equal(t, 1, ret)
+			assert.Equal(t, lua.LString(tc.expected), L.Get(-1))
+			L.Pop(1)
+		})
+	}
 }

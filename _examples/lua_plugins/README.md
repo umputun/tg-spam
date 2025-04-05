@@ -34,6 +34,7 @@ Your Lua plugin receives a `request` object with the following fields:
 
 The following helper functions are available:
 
+#### String Manipulation
 - `count_substring(text, substr)`: Counts occurrences of a substring
 - `match_regex(text, pattern)`: Checks if text matches a regex pattern
 - `contains_any(text, [substrings])`: Checks if text contains any of the given substrings
@@ -45,6 +46,16 @@ The following helper functions are available:
 - `starts_with(text, prefix)`: Checks if text starts with prefix
 - `ends_with(text, suffix)`: Checks if text ends with suffix
 
+#### HTTP and JSON Processing
+- `http_request(url, [method="GET"], [headers={}], [body=""], [timeout=5])`: Makes an HTTP request
+  - Returns: `response_body, status_code, error`
+  - Default timeout is 5 seconds, but can be customized
+- `json_encode(value)`: Converts a Lua table to a JSON string
+  - Returns: `json_string, error`
+- `json_decode(json_string)`: Parses a JSON string into a Lua table
+  - Returns: `lua_table, error`
+- `url_encode(string)`: Encodes a string for safe use in URLs
+
 ## Example Plugins
 
 This directory contains the following example plugins:
@@ -52,6 +63,7 @@ This directory contains the following example plugins:
 1. `repeat_chars.lua`: Detects messages with excessive repeated characters
 2. `domain_blacklist.lua`: Checks messages for blacklisted domains
 3. `message_pattern.lua`: Checks for common spam message patterns
+4. `api_check.lua`: Demonstrates using HTTP requests to check messages with external APIs
 
 ## Using Lua Plugins
 
