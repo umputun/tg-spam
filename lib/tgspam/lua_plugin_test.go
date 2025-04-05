@@ -45,7 +45,8 @@ func TestDetector_WithLuaEngine(t *testing.T) {
 	// check if mock was called correctly
 	assert.Equal(t, 1, len(mockLuaEngine.LoadDirectoryCalls()))
 	assert.Equal(t, 2, len(mockLuaEngine.GetCheckCalls()))
-	assert.Equal(t, 2, len(detector.metaChecks))
+	assert.Equal(t, 2, len(detector.luaChecks))
+	assert.Equal(t, 0, len(detector.metaChecks))
 }
 
 func TestDetector_WithLuaEngine_Disabled(t *testing.T) {
@@ -176,7 +177,8 @@ func TestDetector_WithLuaEngine_AllChecks(t *testing.T) {
 	// check if mock was called correctly
 	assert.Equal(t, 1, len(mockLuaEngine.LoadDirectoryCalls()))
 	assert.Equal(t, 1, len(mockLuaEngine.GetAllChecksCalls()))
-	assert.Equal(t, 2, len(detector.metaChecks))
+	assert.Equal(t, 2, len(detector.luaChecks))
+	assert.Equal(t, 0, len(detector.metaChecks))
 }
 
 func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
@@ -194,7 +196,8 @@ func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
 	// reset the detector
 	detector.Reset()
 
-	// check that Close was called
+	// check that Close was called and luaChecks are cleared
 	assert.Equal(t, 1, len(mockLuaEngine.CloseCalls()))
 	assert.Nil(t, detector.luaEngine)
+	assert.Empty(t, detector.luaChecks)
 }
