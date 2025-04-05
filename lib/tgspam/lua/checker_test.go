@@ -11,8 +11,8 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-func TestLuaChecker_LoadScript(t *testing.T) {
-	// Create a temporary script
+func TestChecker_LoadScript(t *testing.T) {
+	// create a temporary script
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "test.lua")
 	err := os.WriteFile(scriptPath, []byte(`
@@ -22,30 +22,30 @@ func TestLuaChecker_LoadScript(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and load the script
-	checker := NewLuaChecker()
+	// create a checker and load the script
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadScript(scriptPath)
 	require.NoError(t, err)
 
-	// Test the loaded script
+	// test the loaded script
 	checkFunc, err := checker.GetCheck("test")
 	require.NoError(t, err)
-	
+
 	resp := checkFunc(spamcheck.Request{
 		Msg:      "test message",
 		UserID:   "user1",
 		UserName: "testuser",
 	})
-	
+
 	assert.True(t, resp.Spam)
 	assert.Equal(t, "lua-test", resp.Name)
 	assert.Equal(t, "test details", resp.Details)
 }
 
-func TestLuaChecker_LoadInvalidScript(t *testing.T) {
-	// Create a temporary script with invalid Lua
+func TestChecker_LoadInvalidScript(t *testing.T) {
+	// create a temporary script with invalid Lua
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "invalid.lua")
 	err := os.WriteFile(scriptPath, []byte(`
@@ -53,16 +53,16 @@ func TestLuaChecker_LoadInvalidScript(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and try to load the script
-	checker := NewLuaChecker()
+	// create a checker and try to load the script
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadScript(scriptPath)
 	require.Error(t, err)
 }
 
-func TestLuaChecker_LoadScriptWithoutCheckFunction(t *testing.T) {
-	// Create a temporary script without a check function
+func TestChecker_LoadScriptWithoutCheckFunction(t *testing.T) {
+	// create a temporary script without a check function
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "missing_check.lua")
 	err := os.WriteFile(scriptPath, []byte(`
@@ -72,19 +72,19 @@ func TestLuaChecker_LoadScriptWithoutCheckFunction(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and try to load the script
-	checker := NewLuaChecker()
+	// create a checker and try to load the script
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadScript(scriptPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must define a 'check' function")
 }
 
-func TestLuaChecker_LoadDirectory(t *testing.T) {
-	// Create a temporary directory with multiple scripts
+func TestChecker_LoadDirectory(t *testing.T) {
+	// create a temporary directory with multiple scripts
 	tmpDir := t.TempDir()
-	
+
 	script1Path := filepath.Join(tmpDir, "script1.lua")
 	err := os.WriteFile(script1Path, []byte(`
 		function check(req)
@@ -92,7 +92,7 @@ func TestLuaChecker_LoadDirectory(t *testing.T) {
 		end
 	`), 0666)
 	require.NoError(t, err)
-	
+
 	script2Path := filepath.Join(tmpDir, "script2.lua")
 	err = os.WriteFile(script2Path, []byte(`
 		function check(req)
@@ -101,14 +101,14 @@ func TestLuaChecker_LoadDirectory(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and load the directory
-	checker := NewLuaChecker()
+	// create a checker and load the directory
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadDirectory(tmpDir)
 	require.NoError(t, err)
 
-	// Test the loaded scripts
+	// test the loaded scripts
 	checkFunc1, err := checker.GetCheck("script1")
 	require.NoError(t, err)
 	resp1 := checkFunc1(spamcheck.Request{Msg: "test message"})
@@ -124,10 +124,10 @@ func TestLuaChecker_LoadDirectory(t *testing.T) {
 	assert.Equal(t, "script2 details", resp2.Details)
 }
 
-func TestLuaChecker_GetAllChecks(t *testing.T) {
-	// Create a temporary directory with multiple scripts
+func TestChecker_GetAllChecks(t *testing.T) {
+	// create a temporary directory with multiple scripts
 	tmpDir := t.TempDir()
-	
+
 	script1Path := filepath.Join(tmpDir, "script1.lua")
 	err := os.WriteFile(script1Path, []byte(`
 		function check(req)
@@ -135,7 +135,7 @@ func TestLuaChecker_GetAllChecks(t *testing.T) {
 		end
 	`), 0666)
 	require.NoError(t, err)
-	
+
 	script2Path := filepath.Join(tmpDir, "script2.lua")
 	err = os.WriteFile(script2Path, []byte(`
 		function check(req)
@@ -144,22 +144,22 @@ func TestLuaChecker_GetAllChecks(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and load the directory
-	checker := NewLuaChecker()
+	// create a checker and load the directory
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadDirectory(tmpDir)
 	require.NoError(t, err)
 
-	// Test GetAllChecks
+	// test GetAllChecks
 	checks := checker.GetAllChecks()
 	assert.Len(t, checks, 2)
 	assert.Contains(t, checks, "script1")
 	assert.Contains(t, checks, "script2")
 }
 
-func TestLuaChecker_Helpers(t *testing.T) {
-	// Create a temporary script using helper functions
+func TestChecker_Helpers(t *testing.T) {
+	// create a temporary script using helper functions
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "helpers_test.lua")
 	err := os.WriteFile(scriptPath, []byte(`
@@ -177,35 +177,35 @@ func TestLuaChecker_Helpers(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and load the script
-	checker := NewLuaChecker()
+	// create a checker and load the script
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadScript(scriptPath)
 	require.NoError(t, err)
 
-	// Test the loaded script with helpers
+	// test the loaded script with helpers
 	checkFunc, err := checker.GetCheck("helpers_test")
 	require.NoError(t, err)
-	
-	// This should match our pattern
+
+	// this should match our pattern
 	resp1 := checkFunc(spamcheck.Request{Msg: "This is a test message"})
 	assert.True(t, resp1.Spam)
 	assert.Equal(t, "detected pattern", resp1.Details)
-	
-	// This shouldn't match (doesn't start with "this")
+
+	// this shouldn't match (doesn't start with "this")
 	resp2 := checkFunc(spamcheck.Request{Msg: "A test message"})
 	assert.False(t, resp2.Spam)
 	assert.Equal(t, "no pattern detected", resp2.Details)
-	
-	// This shouldn't match (doesn't contain "test")
+
+	// this shouldn't match (doesn't contain "test")
 	resp3 := checkFunc(spamcheck.Request{Msg: "This is a message"})
 	assert.False(t, resp3.Spam)
 	assert.Equal(t, "no pattern detected", resp3.Details)
 }
 
-func TestLuaChecker_InvalidLuaExecution(t *testing.T) {
-	// Create a temporary script with runtime error
+func TestChecker_InvalidLuaExecution(t *testing.T) {
+	// create a temporary script with runtime error
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "error.lua")
 	err := os.WriteFile(scriptPath, []byte(`
@@ -217,19 +217,19 @@ func TestLuaChecker_InvalidLuaExecution(t *testing.T) {
 	`), 0666)
 	require.NoError(t, err)
 
-	// Create a checker and load the script
-	checker := NewLuaChecker()
+	// create a checker and load the script
+	checker := NewChecker()
 	defer checker.Close()
-	
+
 	err = checker.LoadScript(scriptPath)
 	require.NoError(t, err)
 
-	// Test the script with runtime error
+	// test the script with runtime error
 	checkFunc, err := checker.GetCheck("error")
 	require.NoError(t, err)
-	
+
 	resp := checkFunc(spamcheck.Request{Msg: "test message"})
-	assert.False(t, resp.Spam) // Default to not spam on error
+	assert.False(t, resp.Spam) // default to not spam on error
 	assert.Contains(t, resp.Details, "error executing lua checker")
 	assert.NotNil(t, resp.Error)
 }

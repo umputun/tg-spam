@@ -1,3 +1,7 @@
+// Package lua provides a Lua plugin system for spam detection in tg-spam.
+// It loads and executes Lua scripts that implement custom spam checking logic.
+// Scripts should provide a "check" function that takes a message context and returns
+// a boolean (is spam) and a string (details).
 package lua
 
 import (
@@ -9,34 +13,39 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-// LuaChecker represents a checker that uses Lua scripts to determine if a message is spam
-type LuaChecker struct {
+// PluginCheck is a function that takes a request and returns a response indicating if message is spam
+type PluginCheck func(req spamcheck.Request) spamcheck.Response
+
+// Checker implements a Lua plugin engine for spam detection
+type Checker struct {
 	vm       *lua.LState
 	checkers map[string]*lua.LFunction
 }
 
-// NewLuaChecker creates a new LuaChecker
-func NewLuaChecker() *LuaChecker {
+// NewChecker creates a new Checker
+func NewChecker() *Checker {
 	L := lua.NewState()
-	return &LuaChecker{
+	lc := &Checker{
 		vm:       L,
 		checkers: make(map[string]*lua.LFunction),
 	}
+	lc.RegisterHelpers() // register helper functions
+	return lc
 }
 
 // LoadScript loads a Lua script and registers it as a checker
-func (c *LuaChecker) LoadScript(path string) error {
+func (c *Checker) LoadScript(path string) error {
 	if err := c.vm.DoFile(path); err != nil {
 		return fmt.Errorf("failed to load Lua script: %w", err)
 	}
 
-	// Extract checker function
+	// extract checker function
 	checkFunc := c.vm.GetGlobal("check")
 	if checkFunc.Type() != lua.LTFunction {
 		return fmt.Errorf("script must define a 'check' function")
 	}
 
-	// Use filename (without extension) as checker name
+	// use filename (without extension) as checker name
 	name := filepath.Base(path)
 	name = name[:len(name)-len(filepath.Ext(name))]
 	c.checkers[name] = checkFunc.(*lua.LFunction)
@@ -45,10 +54,10 @@ func (c *LuaChecker) LoadScript(path string) error {
 }
 
 // LoadDirectory loads all Lua scripts from a directory
-func (c *LuaChecker) LoadDirectory(dir string) error {
+func (c *Checker) LoadDirectory(dir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.lua"))
 	if err != nil {
-		return fmt.Errorf("failed to list Lua scripts: %w", err)
+		return fmt.Errorf("failed to list Lua scripts in %s: %w", dir, err)
 	}
 
 	for _, file := range files {
@@ -61,7 +70,7 @@ func (c *LuaChecker) LoadDirectory(dir string) error {
 }
 
 // GetCheck returns a MetaCheck for the specified Lua checker
-func (c *LuaChecker) GetCheck(name string) (spamcheck.MetaCheck, error) {
+func (c *Checker) GetCheck(name string) (PluginCheck, error) {
 	checker, ok := c.checkers[name]
 	if !ok {
 		return nil, fmt.Errorf("lua checker %q not found", name)
@@ -70,25 +79,25 @@ func (c *LuaChecker) GetCheck(name string) (spamcheck.MetaCheck, error) {
 	return c.createMetaChecker(name, checker), nil
 }
 
-// GetAllChecks returns all loaded Lua checks as a map of name to MetaCheck
-func (c *LuaChecker) GetAllChecks() map[string]spamcheck.MetaCheck {
-	result := make(map[string]spamcheck.MetaCheck)
+// GetAllChecks returns all loaded Lua checks
+func (c *Checker) GetAllChecks() map[string]PluginCheck {
+	result := make(map[string]PluginCheck)
 	for name, checker := range c.checkers {
 		result[name] = c.createMetaChecker(name, checker)
 	}
 	return result
 }
 
-// createMetaChecker creates a MetaCheck function from a Lua checker
-func (c *LuaChecker) createMetaChecker(name string, checker *lua.LFunction) spamcheck.MetaCheck {
+// createMetaChecker creates a PluginCheck function from a Lua checker
+func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) PluginCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		// Create Lua table from request
+		// create Lua table from request
 		reqTable := c.vm.NewTable()
 		reqTable.RawSetString("msg", lua.LString(req.Msg))
 		reqTable.RawSetString("user_id", lua.LString(req.UserID))
 		reqTable.RawSetString("user_name", lua.LString(req.UserName))
-		
-		// Add metadata
+
+		// add metadata
 		metaTable := c.vm.NewTable()
 		metaTable.RawSetString("images", lua.LNumber(req.Meta.Images))
 		metaTable.RawSetString("links", lua.LNumber(req.Meta.Links))
@@ -99,7 +108,7 @@ func (c *LuaChecker) createMetaChecker(name string, checker *lua.LFunction) spam
 		metaTable.RawSetString("has_keyboard", lua.LBool(req.Meta.HasKeyboard))
 		reqTable.RawSetString("meta", metaTable)
 
-		// Call the Lua function
+		// call the Lua function
 		if err := c.vm.CallByParam(lua.P{
 			Fn:      checker,
 			NRet:    2,
@@ -113,7 +122,7 @@ func (c *LuaChecker) createMetaChecker(name string, checker *lua.LFunction) spam
 			}
 		}
 
-		// Get return values from stack
+		// get return values from stack
 		isSpam := c.vm.ToBool(-2)
 		details := c.vm.ToString(-1)
 		c.vm.Pop(2) // pop results from stack
@@ -126,7 +135,7 @@ func (c *LuaChecker) createMetaChecker(name string, checker *lua.LFunction) spam
 	}
 }
 
-// Close closes the Lua VM
-func (c *LuaChecker) Close() {
+// Close cleans up resources used by the Checker
+func (c *Checker) Close() {
 	c.vm.Close()
 }

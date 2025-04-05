@@ -25,6 +25,7 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
 - **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images, forwarded messages, etc. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
+- **Custom Lua Plugins**: TG-Spam supports custom spam detection logic through Lua plugins. Users can write their own Lua scripts to detect specific patterns or behaviors without modifying the main codebase.
 - **Automated Action**: If a message is flagged as spam, TG-Spam takes immediate action by deleting the message and banning the responsible user.
 
 TG-Spam can also run as a server, providing a simple HTTP API to check messages for spam. This is useful for integration with other tools, not related to Telegram. For more details, see [Running with webapi server](#running-with-webapi-server) section below. In addition, it provides WEB UI to perform some useful admin tasks. For more details see [WEB UI](#web-ui) section below. All the spam detection modules can be also used as a library. For more details, see [Using tg-spam as a library](#using-tg-spam-as-a-library) section below.
@@ -223,6 +224,46 @@ Updating ham samples dynamically works differently. If any of privileged users u
 
 Both dynamic spam and ham files are located in the directory set by `--files.dynamic=, [$FILES_DYNAMIC]` parameter. User should mount this directory from the host to keep the data persistent.
 
+### Lua Plugins Support
+
+TG-Spam supports custom spam detection through Lua plugins. This allows users to extend the spam detection capabilities without modifying the Go codebase.
+
+To enable Lua plugins:
+1. Create your Lua scripts and place them in a directory
+2. Set `--lua-plugins.enabled` to `true`
+3. Specify the directory with your plugins using `--lua-plugins.plugins-dir=/path/to/plugins`
+4. Optionally, specify which plugins to enable with `--lua-plugins.enabled-plugins=plugin1,plugin2`
+
+Each Lua plugin must define a `check` function that takes a request object and returns a boolean (is it spam) and a string (details):
+
+```lua
+function check(request)
+    -- request contains: msg, user_id, user_name, meta
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard
+    
+    -- Your custom spam detection logic here
+    if string.match(request.msg, "some pattern") then
+        return true, "matched suspicious pattern"
+    end
+    
+    return false, "message looks clean"
+end
+```
+
+Several helper functions are provided to Lua scripts:
+- `count_substring(text, substr)` - Counts occurrences of a substring
+- `match_regex(text, pattern)` - Checks if text matches a regex pattern
+- `contains_any(text, substrings)` - Checks if text contains any of the given substrings
+- `to_lower(text)` - Converts text to lowercase
+- `to_upper(text)` - Converts text to uppercase
+- `trim(text)` - Removes whitespace from both ends
+- `split(text, separator)` - Splits text by separator
+- `join(separator, strings)` - Joins strings with a separator
+- `starts_with(text, prefix)` - Checks if text starts with prefix
+- `ends_with(text, suffix)` - Checks if text ends with suffix
+
+Example plugins are available in the [examples/lua_plugins](https://github.com/umputun/tg-spam/tree/master/examples/lua_plugins) directory.
+
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
@@ -368,6 +409,11 @@ openai:
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
+
+lua-plugins:
+      --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]
+      --lua-plugins.plugins-dir=        directory with Lua plugins [$LUA_PLUGINS_PLUGINS_DIR]
+      --lua-plugins.enabled-plugins=    list of enabled plugins (by name, without .lua extension) [$LUA_PLUGINS_ENABLED_PLUGINS]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
