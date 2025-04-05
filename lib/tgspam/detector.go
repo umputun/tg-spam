@@ -37,6 +37,7 @@ type Detector struct {
 	classifier     classifier
 	openaiChecker  *openAIChecker
 	metaChecks     []MetaCheck
+	luaChecks      []lua.PluginCheck // separate field for Lua plugin checks
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
@@ -130,6 +131,8 @@ func NewDetector(p Config) *Detector {
 		classifier:    newClassifier(),
 		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
+		metaChecks:    []MetaCheck{},
+		luaChecks:     []lua.PluginCheck{},
 		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
 		luaEngine:     nil, // will be set with WithLuaEngine if needed
@@ -182,6 +185,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for spam with meta-checks
 	for _, mc := range d.metaChecks {
 		cr = append(cr, mc(req))
+	}
+
+	// check for spam with Lua plugin checks
+	for _, lc := range d.luaChecks {
+		cr = append(cr, lc(req))
 	}
 
 	// check for spam with CAS API if CAS API URL is set
@@ -285,10 +293,11 @@ func (d *Detector) Reset() {
 	d.approvedUsers = make(map[string]approved.UserInfo)
 	d.stopWords = []string{}
 
-	// close the Lua engine if it exists
+	// close the Lua engine and reset Lua checks if it exists
 	if d.luaEngine != nil {
 		d.luaEngine.Close()
 		d.luaEngine = nil
+		d.luaChecks = nil
 	}
 }
 
@@ -310,22 +319,22 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 		return fmt.Errorf("failed to load Lua plugins: %w", err)
 	}
 
-	// register enabled plugins as meta checks
+	// register enabled plugins as Lua checks
 	if len(d.LuaPlugins.EnabledPlugins) > 0 {
 		for _, name := range d.LuaPlugins.EnabledPlugins {
 			pluginCheck, err := d.luaEngine.GetCheck(name)
 			if err != nil {
 				return fmt.Errorf("failed to get Lua check %q: %w", name, err)
 			}
-			// convert lua.PluginCheck to MetaCheck
-			d.metaChecks = append(d.metaChecks, MetaCheck(pluginCheck))
+			// add to luaChecks
+			d.luaChecks = append(d.luaChecks, pluginCheck)
 		}
 	} else {
 		// if no specific plugins are enabled, load all
 		allChecks := d.luaEngine.GetAllChecks()
 		for _, pluginCheck := range allChecks {
-			// convert lua.PluginCheck to MetaCheck
-			d.metaChecks = append(d.metaChecks, MetaCheck(pluginCheck))
+			// add to luaChecks
+			d.luaChecks = append(d.luaChecks, pluginCheck)
 		}
 	}
 
