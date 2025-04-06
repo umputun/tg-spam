@@ -71,7 +71,7 @@ func (c *Checker) LoadScript(path string) error {
 		return fmt.Errorf("script in main VM must define a 'check' function")
 	}
 
-	// store the function
+	// store the function from the main VM after both loads have succeeded
 	c.checkers[name] = realCheckFunc.(*lua.LFunction)
 
 	return nil
