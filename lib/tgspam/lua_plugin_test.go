@@ -656,3 +656,63 @@ end
 	// clean up temporary file
 	defer os.Remove(tmpScript)
 }
+
+func TestDetector_WithLuaEngine_DynamicReload(t *testing.T) {
+	// create a temporary directory for test plugins
+	tmpDir := t.TempDir()
+
+	// create a test plugin
+	scriptPath := filepath.Join(tmpDir, "dynamic_reload.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "original plugin"
+end
+	`), 0644)
+	require.NoError(t, err)
+
+	// set up configuration with dynamic reload enabled
+	config := Config{}
+	config.LuaPlugins.Enabled = true
+	config.LuaPlugins.PluginsDir = tmpDir
+	config.LuaPlugins.DynamicReload = true
+
+	detector := NewDetector(config)
+
+	// create real Lua engine
+	engine := lua.NewChecker()
+	defer engine.Close()
+
+	// apply the engine with dynamic reload
+	err = detector.WithLuaEngine(engine)
+	require.NoError(t, err)
+
+	// verify the Checker has a watcher set
+	_, ok := detector.luaEngine.(*lua.Checker)
+	require.True(t, ok)
+
+	// we can't directly check if watcher is set since it's not exported,
+	// but we can verify the plugin is loaded and working
+	names := detector.GetLuaPluginNames()
+	assert.Contains(t, names, "dynamic_reload")
+
+	// run a SpamCheck with the plugin
+	req := spamcheck.Request{
+		Msg:      "test message",
+		UserID:   "user1",
+		UserName: "testuser",
+	}
+	_, results := detector.Check(req)
+
+	// find the plugin's result
+	var luaResult *spamcheck.Response
+	for _, res := range results {
+		if res.Name == "lua-dynamic_reload" {
+			luaResult = &res
+			break
+		}
+	}
+
+	require.NotNil(t, luaResult, "Lua plugin result should be present")
+	assert.Equal(t, "original plugin", luaResult.Details)
+	assert.False(t, luaResult.Spam)
+}

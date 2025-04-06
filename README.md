@@ -252,6 +252,7 @@ To enable Lua plugins:
 2. Set `--lua-plugins.enabled` to `true`
 3. Specify the directory with your plugins using `--lua-plugins.plugins-dir=/path/to/plugins`
 4. Optionally, specify which plugins to enable with `--lua-plugins.enabled-plugins=plugin1,plugin2`
+5. Optionally, enable dynamic reloading with `--lua-plugins.dynamic-reload` to automatically reload plugins when they change
 
 Each Lua plugin must define a `check` function that takes a request object and returns a boolean (is it spam) and a string (details):
 
@@ -434,6 +435,7 @@ lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]
       --lua-plugins.plugins-dir=        directory with Lua plugins [$LUA_PLUGINS_PLUGINS_DIR]
       --lua-plugins.enabled-plugins=    list of enabled plugins (by name, without .lua extension) [$LUA_PLUGINS_ENABLED_PLUGINS]
+      --lua-plugins.dynamic-reload      dynamically reload plugins when they change [$LUA_PLUGINS_DYNAMIC_RELOAD]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]

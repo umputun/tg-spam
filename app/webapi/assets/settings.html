@@ -194,6 +194,7 @@
                     <tbody>
                         <tr><th style="width: 30%">Lua Plugins Enabled</th><td>{{.LuaPluginsEnabled}}</td></tr>
                         <tr><th>Plugins Directory</th><td>{{if eq .LuaPluginsDir ""}}Not set{{else}}{{.LuaPluginsDir}}{{end}}</td></tr>
+                        <tr><th>Dynamic Reload</th><td>{{.LuaDynamicReload}}</td></tr>
                         <tr><th>Enabled Plugins</th><td>
                             {{if and .LuaPluginsEnabled (eq (len .LuaEnabledPlugins) 0)}}
                                 All plugins are enabled

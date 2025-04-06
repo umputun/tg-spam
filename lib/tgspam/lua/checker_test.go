@@ -187,3 +187,111 @@ func TestChecker_InvalidLuaExecution(t *testing.T) {
 	assert.Contains(t, resp.Details, "error executing lua checker")
 	assert.NotNil(t, resp.Error)
 }
+
+func TestChecker_ReloadScript(t *testing.T) {
+	// create a temporary directory for test plugins
+	tmpDir := t.TempDir()
+
+	// create a simple test Lua script
+	scriptPath := filepath.Join(tmpDir, "reload_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "original version"
+end
+	`), 0644)
+	require.NoError(t, err)
+
+	// create a checker and load the script
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	// verify the script works
+	check, err := checker.GetCheck("reload_test")
+	require.NoError(t, err)
+	response := check(spamcheck.Request{
+		Msg:      "test message",
+		UserID:   "user123",
+		UserName: "testuser",
+	})
+	assert.Equal(t, "original version", response.Details)
+	assert.False(t, response.Spam)
+
+	// modify the script file
+	err = os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return true, "reloaded version"
+end
+	`), 0644)
+	require.NoError(t, err)
+
+	// reload the script
+	err = checker.ReloadScript(scriptPath)
+	require.NoError(t, err)
+
+	// verify the reloaded script works with new behavior
+	check, err = checker.GetCheck("reload_test")
+	require.NoError(t, err)
+	response = check(spamcheck.Request{
+		Msg:      "test message",
+		UserID:   "user123",
+		UserName: "testuser",
+	})
+	assert.Equal(t, "reloaded version", response.Details)
+	assert.True(t, response.Spam)
+}
+
+func TestChecker_ReloadNonExistentScript(t *testing.T) {
+	checker := NewChecker()
+	defer checker.Close()
+
+	// try to reload a non-existent script
+	err := checker.ReloadScript("/path/to/nonexistent/script.lua")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load Lua script")
+}
+
+func TestChecker_ConcurrentAccess(t *testing.T) {
+	// create a temporary directory for test plugins
+	tmpDir := t.TempDir()
+
+	// create a simple test Lua script
+	scriptPath := filepath.Join(tmpDir, "concurrent_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "concurrent test"
+end
+	`), 0644)
+	require.NoError(t, err)
+
+	// create a checker and load the script
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	// get the check function
+	check, err := checker.GetCheck("concurrent_test")
+	require.NoError(t, err)
+
+	// simulate concurrent access - this will deadlock if locks aren't implemented correctly
+	done := make(chan bool)
+	go func() {
+		// access the checker from a goroutine
+		for i := 0; i < 10; i++ {
+			resp := check(spamcheck.Request{Msg: "test"})
+			assert.Equal(t, "concurrent test", resp.Details)
+		}
+		done <- true
+	}()
+
+	// reload the script multiple times
+	for i := 0; i < 5; i++ {
+		err = checker.ReloadScript(scriptPath)
+		assert.NoError(t, err)
+	}
+
+	// wait for the goroutine to finish
+	<-done
+}

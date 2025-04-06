@@ -76,6 +76,7 @@ type Config struct {
 		Enabled        bool     // if true, enable Lua plugins
 		PluginsDir     string   // directory with Lua plugins
 		EnabledPlugins []string // list of enabled plugins (by name, without .lua extension)
+		DynamicReload  bool     // if true, enable dynamic reloading of Lua plugins when files change
 	}
 
 	AbnormalSpacing struct {
@@ -110,6 +111,7 @@ type HTTPClient interface {
 // LuaPluginEngine defines an interface for the Lua plugin system
 type LuaPluginEngine interface {
 	LoadScript(path string) error                  // loads a single Lua script
+	ReloadScript(path string) error                // reloads a single Lua script
 	LoadDirectory(dir string) error                // loads all Lua scripts from a directory
 	GetCheck(name string) (lua.PluginCheck, error) // returns a specific named plugin check
 	GetAllChecks() map[string]lua.PluginCheck      // returns all loaded plugin checks
@@ -335,6 +337,30 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 		for _, pluginCheck := range allChecks {
 			// add to luaChecks
 			d.luaChecks = append(d.luaChecks, pluginCheck)
+		}
+	}
+
+	// set up a watcher for dynamic plugin reloading if enabled
+	if d.LuaPlugins.DynamicReload {
+		// we need to cast the luaEngine to a *lua.Checker to access the watcher methods
+		checker, ok := d.luaEngine.(*lua.Checker)
+		if !ok {
+			log.Printf("[WARN] dynamic Lua plugin reloading enabled but engine doesn't support it")
+			return nil
+		}
+
+		// create a watcher for the plugins directory
+		watcher, err := lua.NewWatcher(checker, d.LuaPlugins.PluginsDir)
+		if err != nil {
+			return fmt.Errorf("failed to create watcher for Lua plugins: %w", err)
+		}
+
+		// set the watcher on the checker
+		checker.SetWatcher(watcher)
+
+		// start the watcher
+		if err := watcher.Start(); err != nil {
+			return fmt.Errorf("failed to start watcher for Lua plugins: %w", err)
 		}
 	}
 
