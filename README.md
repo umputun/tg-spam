@@ -190,6 +190,26 @@ The database-driven architecture offers several benefits:
 -  Enhanced reliability by eliminating file I/O operations.
    Easier system migration and backup by transferring a single `tg-spam.db` file.
 
+#### Troubleshooting Migration Issues
+
+If you encounter errors like `no persistent spam or ham samples found in the store` when upgrading to v1.16.0+, try one of these solutions:
+
+**For standalone installations:**
+1. Download sample data files from [this repository](https://github.com/umputun/tg-spam/tree/master/data) and place them in your data directory
+2. Run tg-spam specifying both `--files.dynamic=/path/to/data` and `--files.samples=/path/to/data` parameters for the first run
+3. After successful migration, the bot will rename files to `*.loaded` and store their content in the database
+4. For subsequent runs, you can omit these parameters as data is already in the database
+
+**For Docker installations:**
+1. Make sure your volumes are correctly mounted to persist the database file
+2. For existing installations that were using dynamic files, ensure your `docker-compose.yml` includes:
+   ```yaml
+   volumes:
+     - ./var/tg-spam:/srv/dynamic
+   ```
+3. If migration issues persist, you can clear everything and let the preset samples load by removing the database file
+4. For new installations, the preset samples will be loaded automatically
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -466,7 +486,8 @@ The provided preset set of samples is just an example collected by the bot autho
 
 To do so, several conditions must be met:
 
-- Set `--db` to your database URL if you want to use a custom database
+- For first-time setup, specify both `--files.dynamic [$FILES_DYNAMIC]` and `--files.samples [$FILES_SAMPLES]` parameters pointing to the directory with your data files
+- For custom database storage, set `--db` to your database URL
 - Admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above
 - Admin name(s) should be set with `--super [$SUPER_USER]` parameter
 
