@@ -131,7 +131,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	}
 
 	if a.dry {
-		return errs.ErrorOrNil()
+		if err := errs.ErrorOrNil(); err != nil {
+			return fmt.Errorf("dry run errors: %w", err)
+		}
+		return nil
 	}
 
 	// update spam samples
@@ -160,7 +163,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
 	}
 
-	return errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("spam notification failed: %w", err)
+	}
+	return nil
 }
 
 // DirectSpamReport handles messages replayed with "/spam" or "spam" by admin
@@ -223,7 +229,10 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
 
-	return errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("direct warn report failed: %w", err)
+	}
+	return nil
 }
 
 // returns the user ID and username from the tg update if's forwarded message,
@@ -289,7 +298,10 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	if a.dry {
-		return errs.ErrorOrNil()
+		if err := errs.ErrorOrNil(); err != nil {
+			return fmt.Errorf("dry run errors: %w", err)
+		}
+		return nil
 	}
 
 	// update spam samples
@@ -331,7 +343,10 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, err))
 	}
 
-	return errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("spam notification failed: %w", err)
+	}
+	return nil
 }
 
 // InlineCallbackHandler handles a callback from Telegram, which is a response to a message with inline keyboard.

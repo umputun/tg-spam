@@ -19,6 +19,8 @@ linters:
     - unconvert
     - unparam
     - unused
+    - testifylint
+    - wrapcheck
   settings:
     goconst:
       min-len: 2

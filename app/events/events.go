@@ -192,7 +192,7 @@ func banUserOrChannel(r banRequest) error {
 			},
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to restrict user: %w", err)
 		}
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
@@ -208,7 +208,7 @@ func banUserOrChannel(r banRequest) error {
 			UntilDate:    int(time.Now().Add(r.duration).Unix()),
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to ban channel: %w", err)
 		}
 		if !resp.Ok {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
@@ -225,7 +225,7 @@ func banUserOrChannel(r banRequest) error {
 		UntilDate: time.Now().Add(r.duration).Unix(),
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to ban user: %w", err)
 	}
 	if !resp.Ok {
 		return fmt.Errorf("response is not Ok: %v", string(resp.Result))

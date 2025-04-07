@@ -196,7 +196,10 @@ func (l *Locator) migrate(ctx context.Context, tx *sqlx.Tx, gid string) error {
 
 // Close closes the database
 func (l *Locator) Close(_ context.Context) error {
-	return l.SQL.Close()
+	if err := l.SQL.Close(); err != nil {
+		return fmt.Errorf("failed to close SQL connection: %w", err)
+	}
+	return nil
 }
 
 // AddMessage adds messages to the locator and also cleans up old messages.

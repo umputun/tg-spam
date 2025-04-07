@@ -209,7 +209,7 @@ func setSqlitePragma(db *sqlx.DB) error {
 	// set pragma
 	for name, value := range pragmas {
 		if _, err := db.Exec("PRAGMA " + name + " = " + value); err != nil {
-			return err
+			return fmt.Errorf("failed to set pragma %s=%s: %w", name, value, err)
 		}
 	}
 	return nil
