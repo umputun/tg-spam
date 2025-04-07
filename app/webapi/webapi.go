@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"math/big"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -1066,10 +1067,13 @@ func newStaticFS(fsys fs.FS, files ...staticFileMapping) *staticFS {
 }
 
 func (sfs *staticFS) Open(name string) (fs.File, error) {
-	fsPath, ok := sfs.urlToPath[name]
+	cleanName := path.Clean("/" + name)[1:]
+
+	fsPath, ok := sfs.urlToPath[cleanName]
 	if !ok {
-		fsPath = name
+		return nil, fs.ErrNotExist
 	}
+
 	file, err := sfs.fs.Open(fsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open static file %s: %w", fsPath, err)
