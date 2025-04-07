@@ -249,7 +249,10 @@ func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 		errs = multierror.Append(errs, fmt.Errorf("failed to read dynamic ham samples: %w", err))
 	}
 
-	return spam, ham, errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return spam, ham, fmt.Errorf("failed to read dynamic samples: %w", err)
+	}
+	return spam, ham, nil
 }
 
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this

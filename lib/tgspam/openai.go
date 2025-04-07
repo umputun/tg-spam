@@ -149,7 +149,7 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 	)
 
 	if err != nil {
-		return openAIResponse{}, err
+		return openAIResponse{}, fmt.Errorf("failed to create chat completion: %w", err)
 	}
 
 	// openAI platform supports returning multiple chat completion choices, but we use only the first one:

@@ -117,7 +117,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("listener context canceled: %w", ctx.Err())
 
 		case update, ok := <-updates:
 			if !ok {
@@ -275,7 +275,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 
-	return errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("processing events failed: %w", err)
+	}
+	return nil
 }
 
 // procSuperReply processes superuser commands (reply) /spam, /ban, /warn
@@ -324,7 +327,10 @@ func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to add new chat member message to locator: %w", err))
 	}
 
-	return errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("failed to process new chat member: %w", err)
+	}
+	return nil
 }
 
 // procLeftChatMemberMessage deletes the message about new chat member if the user kicked out
@@ -477,7 +483,10 @@ func (l *TelegramListener) updateSupers() error {
 	}
 
 	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
-	return err
+	if err != nil {
+		return fmt.Errorf("error getting chat administrators: %w", err)
+	}
+	return nil
 }
 
 // SuperUsers for moderators. Can be either username or user ID.

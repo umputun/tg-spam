@@ -535,7 +535,10 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 
 // removeApprovedUser is adopter for updateApprovedUsersHandler updFn
 func (s *Server) removeApprovedUser(req approved.UserInfo) error {
-	return s.Detector.RemoveApprovedUser(req.UserID)
+	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
+		return fmt.Errorf("failed to remove approved user %s: %w", req.UserID, err)
+	}
+	return nil
 }
 
 // getApprovedUsersHandler handles GET /users request. It returns list of approved users.
@@ -1064,28 +1067,32 @@ func newStaticFS(fsys fs.FS, files ...staticFileMapping) *staticFS {
 }
 
 func (sfs *staticFS) Open(name string) (fs.File, error) {
-	name = path.Clean("/" + name)[1:]
-	if fsPath, ok := sfs.urlToPath[name]; ok {
-		return sfs.fs.Open(fsPath)
+	cleanName := path.Clean("/" + name)[1:]
+
+	fsPath, ok := sfs.urlToPath[cleanName]
+	if !ok {
+		return nil, fs.ErrNotExist
 	}
-	return nil, fs.ErrNotExist
+
+	file, err := sfs.fs.Open(fsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open static file %s: %w", fsPath, err)
+	}
+	return file, nil
 }
 
 // GenerateRandomPassword generates a random password of a given length
 func GenerateRandomPassword(length int) (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
+	const charsetLen = int64(len(charset))
 
-	var password strings.Builder
-	charsetSize := big.NewInt(int64(len(charset)))
-
+	result := make([]byte, length)
 	for i := 0; i < length; i++ {
-		randomNumber, err := rand.Int(rand.Reader, charsetSize)
+		n, err := rand.Int(rand.Reader, big.NewInt(charsetLen))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to generate random number: %w", err)
 		}
-
-		password.WriteByte(charset[randomNumber.Int64()])
+		result[i] = charset[n.Int64()]
 	}
-
-	return password.String(), nil
+	return string(result), nil
 }

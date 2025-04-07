@@ -74,8 +74,8 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
-		assert.Equal(t, "OpenAI error: assert.AnError general error for testing", details.Details)
-		assert.Equal(t, "assert.AnError general error for testing", details.Error.Error())
+		assert.Equal(t, "OpenAI error: failed to create chat completion: assert.AnError general error for testing", details.Details)
+		assert.Equal(t, "failed to create chat completion: assert.AnError general error for testing", details.Error.Error())
 	})
 
 	t.Run("bad encoding", func(t *testing.T) {

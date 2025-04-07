@@ -650,8 +650,8 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		assert.Equal(t, "openai", cr[1].Name)
 		assert.Equal(t, false, cr[1].Spam)
-		assert.Equal(t, "OpenAI error: openai error", cr[1].Details)
-		assert.Equal(t, "openai error", cr[1].Error.Error())
+		assert.Equal(t, "OpenAI error: failed to create chat completion: openai error", cr[1].Details)
+		assert.Equal(t, "failed to create chat completion: openai error", cr[1].Error.Error())
 
 		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
 	})
@@ -799,7 +799,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		{"WithCyrillic real example 2", "В поuске паpтнеров, заuнтересованных в пассuвном дoходе с затpатой мuнuмум лuчного временu. Все деталu в лс", 10, true},
 		{"WithCyrillic real example 3", "Всем привет, есть простая шабашка, подойдет любому. Даю 15 тысяч. Накину на проезд, сигареты, обед. ", 0, false},
 		{"WithCyrillic and i", "Привет  мiр", 0, false},
-		{"strange with cyrillic", "𝐇айди и𝐇𝐓и𝐦𝐇ы𝐞 ф𝐨𝐓𝐤и лю𝐛𝐨й д𝐞𝐁𝐲ш𝐤и ч𝐞𝐩𝐞𝟑 𝐛𝐨𝐓а", 7, true},
+		{"strange with cyrillic", "𝐇айди и𝐇𝐓и𝐦𝐇ы𝐞 ф𝐨𝐓𝐤и лю𝐛𝐨й д𝐞𝐁𝐲ш𝐤и ч𝐞𝐩𝐞𝟓 𝐛𝐨𝐓а", 7, true},
 		{"coptic capital leter", "✔️ⲠⲢⲞⳜⲈЙ-ⲖЮⳜⲨЮ-ⲆⲈⲂⲨⲰⲔⲨ...\n\nⲎⲀЙⲆⳘ ⲤⲔⲢЫⲦⲈ ⲂⳘⲆⲞⲤЫ-ⲪⲞⲦⲞⳠⲔⳘ ⳘⲎⲦⳘⲘⲎⲞⲄⲞ-ⲬⲀⲢⲀⲔⲦⲈⲢⲀ..\n@INTIM0CHKI110DE\n\n", 5, true},
 		{"mix with gothic, cyrillic and greek", "𐌿РОВЕРЬ ЛЮБУЮ НА НАЛИЧИЕ ПОШЛЫХ ΦΟͲΟ-ΒͶДξΟ, 🍑НАБЕРИ В Т𐌲 𐌿ОИСКЕ СЛOВО: 30GRL", 5, true},
 		{"Mixed Latin and numbers", "Meta-Llama-3.1-8B-Instruct-IQ4_XS Meta-Llama-3.1-8B-Instruct-Q3_K_L Meta-Llama-3.1-8B-Instruct-Q4_K_M", 0, false},
