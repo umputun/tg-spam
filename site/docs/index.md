@@ -62,7 +62,7 @@ By default, the bot reports back to the group with the message `this is spam` an
 
 ### Persistence of the data.
 
-The bot stores the list of spam samples, ham samples, approved users, and other meta-information about detected spam and received messages in the database. Both SQLite and PostgreSQL databases are supported. The bot will use SQLite by default, but the user can switch to PostgreSQL by setting the `--db=, [$DB]` parameter. The parameter can be set either to `sqlite://path/to/db.db` or `postgres://user:password@host:port/dbname`. If nothing is set, the bot will use SQLite with the database stored under the `--files.dynamic=, [$FILES_DYNAMIC]` directory for backward compatibility. All the files in this directory are handled by the bot automatically.
+The bot stores the list of spam samples, ham samples, approved users, and other meta-information about detected spam and received messages in the database. Both SQLite and PostgreSQL databases are supported. The bot will use SQLite by default, but the user can switch to PostgreSQL by setting the `--db=, [$DB]` parameter. The parameter can be set either to `sqlite://path/to/db.db` or `postgres://user:password@host:port/dbname`. If nothing is set, the bot will use SQLite with the database stored as `tg-spam.db` in the current directory. All the files in the dynamic directory are handled by the bot automatically.
 
 For users of Docker containers, it is recommended to use a mounted volume for this directory and not to set the location to anything else. That is, do not pass `--files.dynamic=` and do not set `$FILES_DYNAMIC`; let `tg-spam` pick the default one. By default, the container will use the internal `/srv/data` directory for this purpose, which should be mounted as a volume to any place on the host filesystem.
 
@@ -70,17 +70,17 @@ For users of Docker containers, it is recommended to use a mounted volume for th
 
 **Message Analysis**
 
-This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot is enabled as long as `--files.samples=, [$FILES_SAMPLES]`, point to existing directory with all the sample files (see above). There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam.
+This is the main spam detection module. It uses the list of spam and ham samples to detect spam by using Bayes classifier. The bot loads a preset set of samples by default but can load from custom files using `--files.samples=, [$FILES_SAMPLES]`. There is also a parameter to set minimum spam probability percent to ban the user. If the probability of spam is less than `--min-probability=, [$MIN_PROBABILITY]` (default is 50), the message is not marked as spam.
 
-The analysis is active only if both ham and spam samples files are present and not empty.
+The analysis is active only if both ham and spam samples are present in the database.
 
 **Spam message similarity check**
 
-This check uses provides samples files and active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.
+This check uses the provided samples and is active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.
 
 **Stop Words Comparison**
 
-If stop words file is present, the bot will check the message for the presence of the phrases in the file. The bot is enabled as long as `stop-words.txt` file is present in samples directory and not empty.
+The bot will check the message for the presence of phrases in the stop words list. This feature is enabled by default with preset stop words, but can be customized through database management.
 
 **Combot Anti-Spam System (CAS) integration**
 
@@ -190,6 +190,26 @@ The database-driven architecture offers several benefits:
 -  Enhanced reliability by eliminating file I/O operations.
    Easier system migration and backup by transferring a single `tg-spam.db` file.
 
+#### Troubleshooting Migration Issues
+
+If you encounter errors like `no persistent spam or ham samples found in the store` when upgrading to v1.16.0+, try one of these solutions:
+
+**For standalone installations:**
+1. Download sample data files from [this repository](https://github.com/umputun/tg-spam/tree/master/data) and place them in your data directory
+2. Run tg-spam specifying both `--files.dynamic=/path/to/data` and `--files.samples=/path/to/data` parameters for the first run
+3. After successful migration, the bot will rename files to `*.loaded` and store their content in the database
+4. For subsequent runs, you can omit these parameters as data is already in the database
+
+**For Docker installations:**
+1. Make sure your volumes are correctly mounted to persist the database file
+2. For existing installations that were using dynamic files, ensure your `docker-compose.yml` includes:
+   ```yaml
+   volumes:
+     - ./var/tg-spam:/srv/dynamic
+   ```
+3. If migration issues persist, you can clear everything and let the preset samples load by removing the database file
+4. For new installations, the preset samples will be loaded automatically
+
 ### Admin chat/group
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
@@ -217,12 +237,11 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat (the legacy way) or reply to the message with `/spam` or `spam` text (the modern way), the bot will add this message to the internal spam samples file (`spam-dynamic.txt`) and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 1h) [$HISTORY_DURATION]` and `
---history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat (the legacy way) or reply to the message with `/spam` or `spam` text (the modern way), the bot will add this message to the internal spam samples and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. This is not always possible, as the forwarding strips the original user id. To address this limitation, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 24h) [$HISTORY_DURATION]` and `--history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
-Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples file (`ham-dynamic.txt`), reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
+Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples, reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
-Both dynamic spam and ham files are located in the directory set by `--files.dynamic=, [$FILES_DYNAMIC]` parameter. User should mount this directory from the host to keep the data persistent.
+All samples are stored in the database, which can be specified using the `--db=, [$DB]` parameter.
 
 ### Lua Plugins Support
 
@@ -233,6 +252,7 @@ To enable Lua plugins:
 2. Set `--lua-plugins.enabled` to `true`
 3. Specify the directory with your plugins using `--lua-plugins.plugins-dir=/path/to/plugins`
 4. Optionally, specify which plugins to enable with `--lua-plugins.enabled-plugins=plugin1,plugin2`
+5. Optionally, enable dynamic reloading with `--lua-plugins.dynamic-reload` to automatically reload plugins when they change
 
 Each Lua plugin must define a `check` function that takes a request object and returns a boolean (is it spam) and a string (details):
 
@@ -345,6 +365,7 @@ Success! The new status is: DISABLED. /help
 
 ```
       --instance-id=                    instance id (default: tg-spam) [$INSTANCE_ID]
+      --db=                             database URL, if empty uses sqlite (default: tg-spam.db) [$DB]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
@@ -414,6 +435,7 @@ lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]
       --lua-plugins.plugins-dir=        directory with Lua plugins [$LUA_PLUGINS_PLUGINS_DIR]
       --lua-plugins.enabled-plugins=    list of enabled plugins (by name, without .lua extension) [$LUA_PLUGINS_ENABLED_PLUGINS]
+      --lua-plugins.dynamic-reload      dynamically reload plugins when they change [$LUA_PLUGINS_DYNAMIC_RELOAD]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]
@@ -423,7 +445,7 @@ space:
       --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
 
 files:
-      --files.samples=                  samples data path, deprecated (default: data) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
       --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 
@@ -431,8 +453,7 @@ message:
       --message.startup=                startup message [$MESSAGE_STARTUP]
       --message.spam=                   spam message (default: this is spam) [$MESSAGE_SPAM]
       --message.dry=                    spam dry message (default: this is spam (dry mode)) [$MESSAGE_DRY]
-      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial.
-                                        Stay compliant or face the consequences!) [$MESSAGE_WARN]
+      --message.warn=                   warning message (default: You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!) [$MESSAGE_WARN]
 
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
@@ -442,7 +463,6 @@ server:
 
 Help Options:
   -h, --help                            Show this help message
-
 ```
 
 ### Application Options in details
@@ -464,16 +484,16 @@ Help Options:
 
 ## Running the bot with an empty set of samples
 
-The provided set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans.
+The provided preset set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans.
 
 To do so, several conditions must be met:
 
-- `--files.samples [$FILES_SAMPLES]` must be set to the new location (directory) without `spam-samples.txt` and `ham-samples.txt` files.
-- `--files.dynamic [$FILES_DYNAMIC]` must be set to the new location (directory) where the bot will keep all the dynamic data files. In the case of docker container, this directory must be mapped to the host volume.
-- admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above.
-- admin name(s) should be set with `--super [$SUPER_USER]` parameter.
+- For first-time setup, specify both `--files.dynamic [$FILES_DYNAMIC]` and `--files.samples [$FILES_SAMPLES]` parameters pointing to the directory with your data files
+- For custom database storage, set `--db` to your database URL
+- Admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above
+- Admin name(s) should be set with `--super [$SUPER_USER]` parameter
 
-After that, the moment admin run into a spam message, he could forward it to the tg-spam bot. The bot will add this message to the spam samples file, ban user and delete the message. By doing so, the bot will learn new spam patterns on the fly and eventually will be able to detect spam without admin help. Note: the only thing admin should do is to forward the message to the bot, no need to add any text or comments, or remove/ban the original spammer. The bot will do all the work.
+After that, the moment admin run into a spam message, they could forward it to the tg-spam bot. The bot will add this message to the spam samples, ban user and delete the message. By doing so, the bot will learn new spam patterns on the fly and eventually will be able to detect spam without admin help. Note: the only thing admin should do is to forward the message to the bot, no need to add any text or comments, or remove/ban the original spammer. The bot will do all the work.
 
 ### Training the bot on a live system safely
 
