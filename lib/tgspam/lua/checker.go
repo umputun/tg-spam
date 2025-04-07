@@ -7,6 +7,7 @@ package lua
 import (
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -20,6 +21,8 @@ type PluginCheck func(req spamcheck.Request) spamcheck.Response
 type Checker struct {
 	vm       *lua.LState
 	checkers map[string]*lua.LFunction
+	lock     sync.RWMutex // protect checkers map during concurrent access
+	watcher  *Watcher     // optional file watcher for dynamic reloading
 }
 
 // NewChecker creates a new Checker
@@ -35,12 +38,20 @@ func NewChecker() *Checker {
 
 // LoadScript loads a Lua script and registers it as a checker
 func (c *Checker) LoadScript(path string) error {
-	if err := c.vm.DoFile(path); err != nil {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// create a new state for loading this script to avoid interference with other scripts
+	tempState := lua.NewState()
+	defer tempState.Close()
+
+	// load the script in the temporary state
+	if err := tempState.DoFile(path); err != nil {
 		return fmt.Errorf("failed to load Lua script: %w", err)
 	}
 
-	// extract checker function
-	checkFunc := c.vm.GetGlobal("check")
+	// extract the checker function from the temporary state
+	checkFunc := tempState.GetGlobal("check")
 	if checkFunc.Type() != lua.LTFunction {
 		return fmt.Errorf("script must define a 'check' function")
 	}
@@ -48,9 +59,37 @@ func (c *Checker) LoadScript(path string) error {
 	// use filename (without extension) as checker name
 	name := filepath.Base(path)
 	name = name[:len(name)-len(filepath.Ext(name))]
-	c.checkers[name] = checkFunc.(*lua.LFunction)
+
+	// now load the script in the real VM
+	if err := c.vm.DoFile(path); err != nil {
+		return fmt.Errorf("failed to load Lua script in main VM: %w", err)
+	}
+
+	// extract the checker function from the real VM
+	realCheckFunc := c.vm.GetGlobal("check")
+	if realCheckFunc.Type() != lua.LTFunction {
+		return fmt.Errorf("script in main VM must define a 'check' function")
+	}
+
+	// store the function from the main VM after both loads have succeeded
+	c.checkers[name] = realCheckFunc.(*lua.LFunction)
 
 	return nil
+}
+
+// ReloadScript reloads a specific Lua script
+func (c *Checker) ReloadScript(path string) error {
+	// use filename (without extension) as checker name
+	name := filepath.Base(path)
+	name = name[:len(name)-len(filepath.Ext(name))]
+
+	// remove old script from checkers
+	c.lock.Lock()
+	delete(c.checkers, name)
+	c.lock.Unlock()
+
+	// reload the script
+	return c.LoadScript(path)
 }
 
 // LoadDirectory loads all Lua scripts from a directory
@@ -71,7 +110,10 @@ func (c *Checker) LoadDirectory(dir string) error {
 
 // GetCheck returns a MetaCheck for the specified Lua checker
 func (c *Checker) GetCheck(name string) (PluginCheck, error) {
+	c.lock.RLock()
 	checker, ok := c.checkers[name]
+	c.lock.RUnlock()
+
 	if !ok {
 		return nil, fmt.Errorf("lua checker %q not found", name)
 	}
@@ -82,15 +124,22 @@ func (c *Checker) GetCheck(name string) (PluginCheck, error) {
 // GetAllChecks returns all loaded Lua checks
 func (c *Checker) GetAllChecks() map[string]PluginCheck {
 	result := make(map[string]PluginCheck)
+
+	c.lock.RLock()
 	for name, checker := range c.checkers {
 		result[name] = c.createMetaChecker(name, checker)
 	}
+	c.lock.RUnlock()
+
 	return result
 }
 
 // createMetaChecker creates a PluginCheck function from a Lua checker
 func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) PluginCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
+		c.lock.RLock()
+		defer c.lock.RUnlock()
+
 		// create Lua table from request
 		reqTable := c.vm.NewTable()
 		reqTable.RawSetString("msg", lua.LString(req.Msg))
@@ -137,5 +186,14 @@ func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) PluginC
 
 // Close cleans up resources used by the Checker
 func (c *Checker) Close() {
+	// stop the watcher if it exists
+	if c.watcher != nil {
+		c.watcher.Stop()
+	}
 	c.vm.Close()
+}
+
+// SetWatcher sets the file watcher for the Checker
+func (c *Checker) SetWatcher(watcher *Watcher) {
+	c.watcher = watcher
 }

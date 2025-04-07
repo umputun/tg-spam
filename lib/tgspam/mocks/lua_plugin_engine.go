@@ -29,6 +29,9 @@ import (
 //			LoadScriptFunc: func(path string) error {
 //				panic("mock out the LoadScript method")
 //			},
+//			ReloadScriptFunc: func(path string) error {
+//				panic("mock out the ReloadScript method")
+//			},
 //		}
 //
 //		// use mockedLuaPluginEngine in code that requires tgspam.LuaPluginEngine
@@ -50,6 +53,9 @@ type LuaPluginEngineMock struct {
 
 	// LoadScriptFunc mocks the LoadScript method.
 	LoadScriptFunc func(path string) error
+
+	// ReloadScriptFunc mocks the ReloadScript method.
+	ReloadScriptFunc func(path string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -74,12 +80,18 @@ type LuaPluginEngineMock struct {
 			// Path is the path argument value.
 			Path string
 		}
+		// ReloadScript holds details about calls to the ReloadScript method.
+		ReloadScript []struct {
+			// Path is the path argument value.
+			Path string
+		}
 	}
 	lockClose         sync.RWMutex
 	lockGetAllChecks  sync.RWMutex
 	lockGetCheck      sync.RWMutex
 	lockLoadDirectory sync.RWMutex
 	lockLoadScript    sync.RWMutex
+	lockReloadScript  sync.RWMutex
 }
 
 // Close calls CloseFunc.
@@ -267,6 +279,45 @@ func (mock *LuaPluginEngineMock) ResetLoadScriptCalls() {
 	mock.lockLoadScript.Unlock()
 }
 
+// ReloadScript calls ReloadScriptFunc.
+func (mock *LuaPluginEngineMock) ReloadScript(path string) error {
+	if mock.ReloadScriptFunc == nil {
+		panic("LuaPluginEngineMock.ReloadScriptFunc: method is nil but LuaPluginEngine.ReloadScript was just called")
+	}
+	callInfo := struct {
+		Path string
+	}{
+		Path: path,
+	}
+	mock.lockReloadScript.Lock()
+	mock.calls.ReloadScript = append(mock.calls.ReloadScript, callInfo)
+	mock.lockReloadScript.Unlock()
+	return mock.ReloadScriptFunc(path)
+}
+
+// ReloadScriptCalls gets all the calls that were made to ReloadScript.
+// Check the length with:
+//
+//	len(mockedLuaPluginEngine.ReloadScriptCalls())
+func (mock *LuaPluginEngineMock) ReloadScriptCalls() []struct {
+	Path string
+} {
+	var calls []struct {
+		Path string
+	}
+	mock.lockReloadScript.RLock()
+	calls = mock.calls.ReloadScript
+	mock.lockReloadScript.RUnlock()
+	return calls
+}
+
+// ResetReloadScriptCalls reset all the calls that were made to ReloadScript.
+func (mock *LuaPluginEngineMock) ResetReloadScriptCalls() {
+	mock.lockReloadScript.Lock()
+	mock.calls.ReloadScript = nil
+	mock.lockReloadScript.Unlock()
+}
+
 // ResetCalls reset all the calls that were made to all mocked methods.
 func (mock *LuaPluginEngineMock) ResetCalls() {
 	mock.lockClose.Lock()
@@ -288,4 +339,8 @@ func (mock *LuaPluginEngineMock) ResetCalls() {
 	mock.lockLoadScript.Lock()
 	mock.calls.LoadScript = nil
 	mock.lockLoadScript.Unlock()
+
+	mock.lockReloadScript.Lock()
+	mock.calls.ReloadScript = nil
+	mock.lockReloadScript.Unlock()
 }

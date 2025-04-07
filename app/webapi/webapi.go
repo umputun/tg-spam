@@ -91,6 +91,7 @@ type Settings struct {
 	LuaPluginsEnabled       bool          `json:"lua_plugins_enabled"`
 	LuaPluginsDir           string        `json:"lua_plugins_dir"`
 	LuaEnabledPlugins       []string      `json:"lua_enabled_plugins"`
+	LuaDynamicReload        bool          `json:"lua_dynamic_reload"`
 	LuaAvailablePlugins     []string      `json:"lua_available_plugins"` // the list of all available Lua plugins
 	SamplesDataPath         string        `json:"samples_data_path"`
 	DynamicDataPath         string        `json:"dynamic_data_path"`

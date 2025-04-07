@@ -103,6 +103,7 @@ type options struct {
 		Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
 		PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
 		EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
+		DynamicReload  bool     `long:"dynamic-reload" env:"DYNAMIC_RELOAD" description:"dynamically reload plugins when they change"`
 	} `group:"lua-plugins" namespace:"lua-plugins" env-namespace:"LUA_PLUGINS"`
 
 	AbnormalSpacing struct {
@@ -460,6 +461,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		LuaPluginsEnabled:       opts.LuaPlugins.Enabled,
 		LuaPluginsDir:           opts.LuaPlugins.PluginsDir,
 		LuaEnabledPlugins:       opts.LuaPlugins.EnabledPlugins,
+		LuaDynamicReload:        opts.LuaPlugins.DynamicReload,
 		SamplesDataPath:         opts.Files.SamplesDataPath,
 		DynamicDataPath:         opts.Files.DynamicDataPath,
 		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
@@ -607,6 +609,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		detector.LuaPlugins.Enabled = true
 		detector.LuaPlugins.PluginsDir = opts.LuaPlugins.PluginsDir
 		detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
+		detector.LuaPlugins.DynamicReload = opts.LuaPlugins.DynamicReload
 
 		// create and initialize the Lua engine
 		luaEngine := lua.NewChecker()
@@ -618,6 +621,10 @@ func makeDetector(opts options) *tgspam.Detector {
 				log.Printf("[INFO] enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
 			} else {
 				log.Print("[INFO] all Lua plugins from directory are enabled")
+			}
+
+			if opts.LuaPlugins.DynamicReload {
+				log.Print("[INFO] dynamic reloading of Lua plugins enabled")
 			}
 		}
 	}

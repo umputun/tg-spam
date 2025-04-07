@@ -64,6 +64,7 @@ jobs:
       run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
       env:
         COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true  # Don't fail the pipeline if coverage submission fails
 
     - name: set up QEMU
       uses: docker/setup-qemu-action@v3
