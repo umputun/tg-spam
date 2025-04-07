@@ -8,7 +8,7 @@ import (
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam"
-	"github.com/umputun/tg-spam/lib/tgspam/lua"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 	detector := tgspam.NewDetector(config)
 
 	// create and add Lua plugin engine
-	luaEngine := lua.NewChecker()
+	luaEngine := plugin.NewChecker()
 	err := detector.WithLuaEngine(luaEngine)
 	if err != nil {
 		log.Fatalf("Failed to initialize Lua plugin engine: %v", err)

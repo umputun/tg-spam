@@ -4,7 +4,7 @@
 package mocks
 
 import (
-	"github.com/umputun/tg-spam/lib/tgspam/lua"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 	"sync"
 )
 
@@ -17,10 +17,10 @@ import (
 //			CloseFunc: func()  {
 //				panic("mock out the Close method")
 //			},
-//			GetAllChecksFunc: func() map[string]lua.PluginCheck {
+//			GetAllChecksFunc: func() map[string]plugin.Check {
 //				panic("mock out the GetAllChecks method")
 //			},
-//			GetCheckFunc: func(name string) (lua.PluginCheck, error) {
+//			GetCheckFunc: func(name string) (plugin.Check, error) {
 //				panic("mock out the GetCheck method")
 //			},
 //			LoadDirectoryFunc: func(dir string) error {
@@ -43,10 +43,10 @@ type LuaPluginEngineMock struct {
 	CloseFunc func()
 
 	// GetAllChecksFunc mocks the GetAllChecks method.
-	GetAllChecksFunc func() map[string]lua.PluginCheck
+	GetAllChecksFunc func() map[string]plugin.Check
 
 	// GetCheckFunc mocks the GetCheck method.
-	GetCheckFunc func(name string) (lua.PluginCheck, error)
+	GetCheckFunc func(name string) (plugin.Check, error)
 
 	// LoadDirectoryFunc mocks the LoadDirectory method.
 	LoadDirectoryFunc func(dir string) error
@@ -129,7 +129,7 @@ func (mock *LuaPluginEngineMock) ResetCloseCalls() {
 }
 
 // GetAllChecks calls GetAllChecksFunc.
-func (mock *LuaPluginEngineMock) GetAllChecks() map[string]lua.PluginCheck {
+func (mock *LuaPluginEngineMock) GetAllChecks() map[string]plugin.Check {
 	if mock.GetAllChecksFunc == nil {
 		panic("LuaPluginEngineMock.GetAllChecksFunc: method is nil but LuaPluginEngine.GetAllChecks was just called")
 	}
@@ -163,7 +163,7 @@ func (mock *LuaPluginEngineMock) ResetGetAllChecksCalls() {
 }
 
 // GetCheck calls GetCheckFunc.
-func (mock *LuaPluginEngineMock) GetCheck(name string) (lua.PluginCheck, error) {
+func (mock *LuaPluginEngineMock) GetCheck(name string) (plugin.Check, error) {
 	if mock.GetCheckFunc == nil {
 		panic("LuaPluginEngineMock.GetCheckFunc: method is nil but LuaPluginEngine.GetCheck was just called")
 	}

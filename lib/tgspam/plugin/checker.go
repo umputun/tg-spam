@@ -1,8 +1,8 @@
-// Package lua provides a Lua plugin system for spam detection in tg-spam.
+// Package plugin provides a plugin system for spam detection in tg-spam.
 // It loads and executes Lua scripts that implement custom spam checking logic.
 // Scripts should provide a "check" function that takes a message context and returns
 // a boolean (is spam) and a string (details).
-package lua
+package plugin
 
 import (
 	"fmt"
@@ -22,8 +22,8 @@ type Checker struct {
 	watcher  *Watcher     // optional file watcher for dynamic reloading
 }
 
-// PluginCheck is a function that takes a request and returns a response indicating if message is spam
-type PluginCheck func(req spamcheck.Request) spamcheck.Response
+// Check is a function that takes a request and returns a response indicating if message is spam
+type Check func(req spamcheck.Request) spamcheck.Response
 
 // NewChecker creates a new Checker
 func NewChecker() *Checker {
@@ -108,8 +108,8 @@ func (c *Checker) LoadDirectory(dir string) error {
 	return nil
 }
 
-// GetCheck returns a MetaCheck for the specified Lua checker
-func (c *Checker) GetCheck(name string) (PluginCheck, error) {
+// GetCheck returns a Check for the specified Lua checker
+func (c *Checker) GetCheck(name string) (Check, error) {
 	c.lock.RLock()
 	checker, ok := c.checkers[name]
 	c.lock.RUnlock()
@@ -122,8 +122,8 @@ func (c *Checker) GetCheck(name string) (PluginCheck, error) {
 }
 
 // GetAllChecks returns all loaded Lua checks
-func (c *Checker) GetAllChecks() map[string]PluginCheck {
-	result := make(map[string]PluginCheck)
+func (c *Checker) GetAllChecks() map[string]Check {
+	result := make(map[string]Check)
 
 	c.lock.RLock()
 	for name, checker := range c.checkers {
@@ -134,8 +134,8 @@ func (c *Checker) GetAllChecks() map[string]PluginCheck {
 	return result
 }
 
-// createMetaChecker creates a PluginCheck function from a Lua checker
-func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) PluginCheck {
+// createMetaChecker creates a Check function from a Lua checker
+func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 	return func(req spamcheck.Request) spamcheck.Response {
 		c.lock.RLock()
 		defer c.lock.RUnlock()

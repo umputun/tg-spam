@@ -22,7 +22,7 @@ import (
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
-	"github.com/umputun/tg-spam/lib/tgspam/lua"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 )
 
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure --with-resets . SampleUpdater
@@ -37,7 +37,7 @@ type Detector struct {
 	classifier     classifier
 	openaiChecker  *openAIChecker
 	metaChecks     []MetaCheck
-	luaChecks      []lua.PluginCheck // separate field for Lua plugin checks
+	luaChecks      []plugin.Check // separate field for Lua plugin checks
 	tokenizedSpam  []map[string]int
 	approvedUsers  map[string]approved.UserInfo
 	stopWords      []string
@@ -110,12 +110,12 @@ type HTTPClient interface {
 
 // LuaPluginEngine defines an interface for the Lua plugin system
 type LuaPluginEngine interface {
-	LoadScript(path string) error                  // loads a single Lua script
-	ReloadScript(path string) error                // reloads a single Lua script
-	LoadDirectory(dir string) error                // loads all Lua scripts from a directory
-	GetCheck(name string) (lua.PluginCheck, error) // returns a specific named plugin check
-	GetAllChecks() map[string]lua.PluginCheck      // returns all loaded plugin checks
-	Close()                                        // cleans up resources
+	LoadScript(path string) error               // loads a single Lua script
+	ReloadScript(path string) error             // reloads a single Lua script
+	LoadDirectory(dir string) error             // loads all Lua scripts from a directory
+	GetCheck(name string) (plugin.Check, error) // returns a specific named plugin check
+	GetAllChecks() map[string]plugin.Check      // returns all loaded plugin checks
+	Close()                                     // cleans up resources
 }
 
 // LoadResult is a result of loading samples.
@@ -134,7 +134,7 @@ func NewDetector(p Config) *Detector {
 		approvedUsers: make(map[string]approved.UserInfo),
 		tokenizedSpam: []map[string]int{},
 		metaChecks:    []MetaCheck{},
-		luaChecks:     []lua.PluginCheck{},
+		luaChecks:     []plugin.Check{},
 		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
 		luaEngine:     nil, // will be set with WithLuaEngine if needed
@@ -342,15 +342,15 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 
 	// set up a watcher for dynamic plugin reloading if enabled
 	if d.LuaPlugins.DynamicReload {
-		// we need to cast the luaEngine to a *lua.Checker to access the watcher methods
-		checker, ok := d.luaEngine.(*lua.Checker)
+		// we need to cast the luaEngine to a *plugin.Checker to access the watcher methods
+		checker, ok := d.luaEngine.(*plugin.Checker)
 		if !ok {
 			log.Printf("[WARN] dynamic Lua plugin reloading enabled but engine doesn't support it")
 			return nil
 		}
 
 		// create a watcher for the plugins directory
-		watcher, err := lua.NewWatcher(checker, d.LuaPlugins.PluginsDir)
+		watcher, err := plugin.NewWatcher(checker, d.LuaPlugins.PluginsDir)
 		if err != nil {
 			return fmt.Errorf("failed to create watcher for Lua plugins: %w", err)
 		}

@@ -34,7 +34,7 @@ import (
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi"
 	"github.com/umputun/tg-spam/lib/tgspam"
-	"github.com/umputun/tg-spam/lib/tgspam/lua"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 )
 
 type options struct {
@@ -611,8 +611,8 @@ func makeDetector(opts options) *tgspam.Detector {
 		detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
 		detector.LuaPlugins.DynamicReload = opts.LuaPlugins.DynamicReload
 
-		// create and initialize the Lua engine
-		luaEngine := lua.NewChecker()
+		// create and initialize the plugin engine
+		luaEngine := plugin.NewChecker()
 		if err := detector.WithLuaEngine(luaEngine); err != nil {
 			log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
 		} else {

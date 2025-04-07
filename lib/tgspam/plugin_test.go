@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
-	"github.com/umputun/tg-spam/lib/tgspam/lua"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
 )
 
@@ -35,7 +35,7 @@ func TestDetector_WithLuaEngine(t *testing.T) {
 			assert.Equal(t, "/path/to/plugins", dir)
 			return nil
 		},
-		GetCheckFunc: func(name string) (lua.PluginCheck, error) {
+		GetCheckFunc: func(name string) (plugin.Check, error) {
 			assert.Contains(t, []string{"plugin1", "plugin2"}, name)
 			return func(req spamcheck.Request) spamcheck.Response {
 				return spamcheck.Response{Name: "lua-" + name, Spam: true, Details: "test"}
@@ -136,7 +136,7 @@ func TestDetector_WithLuaEngine_GetCheckError(t *testing.T) {
 		LoadDirectoryFunc: func(dir string) error {
 			return nil
 		},
-		GetCheckFunc: func(name string) (lua.PluginCheck, error) {
+		GetCheckFunc: func(name string) (plugin.Check, error) {
 			return nil, errors.New("get check error")
 		},
 		CloseFunc: func() {
@@ -163,8 +163,8 @@ func TestDetector_WithLuaEngine_AllChecks(t *testing.T) {
 		LoadDirectoryFunc: func(dir string) error {
 			return nil
 		},
-		GetAllChecksFunc: func() map[string]lua.PluginCheck {
-			return map[string]lua.PluginCheck{
+		GetAllChecksFunc: func() map[string]plugin.Check {
+			return map[string]plugin.Check{
 				"plugin1": func(req spamcheck.Request) spamcheck.Response {
 					return spamcheck.Response{Name: "lua-plugin1", Spam: true, Details: "test1"}
 				},
@@ -223,8 +223,8 @@ func TestDetector_GetLuaPluginNames(t *testing.T) {
 
 		// create mock Lua engine
 		mockLuaEngine := &mocks.LuaPluginEngineMock{
-			GetAllChecksFunc: func() map[string]lua.PluginCheck {
-				return map[string]lua.PluginCheck{
+			GetAllChecksFunc: func() map[string]plugin.Check {
+				return map[string]plugin.Check{
 					"plugin1": nil,
 					"plugin2": nil,
 				}
@@ -243,8 +243,8 @@ func TestDetector_GetLuaPluginNames(t *testing.T) {
 
 		// create mock Lua engine with some plugins
 		mockLuaEngine := &mocks.LuaPluginEngineMock{
-			GetAllChecksFunc: func() map[string]lua.PluginCheck {
-				return map[string]lua.PluginCheck{
+			GetAllChecksFunc: func() map[string]plugin.Check {
+				return map[string]plugin.Check{
 					"plugin1": func(req spamcheck.Request) spamcheck.Response {
 						return spamcheck.Response{Name: "lua-plugin1", Spam: true, Details: "test"}
 					},
@@ -279,7 +279,7 @@ func TestDetector_WithRealLuaPlugins(t *testing.T) {
 
 	// create and initialize detector with real Lua plugins
 	detector := NewDetector(config)
-	engine := lua.NewChecker()
+	engine := plugin.NewChecker()
 	defer engine.Close()
 
 	err := detector.WithLuaEngine(engine)
@@ -441,7 +441,7 @@ func TestDetector_WithAPICheckLuaPlugin(t *testing.T) {
 	defer server.Close()
 
 	// create a new Lua engine for our test
-	modifiedApiCheck := lua.NewChecker()
+	modifiedApiCheck := plugin.NewChecker()
 
 	// get the path to the testdata directory where we can create a temporary file
 	tmpScript := filepath.Join("./testdata", "api_check_test.lua")
@@ -679,7 +679,7 @@ end
 	detector := NewDetector(config)
 
 	// create real Lua engine
-	engine := lua.NewChecker()
+	engine := plugin.NewChecker()
 	defer engine.Close()
 
 	// apply the engine with dynamic reload
@@ -687,7 +687,7 @@ end
 	require.NoError(t, err)
 
 	// verify the Checker has a watcher set
-	_, ok := detector.luaEngine.(*lua.Checker)
+	_, ok := detector.luaEngine.(*plugin.Checker)
 	require.True(t, ok)
 
 	// we can't directly check if watcher is set since it's not exported,

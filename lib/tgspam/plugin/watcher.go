@@ -1,4 +1,4 @@
-package lua
+package plugin
 
 import (
 	"fmt"
