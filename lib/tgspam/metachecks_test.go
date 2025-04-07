@@ -500,10 +500,10 @@ func TestMentionsCheck(t *testing.T) {
 
 func TestUsernameSymbolsCheck(t *testing.T) {
 	tests := []struct {
-		name            string
-		req             spamcheck.Request
+		name              string
+		req               spamcheck.Request
 		prohibitedSymbols string
-		expected        spamcheck.Response
+		expected          spamcheck.Response
 	}{
 		{
 			name: "No username",

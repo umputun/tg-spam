@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
-	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 )
 
 //go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine

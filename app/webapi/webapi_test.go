@@ -1313,7 +1313,7 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		
+
 		var respSettings Settings
 		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
 		require.NoError(t, err)
@@ -1332,7 +1332,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 				return []string{"plugin1", "plugin2", "plugin3"}
 			},
 		}
-		
+
 		server := NewServer(Config{
 			Version:  "1.0",
 			Detector: detectorMock,

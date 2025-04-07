@@ -64,6 +64,7 @@ This directory contains the following example plugins:
 2. `domain_blacklist.lua`: Checks messages for blacklisted domains
 3. `message_pattern.lua`: Checks for common spam message patterns
 4. `api_check.lua`: Demonstrates using HTTP requests to check messages with external APIs
+5. `arabic_script_detector.lua`: Identifies users with Arabic script names in non-Arabic chats
 
 ## Using Lua Plugins
 
