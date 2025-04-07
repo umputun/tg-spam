@@ -1083,7 +1083,7 @@ func (sfs *staticFS) Open(name string) (fs.File, error) {
 
 // GenerateRandomPassword generates a random password of a given length
 func GenerateRandomPassword(length int) (string, error) {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
 	const charsetLen = int64(len(charset))
 
 	result := make([]byte, length)
