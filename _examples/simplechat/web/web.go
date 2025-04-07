@@ -57,7 +57,10 @@ func (s *Server) ListenAndServe() error {
 		Handler:           mux,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil {
+		return fmt.Errorf("server listen failed: %w", err)
+	}
+	return nil
 }
 
 // indexHandler handles the root endpoint ("/") and renders the "index.html" template with the last 100 messages from the storage.
