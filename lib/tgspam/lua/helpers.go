@@ -1,5 +1,3 @@
-// Package lua provides a Lua plugin system for spam detection.
-// This file contains helper functions that are exposed to Lua scripts.
 package lua
 
 import (

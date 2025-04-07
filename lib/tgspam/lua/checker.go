@@ -14,9 +14,6 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-// PluginCheck is a function that takes a request and returns a response indicating if message is spam
-type PluginCheck func(req spamcheck.Request) spamcheck.Response
-
 // Checker implements a Lua plugin engine for spam detection
 type Checker struct {
 	vm       *lua.LState
@@ -24,6 +21,9 @@ type Checker struct {
 	lock     sync.RWMutex // protect checkers map during concurrent access
 	watcher  *Watcher     // optional file watcher for dynamic reloading
 }
+
+// PluginCheck is a function that takes a request and returns a response indicating if message is spam
+type PluginCheck func(req spamcheck.Request) spamcheck.Response
 
 // NewChecker creates a new Checker
 func NewChecker() *Checker {

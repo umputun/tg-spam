@@ -1,5 +1,3 @@
-//go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
-
 package tgspam
 
 import (
@@ -20,6 +18,8 @@ import (
 	"github.com/umputun/tg-spam/lib/tgspam/lua"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
 )
+
+//go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
 
 func TestDetector_WithLuaEngine(t *testing.T) {
 	config := Config{}

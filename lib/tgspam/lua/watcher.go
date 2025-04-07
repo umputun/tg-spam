@@ -61,7 +61,7 @@ func (w *Watcher) Start() error {
 		return fmt.Errorf("failed to watch plugins directory: %w", err)
 	}
 
-	log.Printf("[INFO] started watching Lua plugins directory: %s", w.pluginsDir)
+	log.Printf("[INFO] started watching lua plugins directory: %s", w.pluginsDir)
 
 	// start the watcher goroutine
 	go w.watchLoop()
@@ -104,7 +104,7 @@ func (w *Watcher) watchLoop() {
 			if !ok {
 				return
 			}
-			log.Printf("[ERROR] watcher error: %v", err)
+			log.Printf("[WARN] watcher error: %v", err)
 		case <-ticker.C:
 			w.processEvents()
 		}
@@ -143,13 +143,13 @@ func (w *Watcher) processEvents() {
 			// file was deleted
 			scriptName := filepath.Base(filename)
 			scriptName = scriptName[:len(scriptName)-len(filepath.Ext(scriptName))]
-			log.Printf("[INFO] Lua script removed: %s", scriptName)
-		} else {
-			// file was created or modified
-			log.Printf("[INFO] Reloading Lua script: %s", filename)
-			if err := w.checker.ReloadScript(filename); err != nil {
-				log.Printf("[ERROR] Failed to reload Lua script %s: %v", filename, err)
-			}
+			log.Printf("[INFO] lua script removed: %s", scriptName)
+			continue
+		}
+		// file was created or modified
+		log.Printf("[INFO] reloading lua script: %s", filename)
+		if err := w.checker.ReloadScript(filename); err != nil {
+			log.Printf("[WARN] failed to reload lua script %s: %v", filename, err)
 		}
 
 		// remove processed event
