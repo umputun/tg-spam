@@ -127,7 +127,7 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
 		assert.Equal(t, 1, len(configStore.GetObjectCalls()))
-		assert.Equal(t, "loaded-group", srv.Settings.PrimaryGroup) // Settings updated
+		assert.Equal(t, "loaded-group", srv.Settings.PrimaryGroup) // settings updated
 	})
 
 	t.Run("successful load with HTMX request", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "alert-success")
 		assert.Equal(t, "true", w.Header().Get("HX-Refresh"))
 		assert.Equal(t, 1, len(configStore.GetObjectCalls()))
-		assert.Equal(t, "loaded-group", srv.Settings.PrimaryGroup) // Settings updated
+		assert.Equal(t, "loaded-group", srv.Settings.PrimaryGroup) // settings updated
 	})
 
 	t.Run("error loading configuration", func(t *testing.T) {
@@ -179,7 +179,7 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "test error")
 		assert.Equal(t, 1, len(configStore.GetObjectCalls()))
-		assert.Equal(t, "test-group", srv.Settings.PrimaryGroup) // Settings not updated
+		assert.Equal(t, "test-group", srv.Settings.PrimaryGroup) // settings not updated
 	})
 
 	t.Run("no config store", func(t *testing.T) {
@@ -281,7 +281,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 			},
 		}
 
-		// Create a request with invalid form data - using a malformed data that will trigger the error
+		// create a request with invalid form data - using a malformed data that will trigger the error
 		req := httptest.NewRequest("PUT", "/config", bytes.NewReader([]byte("%invalid%encoding")))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
@@ -561,7 +561,7 @@ func createFormRequest(values map[string]string) *http.Request {
 	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	// Parse the form
+	// parse the form
 	req.PostForm = form
 
 	return req

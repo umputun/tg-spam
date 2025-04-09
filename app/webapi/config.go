@@ -12,6 +12,8 @@ import (
 	"github.com/go-pkgz/rest"
 )
 
+//go:generate moq --out config_store_mock.go --with-resets --skip-ensure . ConfigStoreInterface
+
 // ConfigStoreInterface provides access to configuration stored in database
 type ConfigStoreInterface interface {
 	Get(ctx context.Context) (string, error)

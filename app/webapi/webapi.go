@@ -38,7 +38,6 @@ import (
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
 //go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
-//go:generate moq --out mocks/config_store.go --pkg mocks --with-resets --skip-ensure . ConfigStore
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS

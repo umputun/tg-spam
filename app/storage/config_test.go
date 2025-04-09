@@ -253,56 +253,56 @@ func (s *StorageTestSuite) TestConfig_LastUpdated() {
 			s.Require().NoError(err)
 			defer db.Exec("DROP TABLE config")
 
-			// Before any config is set, LastUpdated should return an error
+			// before any config is set, LastUpdated should return an error
 			_, err = config.LastUpdated(ctx)
 			s.Require().Error(err)
 			s.Contains(err.Error(), "no configuration found")
 
-			// Set some configuration
+			// set some configuration
 			err = config.SetObject(ctx, &testConfig{Key: "value"})
 			s.Require().NoError(err)
-			
-			// Give the system a moment to ensure timestamp is recorded
+
+			// give the system a moment to ensure timestamp is recorded
 			time.Sleep(100 * time.Millisecond)
 
-			// Get the last updated time
+			// get the last updated time
 			lastUpdated, err := config.LastUpdated(ctx)
 			s.Require().NoError(err)
-			
-			// Ensure lastUpdated is not zero
+
+			// ensure lastUpdated is not zero
 			s.False(lastUpdated.IsZero(), "LastUpdated time should not be zero")
 
-			// Save the first timestamp for comparison
+			// save the first timestamp for comparison
 			firstTimeStamp := lastUpdated
-			
-			// Update the configuration with a small delay to ensure different timestamp
+
+			// update the configuration with a small delay to ensure different timestamp
 			time.Sleep(100 * time.Millisecond)
 			err = config.SetObject(ctx, &testConfig{Key: "updated"})
 			s.Require().NoError(err)
 
-			// Give the system a moment to ensure timestamp is recorded
+			// give the system a moment to ensure timestamp is recorded
 			time.Sleep(100 * time.Millisecond)
 
-			// Get the updated time
+			// get the updated time
 			updatedTime, err := config.LastUpdated(ctx)
 			s.Require().NoError(err)
-			
-			// For PostgreSQL, just check if the timestamp is not zero
-			// The timestamp precision can vary between database implementations
+
+			// for PostgreSQL, just check if the timestamp is not zero
+			// the timestamp precision can vary between database implementations
 			s.False(updatedTime.IsZero(), "Updated time should not be zero")
-			
-			// For SQLite, we should be able to detect the time difference
-			// For PostgreSQL, this might not be reliable due to timestamp precision
+
+			// for SQLite, we should be able to detect the time difference
+			// for PostgreSQL, this might not be reliable due to timestamp precision
 			if db.Type() == engine.Sqlite {
-				s.True(updatedTime.After(firstTimeStamp) || updatedTime.Equal(firstTimeStamp), 
+				s.True(updatedTime.After(firstTimeStamp) || updatedTime.Equal(firstTimeStamp),
 					"Updated time should be after or equal to the first timestamp for SQLite")
 			}
 
-			// Delete the configuration
+			// delete the configuration
 			err = config.Delete(ctx)
 			s.Require().NoError(err)
 
-			// After deletion, LastUpdated should return an error
+			// after deletion, LastUpdated should return an error
 			_, err = config.LastUpdated(ctx)
 			s.Require().Error(err)
 			s.Contains(err.Error(), "no configuration found")
