@@ -40,6 +40,7 @@ import (
 type options struct {
 	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
 	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
+	ConfigDB    bool   `long:"confdb" env:"CONFDB" description:"load configuration from database"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -174,12 +175,79 @@ func main() {
 	var opts options
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
+
+	// add save-config command
+	if _, err := p.AddCommand("save-config", "Save current configuration to database",
+		"Saves all current settings to the database for future use with --confdb",
+		&struct{}{}); err != nil {
+		log.Printf("[ERROR] failed to add save-config command: %v", err)
+		os.Exit(1)
+	}
 	if _, err := p.Parse(); err != nil {
 		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
 			os.Exit(1)
 		}
 		os.Exit(2)
+	}
+
+	// store original CLI values that should override DB config
+	originalValues := map[string]interface{}{
+		// connection parameters that must come from CLI
+		"DataBaseURL": opts.DataBaseURL,
+		"InstanceID":  opts.InstanceID,
+
+		// control flags
+		"ConfigDB": opts.ConfigDB,
+		"Dbg":      opts.Dbg,
+		"TGDbg":    opts.TGDbg,
+
+		// security-related parameters
+		"Server.AuthPasswd": opts.Server.AuthPasswd,
+		"Server.AuthHash":   opts.Server.AuthHash,
+		"Telegram.Token":    opts.Telegram.Token,
+		"OpenAI.Token":      opts.OpenAI.Token,
+
+		// storage configuration
+		"StorageTimeout": opts.StorageTimeout,
+	}
+
+	// handle commands
+	if p.Active != nil && p.Active.Name == "save-config" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		exitCode := 0
+		if err := saveConfigToDB(ctx, &opts); err != nil {
+			log.Printf("[ERROR] failed to save configuration to database: %v", err)
+			exitCode = 1
+		}
+		cancel()
+		os.Exit(exitCode)
+	}
+
+	// if --confdb is set, load configuration from the database
+	if opts.ConfigDB {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		configErr := loadConfigFromDB(ctx, &opts)
+		cancel()
+
+		if configErr != nil {
+			log.Printf("[ERROR] failed to load configuration from database: %v", configErr)
+			os.Exit(1)
+		}
+
+		// restore CLI values that should override DB config
+		opts.DataBaseURL = originalValues["DataBaseURL"].(string)
+		opts.InstanceID = originalValues["InstanceID"].(string)
+		opts.ConfigDB = originalValues["ConfigDB"].(bool)
+		opts.Dbg = originalValues["Dbg"].(bool)
+		opts.TGDbg = originalValues["TGDbg"].(bool)
+		opts.Server.AuthPasswd = originalValues["Server.AuthPasswd"].(string)
+		opts.Server.AuthHash = originalValues["Server.AuthHash"].(string)
+		opts.Telegram.Token = originalValues["Telegram.Token"].(string)
+		opts.OpenAI.Token = originalValues["OpenAI.Token"].(string)
+		opts.StorageTimeout = originalValues["StorageTimeout"].(time.Duration)
 	}
 
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
@@ -1027,4 +1095,72 @@ func setupLog(dbg bool, secrets ...string) {
 	}
 	lgr.SetupStdLogger(logOpts...)
 	lgr.Setup(logOpts...)
+}
+
+// loadConfigFromDB loads configuration from the database if the confdb flag is set
+func loadConfigFromDB(ctx context.Context, opts *options) error {
+	if !opts.ConfigDB {
+		return nil // skip if not enabled
+	}
+
+	log.Print("[INFO] loading configuration from database")
+
+	// create DB connection
+	db, err := makeDB(ctx, *opts)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database for config: %w", err)
+	}
+
+	// create config store with the specific type
+	configStore, err := storage.NewConfig[options](ctx, db)
+	if err != nil {
+		return fmt.Errorf("failed to create config store: %w", err)
+	}
+
+	// load configuration
+	err = configStore.GetObject(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration from database: %w", err)
+	}
+
+	log.Printf("[INFO] configuration loaded from database successfully")
+	return nil
+}
+
+// saveConfigToDB saves the current configuration to the database
+func saveConfigToDB(ctx context.Context, opts *options) error {
+	log.Print("[INFO] saving configuration to database")
+
+	// create DB connection
+	db, err := makeDB(ctx, *opts)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database for config: %w", err)
+	}
+
+	// create config store with the specific type
+	configStore, err := storage.NewConfig[options](ctx, db)
+	if err != nil {
+		return fmt.Errorf("failed to create config store: %w", err)
+	}
+
+	// create a copy of options to sanitize sensitive data
+	configToSave := *opts
+
+	// clear sensitive values that should not be stored
+	configToSave.Server.AuthPasswd = ""
+	configToSave.Server.AuthHash = ""
+	// don't store tokens in DB unless explicitly requested
+	if !opts.Dbg { // use debug mode to indicate storing tokens is intentional
+		configToSave.Telegram.Token = ""
+		configToSave.OpenAI.Token = ""
+	}
+
+	// save configuration
+	err = configStore.SetObject(ctx, &configToSave)
+	if err != nil {
+		return fmt.Errorf("failed to save configuration to database: %w", err)
+	}
+
+	log.Printf("[INFO] configuration saved to database successfully")
+	return nil
 }
