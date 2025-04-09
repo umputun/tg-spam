@@ -39,8 +39,8 @@ import (
 
 type options struct {
 	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
-	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
-	ConfigDB    bool   `long:"confdb" env:"CONFDB" description:"load configuration from database"`
+	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite" json:"-"`
+	ConfigDB    bool   `long:"confdb" env:"CONFDB" description:"load configuration from database" json:"-"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -56,7 +56,7 @@ type options struct {
 
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
-	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout"`
+	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout" json:"-"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -141,7 +141,7 @@ type options struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
 		AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password" json:"-"`
 		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
@@ -154,8 +154,8 @@ type options struct {
 	MaxBackups int `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep, set 0 to disable"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
+	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode" json:"-"`
+	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode" json:"-"`
 }
 
 // default file names
@@ -1175,6 +1175,17 @@ func saveConfigToDB(ctx context.Context, opts *options) error {
 	// create a copy of options to sanitize sensitive data
 	configToSave := *opts
 
+	// generate auth hash if password is provided but hash isn't
+	if configToSave.Server.AuthPasswd != "" && configToSave.Server.AuthHash == "" {
+		// generate bcrypt hash from the password
+		hash, hashErr := generateAuthHash(configToSave.Server.AuthPasswd)
+		if hashErr != nil {
+			return fmt.Errorf("failed to generate auth hash: %w", hashErr)
+		}
+		// update the hash field
+		configToSave.Server.AuthHash = hash
+	}
+
 	// don't store plain text passwords, but keep username and password hash
 	configToSave.Server.AuthPasswd = "" // never store plain passwords
 
@@ -1182,8 +1193,6 @@ func saveConfigToDB(ctx context.Context, opts *options) error {
 	configToSave.Dbg = false        // debug mode is set via CLI only
 	configToSave.TGDbg = false      // telegram debug mode is set via CLI only
 	configToSave.StorageTimeout = 0 // storage timeout is set via CLI only
-
-	// we store tokens and hashes in the database, but they will be masked in API responses
 
 	// save configuration
 	err = configStore.SetObject(ctx, &configToSave)

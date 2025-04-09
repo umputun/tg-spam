@@ -182,35 +182,35 @@ func Test_initLuaPlugins(t *testing.T) {
 		opts.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
 		opts.LuaPlugins.DynamicReload = true
 
-		detector := makeDetector(options{}) // Create a clean detector
-		
-		// Run the function to test
+		detector := makeDetector(options{}) // create a clean detector
+
+		// run the function to test
 		initLuaPlugins(detector, opts)
-		
-		// Verify that the detector's config matches the opts
+
+		// verify that the detector's config matches the opts
 		assert.True(t, detector.LuaPlugins.Enabled)
 		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
 		assert.Equal(t, []string{"plugin1", "plugin2"}, detector.LuaPlugins.EnabledPlugins)
 		assert.True(t, detector.LuaPlugins.DynamicReload)
-		
-		// Verify the Lua engine was initialized
-		// We can't directly check detector.luaEngine since it's unexported
-		// But we can infer it's initialized because the settings were applied
+
+		// verify the Lua engine was initialized
+		// we can't directly check detector.luaEngine since it's unexported
+		// but we can infer it's initialized because the settings were applied
 	})
-	
+
 	t.Run("all enabled plugins", func(t *testing.T) {
 		var opts options
 		opts.LuaPlugins.Enabled = true
 		opts.LuaPlugins.PluginsDir = "/path/to/plugins"
-		// No specific plugins enabled - should enable all
+		// no specific plugins enabled - should enable all
 		opts.LuaPlugins.DynamicReload = false
-		
-		detector := makeDetector(options{}) // Create a clean detector
-		
-		// Run the function to test
+
+		detector := makeDetector(options{}) // create a clean detector
+
+		// run the function to test
 		initLuaPlugins(detector, opts)
-		
-		// Verify the settings were transferred
+
+		// verify the settings were transferred
 		assert.True(t, detector.LuaPlugins.Enabled)
 		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
 		assert.Empty(t, detector.LuaPlugins.EnabledPlugins)
@@ -929,6 +929,45 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		// verify tokens are stored when debug mode is enabled
 		assert.Equal(t, "secret-token", loadedOpts.Telegram.Token)
 		assert.Equal(t, "openai-token", loadedOpts.OpenAI.Token)
+	})
+
+	t.Run("verify auth hash is generated and stored", func(t *testing.T) {
+		// create test options with auth password but no hash
+		opts := options{
+			InstanceID:  "test-instance",
+			DataBaseURL: dbFile,
+			ConfigDB:    false,
+		}
+
+		// set server auth settings
+		opts.Server.Enabled = true
+		opts.Server.AuthUser = "test-user"
+		opts.Server.AuthPasswd = "test-password" // password should be hashed
+		opts.Server.AuthHash = ""                // no hash provided
+
+		// save to DB
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, &opts)
+		require.NoError(t, err)
+
+		// load from DB
+		loadedOpts := options{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+			InstanceID:  "test-instance",
+		}
+
+		err = loadConfigFromDB(ctx, &loadedOpts)
+		require.NoError(t, err)
+
+		// verify auth settings
+		assert.Equal(t, "test-user", loadedOpts.Server.AuthUser)
+		assert.Empty(t, loadedOpts.Server.AuthPasswd, "Password should not be stored")
+		assert.NotEmpty(t, loadedOpts.Server.AuthHash, "Auth hash should be generated and stored")
+
+		// verify the hash is valid by checking if it's a bcrypt hash (starts with $2a$)
+		assert.True(t, strings.HasPrefix(loadedOpts.Server.AuthHash, "$2a$"),
+			"Auth hash should be a bcrypt hash starting with $2a$")
 	})
 
 	t.Run("override cli values", func(t *testing.T) {
