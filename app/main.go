@@ -140,8 +140,9 @@ type options struct {
 	Server struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password for user 'tg-spam'"`
-		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash for user 'tg-spam'"`
+		AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
@@ -203,6 +204,7 @@ func main() {
 		"TGDbg":    opts.TGDbg,
 
 		// security-related parameters
+		"Server.AuthUser":   opts.Server.AuthUser,
 		"Server.AuthPasswd": opts.Server.AuthPasswd,
 		"Server.AuthHash":   opts.Server.AuthHash,
 		"Telegram.Token":    opts.Telegram.Token,
@@ -482,17 +484,34 @@ func checkVolumeMount(opts options) (ok bool) {
 }
 
 func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
-	authPassswd := opts.Server.AuthPasswd
-	if opts.Server.AuthPasswd == "auto" {
-		authPassswd, err = webapi.GenerateRandomPassword(20)
-		if err != nil {
-			return fmt.Errorf("can't generate random password, %w", err)
+	// handle authentication - always use bcrypt hash for security
+	authPasswd := opts.Server.AuthPasswd
+	authHash := opts.Server.AuthHash
+
+	// if no hash but password is provided, generate hash from password
+	if authHash == "" && authPasswd != "" {
+		if authPasswd == "auto" {
+			// generate random password
+			authPasswd, err = webapi.GenerateRandomPassword(20)
+			if err != nil {
+				return fmt.Errorf("can't generate random password, %w", err)
+			}
 		}
-		authHash, err := rest.GenerateBcryptHash(authPassswd)
+
+		// generate hash from password
+		authHash, err = rest.GenerateBcryptHash(authPasswd)
 		if err != nil {
 			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
 		}
-		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPassswd, authHash)
+
+		if authPasswd == "auto" {
+			log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPasswd, authHash)
+		} else {
+			log.Printf("[INFO] generated bcrypt hash from provided password")
+		}
+
+		// update AuthHash in options to use in server creation
+		opts.Server.AuthHash = authHash
 	}
 
 	// make store and load approved users
@@ -555,12 +574,13 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		SpamFilter:    sf,
 		Locator:       loc,
 		DetectedSpam:  detectedSpamStore,
-		StorageEngine: db, // add database engine for backup functionality
-		AuthPasswd:    authPassswd,
-		AuthHash:      opts.Server.AuthHash,
+		StorageEngine: db,        // add database engine for backup functionality
+		AuthUser:      "tg-spam", // default auth username
+		AuthHash:      authHash,  // use the hash (either from options or generated)
 		Version:       revision,
 		Dbg:           opts.Dbg,
 		Settings:      settings,
+		ConfigDBMode:  opts.ConfigDB, // indicate we're running with database config
 	}}
 
 	go func() {
@@ -1123,14 +1143,10 @@ func saveConfigToDB(ctx context.Context, opts *options) error {
 	// create a copy of options to sanitize sensitive data
 	configToSave := *opts
 
-	// clear sensitive values that should not be stored
-	configToSave.Server.AuthPasswd = ""
-	configToSave.Server.AuthHash = ""
-	// don't store tokens in DB unless explicitly requested
-	if !opts.Dbg { // use debug mode to indicate storing tokens is intentional
-		configToSave.Telegram.Token = ""
-		configToSave.OpenAI.Token = ""
-	}
+	// don't store plain text passwords, but keep username and password hash
+	configToSave.Server.AuthPasswd = "" // never store plain passwords
+
+	// we store tokens and hashes in the database, but they will be masked in API responses
 
 	// save configuration
 	err = configStore.SetObject(ctx, &configToSave)

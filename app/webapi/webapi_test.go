@@ -73,25 +73,24 @@ func TestServer_RunAuth(t *testing.T) {
 	t.Logf("hashed password: %s", string(hashedPassword))
 
 	tests := []struct {
-		name      string
-		srv       *Server
-		port      string
-		authType  string
-		password  string
-		useHashed bool
+		name     string
+		srv      *Server
+		port     string
+		authType string
+		password string
 	}{
 		{
-			name: "plain password auth",
+			name: "no auth",
 			srv: NewServer(Config{
 				ListenAddr: ":9877",
 				Version:    "dev",
 				Detector:   mockDetector,
 				SpamFilter: mockSpamFilter,
-				AuthPasswd: "test",
+				// no auth hash provided - auth disabled
 			}),
 			port:     "9877",
-			authType: "plain",
-			password: "test",
+			authType: "none",
+			password: "",
 		},
 		{
 			name: "bcrypt hash auth",
@@ -102,10 +101,9 @@ func TestServer_RunAuth(t *testing.T) {
 				SpamFilter: mockSpamFilter,
 				AuthHash:   string(hashedPassword),
 			}),
-			port:      "9878",
-			authType:  "hash",
-			password:  "test",
-			useHashed: true,
+			port:     "9878",
+			authType: "hash",
+			password: "test",
 		},
 	}
 
@@ -138,51 +136,59 @@ func TestServer_RunAuth(t *testing.T) {
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 			})
 
-			t.Run("check unauthorized, no basic auth", func(t *testing.T) {
-				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-				if tc.useHashed {
+			if tc.authType == "hash" {
+				t.Run("check unauthorized, no basic auth", func(t *testing.T) {
+					resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
-				}
-			})
-
-			t.Run("check authorized", func(t *testing.T) {
-				reqBody, err := json.Marshal(map[string]string{
-					"msg":     "spam example",
-					"user_id": "user123",
 				})
-				require.NoError(t, err)
-				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
-				req.SetBasicAuth("tg-spam", tc.password)
-				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusOK, resp.StatusCode)
-			})
 
-			t.Run("wrong basic auth", func(t *testing.T) {
-				reqBody, err := json.Marshal(map[string]string{
-					"msg":     "spam example",
-					"user_id": "user123",
-				})
-				require.NoError(t, err)
-				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
-				req.SetBasicAuth("tg-spam", "bad")
-				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-				if tc.useHashed {
+				t.Run("wrong basic auth", func(t *testing.T) {
+					reqBody, err := json.Marshal(map[string]string{
+						"msg":     "spam example",
+						"user_id": "user123",
+					})
+					require.NoError(t, err)
+					req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+					assert.NoError(t, err)
+					req.SetBasicAuth("tg-spam", "bad")
+					resp, err := http.DefaultClient.Do(req)
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
-				}
-			})
+				})
+
+				t.Run("correct basic auth", func(t *testing.T) {
+					reqBody, err := json.Marshal(map[string]string{
+						"msg":     "spam example",
+						"user_id": "user123",
+					})
+					require.NoError(t, err)
+					req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+					assert.NoError(t, err)
+					req.SetBasicAuth("tg-spam", tc.password)
+					resp, err := http.DefaultClient.Do(req)
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusOK, resp.StatusCode)
+				})
+			} else {
+				// no auth - all requests should succeed
+				t.Run("no auth required", func(t *testing.T) {
+					resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					// no authentication required, but this path doesn't exist, so expect 404
+					assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+				})
+			}
 		})
 	}
 	cancel()

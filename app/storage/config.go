@@ -203,3 +203,22 @@ func (c *Config[T]) Delete(ctx context.Context) error {
 	}
 	return nil
 }
+
+// LastUpdated returns the last update time of the configuration
+func (c *Config[T]) LastUpdated(ctx context.Context) (time.Time, error) {
+	c.RLock()
+	defer c.RUnlock()
+
+	var record struct {
+		UpdatedAt time.Time `db:"updated_at"`
+	}
+	query := c.Adopt("SELECT updated_at FROM config WHERE gid = ?")
+	err := c.GetContext(ctx, &record, query, c.GID())
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return time.Time{}, fmt.Errorf("no configuration found")
+		}
+		return time.Time{}, fmt.Errorf("failed to get config update time: %w", err)
+	}
+	return record.UpdatedAt, nil
+}

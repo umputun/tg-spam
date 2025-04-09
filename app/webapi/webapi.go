@@ -38,6 +38,7 @@ import (
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
 //go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
+//go:generate moq --out mocks/config_store.go --pkg mocks --with-resets --skip-ensure . ConfigStore
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -53,17 +54,20 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version       string        // version to show in /ping
-	ListenAddr    string        // listen address
-	Detector      Detector      // spam detector
-	SpamFilter    SpamFilter    // spam filter (bot)
-	DetectedSpam  DetectedSpam  // detected spam accessor
-	Locator       Locator       // locator for user info
-	StorageEngine StorageEngine // database engine access for backups
-	AuthPasswd    string        // basic auth password for user "tg-spam"
-	AuthHash      string        // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
-	Dbg           bool          // debug mode
-	Settings      Settings      // application settings
+	Version       string               // version to show in /ping
+	ListenAddr    string               // listen address
+	Detector      Detector             // spam detector
+	SpamFilter    SpamFilter           // spam filter (bot)
+	DetectedSpam  DetectedSpam         // detected spam accessor
+	Locator       Locator              // locator for user info
+	StorageEngine StorageEngine        // database engine access for backups
+	ConfigStore   ConfigStoreInterface // configuration storage interface
+	AuthUser      string               // basic auth username (default: "tg-spam")
+	AuthPasswd    string               // basic auth password
+	AuthHash      string               // basic auth hash. If both AuthPasswd and AuthHash are provided, AuthHash is used
+	Dbg           bool                 // debug mode
+	Settings      Settings             // application settings
+	ConfigDBMode  bool                 // indicates if app is running with database config
 }
 
 // Settings contains all application settings
@@ -170,13 +174,15 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 
-	if s.AuthPasswd != "" || s.AuthHash != "" {
-		log.Printf("[INFO] basic auth enabled for webapi server")
-		if s.AuthHash != "" {
-			router.Use(rest.BasicAuthWithBcryptHashAndPrompt("tg-spam", s.AuthHash))
-		} else {
-			router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
-		}
+	// set default username if not provided
+	if s.AuthUser == "" {
+		s.AuthUser = "tg-spam" // default username
+	}
+
+	// hash-based authentication for maximum security
+	if s.AuthHash != "" {
+		log.Printf("[INFO] basic auth enabled for webapi server (user: %s)", s.AuthUser)
+		router.Use(rest.BasicAuthWithBcryptHashAndPrompt(s.AuthUser, s.AuthHash))
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
@@ -203,7 +209,9 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	// auth api routes
 	router.Route(func(authApi *routegroup.Bundle) {
-		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
+		if s.AuthHash != "" {
+			authApi.Use(s.authMiddleware(rest.BasicAuthWithBcryptHashAndPrompt(s.AuthUser, s.AuthHash)))
+		}
 		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
 		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
 
@@ -247,13 +255,25 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	})
 
 	router.Route(func(webUI *routegroup.Bundle) {
-		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
+		if s.AuthHash != "" {
+			webUI.Use(s.authMiddleware(rest.BasicAuthWithBcryptHashAndPrompt(s.AuthUser, s.AuthHash)))
+		}
 		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
 		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
 		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
 		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+
+		// configuration management endpoints
+		if s.ConfigStore != nil && s.ConfigDBMode {
+			webUI.Mount("/config").Route(func(config *routegroup.Bundle) {
+				config.HandleFunc("POST /save", s.saveConfigHandler) // save current configuration to database
+				config.HandleFunc("POST /load", s.loadConfigHandler) // load configuration from database
+				config.HandleFunc("PUT /", s.updateConfigHandler)    // update configuration
+				config.HandleFunc("DELETE /", s.deleteConfigHandler) // delete configuration
+			})
+		}
 
 		// handle logout - force Basic Auth re-authentication
 		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
@@ -550,6 +570,10 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	// get the list of available Lua plugins before returning settings
 	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
+
+	// we don't need to modify the settings as we simply don't include
+	// sensitive fields like tokens and auth credentials in the Settings struct
+
 	rest.RenderJSON(w, s.Settings)
 }
 
@@ -729,7 +753,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	// get database information if StorageEngine is available
 	var dbInfo struct {
 		DatabaseType   string `json:"database_type"`
@@ -761,6 +785,16 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	// get the list of available Lua plugins
 	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
 
+	// get configuration DB status
+	configAvailable := false
+	var lastUpdated time.Time
+	if s.ConfigStore != nil {
+		configAvailable = true
+		if lu, err := s.ConfigStore.LastUpdated(r.Context()); err == nil {
+			lastUpdated = lu
+		}
+	}
+
 	data := struct {
 		Settings
 		Version  string
@@ -776,6 +810,9 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 		System struct {
 			Uptime string
 		}
+		ConfigAvailable bool
+		LastUpdated     time.Time
+		ConfigDBMode    bool
 	}{
 		Settings: s.Settings,
 		Version:  s.Version,
@@ -800,6 +837,9 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 		}{
 			Uptime: formatDuration(uptime),
 		},
+		ConfigAvailable: configAvailable,
+		LastUpdated:     lastUpdated,
+		ConfigDBMode:    s.ConfigDBMode,
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -1018,7 +1058,8 @@ func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 }
 
 func (s *Server) authMiddleware(mw func(next http.Handler) http.Handler) func(next http.Handler) http.Handler {
-	if s.AuthPasswd == "" {
+	if s.AuthHash == "" {
+		// if no hash is provided, authentication is disabled
 		return func(next http.Handler) http.Handler {
 			return next
 		}

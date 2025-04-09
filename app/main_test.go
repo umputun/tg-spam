@@ -849,17 +849,17 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		assert.Equal(t, opts.Telegram.Timeout, loadedOpts.Telegram.Timeout)
 		assert.Equal(t, opts.Telegram.IdleDuration, loadedOpts.Telegram.IdleDuration)
 
-		// verify sensitive fields are not stored (since debug mode is not set)
-		assert.Empty(t, loadedOpts.Telegram.Token)
+		// verify sensitive fields are properly stored
+		assert.Equal(t, "test-token", loadedOpts.Telegram.Token)
 	})
 
-	t.Run("save with debug to include tokens", func(t *testing.T) {
-		// create test options with debug mode enabled to store tokens
+	t.Run("verify tokens are stored with different values", func(t *testing.T) {
+		// create test options with different token values
 		opts := options{
 			InstanceID:  "test-instance",
 			DataBaseURL: dbFile,
 			ConfigDB:    false,
-			Dbg:         true, // enable debug mode to store tokens
+			Dbg:         true, // debug mode enabled for testing
 		}
 
 		// fill in the nested fields
