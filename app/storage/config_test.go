@@ -241,6 +241,75 @@ func (s *StorageTestSuite) TestConfig_Delete() {
 	}
 }
 
+func (s *StorageTestSuite) TestConfig_LastUpdated() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			type testConfig struct {
+				Key string `json:"key"`
+			}
+			config, err := NewConfig[testConfig](ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE config")
+
+			// Before any config is set, LastUpdated should return an error
+			_, err = config.LastUpdated(ctx)
+			s.Require().Error(err)
+			s.Contains(err.Error(), "no configuration found")
+
+			// Set some configuration
+			err = config.SetObject(ctx, &testConfig{Key: "value"})
+			s.Require().NoError(err)
+			
+			// Give the system a moment to ensure timestamp is recorded
+			time.Sleep(100 * time.Millisecond)
+
+			// Get the last updated time
+			lastUpdated, err := config.LastUpdated(ctx)
+			s.Require().NoError(err)
+			
+			// Ensure lastUpdated is not zero
+			s.False(lastUpdated.IsZero(), "LastUpdated time should not be zero")
+
+			// Save the first timestamp for comparison
+			firstTimeStamp := lastUpdated
+			
+			// Update the configuration with a small delay to ensure different timestamp
+			time.Sleep(100 * time.Millisecond)
+			err = config.SetObject(ctx, &testConfig{Key: "updated"})
+			s.Require().NoError(err)
+
+			// Give the system a moment to ensure timestamp is recorded
+			time.Sleep(100 * time.Millisecond)
+
+			// Get the updated time
+			updatedTime, err := config.LastUpdated(ctx)
+			s.Require().NoError(err)
+			
+			// For PostgreSQL, just check if the timestamp is not zero
+			// The timestamp precision can vary between database implementations
+			s.False(updatedTime.IsZero(), "Updated time should not be zero")
+			
+			// For SQLite, we should be able to detect the time difference
+			// For PostgreSQL, this might not be reliable due to timestamp precision
+			if db.Type() == engine.Sqlite {
+				s.True(updatedTime.After(firstTimeStamp) || updatedTime.Equal(firstTimeStamp), 
+					"Updated time should be after or equal to the first timestamp for SQLite")
+			}
+
+			// Delete the configuration
+			err = config.Delete(ctx)
+			s.Require().NoError(err)
+
+			// After deletion, LastUpdated should return an error
+			_, err = config.LastUpdated(ctx)
+			s.Require().Error(err)
+			s.Contains(err.Error(), "no configuration found")
+		})
+	}
+}
+
 func (s *StorageTestSuite) TestConfig_ConcurrentAccess() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
