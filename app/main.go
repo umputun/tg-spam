@@ -488,31 +488,19 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	authPasswd := opts.Server.AuthPasswd
 	authHash := opts.Server.AuthHash
 
-	// if no hash but password is provided, generate hash from password
-	if authHash == "" && authPasswd != "" {
-		if authPasswd == "auto" {
-			// generate random password
-			authPasswd, err = webapi.GenerateRandomPassword(20)
-			if err != nil {
-				return fmt.Errorf("can't generate random password, %w", err)
-			}
-		}
-
-		// generate hash from password
-		authHash, err = rest.GenerateBcryptHash(authPasswd)
+	// if hash is provided, use it directly
+	if authHash != "" {
+		log.Printf("[INFO] using provided bcrypt hash for authentication")
+	} else if authPasswd != "" {
+		// generate hash from password if no hash but password is provided
+		authHash, err = generateAuthHash(authPasswd)
 		if err != nil {
-			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
+			return fmt.Errorf("can't handle authentication setup: %w", err)
 		}
-
-		if authPasswd == "auto" {
-			log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPasswd, authHash)
-		} else {
-			log.Printf("[INFO] generated bcrypt hash from provided password")
-		}
-
 		// update AuthHash in options to use in server creation
 		opts.Server.AuthHash = authHash
 	}
+	// when neither hash nor password is provided, auth will be disabled
 
 	// make store and load approved users
 	detectedSpamStore, dsErr := storage.NewDetectedSpam(ctx, db)
@@ -693,31 +681,41 @@ func makeDetector(opts options) *tgspam.Detector {
 
 	// initialize Lua plugins if enabled
 	if opts.LuaPlugins.Enabled {
-		// copy Lua plugin settings to detector config
-		detector.LuaPlugins.Enabled = true
-		detector.LuaPlugins.PluginsDir = opts.LuaPlugins.PluginsDir
-		detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
-		detector.LuaPlugins.DynamicReload = opts.LuaPlugins.DynamicReload
-
-		// create and initialize the plugin engine
-		luaEngine := plugin.NewChecker()
-		if err := detector.WithLuaEngine(luaEngine); err != nil {
-			log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
-		} else {
-			log.Printf("[INFO] lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
-			if len(opts.LuaPlugins.EnabledPlugins) > 0 {
-				log.Printf("[INFO] enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
-			} else {
-				log.Print("[INFO] all Lua plugins from directory are enabled")
-			}
-
-			if opts.LuaPlugins.DynamicReload {
-				log.Print("[INFO] dynamic reloading of Lua plugins enabled")
-			}
-		}
+		initLuaPlugins(detector, opts)
 	}
 
 	return detector
+}
+
+// initLuaPlugins initializes Lua plugin engine and configures it
+func initLuaPlugins(detector *tgspam.Detector, opts options) {
+	// copy Lua plugin settings to detector config
+	detector.LuaPlugins.Enabled = true
+	detector.LuaPlugins.PluginsDir = opts.LuaPlugins.PluginsDir
+	detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
+	detector.LuaPlugins.DynamicReload = opts.LuaPlugins.DynamicReload
+
+	// create and initialize the plugin engine
+	luaEngine := plugin.NewChecker()
+	if err := detector.WithLuaEngine(luaEngine); err != nil {
+		log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
+		return
+	}
+
+	// log successful initialization
+	log.Printf("[INFO] lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
+
+	// log which plugins are enabled
+	if len(opts.LuaPlugins.EnabledPlugins) > 0 {
+		log.Printf("[INFO] enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
+	} else {
+		log.Print("[INFO] all Lua plugins from directory are enabled")
+	}
+
+	// log if dynamic reloading is enabled
+	if opts.LuaPlugins.DynamicReload {
+		log.Print("[INFO] dynamic reloading of Lua plugins enabled")
+	}
 }
 
 func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {
@@ -1092,6 +1090,40 @@ func backupDB(dbFile, version string, maxBackups int) error {
 		log.Printf("[DEBUG] db backup removed: %s", files[i])
 	}
 	return nil
+}
+
+// generateAuthHash creates a bcrypt hash from the given password
+// If the password is "auto", generates a random password first
+func generateAuthHash(password string) (string, error) {
+	var hashSource string
+	var randomPassword string
+	var err error
+
+	// Generate random password if needed
+	if password == "auto" {
+		randomPassword, err = webapi.GenerateRandomPassword(20)
+		if err != nil {
+			return "", fmt.Errorf("can't generate random password: %w", err)
+		}
+		hashSource = randomPassword
+	} else {
+		hashSource = password
+	}
+
+	// Generate hash from the password or random password
+	hash, err := rest.GenerateBcryptHash(hashSource)
+	if err != nil {
+		return "", fmt.Errorf("can't generate bcrypt hash: %w", err)
+	}
+
+	// Log the appropriate message
+	if password == "auto" {
+		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", randomPassword, hash)
+	} else {
+		log.Printf("[INFO] generated bcrypt hash from provided password")
+	}
+
+	return hash, nil
 }
 
 // loadConfigFromDB loads configuration from the database if the confdb flag is set

@@ -145,33 +145,9 @@ func (c *Config[T]) Set(ctx context.Context, data string) error {
 		return fmt.Errorf("failed to get set query: %w", err)
 	}
 
-	// for PostgreSQL, we need to ensure serialization
+	// for PostgreSQL, we need to use transactions
 	if c.Type() == engine.Postgres {
-		tx, txErr := c.BeginTxx(ctx, nil)
-		if txErr != nil {
-			return fmt.Errorf("failed to begin transaction: %w", txErr)
-		}
-		defer func() {
-			if err != nil {
-				_ = tx.Rollback()
-			}
-		}()
-
-		// lock the row for update to ensure serialization
-		_, lockErr := tx.ExecContext(ctx, "SELECT id FROM config WHERE gid = $1 FOR UPDATE", c.GID())
-		if lockErr != nil && lockErr.Error() != "sql: no rows in result set" {
-			return fmt.Errorf("failed to lock row: %w", lockErr)
-		}
-
-		_, execErr := tx.ExecContext(ctx, query, c.GID(), data, time.Now())
-		if execErr != nil {
-			return fmt.Errorf("failed to set config: %w", execErr)
-		}
-
-		if commitErr := tx.Commit(); commitErr != nil {
-			return fmt.Errorf("failed to commit transaction: %w", commitErr)
-		}
-		return nil
+		return c.setConfigPostgres(ctx, query, data)
 	}
 
 	// for SQLite, the RWLock is sufficient
@@ -201,6 +177,41 @@ func (c *Config[T]) Delete(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete config: %w", err)
 	}
+	return nil
+}
+
+// setConfigPostgres handles PostgreSQL-specific configuration storage with transaction
+func (c *Config[T]) setConfigPostgres(ctx context.Context, query, data string) error {
+	// Begin transaction
+	tx, err := c.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Set up rollback on error
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Lock the row for update to ensure serialization
+	_, err = tx.ExecContext(ctx, "SELECT id FROM config WHERE gid = $1 FOR UPDATE", c.GID())
+	if err != nil && err.Error() != "sql: no rows in result set" {
+		return fmt.Errorf("failed to lock row: %w", err)
+	}
+
+	// Execute the main query
+	_, err = tx.ExecContext(ctx, query, c.GID(), data, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to set config: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
