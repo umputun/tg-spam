@@ -782,3 +782,241 @@ func TestBackupDB(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestSaveAndLoadConfig(t *testing.T) {
+	// setup test environment
+	setupLog(true)
+
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "config-test.db")
+
+	t.Run("save and load config", func(t *testing.T) {
+		// create test options with some values
+		opts := options{
+			InstanceID:      "test-instance",
+			DataBaseURL:     dbFile,
+			ConfigDB:        false,
+			Dry:             true,
+			SoftBan:         true,
+			MinMsgLen:       100,
+			MaxEmoji:        5,
+			HistorySize:     200,
+			ParanoidMode:    true,
+			Training:        true,
+			MultiLangWords:  3,
+			StorageTimeout:  30 * time.Second,
+			HistoryDuration: 24 * time.Hour,
+			HistoryMinSize:  500,
+		}
+
+		// fill nested struct fields
+		opts.Telegram.Token = "test-token"
+		opts.Telegram.Group = "test-group"
+		opts.Telegram.Timeout = 5 * time.Second
+		opts.Telegram.IdleDuration = 10 * time.Second
+
+		// test saving config to DB
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, &opts)
+		require.NoError(t, err)
+
+		// create a new options struct to load into
+		loadedOpts := options{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+			InstanceID:  "test-instance",
+		}
+
+		// test loading config from DB
+		err = loadConfigFromDB(ctx, &loadedOpts)
+		require.NoError(t, err)
+
+		// verify loaded values match original (except sensitive fields that should be cleared)
+		assert.Equal(t, opts.InstanceID, loadedOpts.InstanceID)
+		assert.Equal(t, opts.Dry, loadedOpts.Dry)
+		assert.Equal(t, opts.SoftBan, loadedOpts.SoftBan)
+		assert.Equal(t, opts.MinMsgLen, loadedOpts.MinMsgLen)
+		assert.Equal(t, opts.MaxEmoji, loadedOpts.MaxEmoji)
+		assert.Equal(t, opts.HistorySize, loadedOpts.HistorySize)
+		assert.Equal(t, opts.ParanoidMode, loadedOpts.ParanoidMode)
+		assert.Equal(t, opts.Training, loadedOpts.Training)
+		assert.Equal(t, opts.MultiLangWords, loadedOpts.MultiLangWords)
+		assert.Equal(t, opts.HistoryDuration, loadedOpts.HistoryDuration)
+		assert.Equal(t, opts.HistoryMinSize, loadedOpts.HistoryMinSize)
+
+		// group-related fields
+		assert.Equal(t, opts.Telegram.Group, loadedOpts.Telegram.Group)
+		assert.Equal(t, opts.Telegram.Timeout, loadedOpts.Telegram.Timeout)
+		assert.Equal(t, opts.Telegram.IdleDuration, loadedOpts.Telegram.IdleDuration)
+
+		// verify sensitive fields are not stored (since debug mode is not set)
+		assert.Empty(t, loadedOpts.Telegram.Token)
+	})
+
+	t.Run("save with debug to include tokens", func(t *testing.T) {
+		// create test options with debug mode enabled to store tokens
+		opts := options{
+			InstanceID:  "test-instance",
+			DataBaseURL: dbFile,
+			ConfigDB:    false,
+			Dbg:         true, // enable debug mode to store tokens
+		}
+
+		// fill in the nested fields
+		opts.Telegram.Token = "secret-token"
+		opts.OpenAI.Token = "openai-token"
+
+		// test saving config to DB with debug mode
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, &opts)
+		require.NoError(t, err)
+
+		// create a new options struct to load into
+		loadedOpts := options{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+			InstanceID:  "test-instance",
+		}
+
+		// test loading config from DB
+		err = loadConfigFromDB(ctx, &loadedOpts)
+		require.NoError(t, err)
+
+		// verify tokens are stored when debug mode is enabled
+		assert.Equal(t, "secret-token", loadedOpts.Telegram.Token)
+		assert.Equal(t, "openai-token", loadedOpts.OpenAI.Token)
+	})
+
+	t.Run("override cli values", func(t *testing.T) {
+		// this test simulates what happens in main.go, where we save CLI values, load from DB, then restore CLI values
+
+		// first save a configuration as if it already exists in database
+		// NOTE: Important to use the same GID ("test-instance") for all operations in this test
+		saveOpts := options{
+			InstanceID:      "test-instance", // use same GID for config
+			DataBaseURL:     dbFile,
+			Dry:             true,
+			Dbg:             false,
+			TGDbg:           false,
+			StorageTimeout:  10 * time.Second,
+			HistoryDuration: 48 * time.Hour,
+			MultiLangWords:  5,
+		}
+
+		// fill in nested fields for saveOpts
+		saveOpts.Telegram.Token = "db-token"
+		saveOpts.Telegram.Group = "db-group"
+		saveOpts.Server.AuthPasswd = "db-password"
+		saveOpts.Server.AuthHash = "db-hash"
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, &saveOpts)
+		require.NoError(t, err)
+
+		// create test options with CLI values that should be preserved
+		origOpts := options{
+			InstanceID:     "test-instance", // same GID needed to read config
+			DataBaseURL:    dbFile,
+			ConfigDB:       true,
+			Dry:            false,
+			Dbg:            true,
+			TGDbg:          true,
+			StorageTimeout: 30 * time.Second,
+		}
+
+		// fill in nested fields
+		origOpts.Telegram.Token = "cli-token"
+		origOpts.Telegram.Group = "cli-group"
+		origOpts.Server.AuthPasswd = "cli-password"
+		origOpts.Server.AuthHash = "cli-hash"
+
+		// store original values (in the same way main.go does)
+		originalValues := map[string]interface{}{
+			"DataBaseURL":       origOpts.DataBaseURL,
+			"InstanceID":        origOpts.InstanceID,
+			"ConfigDB":          origOpts.ConfigDB,
+			"Dbg":               origOpts.Dbg,
+			"TGDbg":             origOpts.TGDbg,
+			"Server.AuthPasswd": origOpts.Server.AuthPasswd,
+			"Server.AuthHash":   origOpts.Server.AuthHash,
+			"Telegram.Token":    origOpts.Telegram.Token,
+			"OpenAI.Token":      origOpts.OpenAI.Token,
+			"StorageTimeout":    origOpts.StorageTimeout,
+		}
+
+		// test loading configuration from database
+		err = loadConfigFromDB(ctx, &origOpts)
+		require.NoError(t, err)
+
+		// manually restore the CLI values that should override DB values
+		// (this simulates what happens in main.go)
+		origOpts.DataBaseURL = originalValues["DataBaseURL"].(string)
+		origOpts.InstanceID = originalValues["InstanceID"].(string)
+		origOpts.ConfigDB = originalValues["ConfigDB"].(bool)
+		origOpts.Dbg = originalValues["Dbg"].(bool)
+		origOpts.TGDbg = originalValues["TGDbg"].(bool)
+		origOpts.Server.AuthPasswd = originalValues["Server.AuthPasswd"].(string)
+		origOpts.Server.AuthHash = originalValues["Server.AuthHash"].(string)
+		origOpts.Telegram.Token = originalValues["Telegram.Token"].(string)
+		origOpts.StorageTimeout = originalValues["StorageTimeout"].(time.Duration)
+
+		// now verify - CLI values should be preserved
+		assert.Equal(t, "test-instance", origOpts.InstanceID)
+		assert.Equal(t, true, origOpts.Dbg)
+		assert.Equal(t, true, origOpts.TGDbg)
+		assert.Equal(t, "cli-password", origOpts.Server.AuthPasswd)
+		assert.Equal(t, "cli-hash", origOpts.Server.AuthHash)
+		assert.Equal(t, "cli-token", origOpts.Telegram.Token)
+		assert.Equal(t, 30*time.Second, origOpts.StorageTimeout)
+
+		// DB values should be loaded for non-preserved fields
+		assert.Equal(t, true, origOpts.Dry)                     // from DB
+		assert.Equal(t, 5, origOpts.MultiLangWords)             // from DB
+		assert.Equal(t, 48*time.Hour, origOpts.HistoryDuration) // from DB
+		assert.Equal(t, "db-group", origOpts.Telegram.Group)    // from DB
+	})
+
+	t.Run("error handling - database error", func(t *testing.T) {
+		// let's use a path that doesn't exist and that the user definitely doesn't have permissions to create
+		invalidPath := "/root/protected/file.db"
+		// on non-Unix systems, this might not work, so we'll skip the test if we can actually create this file
+		if _, err := os.Stat("/root"); err == nil {
+			t.Skip("Can access /root directory, this test might not be reliable")
+		}
+
+		invalidOpts := options{
+			DataBaseURL: invalidPath,
+			InstanceID:  "test-instance",
+			ConfigDB:    true,
+		}
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, &invalidOpts)
+		assert.Error(t, err, "Expected error when trying to save to invalid database path")
+
+		err = loadConfigFromDB(ctx, &invalidOpts)
+		assert.Error(t, err, "Expected error when trying to load from invalid database path")
+	})
+
+	t.Run("error handling - non-existent config", func(t *testing.T) {
+		// use a new database file to ensure no config exists
+		newDbFile := filepath.Join(tmpDir, "empty-config.db")
+
+		// first create a valid database with no config
+		db, err := engine.NewSqlite(newDbFile, "test-instance")
+		require.NoError(t, err)
+		db.Close()
+
+		emptyOpts := options{
+			DataBaseURL: newDbFile,
+			InstanceID:  "test-instance",
+			ConfigDB:    true,
+		}
+
+		ctx := context.Background()
+		// try to load from a database with no config
+		err = loadConfigFromDB(ctx, &emptyOpts)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to load configuration")
+	})
+}

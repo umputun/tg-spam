@@ -1074,29 +1074,6 @@ func backupDB(dbFile, version string, maxBackups int) error {
 	return nil
 }
 
-func setupLog(dbg bool, secrets ...string) {
-	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
-	if dbg {
-		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
-	}
-
-	colorizer := lgr.Mapper{
-		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
-		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
-		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
-		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
-		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
-		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
-	}
-	logOpts = append(logOpts, lgr.Map(colorizer))
-
-	if len(secrets) > 0 {
-		logOpts = append(logOpts, lgr.Secret(secrets...))
-	}
-	lgr.SetupStdLogger(logOpts...)
-	lgr.Setup(logOpts...)
-}
-
 // loadConfigFromDB loads configuration from the database if the confdb flag is set
 func loadConfigFromDB(ctx context.Context, opts *options) error {
 	if !opts.ConfigDB {
@@ -1163,4 +1140,27 @@ func saveConfigToDB(ctx context.Context, opts *options) error {
 
 	log.Printf("[INFO] configuration saved to database successfully")
 	return nil
+}
+
+func setupLog(dbg bool, secrets ...string) {
+	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+	if dbg {
+		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+	}
+
+	colorizer := lgr.Mapper{
+		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
+		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
+		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
+		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
+		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
+		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
+	}
+	logOpts = append(logOpts, lgr.Map(colorizer))
+
+	if len(secrets) > 0 {
+		logOpts = append(logOpts, lgr.Secret(secrets...))
+	}
+	lgr.SetupStdLogger(logOpts...)
+	lgr.Setup(logOpts...)
 }
