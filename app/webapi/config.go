@@ -278,13 +278,11 @@ func updateSettingsFromForm(settings *Settings, r *http.Request) {
 			settings.WatchIntervalSecs = secs
 		}
 	}
-	if val := r.FormValue("storageTimeout"); val != "" {
-		if duration, err := time.ParseDuration(val); err == nil {
-			settings.StorageTimeout = duration
-		}
-	}
+	// StorageTimeout is only set via CLI and should not be modified in the UI
+	// we intentionally don't read this value from the form
 
-	// debug modes
+	// debug modes - note that these may be ignored when loading from DB as they're primarily CLI settings
+	// we still save them here for the web UI to reflect the current state
 	settings.DebugModeEnabled = r.FormValue("debugModeEnabled") == "on"
 	settings.DryModeEnabled = r.FormValue("dryModeEnabled") == "on"
 	settings.TGDebugModeEnabled = r.FormValue("tgDebugModeEnabled") == "on"

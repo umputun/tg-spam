@@ -200,8 +200,8 @@ func main() {
 
 		// control flags
 		"ConfigDB": opts.ConfigDB,
-		"Dbg":      opts.Dbg,
-		"TGDbg":    opts.TGDbg,
+		"Dbg":      opts.Dbg,   // command line only, not stored in DB
+		"TGDbg":    opts.TGDbg, // command line only, not stored in DB
 
 		// security-related parameters
 		"Server.AuthUser":   opts.Server.AuthUser,
@@ -211,7 +211,7 @@ func main() {
 		"OpenAI.Token":      opts.OpenAI.Token,
 
 		// storage configuration
-		"StorageTimeout": opts.StorageTimeout,
+		"StorageTimeout": opts.StorageTimeout, // command line only, not stored in DB
 	}
 
 	// handle commands
@@ -1099,7 +1099,7 @@ func generateAuthHash(password string) (string, error) {
 	var randomPassword string
 	var err error
 
-	// Generate random password if needed
+	// generate random password if needed
 	if password == "auto" {
 		randomPassword, err = webapi.GenerateRandomPassword(20)
 		if err != nil {
@@ -1110,13 +1110,13 @@ func generateAuthHash(password string) (string, error) {
 		hashSource = password
 	}
 
-	// Generate hash from the password or random password
+	// generate hash from the password or random password
 	hash, err := rest.GenerateBcryptHash(hashSource)
 	if err != nil {
 		return "", fmt.Errorf("can't generate bcrypt hash: %w", err)
 	}
 
-	// Log the appropriate message
+	// log the appropriate message
 	if password == "auto" {
 		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", randomPassword, hash)
 	} else {
@@ -1177,6 +1177,11 @@ func saveConfigToDB(ctx context.Context, opts *options) error {
 
 	// don't store plain text passwords, but keep username and password hash
 	configToSave.Server.AuthPasswd = "" // never store plain passwords
+
+	// don't store command line only settings
+	configToSave.Dbg = false        // debug mode is set via CLI only
+	configToSave.TGDbg = false      // telegram debug mode is set via CLI only
+	configToSave.StorageTimeout = 0 // storage timeout is set via CLI only
 
 	// we store tokens and hashes in the database, but they will be masked in API responses
 

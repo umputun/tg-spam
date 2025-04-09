@@ -466,11 +466,7 @@
                     <input type="number" min="0" class="form-control" id="watchIntervalSecs" name="watchIntervalSecs" value="{{.WatchIntervalSecs}}">
                     <div class="form-text">Interval to check for file changes</div>
                 </div>
-                <div class="col-md-6 mb-3">
-                    <label for="storageTimeout" class="form-label">Storage Timeout</label>
-                    <input type="text" class="form-control" id="storageTimeout" name="storageTimeout" value="{{.StorageTimeout}}">
-                    <div class="form-text">Database operation timeout (e.g., "30s", "1m")</div>
-                </div>
+                <!-- StorageTimeout removed, as it's only controlled via CLI -->
             </div>
 
             <div class="row mb-3">
@@ -491,7 +487,8 @@
                         <tr><th style="width: 30%">Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
                         <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
                         <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
-                        <tr><th>Storage Timeout</th><td>{{.StorageTimeout}}</td></tr>
+                        <!-- StorageTimeout shown as CLI-only setting -->
+                        <tr><th>Storage Timeout</th><td>{{.StorageTimeout}} <small class="text-muted">(set via CLI)</small></td></tr>
                         <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
                     </tbody>
                 </table>
