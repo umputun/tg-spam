@@ -167,7 +167,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	settings.Admin.DisableAdminSpamForward = r.FormValue("disableAdminSpamForward") == "on"
 	settings.Logger.Enabled = r.FormValue("loggerEnabled") == "on"
 	settings.NoSpamReply = r.FormValue("noSpamReply") == "on"
-	
+
 	// handle CasEnabled separately because we need to set CAS.API
 	casEnabled := r.FormValue("casEnabled") == "on"
 	if casEnabled && settings.CAS.API == "" {
@@ -190,7 +190,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 
 	// meta checks
 	metaEnabled := r.FormValue("metaEnabled") == "on"
-	
+
 	if val := r.FormValue("metaLinksLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
 			settings.Meta.LinksLimit = limit
@@ -198,7 +198,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	} else if !metaEnabled {
 		settings.Meta.LinksLimit = -1
 	}
-	
+
 	if val := r.FormValue("metaMentionsLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
 			settings.Meta.MentionsLimit = limit
@@ -206,14 +206,14 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	} else if !metaEnabled {
 		settings.Meta.MentionsLimit = -1
 	}
-	
+
 	settings.Meta.LinksOnly = r.FormValue("metaLinksOnly") == "on"
 	settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
 	settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
 	settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 	settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 	settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
-	
+
 	if val := r.FormValue("metaUsernameSymbols"); val != "" {
 		settings.Meta.UsernameSymbols = val
 	} else if !metaEnabled {
@@ -225,15 +225,15 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	if !openAIEnabled {
 		settings.OpenAI.APIBase = ""
 	}
-	
+
 	settings.OpenAI.Veto = r.FormValue("openAIVeto") == "on"
-	
+
 	if val := r.FormValue("openAIHistorySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
 			settings.OpenAI.HistorySize = size
 		}
 	}
-	
+
 	if val := r.FormValue("openAIModel"); val != "" {
 		settings.OpenAI.Model = val
 	}
@@ -241,7 +241,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	// lua plugins
 	settings.LuaPlugins.Enabled = r.FormValue("luaPluginsEnabled") == "on"
 	settings.LuaPlugins.DynamicReload = r.FormValue("luaDynamicReload") == "on"
-	
+
 	if val := r.FormValue("luaPluginsDir"); val != "" {
 		settings.LuaPlugins.PluginsDir = val
 	}
@@ -255,33 +255,33 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.SimilarityThreshold = threshold
 		}
 	}
-	
+
 	if val := r.FormValue("minMsgLen"); val != "" {
 		if msgLen, err := strconv.Atoi(val); err == nil {
 			settings.MinMsgLen = msgLen
 		}
 	}
-	
+
 	if val := r.FormValue("maxEmoji"); val != "" {
 		if count, err := strconv.Atoi(val); err == nil {
 			settings.MaxEmoji = count
 		}
 	}
-	
+
 	if val := r.FormValue("minSpamProbability"); val != "" {
 		if prob, err := strconv.ParseFloat(val, 64); err == nil {
 			settings.MinSpamProbability = prob
 		}
 	}
-	
+
 	settings.ParanoidMode = r.FormValue("paranoidMode") == "on"
-	
+
 	if val := r.FormValue("firstMessagesCount"); val != "" {
 		if count, err := strconv.Atoi(val); err == nil {
 			settings.FirstMessagesCount = count
 		}
 	}
-	
+
 	// startupMessageEnabled controls Message.Startup
 	startupMessageEnabled := r.FormValue("startupMessageEnabled") == "on"
 	if startupMessageEnabled && settings.Message.Startup == "" {
@@ -289,17 +289,17 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	} else if !startupMessageEnabled {
 		settings.Message.Startup = ""
 	}
-	
+
 	settings.Training = r.FormValue("trainingEnabled") == "on"
 	settings.SoftBan = r.FormValue("softBanEnabled") == "on"
 	settings.AbnormalSpace.Enabled = r.FormValue("abnormalSpacingEnabled") == "on"
-	
+
 	if val := r.FormValue("multiLangLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
 			settings.MultiLangWords = limit
 		}
 	}
-	
+
 	if val := r.FormValue("historySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
 			settings.History.Size = size
@@ -310,19 +310,19 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	if val := r.FormValue("samplesDataPath"); val != "" {
 		settings.Files.SamplesDataPath = val
 	}
-	
+
 	if val := r.FormValue("dynamicDataPath"); val != "" {
 		settings.Files.DynamicDataPath = val
 	}
-	
+
 	if val := r.FormValue("watchIntervalSecs"); val != "" {
 		if secs, err := strconv.Atoi(val); err == nil {
 			settings.Files.WatchInterval = secs
 		}
 	}
-	
+
 	// debug modes - they're primarily CLI settings but we still update them here
 	settings.Transient.Dbg = r.FormValue("debugModeEnabled") == "on"
-	settings.Dry = r.FormValue("dryModeEnabled") == "on" 
+	settings.Dry = r.FormValue("dryModeEnabled") == "on"
 	settings.Transient.TGDbg = r.FormValue("tgDebugModeEnabled") == "on"
 }

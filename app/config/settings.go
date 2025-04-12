@@ -196,14 +196,14 @@ func (s *Settings) IsOpenAIEnabled() bool {
 
 // IsMetaEnabled returns true if any meta check is enabled
 func (s *Settings) IsMetaEnabled() bool {
-	return s.Meta.ImageOnly || 
-		s.Meta.LinksLimit >= 0 || 
-		s.Meta.MentionsLimit >= 0 || 
-		s.Meta.LinksOnly || 
-		s.Meta.VideosOnly || 
-		s.Meta.AudiosOnly || 
-		s.Meta.Forward || 
-		s.Meta.Keyboard || 
+	return s.Meta.ImageOnly ||
+		s.Meta.LinksLimit >= 0 ||
+		s.Meta.MentionsLimit >= 0 ||
+		s.Meta.LinksOnly ||
+		s.Meta.VideosOnly ||
+		s.Meta.AudiosOnly ||
+		s.Meta.Forward ||
+		s.Meta.Keyboard ||
 		s.Meta.UsernameSymbols != ""
 }
 

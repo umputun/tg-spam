@@ -184,5 +184,8 @@ func initDbTable(ctx context.Context, db *engine.SQL) error {
 	}
 
 	_, err := db.ExecContext(ctx, createTableSQL)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to create config table: %w", err)
+	}
+	return nil
 }

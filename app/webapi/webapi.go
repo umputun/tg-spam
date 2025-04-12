@@ -54,20 +54,20 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version       string               // version to show in /ping
-	ListenAddr    string               // listen address
-	Detector      Detector             // spam detector
-	SpamFilter    SpamFilter           // spam filter (bot)
-	DetectedSpam  DetectedSpam         // detected spam accessor
-	Locator       Locator              // locator for user info
-	StorageEngine StorageEngine        // database engine access for backups
-	SettingsStore SettingsStore        // configuration storage interface
-	AuthUser      string               // basic auth username (default: "tg-spam")
-	AuthPasswd    string               // basic auth password
-	AuthHash      string               // basic auth hash. If both AuthPasswd and AuthHash are provided, AuthHash is used
-	Dbg           bool                 // debug mode
-	AppSettings   *config.Settings     // application settings
-	ConfigDBMode  bool                 // indicates if app is running with database config
+	Version       string           // version to show in /ping
+	ListenAddr    string           // listen address
+	Detector      Detector         // spam detector
+	SpamFilter    SpamFilter       // spam filter (bot)
+	DetectedSpam  DetectedSpam     // detected spam accessor
+	Locator       Locator          // locator for user info
+	StorageEngine StorageEngine    // database engine access for backups
+	SettingsStore SettingsStore    // configuration storage interface
+	AuthUser      string           // basic auth username (default: "tg-spam")
+	AuthPasswd    string           // basic auth password
+	AuthHash      string           // basic auth hash. If both AuthPasswd and AuthHash are provided, AuthHash is used
+	Dbg           bool             // debug mode
+	AppSettings   *config.Settings // application settings
+	ConfigDBMode  bool             // indicates if app is running with database config
 }
 
 // Settings contains all application settings
@@ -796,8 +796,8 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		*config.Settings
 		LuaAvailablePlugins []string
-		Version  string
-		Database struct {
+		Version             string
+		Database            struct {
 			Type   string
 			GID    string
 			Status string
@@ -813,9 +813,9 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		LastUpdated     time.Time
 		ConfigDBMode    bool
 	}{
-		Settings: s.AppSettings,
+		Settings:            s.AppSettings,
 		LuaAvailablePlugins: luaPlugins,
-		Version:  s.Version,
+		Version:             s.Version,
 		Database: struct {
 			Type   string
 			GID    string
