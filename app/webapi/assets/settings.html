@@ -28,8 +28,8 @@
                                     <tr><th style="width: 30%">Version</th><td>{{.Version}}</td></tr>
                                     <tr><th>Uptime</th><td>{{.System.Uptime}}</td></tr>
                                     <tr><th>Instance ID</th><td>{{.InstanceID}}</td></tr>
-                                    <tr><th>Primary Group</th><td>{{.PrimaryGroup}}</td></tr>
-                                    <tr><th>Admin Group</th><td>{{.AdminGroup}}</td></tr>
+                                    <tr><th>Primary Group</th><td>{{.Telegram.Group}}</td></tr>
+                                    <tr><th>Admin Group</th><td>{{.Admin.AdminGroup}}</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -232,7 +232,7 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="metaEnabled" name="metaEnabled" {{if .MetaEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaEnabled" name="metaEnabled" {{if .IsMetaEnabled}}checked{{end}}>
                         <label class="form-check-label" for="metaEnabled">Meta Enabled</label>
                     </div>
                 </div>
@@ -241,12 +241,12 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="metaLinksLimit" class="form-label">Meta Links Limit</label>
-                    <input type="number" class="form-control" id="metaLinksLimit" name="metaLinksLimit" value="{{.MetaLinksLimit}}">
+                    <input type="number" class="form-control" id="metaLinksLimit" name="metaLinksLimit" value="{{.Meta.LinksLimit}}">
                     <div class="form-text">Max links in message (-1 to disable)</div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="metaMentionsLimit" class="form-label">Meta Mentions Limit</label>
-                    <input type="number" class="form-control" id="metaMentionsLimit" name="metaMentionsLimit" value="{{.MetaMentionsLimit}}">
+                    <input type="number" class="form-control" id="metaMentionsLimit" name="metaMentionsLimit" value="{{.Meta.MentionsLimit}}">
                     <div class="form-text">Max mentions in message (-1 to disable)</div>
                 </div>
             </div>
@@ -254,28 +254,28 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="metaUsernameSymbols" class="form-label">Meta Username Symbols</label>
-                    <input type="text" class="form-control" id="metaUsernameSymbols" name="metaUsernameSymbols" value="{{.MetaUsernameSymbols}}">
+                    <input type="text" class="form-control" id="metaUsernameSymbols" name="metaUsernameSymbols" value="{{.Meta.UsernameSymbols}}">
                     <div class="form-text">Symbols to check in usernames (leave empty to disable)</div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="metaLinksOnly" name="metaLinksOnly" {{if .MetaLinksOnly}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaLinksOnly" name="metaLinksOnly" {{if .Meta.LinksOnly}}checked{{end}}>
                         <label class="form-check-label" for="metaLinksOnly">Meta Links Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaImageOnly" name="metaImageOnly" {{if .MetaImageOnly}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaImageOnly" name="metaImageOnly" {{if .Meta.ImageOnly}}checked{{end}}>
                         <label class="form-check-label" for="metaImageOnly">Meta Image Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaVideoOnly" name="metaVideoOnly" {{if .MetaVideoOnly}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaVideoOnly" name="metaVideoOnly" {{if .Meta.VideosOnly}}checked{{end}}>
                         <label class="form-check-label" for="metaVideoOnly">Meta Video Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaAudioOnly" name="metaAudioOnly" {{if .MetaAudioOnly}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaAudioOnly" name="metaAudioOnly" {{if .Meta.AudiosOnly}}checked{{end}}>
                         <label class="form-check-label" for="metaAudioOnly">Meta Audio Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaKeyboard" name="metaKeyboard" {{if .MetaKeyboard}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaKeyboard" name="metaKeyboard" {{if .Meta.Keyboard}}checked{{end}}>
                         <label class="form-check-label" for="metaKeyboard">Meta Keyboard</label>
                     </div>
                 </div>
@@ -308,17 +308,17 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="openAIEnabled" name="openAIEnabled" {{if .OpenAIEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="openAIEnabled" name="openAIEnabled" {{if .IsOpenAIEnabled}}checked{{end}}>
                         <label class="form-check-label" for="openAIEnabled">OpenAI Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="openAIVeto" name="openAIVeto" {{if .OpenAIVeto}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="openAIVeto" name="openAIVeto" {{if .OpenAI.Veto}}checked{{end}}>
                         <label class="form-check-label" for="openAIVeto">OpenAI Veto</label>
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="openAIHistorySize" class="form-label">OpenAI History Size</label>
-                    <input type="number" min="0" class="form-control" id="openAIHistorySize" name="openAIHistorySize" value="{{.OpenAIHistorySize}}">
+                    <input type="number" min="0" class="form-control" id="openAIHistorySize" name="openAIHistorySize" value="{{.OpenAI.HistorySize}}">
                     <div class="form-text">Number of messages to include in OpenAI context</div>
                 </div>
             </div>
@@ -360,17 +360,17 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="luaPluginsEnabled" name="luaPluginsEnabled" {{if .LuaPluginsEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="luaPluginsEnabled" name="luaPluginsEnabled" {{if .LuaPlugins.Enabled}}checked{{end}}>
                         <label class="form-check-label" for="luaPluginsEnabled">Lua Plugins Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="luaDynamicReload" name="luaDynamicReload" {{if .LuaDynamicReload}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="luaDynamicReload" name="luaDynamicReload" {{if .LuaPlugins.DynamicReload}}checked{{end}}>
                         <label class="form-check-label" for="luaDynamicReload">Dynamic Reload</label>
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="luaPluginsDir" class="form-label">Plugins Directory</label>
-                    <input type="text" class="form-control" id="luaPluginsDir" name="luaPluginsDir" value="{{.LuaPluginsDir}}">
+                    <input type="text" class="form-control" id="luaPluginsDir" name="luaPluginsDir" value="{{.LuaPlugins.PluginsDir}}">
                     <div class="form-text">Directory containing Lua plugins</div>
                 </div>
             </div>
@@ -384,8 +384,8 @@
                         <div class="col-md-4 mb-2">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="luaEnabledPlugins" value="{{.}}" id="plugin-{{.}}" 
-                                    {{$plugin := .}}{{range $.LuaEnabledPlugins}}{{if eq . $plugin}}checked{{end}}{{end}}
-                                    {{if eq (len $.LuaEnabledPlugins) 0}}checked{{end}}>
+                                    {{$plugin := .}}{{range $.LuaPlugins.EnabledPlugins}}{{if eq . $plugin}}checked{{end}}{{end}}
+                                    {{if eq (len $.LuaPlugins.EnabledPlugins) 0}}checked{{end}}>
                                 <label class="form-check-label" for="plugin-{{.}}">{{.}}</label>
                             </div>
                         </div>

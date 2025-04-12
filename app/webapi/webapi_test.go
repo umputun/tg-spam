@@ -1355,7 +1355,6 @@ func TestServer_getSettingsHandler(t *testing.T) {
 }
 
 func TestServer_htmlSettingsHandler(t *testing.T) {
-	t.Skip("Skipping until template is updated to use nested config.Settings structure")
 	// test without StorageEngine (default case)
 	t.Run("without storage engine", func(t *testing.T) {
 		detectorMock := &mocks.DetectorMock{
