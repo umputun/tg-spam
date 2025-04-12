@@ -1,0 +1,285 @@
+package config
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/go-pkgz/testutils/containers"
+	"github.com/stretchr/testify/suite"
+
+	"github.com/umputun/tg-spam/app/storage/engine"
+)
+
+// SettingsTestSuite is a test suite for the settings package
+type SettingsTestSuite struct {
+	suite.Suite
+	dbs         map[string]*engine.SQL
+	pgContainer *containers.PostgresTestContainer
+	sqliteFile  string
+	ctx         context.Context
+}
+
+func TestSettingsSuite(t *testing.T) {
+	suite.Run(t, new(SettingsTestSuite))
+}
+
+func (s *SettingsTestSuite) SetupSuite() {
+	s.ctx = context.Background()
+	s.dbs = make(map[string]*engine.SQL)
+
+	// setup SQLite with file-based db
+	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
+	s.T().Logf("sqlite file: %s", s.sqliteFile)
+	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "test-group")
+	s.Require().NoError(err)
+	s.dbs["sqlite"] = sqliteDB
+
+	// setup PostgreSQL if not in short test mode
+	if !testing.Short() {
+		s.T().Log("starting postgres container")
+		ctx := context.Background()
+
+		// use testutils PostgresTestContainer
+		s.pgContainer = containers.NewPostgresTestContainerWithDB(ctx, s.T(), "test")
+		s.T().Log("postgres container started")
+
+		// create database connection using the container
+		connStr := s.pgContainer.ConnectionString()
+		pgDB, err := engine.NewPostgres(ctx, connStr, "test-group")
+		s.Require().NoError(err)
+		s.dbs["postgres"] = pgDB
+	}
+}
+
+func (s *SettingsTestSuite) TearDownSuite() {
+	for _, db := range s.dbs {
+		db.Close()
+	}
+
+	// remove SQLite test file
+	if s.sqliteFile != "" {
+		_ = os.Remove(s.sqliteFile)
+	}
+
+	// stop PostgreSQL container if it was started
+	if s.pgContainer != nil {
+		// since the container is managed by testutils, we don't need to explicitly stop it
+		s.T().Log("postgres container will be stopped by testutils")
+	}
+}
+
+// getTestDB returns all the test databases to use for testing
+func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
+	var result []*engine.SQL
+	for _, db := range s.dbs {
+		result = append(result, db)
+	}
+	return result
+}
+
+// SetupTest runs before each test to ensure a clean environment
+func (s *SettingsTestSuite) SetupTest() {
+	// drop config table before each test to ensure clean state
+	for _, db := range s.dbs {
+		_, err := db.Exec("DROP TABLE IF EXISTS config")
+		s.Require().NoError(err)
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_SaveLoad() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create store
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// create test settings
+			settings := New()
+			settings.InstanceID = "test-store"
+			settings.SimilarityThreshold = 0.8
+			settings.Telegram.Group = "test-group"
+			settings.Telegram.Timeout = 45 * time.Second
+			settings.Server.Enabled = true
+			settings.Message.Spam = "spam message from store test"
+
+			// add transient data that should not be saved
+			settings.Transient.Credentials.TelegramToken = "should-not-be-saved"
+			settings.Transient.Credentials.OpenAIToken = "openai-token"
+			settings.Transient.StorageTimeout = 5 * time.Minute
+			settings.Transient.ConfigDB = true
+			settings.Transient.Dbg = true
+
+			// save settings
+			err = store.Save(s.ctx, settings)
+			s.Require().NoError(err)
+
+			// check if settings exist
+			exists, err := store.Exists(s.ctx)
+			s.Require().NoError(err)
+			s.True(exists)
+
+			// check last updated time
+			lastUpdate, err := store.LastUpdated(s.ctx)
+			s.Require().NoError(err)
+			s.False(lastUpdate.IsZero(), "LastUpdated time should not be zero")
+
+			// load settings
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// check loaded settings
+			s.Equal("test-store", loaded.InstanceID)
+			s.Equal(0.8, loaded.SimilarityThreshold)
+			s.Equal("test-group", loaded.Telegram.Group)
+			s.Equal(45*time.Second, loaded.Telegram.Timeout)
+			s.True(loaded.Server.Enabled)
+			s.Equal("spam message from store test", loaded.Message.Spam)
+
+			// transient data should be empty
+			s.Empty(loaded.Transient.Credentials.TelegramToken)
+			s.Empty(loaded.Transient.Credentials.OpenAIToken)
+			s.Zero(loaded.Transient.StorageTimeout)
+			s.False(loaded.Transient.ConfigDB)
+			s.False(loaded.Transient.Dbg)
+
+			// delete settings
+			err = store.Delete(s.ctx)
+			s.Require().NoError(err)
+
+			// check settings no longer exist
+			exists, err = store.Exists(s.ctx)
+			s.Require().NoError(err)
+			s.False(exists)
+
+			// try loading deleted settings
+			_, err = store.Load(s.ctx)
+			s.Error(err)
+			s.Contains(err.Error(), "no settings found in database")
+		})
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_Update() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create store
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// create and save initial settings
+			s1 := New()
+			s1.InstanceID = "initial"
+			s1.Telegram.Group = "initial-group"
+
+			err = store.Save(s.ctx, s1)
+			s.Require().NoError(err)
+
+			// get initial update time
+			initialUpdate, err := store.LastUpdated(s.ctx)
+			s.Require().NoError(err)
+
+			// wait a bit to ensure timestamps are different
+			time.Sleep(10 * time.Millisecond)
+
+			// create and save updated settings
+			s2 := New()
+			s2.InstanceID = "updated"
+			s2.Telegram.Group = "updated-group"
+
+			err = store.Save(s.ctx, s2)
+			s.Require().NoError(err)
+
+			// get updated time
+			updatedTime, err := store.LastUpdated(s.ctx)
+			s.Require().NoError(err)
+
+			// make sure update time changed (for SQLite this should be reliable)
+			// for PostgreSQL times might be different due to precision differences
+			if db.Type() == engine.Sqlite {
+				s.True(updatedTime.After(initialUpdate))
+			} else {
+				// for PostgreSQL we mainly check it's a valid time
+				s.False(updatedTime.IsZero())
+			}
+
+			// load settings and verify they were updated
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			s.Equal("updated", loaded.InstanceID)
+			s.Equal("updated-group", loaded.Telegram.Group)
+		})
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_CreateTable() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create store which should create the table
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// check if the table exists by trying to insert and select data
+			err = store.Save(s.ctx, New())
+			s.Require().NoError(err)
+
+			// check if we can query the table
+			var count int
+			query := db.Adopt("SELECT COUNT(*) FROM config")
+			err = db.Get(&count, query)
+			s.Require().NoError(err)
+			s.Equal(1, count)
+		})
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_ComplexSettings() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create store
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// create complex settings to test all field types
+			settings := New()
+			settings.InstanceID = "complex-test"
+			settings.SimilarityThreshold = 0.75
+			settings.MinMsgLen = 100
+			settings.MaxEmoji = 5
+			settings.Telegram.Group = "@testgroup"
+			settings.Telegram.IdleDuration = 1 * time.Minute
+			settings.Admin.SuperUsers = []string{"user1", "user2"}
+			settings.Admin.TestingIDs = []int64{123, 456}
+			settings.Message.Spam = "spam detected!"
+			settings.Message.Warn = "warning!"
+			settings.LuaPlugins.Enabled = true
+			settings.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
+
+			// save complex settings
+			err = store.Save(s.ctx, settings)
+			s.Require().NoError(err)
+
+			// load settings
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// verify all fields were correctly saved and loaded
+			s.Equal("complex-test", loaded.InstanceID)
+			s.Equal(0.75, loaded.SimilarityThreshold)
+			s.Equal(100, loaded.MinMsgLen)
+			s.Equal(5, loaded.MaxEmoji)
+			s.Equal("@testgroup", loaded.Telegram.Group)
+			s.Equal(1*time.Minute, loaded.Telegram.IdleDuration)
+			s.Equal([]string{"user1", "user2"}, loaded.Admin.SuperUsers)
+			s.Equal([]int64{123, 456}, loaded.Admin.TestingIDs)
+			s.Equal("spam detected!", loaded.Message.Spam)
+			s.Equal("warning!", loaded.Message.Warn)
+			s.True(loaded.LuaPlugins.Enabled)
+			s.Equal([]string{"plugin1", "plugin2"}, loaded.LuaPlugins.EnabledPlugins)
+		})
+	}
+}

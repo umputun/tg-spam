@@ -10,34 +10,31 @@ import (
 
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
+
+	"github.com/umputun/tg-spam/app/config"
 )
 
-//go:generate moq --out config_store_mock.go --with-resets --skip-ensure . ConfigStoreInterface
+//go:generate moq --out config_store_mock.go --with-resets --skip-ensure . SettingsStore
 
-// ConfigStoreInterface provides access to configuration stored in database
-type ConfigStoreInterface interface {
-	Get(ctx context.Context) (string, error)
-	GetObject(ctx context.Context, obj *Settings) error
-	Set(ctx context.Context, data string) error
-	SetObject(ctx context.Context, obj *Settings) error
+// SettingsStore provides access to configuration stored in database
+type SettingsStore interface {
+	Load(ctx context.Context) (*config.Settings, error)
+	Save(ctx context.Context, settings *config.Settings) error
 	Delete(ctx context.Context) error
 	LastUpdated(ctx context.Context) (time.Time, error)
+	Exists(ctx context.Context) (bool, error)
 }
 
-// saveConfigHandler handles POST /config/save request.
+// saveConfigHandler handles POST /config request.
 // It saves the current configuration to the database.
 func (s *Server) saveConfigHandler(w http.ResponseWriter, r *http.Request) {
-	if s.ConfigStore == nil {
+	if s.SettingsStore == nil {
 		http.Error(w, "Configuration storage not available", http.StatusInternalServerError)
 		return
 	}
 
-	// important: we don't allow storing auth credentials in the database
-	// make a copy of settings to avoid modifying the original
-	settings := s.Settings
-
 	// save current settings to database
-	err := s.ConfigStore.SetObject(r.Context(), &settings)
+	err := s.SettingsStore.Save(r.Context(), s.AppSettings)
 	if err != nil {
 		log.Printf("[ERROR] failed to save configuration: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
@@ -56,25 +53,33 @@ func (s *Server) saveConfigHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, rest.JSON{"status": "ok", "message": "Configuration saved successfully"})
 }
 
-// loadConfigHandler handles POST /config/load request.
+// loadConfigHandler handles GET /config request.
 // It loads configuration from the database.
 func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
-	if s.ConfigStore == nil {
+	if s.SettingsStore == nil {
 		http.Error(w, "Configuration storage not available", http.StatusInternalServerError)
 		return
 	}
 
 	// load settings from database
-	settings := s.Settings // copy current settings to preserve structure
-	err := s.ConfigStore.GetObject(r.Context(), &settings)
+	settings, err := s.SettingsStore.Load(r.Context())
 	if err != nil {
 		log.Printf("[ERROR] failed to load configuration: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to load configuration: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// preserve sensitive information
+	credentials := s.AppSettings.GetCredentials()
+	settings.SetCredentials(credentials)
+
+	// preserve CLI-only parameters that should not be overridden by DB values
+	settings.Transient.DataBaseURL = s.AppSettings.Transient.DataBaseURL
+	settings.Transient.ConfigDB = s.AppSettings.Transient.ConfigDB
+	settings.Transient.StorageTimeout = s.AppSettings.Transient.StorageTimeout
+
 	// update current settings
-	s.Settings = settings
+	s.AppSettings = settings
 
 	if r.Header.Get("HX-Request") == "true" {
 		// return a success message for HTMX with reload
@@ -97,24 +102,18 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// create a copy of the current settings
-	settings := s.Settings
-
 	// update settings based on form values - auth settings are never modified
-	updateSettingsFromForm(&settings, r)
+	updateSettingsFromForm(s.AppSettings, r)
 
 	// save changes to database if requested
-	if r.FormValue("saveToDb") == "true" && s.ConfigStore != nil {
-		err := s.ConfigStore.SetObject(r.Context(), &settings)
+	if r.FormValue("saveToDb") == "true" && s.SettingsStore != nil {
+		err := s.SettingsStore.Save(r.Context(), s.AppSettings)
 		if err != nil {
 			log.Printf("[ERROR] failed to save updated configuration: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
-
-	// update current settings
-	s.Settings = settings
 
 	if r.Header.Get("HX-Request") == "true" {
 		// return a success message for HTMX
@@ -131,13 +130,13 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 // deleteConfigHandler handles DELETE /config request.
 // It deletes the saved configuration from the database.
 func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
-	if s.ConfigStore == nil {
+	if s.SettingsStore == nil {
 		http.Error(w, "Configuration storage not available", http.StatusInternalServerError)
 		return
 	}
 
 	// delete configuration from database
-	err := s.ConfigStore.Delete(r.Context())
+	err := s.SettingsStore.Delete(r.Context())
 	if err != nil {
 		log.Printf("[ERROR] failed to delete configuration: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to delete configuration: %v", err), http.StatusInternalServerError)
@@ -157,74 +156,98 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateSettingsFromForm updates settings from form values
-func updateSettingsFromForm(settings *Settings, r *http.Request) {
+func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	// general settings
 	if val := r.FormValue("primaryGroup"); val != "" {
-		settings.PrimaryGroup = val
+		settings.Telegram.Group = val
 	}
 	if val := r.FormValue("adminGroup"); val != "" {
-		settings.AdminGroup = val
+		settings.Admin.AdminGroup = val
 	}
-	settings.DisableAdminSpamForward = r.FormValue("disableAdminSpamForward") == "on"
-	settings.LoggerEnabled = r.FormValue("loggerEnabled") == "on"
+	settings.Admin.DisableAdminSpamForward = r.FormValue("disableAdminSpamForward") == "on"
+	settings.Logger.Enabled = r.FormValue("loggerEnabled") == "on"
 	settings.NoSpamReply = r.FormValue("noSpamReply") == "on"
-	settings.CasEnabled = r.FormValue("casEnabled") == "on"
+	
+	// handle CasEnabled separately because we need to set CAS.API
+	casEnabled := r.FormValue("casEnabled") == "on"
+	if casEnabled && settings.CAS.API == "" {
+		settings.CAS.API = "https://api.cas.chat" // default CAS API endpoint
+	} else if !casEnabled {
+		settings.CAS.API = ""
+	}
 
 	// parse super users from comma-separated string
 	if superUsers := r.FormValue("superUsers"); superUsers != "" {
 		users := strings.Split(superUsers, ",")
-		settings.SuperUsers = make([]string, 0, len(users))
+		settings.Admin.SuperUsers = make([]string, 0, len(users))
 		for _, user := range users {
 			trimmed := strings.TrimSpace(user)
 			if trimmed != "" {
-				settings.SuperUsers = append(settings.SuperUsers, trimmed)
+				settings.Admin.SuperUsers = append(settings.Admin.SuperUsers, trimmed)
 			}
 		}
 	}
 
 	// meta checks
-	settings.MetaEnabled = r.FormValue("metaEnabled") == "on"
+	metaEnabled := r.FormValue("metaEnabled") == "on"
+	
 	if val := r.FormValue("metaLinksLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
-			settings.MetaLinksLimit = limit
+			settings.Meta.LinksLimit = limit
 		}
+	} else if !metaEnabled {
+		settings.Meta.LinksLimit = -1
 	}
+	
 	if val := r.FormValue("metaMentionsLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
-			settings.MetaMentionsLimit = limit
+			settings.Meta.MentionsLimit = limit
 		}
+	} else if !metaEnabled {
+		settings.Meta.MentionsLimit = -1
 	}
-	settings.MetaLinksOnly = r.FormValue("metaLinksOnly") == "on"
-	settings.MetaImageOnly = r.FormValue("metaImageOnly") == "on"
-	settings.MetaVideoOnly = r.FormValue("metaVideoOnly") == "on"
-	settings.MetaAudioOnly = r.FormValue("metaAudioOnly") == "on"
-	settings.MetaForwarded = r.FormValue("metaForwarded") == "on"
-	settings.MetaKeyboard = r.FormValue("metaKeyboard") == "on"
+	
+	settings.Meta.LinksOnly = r.FormValue("metaLinksOnly") == "on"
+	settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
+	settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
+	settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
+	settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
+	settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
+	
 	if val := r.FormValue("metaUsernameSymbols"); val != "" {
-		settings.MetaUsernameSymbols = val
+		settings.Meta.UsernameSymbols = val
+	} else if !metaEnabled {
+		settings.Meta.UsernameSymbols = ""
 	}
 
 	// openAI settings
-	settings.OpenAIEnabled = r.FormValue("openAIEnabled") == "on"
-	settings.OpenAIVeto = r.FormValue("openAIVeto") == "on"
+	openAIEnabled := r.FormValue("openAIEnabled") == "on"
+	if !openAIEnabled {
+		settings.OpenAI.APIBase = ""
+	}
+	
+	settings.OpenAI.Veto = r.FormValue("openAIVeto") == "on"
+	
 	if val := r.FormValue("openAIHistorySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
-			settings.OpenAIHistorySize = size
+			settings.OpenAI.HistorySize = size
 		}
 	}
+	
 	if val := r.FormValue("openAIModel"); val != "" {
-		settings.OpenAIModel = val
+		settings.OpenAI.Model = val
 	}
 
 	// lua plugins
-	settings.LuaPluginsEnabled = r.FormValue("luaPluginsEnabled") == "on"
-	settings.LuaDynamicReload = r.FormValue("luaDynamicReload") == "on"
+	settings.LuaPlugins.Enabled = r.FormValue("luaPluginsEnabled") == "on"
+	settings.LuaPlugins.DynamicReload = r.FormValue("luaDynamicReload") == "on"
+	
 	if val := r.FormValue("luaPluginsDir"); val != "" {
-		settings.LuaPluginsDir = val
+		settings.LuaPlugins.PluginsDir = val
 	}
 
 	// get selected Lua plugins
-	settings.LuaEnabledPlugins = r.Form["luaEnabledPlugins"]
+	settings.LuaPlugins.EnabledPlugins = r.Form["luaEnabledPlugins"]
 
 	// spam detection
 	if val := r.FormValue("similarityThreshold"); val != "" {
@@ -232,60 +255,74 @@ func updateSettingsFromForm(settings *Settings, r *http.Request) {
 			settings.SimilarityThreshold = threshold
 		}
 	}
+	
 	if val := r.FormValue("minMsgLen"); val != "" {
 		if msgLen, err := strconv.Atoi(val); err == nil {
 			settings.MinMsgLen = msgLen
 		}
 	}
+	
 	if val := r.FormValue("maxEmoji"); val != "" {
 		if count, err := strconv.Atoi(val); err == nil {
 			settings.MaxEmoji = count
 		}
 	}
+	
 	if val := r.FormValue("minSpamProbability"); val != "" {
 		if prob, err := strconv.ParseFloat(val, 64); err == nil {
 			settings.MinSpamProbability = prob
 		}
 	}
+	
 	settings.ParanoidMode = r.FormValue("paranoidMode") == "on"
+	
 	if val := r.FormValue("firstMessagesCount"); val != "" {
 		if count, err := strconv.Atoi(val); err == nil {
 			settings.FirstMessagesCount = count
 		}
 	}
-	settings.StartupMessageEnabled = r.FormValue("startupMessageEnabled") == "on"
-	settings.TrainingEnabled = r.FormValue("trainingEnabled") == "on"
-	settings.SoftBanEnabled = r.FormValue("softBanEnabled") == "on"
-	settings.AbnormalSpacingEnabled = r.FormValue("abnormalSpacingEnabled") == "on"
+	
+	// startupMessageEnabled controls Message.Startup
+	startupMessageEnabled := r.FormValue("startupMessageEnabled") == "on"
+	if startupMessageEnabled && settings.Message.Startup == "" {
+		settings.Message.Startup = "Bot started"
+	} else if !startupMessageEnabled {
+		settings.Message.Startup = ""
+	}
+	
+	settings.Training = r.FormValue("trainingEnabled") == "on"
+	settings.SoftBan = r.FormValue("softBanEnabled") == "on"
+	settings.AbnormalSpace.Enabled = r.FormValue("abnormalSpacingEnabled") == "on"
+	
 	if val := r.FormValue("multiLangLimit"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
-			settings.MultiLangLimit = limit
+			settings.MultiLangWords = limit
 		}
 	}
+	
 	if val := r.FormValue("historySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
-			settings.HistorySize = size
+			settings.History.Size = size
 		}
 	}
 
 	// data storage
 	if val := r.FormValue("samplesDataPath"); val != "" {
-		settings.SamplesDataPath = val
+		settings.Files.SamplesDataPath = val
 	}
+	
 	if val := r.FormValue("dynamicDataPath"); val != "" {
-		settings.DynamicDataPath = val
+		settings.Files.DynamicDataPath = val
 	}
+	
 	if val := r.FormValue("watchIntervalSecs"); val != "" {
 		if secs, err := strconv.Atoi(val); err == nil {
-			settings.WatchIntervalSecs = secs
+			settings.Files.WatchInterval = secs
 		}
 	}
-	// StorageTimeout is only set via CLI and should not be modified in the UI
-	// we intentionally don't read this value from the form
-
-	// debug modes - note that these may be ignored when loading from DB as they're primarily CLI settings
-	// we still save them here for the web UI to reflect the current state
-	settings.DebugModeEnabled = r.FormValue("debugModeEnabled") == "on"
-	settings.DryModeEnabled = r.FormValue("dryModeEnabled") == "on"
-	settings.TGDebugModeEnabled = r.FormValue("tgDebugModeEnabled") == "on"
+	
+	// debug modes - they're primarily CLI settings but we still update them here
+	settings.Transient.Dbg = r.FormValue("debugModeEnabled") == "on"
+	settings.Dry = r.FormValue("dryModeEnabled") == "on" 
+	settings.Transient.TGDbg = r.FormValue("tgDebugModeEnabled") == "on"
 }

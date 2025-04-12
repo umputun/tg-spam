@@ -27,6 +27,7 @@ import (
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
 
+	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
@@ -60,12 +61,12 @@ type Config struct {
 	DetectedSpam  DetectedSpam         // detected spam accessor
 	Locator       Locator              // locator for user info
 	StorageEngine StorageEngine        // database engine access for backups
-	ConfigStore   ConfigStoreInterface // configuration storage interface
+	SettingsStore SettingsStore        // configuration storage interface
 	AuthUser      string               // basic auth username (default: "tg-spam")
 	AuthPasswd    string               // basic auth password
 	AuthHash      string               // basic auth hash. If both AuthPasswd and AuthHash are provided, AuthHash is used
 	Dbg           bool                 // debug mode
-	Settings      Settings             // application settings
+	AppSettings   *config.Settings     // application settings
 	ConfigDBMode  bool                 // indicates if app is running with database config
 }
 
@@ -265,12 +266,12 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
 
 		// configuration management endpoints
-		if s.ConfigStore != nil && s.ConfigDBMode {
-			webUI.Mount("/config").Route(func(config *routegroup.Bundle) {
-				config.HandleFunc("POST /save", s.saveConfigHandler) // save current configuration to database
-				config.HandleFunc("POST /load", s.loadConfigHandler) // load configuration from database
-				config.HandleFunc("PUT /", s.updateConfigHandler)    // update configuration
-				config.HandleFunc("DELETE /", s.deleteConfigHandler) // delete configuration
+		if s.SettingsStore != nil && s.ConfigDBMode {
+			webUI.Route(func(config *routegroup.Bundle) {
+				config.HandleFunc("POST /config", s.saveConfigHandler)     // save current configuration to database
+				config.HandleFunc("GET /config", s.loadConfigHandler)      // load configuration from database
+				config.HandleFunc("PUT /config", s.updateConfigHandler)    // update configuration
+				config.HandleFunc("DELETE /config", s.deleteConfigHandler) // delete configuration
 			})
 		}
 
@@ -567,13 +568,11 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 
 // getSettingsHandler returns application settings, including the list of available Lua plugins
 func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
-	// get the list of available Lua plugins before returning settings
-	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
+	// Get available Lua plugins and store them directly in AppSettings
+	s.AppSettings.LuaPlugins.EnabledPlugins = s.Detector.GetLuaPluginNames()
 
-	// we don't need to modify the settings as we simply don't include
-	// sensitive fields like tokens and auth credentials in the Settings struct
-
-	rest.RenderJSON(w, s.Settings)
+	// Return the application settings directly - sensitive info is protected by json tags
+	rest.RenderJSON(w, s.AppSettings)
 }
 
 // htmlSpamCheckHandler handles GET / request.
@@ -685,7 +684,7 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		TotalDetectedSpam:   len(ds),
 		FilteredCount:       len(filteredDS),
 		Filter:              filter,
-		OpenAIEnabled:       s.Settings.OpenAIEnabled,
+		OpenAIEnabled:       s.AppSettings.IsOpenAIEnabled(),
 	}
 
 	// if it's an HTMX request, render both content and count display for OOB swap
@@ -782,20 +781,21 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(startTime)
 
 	// get the list of available Lua plugins
-	s.Settings.LuaAvailablePlugins = s.Detector.GetLuaPluginNames()
+	luaPlugins := s.Detector.GetLuaPluginNames()
 
 	// get configuration DB status
 	configAvailable := false
 	var lastUpdated time.Time
-	if s.ConfigStore != nil {
+	if s.SettingsStore != nil {
 		configAvailable = true
-		if lu, err := s.ConfigStore.LastUpdated(r.Context()); err == nil {
+		if lu, err := s.SettingsStore.LastUpdated(r.Context()); err == nil {
 			lastUpdated = lu
 		}
 	}
 
 	data := struct {
-		Settings
+		*config.Settings
+		LuaAvailablePlugins []string
 		Version  string
 		Database struct {
 			Type   string
@@ -813,7 +813,8 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		LastUpdated     time.Time
 		ConfigDBMode    bool
 	}{
-		Settings: s.Settings,
+		Settings: s.AppSettings,
+		LuaAvailablePlugins: luaPlugins,
 		Version:  s.Version,
 		Database: struct {
 			Type   string
