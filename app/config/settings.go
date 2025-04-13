@@ -169,35 +169,9 @@ type TransientSettings struct {
 	WebAuthPasswd string `json:"-" yaml:"-"`
 }
 
-// Credentials stores sensitive information that should be handled separately
-type Credentials struct {
-	TelegramToken string `json:"-" yaml:"-"`
-	OpenAIToken   string `json:"-" yaml:"-"`
-	WebAuthHash   string `json:"-" yaml:"-"`
-	WebAuthPasswd string `json:"-" yaml:"-"`
-}
-
 // New creates a new settings instance
 func New() *Settings {
 	return &Settings{}
-}
-
-// GetCredentials returns credentials from their domain locations
-func (s *Settings) GetCredentials() Credentials {
-	return Credentials{
-		TelegramToken: s.Telegram.Token,
-		OpenAIToken:   s.OpenAI.Token,
-		WebAuthHash:   s.Server.AuthHash,
-		WebAuthPasswd: s.Transient.WebAuthPasswd,
-	}
-}
-
-// SetCredentials sets credentials to their domain locations
-func (s *Settings) SetCredentials(creds Credentials) {
-	s.Telegram.Token = creds.TelegramToken
-	s.OpenAI.Token = creds.OpenAIToken
-	s.Server.AuthHash = creds.WebAuthHash
-	s.Transient.WebAuthPasswd = creds.WebAuthPasswd
 }
 
 // IsOpenAIEnabled returns true if OpenAI integration is enabled

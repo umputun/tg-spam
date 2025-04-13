@@ -612,13 +612,13 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 			RetryCount:        settings.OpenAI.RetryCount,
 		}
 
-		config := openai.DefaultConfig(settings.OpenAI.Token)
+		openaiConfig := openai.DefaultConfig(settings.OpenAI.Token)
 		if settings.OpenAI.APIBase != "" {
-			config.BaseURL = settings.OpenAI.APIBase
+			openaiConfig.BaseURL = settings.OpenAI.APIBase
 		}
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
-		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
+		detector.WithOpenAIChecker(openai.NewClientWithConfig(openaiConfig), openAIConfig)
 	}
 
 	if settings.AbnormalSpace.Enabled {

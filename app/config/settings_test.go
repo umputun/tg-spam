@@ -62,20 +62,3 @@ func TestSettings_JSON(t *testing.T) {
 	assert.False(t, s2.Transient.ConfigDB)
 	assert.False(t, s2.Transient.Dbg)
 }
-
-func TestSettings_Credentials(t *testing.T) {
-	s := New()
-
-	// set and get credentials
-	creds := Credentials{
-		TelegramToken: "telegram-123",
-		OpenAIToken:   "openai-456",
-		WebAuthHash:   "hash-789",
-		WebAuthPasswd: "passwd-xyz",
-	}
-
-	s.SetCredentials(creds)
-	gotCreds := s.GetCredentials()
-
-	assert.Equal(t, creds, gotCreds)
-}

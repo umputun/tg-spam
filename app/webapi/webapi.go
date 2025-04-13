@@ -160,8 +160,8 @@ type StorageEngine interface {
 }
 
 // NewServer creates a new web API server.
-func NewServer(config Config) *Server {
-	return &Server{Config: config}
+func NewServer(cfg Config) *Server {
+	return &Server{Config: cfg}
 }
 
 // Run starts server and accepts requests checking for spam messages.

@@ -1071,8 +1071,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		}
 
 		// save original credentials and transient values
-		originalCreds := cliSettings.GetCredentials()
 		originalTransient := cliSettings.Transient
+		telegramToken := cliSettings.Telegram.Token
+		openAIToken := cliSettings.OpenAI.Token
+		authHash := cliSettings.Server.AuthHash
 
 		// test loading configuration from database
 		err = loadConfigFromDB(ctx, cliSettings)
@@ -1081,8 +1083,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		// restore transient values
 		cliSettings.Transient = originalTransient
 
-		// restore credentials
-		cliSettings.SetCredentials(originalCreds)
+		// restore credentials directly
+		cliSettings.Telegram.Token = telegramToken
+		cliSettings.OpenAI.Token = openAIToken
+		cliSettings.Server.AuthHash = authHash
 
 		// now verify - CLI values should be preserved
 		assert.Equal(t, "test-instance", cliSettings.InstanceID)
