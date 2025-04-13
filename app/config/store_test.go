@@ -165,6 +165,69 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 	}
 }
 
+// TestStore_SaveNilSettings tests Save with nil settings
+func (s *SettingsTestSuite) TestStore_SaveNilSettings() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// try saving nil settings
+			err = store.Save(s.ctx, nil)
+			s.Error(err)
+			s.Contains(err.Error(), "nil settings")
+		})
+	}
+}
+
+// TestStore_LoadError tests Load with error condition
+func (s *SettingsTestSuite) TestStore_LoadError() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// try loading from empty table
+			_, err = store.Load(s.ctx)
+			s.Error(err)
+			s.Contains(err.Error(), "no settings found in database")
+
+			// insert invalid JSON
+			query := db.Adopt("INSERT INTO config (gid, data) VALUES (?, ?)")
+			_, err = db.Exec(query, db.GID(), "{invalid-json")
+			s.Require().NoError(err)
+
+			// try loading invalid JSON
+			_, err = store.Load(s.ctx)
+			s.Error(err)
+			s.Contains(err.Error(), "failed to unmarshal settings")
+		})
+	}
+}
+
+// TestStore_LastUpdatedError tests LastUpdated with error condition
+func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// try getting last updated time from empty table
+			_, err = store.LastUpdated(s.ctx)
+			s.Error(err)
+			s.Contains(err.Error(), "no settings found in database")
+		})
+	}
+}
+
+// TestStore_NewStoreErrors tests error conditions in NewStore
+func (s *SettingsTestSuite) TestStore_NewStoreErrors() {
+	// test nil db error
+	_, err := NewStore(s.ctx, nil)
+	s.Error(err)
+	s.Contains(err.Error(), "no db provided")
+}
+
 func (s *SettingsTestSuite) TestStore_Update() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
