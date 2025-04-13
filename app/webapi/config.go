@@ -69,14 +69,31 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// preserve sensitive information
-	credentials := s.AppSettings.GetCredentials()
-	settings.SetCredentials(credentials)
+	// preserve CLI-provided credentials and transient settings
+	// CLI credentials have precedence over database values if provided
+	transient := s.AppSettings.Transient
+	telegramToken := s.AppSettings.Telegram.Token
+	openAIToken := s.AppSettings.OpenAI.Token
+	webAuthHash := s.AppSettings.Server.AuthHash
+	webAuthPasswd := s.AppSettings.Transient.WebAuthPasswd
 
-	// preserve CLI-only parameters that should not be overridden by DB values
-	settings.Transient.DataBaseURL = s.AppSettings.Transient.DataBaseURL
-	settings.Transient.ConfigDB = s.AppSettings.Transient.ConfigDB
-	settings.Transient.StorageTimeout = s.AppSettings.Transient.StorageTimeout
+	// restore transient values
+	settings.Transient = transient
+
+	// restore CLI-provided credentials if they were set
+	// these override database values because CLI parameters take precedence
+	if telegramToken != "" {
+		settings.Telegram.Token = telegramToken
+	}
+	if openAIToken != "" {
+		settings.OpenAI.Token = openAIToken
+	}
+	if webAuthHash != "" {
+		settings.Server.AuthHash = webAuthHash
+	}
+	if webAuthPasswd != "" {
+		settings.Transient.WebAuthPasswd = webAuthPasswd
+	}
 
 	// update current settings
 	s.AppSettings = settings
