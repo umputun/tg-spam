@@ -568,10 +568,10 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 
 // getSettingsHandler returns application settings, including the list of available Lua plugins
 func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
-	// Get available Lua plugins and store them directly in AppSettings
+	// get available Lua plugins and store them directly in AppSettings
 	s.AppSettings.LuaPlugins.EnabledPlugins = s.Detector.GetLuaPluginNames()
 
-	// Return the application settings directly - sensitive info is protected by json tags
+	// return the application settings directly - sensitive info is protected by json tags
 	rest.RenderJSON(w, s.AppSettings)
 }
 

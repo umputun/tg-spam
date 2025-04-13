@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	
+
 	"github.com/umputun/tg-spam/app/config"
 )
 
@@ -141,7 +141,7 @@ func TestLoadConfigHandler(t *testing.T) {
 				Group: "loaded-group",
 			},
 		}
-		
+
 		settingsStore := &SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return loadedSettings, nil
@@ -179,7 +179,7 @@ func TestLoadConfigHandler(t *testing.T) {
 				Group: "loaded-group",
 			},
 		}
-		
+
 		settingsStore := &SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return loadedSettings, nil
@@ -372,7 +372,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, "test-group", settings.Telegram.Group)
 		assert.Equal(t, "admin-group", settings.Admin.AdminGroup)
 		assert.True(t, settings.NoSpamReply)
-		assert.Equal(t, "https://api.cas.chat", settings.CAS.API) // Default CAS API is set when enabled
+		assert.Equal(t, "https://api.cas.chat", settings.CAS.API) // default CAS API is set when enabled
 		assert.Equal(t, []string{"user1", "user2", "user3"}, settings.Admin.SuperUsers)
 		assert.True(t, settings.Transient.Dbg)
 		assert.True(t, settings.Dry)
@@ -405,7 +405,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.True(t, settings.Meta.Forward)
 		assert.True(t, settings.Meta.Keyboard)
 		assert.Equal(t, "abc", settings.Meta.UsernameSymbols)
-		assert.True(t, settings.IsMetaEnabled()) // Using helper method to verify Meta is enabled
+		assert.True(t, settings.IsMetaEnabled()) // using helper method to verify Meta is enabled
 	})
 
 	t.Run("update openAI settings", func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 		updateSettingsFromForm(settings, req)
 
-		// Since OpenAI.APIBase is set when enabled but we don't have a field
+		// since OpenAI.APIBase is set when enabled but we don't have a field
 		// in the form for it, we check the veto and model settings
 		assert.True(t, settings.OpenAI.Veto)
 		assert.Equal(t, 10, settings.OpenAI.HistorySize)

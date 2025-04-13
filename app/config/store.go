@@ -73,6 +73,12 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 	// clear transient fields that shouldn't be persisted
 	safeCopy.Transient = TransientSettings{}
 
+	// ensure credentials are properly saved in domain models
+	// they are already stored in the proper domain fields like:
+	// - Telegram.Token
+	// - OpenAI.Token
+	// - Server.AuthHash
+
 	data, err := json.Marshal(&safeCopy)
 	if err != nil {
 		return fmt.Errorf("failed to marshal settings: %w", err)

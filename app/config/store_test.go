@@ -143,7 +143,7 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 			// credentials should be persisted
 			s.Equal("stored-telegram-token", loaded.Telegram.Token)
 			s.Equal("stored-openai-token", loaded.OpenAI.Token)
-							s.Equal("stored-auth-hash", loaded.Server.AuthHash)
+			s.Equal("stored-auth-hash", loaded.Server.AuthHash)
 			s.Zero(loaded.Transient.StorageTimeout)
 			s.False(loaded.Transient.ConfigDB)
 			s.False(loaded.Transient.Dbg)

@@ -457,7 +457,7 @@ func TestServer_routes(t *testing.T) {
 	})
 
 	t.Run("get settings", func(t *testing.T) {
-		// Initialize AppSettings with the domain model
+		// initialize AppSettings with the domain model
 		server.AppSettings = &config.Settings{
 			MinMsgLen: 10,
 		}
@@ -466,7 +466,7 @@ func TestServer_routes(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
-		// Decode response into config.Settings model
+		// decode response into config.Settings model
 		var res config.Settings
 		err = json.NewDecoder(resp.Body).Decode(&res)
 		assert.NoError(t, err)
@@ -898,9 +898,9 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 			},
 		}
 		server := NewServer(Config{
-				DetectedSpam: ds,
-				AppSettings: &config.Settings{}, // Add empty settings to avoid nil pointer in IsOpenAIEnabled
-			})
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
@@ -933,9 +933,9 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 			},
 		}
 		server := NewServer(Config{
-				DetectedSpam: ds,
-				AppSettings: &config.Settings{}, // Add empty settings to avoid nil pointer in IsOpenAIEnabled
-			})
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
@@ -1285,7 +1285,7 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		}
 
 		server := NewServer(Config{
-			Version:  "1.0", 
+			Version:  "1.0",
 			Detector: detectorMock,
 			AppSettings: &config.Settings{
 				InstanceID: "test",
@@ -1325,7 +1325,7 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		}
 
 		server := NewServer(Config{
-			Version:  "1.0", 
+			Version:  "1.0",
 			Detector: detectorMock,
 			AppSettings: &config.Settings{
 				InstanceID: "test",
@@ -1931,9 +1931,9 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		}
 
 		server := NewServer(Config{
-				DetectedSpam: ds,
-				AppSettings: &config.Settings{}, // Add empty settings to avoid nil pointer in IsOpenAIEnabled
-			})
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
@@ -1984,9 +1984,9 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		}
 
 		server := NewServer(Config{
-				DetectedSpam: ds,
-				AppSettings: &config.Settings{}, // Add empty settings to avoid nil pointer in IsOpenAIEnabled
-			})
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
@@ -2019,9 +2019,9 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 		}
 
 		server := NewServer(Config{
-				DetectedSpam: ds,
-				AppSettings: &config.Settings{}, // Add empty settings to avoid nil pointer in IsOpenAIEnabled
-			})
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 

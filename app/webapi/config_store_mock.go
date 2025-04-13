@@ -5,58 +5,53 @@ package webapi
 
 import (
 	"context"
+	"github.com/umputun/tg-spam/app/config"
 	"sync"
 	"time"
 )
 
-// ConfigStoreInterfaceMock is a mock implementation of ConfigStoreInterface.
+// SettingsStoreMock is a mock implementation of SettingsStore.
 //
-//	func TestSomethingThatUsesConfigStoreInterface(t *testing.T) {
+//	func TestSomethingThatUsesSettingsStore(t *testing.T) {
 //
-//		// make and configure a mocked ConfigStoreInterface
-//		mockedConfigStoreInterface := &ConfigStoreInterfaceMock{
+//		// make and configure a mocked SettingsStore
+//		mockedSettingsStore := &SettingsStoreMock{
 //			DeleteFunc: func(ctx context.Context) error {
 //				panic("mock out the Delete method")
 //			},
-//			GetFunc: func(ctx context.Context) (string, error) {
-//				panic("mock out the Get method")
-//			},
-//			GetObjectFunc: func(ctx context.Context, obj *Settings) error {
-//				panic("mock out the GetObject method")
+//			ExistsFunc: func(ctx context.Context) (bool, error) {
+//				panic("mock out the Exists method")
 //			},
 //			LastUpdatedFunc: func(ctx context.Context) (time.Time, error) {
 //				panic("mock out the LastUpdated method")
 //			},
-//			SetFunc: func(ctx context.Context, data string) error {
-//				panic("mock out the Set method")
+//			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+//				panic("mock out the Load method")
 //			},
-//			SetObjectFunc: func(ctx context.Context, obj *Settings) error {
-//				panic("mock out the SetObject method")
+//			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+//				panic("mock out the Save method")
 //			},
 //		}
 //
-//		// use mockedConfigStoreInterface in code that requires ConfigStoreInterface
+//		// use mockedSettingsStore in code that requires SettingsStore
 //		// and then make assertions.
 //
 //	}
-type ConfigStoreInterfaceMock struct {
+type SettingsStoreMock struct {
 	// DeleteFunc mocks the Delete method.
 	DeleteFunc func(ctx context.Context) error
 
-	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context) (string, error)
-
-	// GetObjectFunc mocks the GetObject method.
-	GetObjectFunc func(ctx context.Context, obj *Settings) error
+	// ExistsFunc mocks the Exists method.
+	ExistsFunc func(ctx context.Context) (bool, error)
 
 	// LastUpdatedFunc mocks the LastUpdated method.
 	LastUpdatedFunc func(ctx context.Context) (time.Time, error)
 
-	// SetFunc mocks the Set method.
-	SetFunc func(ctx context.Context, data string) error
+	// LoadFunc mocks the Load method.
+	LoadFunc func(ctx context.Context) (*config.Settings, error)
 
-	// SetObjectFunc mocks the SetObject method.
-	SetObjectFunc func(ctx context.Context, obj *Settings) error
+	// SaveFunc mocks the Save method.
+	SaveFunc func(ctx context.Context, settings *config.Settings) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -65,50 +60,40 @@ type ConfigStoreInterfaceMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
-		// Get holds details about calls to the Get method.
-		Get []struct {
+		// Exists holds details about calls to the Exists method.
+		Exists []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-		}
-		// GetObject holds details about calls to the GetObject method.
-		GetObject []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Obj is the obj argument value.
-			Obj *Settings
 		}
 		// LastUpdated holds details about calls to the LastUpdated method.
 		LastUpdated []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
-		// Set holds details about calls to the Set method.
-		Set []struct {
+		// Load holds details about calls to the Load method.
+		Load []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Data is the data argument value.
-			Data string
 		}
-		// SetObject holds details about calls to the SetObject method.
-		SetObject []struct {
+		// Save holds details about calls to the Save method.
+		Save []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Obj is the obj argument value.
-			Obj *Settings
+			// Settings is the settings argument value.
+			Settings *config.Settings
 		}
 	}
 	lockDelete      sync.RWMutex
-	lockGet         sync.RWMutex
-	lockGetObject   sync.RWMutex
+	lockExists      sync.RWMutex
 	lockLastUpdated sync.RWMutex
-	lockSet         sync.RWMutex
-	lockSetObject   sync.RWMutex
+	lockLoad        sync.RWMutex
+	lockSave        sync.RWMutex
 }
 
 // Delete calls DeleteFunc.
-func (mock *ConfigStoreInterfaceMock) Delete(ctx context.Context) error {
+func (mock *SettingsStoreMock) Delete(ctx context.Context) error {
 	if mock.DeleteFunc == nil {
-		panic("ConfigStoreInterfaceMock.DeleteFunc: method is nil but ConfigStoreInterface.Delete was just called")
+		panic("SettingsStoreMock.DeleteFunc: method is nil but SettingsStore.Delete was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -124,8 +109,8 @@ func (mock *ConfigStoreInterfaceMock) Delete(ctx context.Context) error {
 // DeleteCalls gets all the calls that were made to Delete.
 // Check the length with:
 //
-//	len(mockedConfigStoreInterface.DeleteCalls())
-func (mock *ConfigStoreInterfaceMock) DeleteCalls() []struct {
+//	len(mockedSettingsStore.DeleteCalls())
+func (mock *SettingsStoreMock) DeleteCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
@@ -138,98 +123,55 @@ func (mock *ConfigStoreInterfaceMock) DeleteCalls() []struct {
 }
 
 // ResetDeleteCalls reset all the calls that were made to Delete.
-func (mock *ConfigStoreInterfaceMock) ResetDeleteCalls() {
+func (mock *SettingsStoreMock) ResetDeleteCalls() {
 	mock.lockDelete.Lock()
 	mock.calls.Delete = nil
 	mock.lockDelete.Unlock()
 }
 
-// Get calls GetFunc.
-func (mock *ConfigStoreInterfaceMock) Get(ctx context.Context) (string, error) {
-	if mock.GetFunc == nil {
-		panic("ConfigStoreInterfaceMock.GetFunc: method is nil but ConfigStoreInterface.Get was just called")
+// Exists calls ExistsFunc.
+func (mock *SettingsStoreMock) Exists(ctx context.Context) (bool, error) {
+	if mock.ExistsFunc == nil {
+		panic("SettingsStoreMock.ExistsFunc: method is nil but SettingsStore.Exists was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
 	}{
 		Ctx: ctx,
 	}
-	mock.lockGet.Lock()
-	mock.calls.Get = append(mock.calls.Get, callInfo)
-	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx)
+	mock.lockExists.Lock()
+	mock.calls.Exists = append(mock.calls.Exists, callInfo)
+	mock.lockExists.Unlock()
+	return mock.ExistsFunc(ctx)
 }
 
-// GetCalls gets all the calls that were made to Get.
+// ExistsCalls gets all the calls that were made to Exists.
 // Check the length with:
 //
-//	len(mockedConfigStoreInterface.GetCalls())
-func (mock *ConfigStoreInterfaceMock) GetCalls() []struct {
+//	len(mockedSettingsStore.ExistsCalls())
+func (mock *SettingsStoreMock) ExistsCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
 		Ctx context.Context
 	}
-	mock.lockGet.RLock()
-	calls = mock.calls.Get
-	mock.lockGet.RUnlock()
+	mock.lockExists.RLock()
+	calls = mock.calls.Exists
+	mock.lockExists.RUnlock()
 	return calls
 }
 
-// ResetGetCalls reset all the calls that were made to Get.
-func (mock *ConfigStoreInterfaceMock) ResetGetCalls() {
-	mock.lockGet.Lock()
-	mock.calls.Get = nil
-	mock.lockGet.Unlock()
-}
-
-// GetObject calls GetObjectFunc.
-func (mock *ConfigStoreInterfaceMock) GetObject(ctx context.Context, obj *Settings) error {
-	if mock.GetObjectFunc == nil {
-		panic("ConfigStoreInterfaceMock.GetObjectFunc: method is nil but ConfigStoreInterface.GetObject was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Obj *Settings
-	}{
-		Ctx: ctx,
-		Obj: obj,
-	}
-	mock.lockGetObject.Lock()
-	mock.calls.GetObject = append(mock.calls.GetObject, callInfo)
-	mock.lockGetObject.Unlock()
-	return mock.GetObjectFunc(ctx, obj)
-}
-
-// GetObjectCalls gets all the calls that were made to GetObject.
-// Check the length with:
-//
-//	len(mockedConfigStoreInterface.GetObjectCalls())
-func (mock *ConfigStoreInterfaceMock) GetObjectCalls() []struct {
-	Ctx context.Context
-	Obj *Settings
-} {
-	var calls []struct {
-		Ctx context.Context
-		Obj *Settings
-	}
-	mock.lockGetObject.RLock()
-	calls = mock.calls.GetObject
-	mock.lockGetObject.RUnlock()
-	return calls
-}
-
-// ResetGetObjectCalls reset all the calls that were made to GetObject.
-func (mock *ConfigStoreInterfaceMock) ResetGetObjectCalls() {
-	mock.lockGetObject.Lock()
-	mock.calls.GetObject = nil
-	mock.lockGetObject.Unlock()
+// ResetExistsCalls reset all the calls that were made to Exists.
+func (mock *SettingsStoreMock) ResetExistsCalls() {
+	mock.lockExists.Lock()
+	mock.calls.Exists = nil
+	mock.lockExists.Unlock()
 }
 
 // LastUpdated calls LastUpdatedFunc.
-func (mock *ConfigStoreInterfaceMock) LastUpdated(ctx context.Context) (time.Time, error) {
+func (mock *SettingsStoreMock) LastUpdated(ctx context.Context) (time.Time, error) {
 	if mock.LastUpdatedFunc == nil {
-		panic("ConfigStoreInterfaceMock.LastUpdatedFunc: method is nil but ConfigStoreInterface.LastUpdated was just called")
+		panic("SettingsStoreMock.LastUpdatedFunc: method is nil but SettingsStore.LastUpdated was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -245,8 +187,8 @@ func (mock *ConfigStoreInterfaceMock) LastUpdated(ctx context.Context) (time.Tim
 // LastUpdatedCalls gets all the calls that were made to LastUpdated.
 // Check the length with:
 //
-//	len(mockedConfigStoreInterface.LastUpdatedCalls())
-func (mock *ConfigStoreInterfaceMock) LastUpdatedCalls() []struct {
+//	len(mockedSettingsStore.LastUpdatedCalls())
+func (mock *SettingsStoreMock) LastUpdatedCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
@@ -259,121 +201,113 @@ func (mock *ConfigStoreInterfaceMock) LastUpdatedCalls() []struct {
 }
 
 // ResetLastUpdatedCalls reset all the calls that were made to LastUpdated.
-func (mock *ConfigStoreInterfaceMock) ResetLastUpdatedCalls() {
+func (mock *SettingsStoreMock) ResetLastUpdatedCalls() {
 	mock.lockLastUpdated.Lock()
 	mock.calls.LastUpdated = nil
 	mock.lockLastUpdated.Unlock()
 }
 
-// Set calls SetFunc.
-func (mock *ConfigStoreInterfaceMock) Set(ctx context.Context, data string) error {
-	if mock.SetFunc == nil {
-		panic("ConfigStoreInterfaceMock.SetFunc: method is nil but ConfigStoreInterface.Set was just called")
-	}
-	callInfo := struct {
-		Ctx  context.Context
-		Data string
-	}{
-		Ctx:  ctx,
-		Data: data,
-	}
-	mock.lockSet.Lock()
-	mock.calls.Set = append(mock.calls.Set, callInfo)
-	mock.lockSet.Unlock()
-	return mock.SetFunc(ctx, data)
-}
-
-// SetCalls gets all the calls that were made to Set.
-// Check the length with:
-//
-//	len(mockedConfigStoreInterface.SetCalls())
-func (mock *ConfigStoreInterfaceMock) SetCalls() []struct {
-	Ctx  context.Context
-	Data string
-} {
-	var calls []struct {
-		Ctx  context.Context
-		Data string
-	}
-	mock.lockSet.RLock()
-	calls = mock.calls.Set
-	mock.lockSet.RUnlock()
-	return calls
-}
-
-// ResetSetCalls reset all the calls that were made to Set.
-func (mock *ConfigStoreInterfaceMock) ResetSetCalls() {
-	mock.lockSet.Lock()
-	mock.calls.Set = nil
-	mock.lockSet.Unlock()
-}
-
-// SetObject calls SetObjectFunc.
-func (mock *ConfigStoreInterfaceMock) SetObject(ctx context.Context, obj *Settings) error {
-	if mock.SetObjectFunc == nil {
-		panic("ConfigStoreInterfaceMock.SetObjectFunc: method is nil but ConfigStoreInterface.SetObject was just called")
+// Load calls LoadFunc.
+func (mock *SettingsStoreMock) Load(ctx context.Context) (*config.Settings, error) {
+	if mock.LoadFunc == nil {
+		panic("SettingsStoreMock.LoadFunc: method is nil but SettingsStore.Load was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
-		Obj *Settings
 	}{
 		Ctx: ctx,
-		Obj: obj,
 	}
-	mock.lockSetObject.Lock()
-	mock.calls.SetObject = append(mock.calls.SetObject, callInfo)
-	mock.lockSetObject.Unlock()
-	return mock.SetObjectFunc(ctx, obj)
+	mock.lockLoad.Lock()
+	mock.calls.Load = append(mock.calls.Load, callInfo)
+	mock.lockLoad.Unlock()
+	return mock.LoadFunc(ctx)
 }
 
-// SetObjectCalls gets all the calls that were made to SetObject.
+// LoadCalls gets all the calls that were made to Load.
 // Check the length with:
 //
-//	len(mockedConfigStoreInterface.SetObjectCalls())
-func (mock *ConfigStoreInterfaceMock) SetObjectCalls() []struct {
+//	len(mockedSettingsStore.LoadCalls())
+func (mock *SettingsStoreMock) LoadCalls() []struct {
 	Ctx context.Context
-	Obj *Settings
 } {
 	var calls []struct {
 		Ctx context.Context
-		Obj *Settings
 	}
-	mock.lockSetObject.RLock()
-	calls = mock.calls.SetObject
-	mock.lockSetObject.RUnlock()
+	mock.lockLoad.RLock()
+	calls = mock.calls.Load
+	mock.lockLoad.RUnlock()
 	return calls
 }
 
-// ResetSetObjectCalls reset all the calls that were made to SetObject.
-func (mock *ConfigStoreInterfaceMock) ResetSetObjectCalls() {
-	mock.lockSetObject.Lock()
-	mock.calls.SetObject = nil
-	mock.lockSetObject.Unlock()
+// ResetLoadCalls reset all the calls that were made to Load.
+func (mock *SettingsStoreMock) ResetLoadCalls() {
+	mock.lockLoad.Lock()
+	mock.calls.Load = nil
+	mock.lockLoad.Unlock()
+}
+
+// Save calls SaveFunc.
+func (mock *SettingsStoreMock) Save(ctx context.Context, settings *config.Settings) error {
+	if mock.SaveFunc == nil {
+		panic("SettingsStoreMock.SaveFunc: method is nil but SettingsStore.Save was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Settings *config.Settings
+	}{
+		Ctx:      ctx,
+		Settings: settings,
+	}
+	mock.lockSave.Lock()
+	mock.calls.Save = append(mock.calls.Save, callInfo)
+	mock.lockSave.Unlock()
+	return mock.SaveFunc(ctx, settings)
+}
+
+// SaveCalls gets all the calls that were made to Save.
+// Check the length with:
+//
+//	len(mockedSettingsStore.SaveCalls())
+func (mock *SettingsStoreMock) SaveCalls() []struct {
+	Ctx      context.Context
+	Settings *config.Settings
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Settings *config.Settings
+	}
+	mock.lockSave.RLock()
+	calls = mock.calls.Save
+	mock.lockSave.RUnlock()
+	return calls
+}
+
+// ResetSaveCalls reset all the calls that were made to Save.
+func (mock *SettingsStoreMock) ResetSaveCalls() {
+	mock.lockSave.Lock()
+	mock.calls.Save = nil
+	mock.lockSave.Unlock()
 }
 
 // ResetCalls reset all the calls that were made to all mocked methods.
-func (mock *ConfigStoreInterfaceMock) ResetCalls() {
+func (mock *SettingsStoreMock) ResetCalls() {
 	mock.lockDelete.Lock()
 	mock.calls.Delete = nil
 	mock.lockDelete.Unlock()
 
-	mock.lockGet.Lock()
-	mock.calls.Get = nil
-	mock.lockGet.Unlock()
-
-	mock.lockGetObject.Lock()
-	mock.calls.GetObject = nil
-	mock.lockGetObject.Unlock()
+	mock.lockExists.Lock()
+	mock.calls.Exists = nil
+	mock.lockExists.Unlock()
 
 	mock.lockLastUpdated.Lock()
 	mock.calls.LastUpdated = nil
 	mock.lockLastUpdated.Unlock()
 
-	mock.lockSet.Lock()
-	mock.calls.Set = nil
-	mock.lockSet.Unlock()
+	mock.lockLoad.Lock()
+	mock.calls.Load = nil
+	mock.lockLoad.Unlock()
 
-	mock.lockSetObject.Lock()
-	mock.calls.SetObject = nil
-	mock.lockSetObject.Unlock()
+	mock.lockSave.Lock()
+	mock.calls.Save = nil
+	mock.lockSave.Unlock()
 }

@@ -193,10 +193,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Convert CLI options to domain settings model early
+	// convert CLI options to domain settings model early
 	appSettings := optToSettings(opts)
 
-	// Handle save-config command
+	// handle save-config command
 	if p.Active != nil && p.Active.Name == "save-config" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		exitCode := 0
@@ -208,15 +208,18 @@ func main() {
 		os.Exit(exitCode)
 	}
 
-	// If --confdb is set, load configuration from the database
+	// if --confdb is set, load configuration from the database
 	if appSettings.Transient.ConfigDB {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-		// Save original credentials and transient values
-		credentials := appSettings.GetCredentials()
+		// save original transient values and credentials directly
 		transient := appSettings.Transient
+		telegramToken := appSettings.Telegram.Token
+		openAIToken := appSettings.OpenAI.Token
+		webAuthHash := appSettings.Server.AuthHash
+		webAuthPasswd := appSettings.Transient.WebAuthPasswd
 
-		// Load settings from database
+		// load settings from database
 		if err := loadConfigFromDB(ctx, appSettings); err != nil {
 			log.Printf("[ERROR] failed to load configuration from database: %v", err)
 			cancel()
@@ -224,21 +227,45 @@ func main() {
 		}
 		cancel()
 
-		// Restore transient values
+		// restore transient values
 		appSettings.Transient = transient
 
-		// Restore credentials
-		appSettings.SetCredentials(credentials)
+		// restore CLI-provided credentials if they were set
+		// these override database values because CLI parameters take precedence
+		if telegramToken != "" {
+			appSettings.Telegram.Token = telegramToken
+		}
+		if openAIToken != "" {
+			appSettings.OpenAI.Token = openAIToken
+		}
+		if webAuthHash != "" {
+			appSettings.Server.AuthHash = webAuthHash
+		}
+		if webAuthPasswd != "" {
+			appSettings.Transient.WebAuthPasswd = webAuthPasswd
+		}
 	}
 
-	// Setup logger with masked secrets
-	masked := []string{appSettings.Transient.Credentials.TelegramToken, appSettings.Transient.Credentials.OpenAIToken}
-	if appSettings.Transient.Credentials.WebAuthPasswd != "auto" && appSettings.Transient.Credentials.WebAuthPasswd != "" {
-		// auto passwd should not be masked as we print it
-		masked = append(masked, appSettings.Transient.Credentials.WebAuthPasswd)
+	// setup logger with masked secrets, accessing them directly from domain models
+	masked := []string{}
+
+	// add tokens from domain models
+	if appSettings.Telegram.Token != "" {
+		masked = append(masked, appSettings.Telegram.Token)
 	}
-	if appSettings.Transient.Credentials.WebAuthHash != "" {
-		masked = append(masked, appSettings.Transient.Credentials.WebAuthHash)
+	if appSettings.OpenAI.Token != "" {
+		masked = append(masked, appSettings.OpenAI.Token)
+	}
+
+	// add temporary web password if not "auto"
+	if appSettings.Transient.WebAuthPasswd != "auto" && appSettings.Transient.WebAuthPasswd != "" {
+		// auto passwd should not be masked as we print it
+		masked = append(masked, appSettings.Transient.WebAuthPasswd)
+	}
+
+	// add auth hash
+	if appSettings.Server.AuthHash != "" {
+		masked = append(masked, appSettings.Server.AuthHash)
 	}
 
 	setupLog(appSettings.Transient.Dbg, masked...)
@@ -271,7 +298,7 @@ func execute(ctx context.Context, settings *config.Settings) error {
 	}
 
 	convertOnly := settings.Convert == "only"
-	if !settings.Server.Enabled && !convertOnly && (settings.Transient.Credentials.TelegramToken == "" || settings.Telegram.Group == "") {
+	if !settings.Server.Enabled && !convertOnly && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
@@ -325,7 +352,7 @@ func execute(ctx context.Context, settings *config.Settings) error {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		// if no telegram token and group set, just run the server
-		if settings.Transient.Credentials.TelegramToken == "" || settings.Telegram.Group == "" {
+		if settings.Telegram.Token == "" || settings.Telegram.Group == "" {
 			log.Printf("[WARN] no telegram token and group set, web server only mode")
 			<-ctx.Done()
 			return nil
@@ -333,7 +360,7 @@ func execute(ctx context.Context, settings *config.Settings) error {
 	}
 
 	// make telegram bot
-	tbAPI, err := tbapi.NewBotAPI(settings.Transient.Credentials.TelegramToken)
+	tbAPI, err := tbapi.NewBotAPI(settings.Telegram.Token)
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
@@ -482,33 +509,31 @@ func checkVolumeMount(settings *config.Settings) (ok bool) {
 }
 
 func activateServer(ctx context.Context, settings *config.Settings, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
-	// Handle authentication - always use bcrypt hash for security
-	authPasswd := settings.Transient.Credentials.WebAuthPasswd
-	authHash := settings.Transient.Credentials.WebAuthHash
+	// handle authentication - always use bcrypt hash for security
+	authPasswd := settings.Transient.WebAuthPasswd
+	authHash := settings.Server.AuthHash
 
-	// If hash is provided, use it directly
+	// if hash is provided, use it directly
 	if authHash != "" {
 		log.Printf("[INFO] using provided bcrypt hash for authentication")
 	} else if authPasswd != "" {
-		// Generate hash from password if no hash but password is provided
+		// generate hash from password if no hash but password is provided
 		authHash, err = generateAuthHash(authPasswd)
 		if err != nil {
 			return fmt.Errorf("can't handle authentication setup: %w", err)
 		}
-		// Update credentials with the generated hash
-		credentials := settings.GetCredentials()
-		credentials.WebAuthHash = authHash
-		settings.SetCredentials(credentials)
+		// store the hash directly in the Server settings domain
+		settings.Server.AuthHash = authHash
 	}
-	// When neither hash nor password is provided, auth will be disabled
+	// when neither hash nor password is provided, auth will be disabled
 
-	// Make store and load approved users
+	// make store and load approved users
 	detectedSpamStore, dsErr := storage.NewDetectedSpam(ctx, db)
 	if dsErr != nil {
 		return fmt.Errorf("can't make detected spam store, %w", dsErr)
 	}
 
-	// Create settings store for database access if config DB mode is enabled
+	// create settings store for database access if config DB mode is enabled
 	var settingsStore *config.Store
 	if settings.Transient.ConfigDB {
 		store, err := config.NewStore(ctx, db)
@@ -587,7 +612,7 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 			RetryCount:        settings.OpenAI.RetryCount,
 		}
 
-		config := openai.DefaultConfig(settings.Transient.Credentials.OpenAIToken)
+		config := openai.DefaultConfig(settings.OpenAI.Token)
 		if settings.OpenAI.APIBase != "" {
 			config.BaseURL = settings.OpenAI.APIBase
 		}
@@ -1091,7 +1116,7 @@ func generateAuthHash(password string) (string, error) {
 
 // optToSettings converts CLI options to the domain settings model
 func optToSettings(opts options) *config.Settings {
-	// Create settings model from options
+	// create settings model from options
 	settings := &config.Settings{
 		InstanceID: opts.InstanceID,
 
@@ -1201,20 +1226,20 @@ func optToSettings(opts options) *config.Settings {
 		Dry:                 opts.Dry,
 	}
 
-	// Set transient settings (not persisted to database)
+	// set transient settings (not persisted to database)
 	settings.Transient = config.TransientSettings{
 		DataBaseURL:    opts.DataBaseURL,
 		StorageTimeout: opts.StorageTimeout,
 		ConfigDB:       opts.ConfigDB,
 		Dbg:            opts.Dbg,
 		TGDbg:          opts.TGDbg,
-		Credentials: config.Credentials{
-			TelegramToken: opts.Telegram.Token,
-			OpenAIToken:   opts.OpenAI.Token,
-			WebAuthHash:   opts.Server.AuthHash,
-			WebAuthPasswd: opts.Server.AuthPasswd,
-		},
+		WebAuthPasswd:  opts.Server.AuthPasswd,
 	}
+
+	// set credentials in their respective domain structures
+	settings.Telegram.Token = opts.Telegram.Token
+	settings.OpenAI.Token = opts.OpenAI.Token
+	settings.Server.AuthHash = opts.Server.AuthHash
 
 	return settings
 }
@@ -1227,7 +1252,7 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 
 	log.Print("[INFO] loading configuration from database")
 
-	// Create database connection using the settings' database URL
+	// create database connection using the settings' database URL
 	dbURL := settings.Transient.DataBaseURL
 	instanceID := settings.InstanceID
 	db, err := makeDBWithParams(ctx, dbURL, instanceID)
@@ -1235,30 +1260,26 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
 
-	// Create settings store
+	// create settings store
 	settingsStore, err := config.NewStore(ctx, db)
 	if err != nil {
 		return fmt.Errorf("failed to create settings store: %w", err)
 	}
 
-	// Load settings
+	// load settings
 	dbSettings, err := settingsStore.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load settings from database: %w", err)
 	}
 
-	// Save original credentials and transient values
-	credentials := settings.GetCredentials()
+	// save original transient values only (non-functional values)
 	transient := settings.Transient
 
-	// Replace settings with loaded values
+	// replace settings with loaded values including credentials
 	*settings = *dbSettings
 
-	// Restore transient values
+	// restore transient values
 	settings.Transient = transient
-
-	// Restore credentials
-	settings.SetCredentials(credentials)
 
 	log.Printf("[INFO] configuration loaded from database successfully")
 	return nil
@@ -1268,33 +1289,31 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 func saveConfigToDB(ctx context.Context, settings *config.Settings) error {
 	log.Print("[INFO] saving configuration to database")
 
-	// Create database connection
+	// create database connection
 	db, err := makeDB(ctx, settings)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
 
-	// Create settings store
+	// create settings store
 	settingsStore, err := config.NewStore(ctx, db)
 	if err != nil {
 		return fmt.Errorf("failed to create settings store: %w", err)
 	}
 
-	// Generate auth hash if password is provided but hash isn't
-	credentials := settings.GetCredentials()
-	if credentials.WebAuthPasswd != "" && credentials.WebAuthHash == "" {
-		// Generate bcrypt hash from the password
-		hash, hashErr := generateAuthHash(credentials.WebAuthPasswd)
+	// generate auth hash if password is provided but hash isn't
+	if settings.Transient.WebAuthPasswd != "" && settings.Server.AuthHash == "" {
+		// generate bcrypt hash from the password
+		hash, hashErr := generateAuthHash(settings.Transient.WebAuthPasswd)
 		if hashErr != nil {
 			return fmt.Errorf("failed to generate auth hash: %w", hashErr)
 		}
 
-		// Update the hash in credentials
-		credentials.WebAuthHash = hash
-		settings.SetCredentials(credentials)
+		// update the hash directly in the Server settings domain
+		settings.Server.AuthHash = hash
 	}
 
-	// Save settings to database
+	// save settings to database
 	if err := settingsStore.Save(ctx, settings); err != nil {
 		return fmt.Errorf("failed to save configuration to database: %w", err)
 	}

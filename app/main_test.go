@@ -144,7 +144,7 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		settings.Logger.FileName = "/tmp"
 		settings.Logger.MaxSize = "1f"
 		settings.Logger.MaxBackups = 1
-		
+
 		writer, err := makeSpamLogWriter(settings)
 		assert.Error(t, err)
 		t.Log(err)
@@ -157,7 +157,7 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		settings.Logger.FileName = "/tmp"
 		settings.Logger.MaxSize = "10M"
 		settings.Logger.MaxBackups = 1
-		
+
 		writer, err := makeSpamLogWriter(settings)
 		assert.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
@@ -173,11 +173,11 @@ func Test_makeDetector(t *testing.T) {
 
 	t.Run("with first msgs count", func(t *testing.T) {
 		settings := makeTestSettings()
-		settings.Transient.Credentials.OpenAIToken = "123"
+		settings.OpenAI.Token = "123"
 		settings.Files.SamplesDataPath = "/tmp"
 		settings.Files.DynamicDataPath = "/tmp"
 		settings.FirstMessagesCount = 10
-		
+
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 10, res.FirstMessagesCount)
@@ -186,12 +186,12 @@ func Test_makeDetector(t *testing.T) {
 
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
 		settings := makeTestSettings()
-		settings.Transient.Credentials.OpenAIToken = "123"
+		settings.OpenAI.Token = "123"
 		settings.Files.SamplesDataPath = "/tmp"
 		settings.Files.DynamicDataPath = "/tmp"
 		settings.FirstMessagesCount = 10
 		settings.ParanoidMode = true
-		
+
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
@@ -260,7 +260,7 @@ func Test_makeSpamBot(t *testing.T) {
 		settings.Files.SamplesDataPath = tmpDir
 		settings.Files.DynamicDataPath = tmpDir
 		settings.InstanceID = "gr1"
-		
+
 		detector := makeDetector(settings)
 		db, err := engine.NewSqlite(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
@@ -286,11 +286,11 @@ func Test_activateServerOnly(t *testing.T) {
 	settings := makeTestSettings()
 	settings.Server.Enabled = true
 	settings.Server.ListenAddr = ":9988"
-	settings.Transient.Credentials.WebAuthPasswd = "auto"
+	settings.Transient.WebAuthPasswd = "auto"
 	settings.InstanceID = "gr1"
 	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
 
-	// Create sample directories
+	// create sample directories
 	settings.Files.SamplesDataPath = t.TempDir()
 	settings.Files.DynamicDataPath = t.TempDir()
 
@@ -880,21 +880,19 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				Group:        "test-group",
 				Timeout:      5 * time.Second,
 				IdleDuration: 10 * time.Second,
+				Token:        "test-token", // token directly in domain model
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "", // empty token
 			},
 			History: config.HistorySettings{
 				Size:     200,
 				Duration: 24 * time.Hour,
 				MinSize:  500,
 			},
-		}
-
-		// add transient settings (should not be stored)
-		settings.Transient = config.TransientSettings{
-			DataBaseURL:    dbFile,
-			StorageTimeout: 30 * time.Second,
-			Credentials: config.Credentials{
-				TelegramToken: "test-token",
-				OpenAIToken:   "",
+			Transient: config.TransientSettings{
+				DataBaseURL:    dbFile,
+				StorageTimeout: 30 * time.Second,
 			},
 		}
 
@@ -940,17 +938,19 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		assert.Empty(t, loadedSettings.Transient.StorageTimeout)
 	})
 
-	t.Run("verify tokens are stored with different values", func(t *testing.T) {
-		// create test settings with token values
+	t.Run("verify tokens are stored with domain model", func(t *testing.T) {
+		// create test settings with token values in domain models
 		settings := &config.Settings{
 			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Token: "telegram-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "openai-token",
+			},
 			Transient: config.TransientSettings{
 				DataBaseURL: dbFile,
 				Dbg:         true, // debug mode enabled for testing
-				Credentials: config.Credentials{
-					TelegramToken: "secret-token",
-					OpenAIToken:   "openai-token",
-				},
 			},
 		}
 
@@ -972,9 +972,9 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		err = loadConfigFromDB(ctx, loadedSettings)
 		require.NoError(t, err)
 
-		// verify original transient credentials are not in the loaded settings
-		assert.Empty(t, loadedSettings.Transient.Credentials.TelegramToken)
-		assert.Empty(t, loadedSettings.Transient.Credentials.OpenAIToken)
+		// verify domain model tokens are loaded
+		assert.Equal(t, "telegram-token", loadedSettings.Telegram.Token)
+		assert.Equal(t, "openai-token", loadedSettings.OpenAI.Token)
 	})
 
 	t.Run("verify auth hash is generated and stored", func(t *testing.T) {
@@ -984,13 +984,11 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			Server: config.ServerSettings{
 				Enabled:  true,
 				AuthUser: "test-user",
+				AuthHash: "", // no hash provided
 			},
 			Transient: config.TransientSettings{
-				DataBaseURL: dbFile,
-				Credentials: config.Credentials{
-					WebAuthPasswd: "test-password", // password should be hashed
-					WebAuthHash:   "",             // no hash provided
-				},
+				DataBaseURL:   dbFile,
+				WebAuthPasswd: "test-password", // password should be hashed
 			},
 		}
 
@@ -1013,11 +1011,16 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		// verify auth settings
 		assert.Equal(t, "test-user", loadedSettings.Server.AuthUser)
-		
+
 		// verify hash in original settings was set
-		assert.NotEmpty(t, settings.Transient.Credentials.WebAuthHash, "Auth hash should be generated in original settings")
-		assert.True(t, strings.HasPrefix(settings.Transient.Credentials.WebAuthHash, "$2a$"),
+		assert.NotEmpty(t, settings.Server.AuthHash, "Auth hash should be generated in original settings")
+		assert.True(t, strings.HasPrefix(settings.Server.AuthHash, "$2a$"),
 			"Auth hash should be a bcrypt hash starting with $2a$")
+
+		// verify hash loaded from database
+		assert.NotEmpty(t, loadedSettings.Server.AuthHash, "Auth hash should be loaded from database")
+		assert.True(t, strings.HasPrefix(loadedSettings.Server.AuthHash, "$2a$"),
+			"Loaded auth hash should be a bcrypt hash starting with $2a$")
 	})
 
 	t.Run("override cli values", func(t *testing.T) {
@@ -1038,7 +1041,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				DataBaseURL: dbFile,
 			},
 		}
-		
+
 		ctx := context.Background()
 		err := saveConfigToDB(ctx, dbSettings)
 		require.NoError(t, err)
@@ -1053,18 +1056,21 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				Dbg:            true,
 				TGDbg:          true,
 				StorageTimeout: 30 * time.Second,
-				Credentials: config.Credentials{
-					TelegramToken: "cli-token",
-					WebAuthPasswd: "cli-password",
-					WebAuthHash:   "cli-hash",
-				},
+				WebAuthPasswd:  "cli-password",
 			},
 			Telegram: config.TelegramSettings{
 				Group: "cli-group",
+				Token: "cli-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "openai-cli-token",
+			},
+			Server: config.ServerSettings{
+				AuthHash: "cli-hash",
 			},
 		}
 
-		// Save original credentials and transient values
+		// save original credentials and transient values
 		originalCreds := cliSettings.GetCredentials()
 		originalTransient := cliSettings.Transient
 
@@ -1072,26 +1078,27 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		err = loadConfigFromDB(ctx, cliSettings)
 		require.NoError(t, err)
 
-		// Restore transient values
+		// restore transient values
 		cliSettings.Transient = originalTransient
-		
-		// Restore credentials
+
+		// restore credentials
 		cliSettings.SetCredentials(originalCreds)
 
 		// now verify - CLI values should be preserved
 		assert.Equal(t, "test-instance", cliSettings.InstanceID)
 		assert.Equal(t, true, cliSettings.Transient.Dbg)
 		assert.Equal(t, true, cliSettings.Transient.TGDbg)
-		assert.Equal(t, "cli-password", cliSettings.Transient.Credentials.WebAuthPasswd)
-		assert.Equal(t, "cli-hash", cliSettings.Transient.Credentials.WebAuthHash)
-		assert.Equal(t, "cli-token", cliSettings.Transient.Credentials.TelegramToken)
+		assert.Equal(t, "cli-password", cliSettings.Transient.WebAuthPasswd)
+		assert.Equal(t, "cli-hash", cliSettings.Server.AuthHash)
+		assert.Equal(t, "cli-token", cliSettings.Telegram.Token)
+		assert.Equal(t, "openai-cli-token", cliSettings.OpenAI.Token)
 		assert.Equal(t, 30*time.Second, cliSettings.Transient.StorageTimeout)
 
 		// DB values should be loaded for non-transient fields
-		assert.Equal(t, true, cliSettings.Dry)                         // from DB
-		assert.Equal(t, 5, cliSettings.MultiLangWords)                 // from DB
-		assert.Equal(t, 48*time.Hour, cliSettings.History.Duration)    // from DB
-		assert.Equal(t, "db-group", cliSettings.Telegram.Group)        // from DB
+		assert.Equal(t, true, cliSettings.Dry)                      // from DB
+		assert.Equal(t, 5, cliSettings.MultiLangWords)              // from DB
+		assert.Equal(t, 48*time.Hour, cliSettings.History.Duration) // from DB
+		assert.Equal(t, "db-group", cliSettings.Telegram.Group)     // from DB
 	})
 
 	t.Run("error handling - database error", func(t *testing.T) {
