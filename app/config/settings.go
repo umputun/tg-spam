@@ -10,18 +10,18 @@ type Settings struct {
 	InstanceID string `json:"instance_id" yaml:"instance_id" db:"instance_id"`
 
 	// group settings by domain
-	Telegram      TelegramSettings      `json:"telegram" yaml:"telegram"`
-	Admin         AdminSettings         `json:"admin" yaml:"admin"`
-	History       HistorySettings       `json:"history" yaml:"history"`
-	Logger        LoggerSettings        `json:"logger" yaml:"logger"`
-	CAS           CASSettings           `json:"cas" yaml:"cas"`
-	Meta          MetaSettings          `json:"meta" yaml:"meta"`
-	OpenAI        OpenAISettings        `json:"openai" yaml:"openai"`
-	LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins"`
-	AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing"`
-	Files         FilesSettings         `json:"files" yaml:"files"`
-	Message       MessageSettings       `json:"message" yaml:"message"`
-	Server        ServerSettings        `json:"server" yaml:"server"`
+	Telegram      TelegramSettings      `json:"telegram" yaml:"telegram" db:"telegram"`
+	Admin         AdminSettings         `json:"admin" yaml:"admin" db:"admin"`
+	History       HistorySettings       `json:"history" yaml:"history" db:"history"`
+	Logger        LoggerSettings        `json:"logger" yaml:"logger" db:"logger"`
+	CAS           CASSettings           `json:"cas" yaml:"cas" db:"cas"`
+	Meta          MetaSettings          `json:"meta" yaml:"meta" db:"meta"`
+	OpenAI        OpenAISettings        `json:"openai" yaml:"openai" db:"openai"`
+	LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins" db:"lua_plugins"`
+	AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing" db:"abnormal_spacing"`
+	Files         FilesSettings         `json:"files" yaml:"files" db:"files"`
+	Message       MessageSettings       `json:"message" yaml:"message" db:"message"`
+	Server        ServerSettings        `json:"server" yaml:"server" db:"server"`
 
 	// spam detection settings
 	SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
