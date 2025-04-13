@@ -19,10 +19,10 @@ func TestSettings_JSON(t *testing.T) {
 	s.Server.ListenAddr = ":9000"
 	s.Message.Spam = "test spam message"
 
-	// add credentials that should not be serialized
-	s.Transient.Credentials.TelegramToken = "secret-token"
-	s.Transient.Credentials.OpenAIToken = "secret-openai-token"
-	s.Transient.Credentials.WebAuthHash = "secret-hash"
+	// add credentials directly to domain fields
+	s.Telegram.Token = "secret-token"
+	s.OpenAI.Token = "secret-openai-token"
+	s.Server.AuthHash = "secret-hash"
 	s.Transient.ConfigDB = true
 	s.Transient.Dbg = true
 
@@ -30,14 +30,15 @@ func TestSettings_JSON(t *testing.T) {
 	data, err := json.Marshal(s)
 	require.NoError(t, err)
 
-	// ensure sensitive data is not included
+	// check that data is correctly serialized
 	jsonStr := string(data)
 	assert.Contains(t, jsonStr, "test-instance")
 	assert.Contains(t, jsonStr, "test-group")
 	assert.Contains(t, jsonStr, "test spam message")
-	assert.NotContains(t, jsonStr, "secret-token")
-	assert.NotContains(t, jsonStr, "secret-openai-token")
-	assert.NotContains(t, jsonStr, "secret-hash")
+	// sensitive data should be included since it's part of the domain model
+	assert.Contains(t, jsonStr, "secret-token")
+	assert.Contains(t, jsonStr, "secret-openai-token")
+	assert.Contains(t, jsonStr, "secret-hash")
 	assert.NotContains(t, jsonStr, "ConfigDB")
 	assert.NotContains(t, jsonStr, "Dbg")
 
@@ -54,10 +55,10 @@ func TestSettings_JSON(t *testing.T) {
 	assert.True(t, s2.Server.Enabled)
 	assert.Equal(t, 0.75, s2.SimilarityThreshold)
 
-	// credentials should be empty in unmarshaled object
-	assert.Empty(t, s2.Transient.Credentials.TelegramToken)
-	assert.Empty(t, s2.Transient.Credentials.OpenAIToken)
-	assert.Empty(t, s2.Transient.Credentials.WebAuthHash)
+	// credentials should be preserved in unmarshaled object
+	assert.Equal(t, "secret-token", s2.Telegram.Token)
+	assert.Equal(t, "secret-openai-token", s2.OpenAI.Token)
+	assert.Equal(t, "secret-hash", s2.Server.AuthHash)
 	assert.False(t, s2.Transient.ConfigDB)
 	assert.False(t, s2.Transient.Dbg)
 }

@@ -54,6 +54,7 @@ type TelegramSettings struct {
 	Group        string        `json:"group" yaml:"group" db:"telegram_group"`
 	IdleDuration time.Duration `json:"idle_duration" yaml:"idle_duration" db:"telegram_idle_duration"`
 	Timeout      time.Duration `json:"timeout" yaml:"timeout" db:"telegram_timeout"`
+	Token        string        `json:"token" yaml:"token" db:"telegram_token"`
 }
 
 // AdminSettings contains admin-related settings
@@ -105,6 +106,7 @@ type OpenAISettings struct {
 	Veto              bool   `json:"veto" yaml:"veto" db:"openai_veto"`
 	Prompt            string `json:"prompt" yaml:"prompt" db:"openai_prompt"`
 	Model             string `json:"model" yaml:"model" db:"openai_model"`
+	Token             string `json:"token" yaml:"token" db:"openai_token"`
 	MaxTokensResponse int    `json:"max_tokens_response" yaml:"max_tokens_response" db:"openai_max_tokens_response"`
 	MaxTokensRequest  int    `json:"max_tokens_request" yaml:"max_tokens_request" db:"openai_max_tokens_request"`
 	MaxSymbolsRequest int    `json:"max_symbols_request" yaml:"max_symbols_request" db:"openai_max_symbols_request"`
@@ -149,6 +151,7 @@ type ServerSettings struct {
 	Enabled    bool   `json:"enabled" yaml:"enabled" db:"server_enabled"`
 	ListenAddr string `json:"listen_addr" yaml:"listen_addr" db:"server_listen_addr"`
 	AuthUser   string `json:"auth_user" yaml:"auth_user" db:"server_auth_user"`
+	AuthHash   string `json:"auth_hash" yaml:"auth_hash" db:"server_auth_hash"`
 }
 
 // TransientSettings contains settings that should never be persisted
@@ -162,8 +165,8 @@ type TransientSettings struct {
 	Dbg      bool `json:"-" yaml:"-"`
 	TGDbg    bool `json:"-" yaml:"-"`
 
-	// credentials and sensitive information
-	Credentials Credentials `json:"-" yaml:"-"`
+	// temporary auth password (used only to generate hash)
+	WebAuthPasswd string `json:"-" yaml:"-"`
 }
 
 // Credentials stores sensitive information that should be handled separately
@@ -179,19 +182,27 @@ func New() *Settings {
 	return &Settings{}
 }
 
-// GetCredentials returns a copy of the credentials
+// GetCredentials returns credentials from their domain locations
 func (s *Settings) GetCredentials() Credentials {
-	return s.Transient.Credentials
+	return Credentials{
+		TelegramToken: s.Telegram.Token,
+		OpenAIToken:   s.OpenAI.Token,
+		WebAuthHash:   s.Server.AuthHash,
+		WebAuthPasswd: s.Transient.WebAuthPasswd,
+	}
 }
 
-// SetCredentials updates the credentials
+// SetCredentials sets credentials to their domain locations
 func (s *Settings) SetCredentials(creds Credentials) {
-	s.Transient.Credentials = creds
+	s.Telegram.Token = creds.TelegramToken
+	s.OpenAI.Token = creds.OpenAIToken
+	s.Server.AuthHash = creds.WebAuthHash
+	s.Transient.WebAuthPasswd = creds.WebAuthPasswd
 }
 
 // IsOpenAIEnabled returns true if OpenAI integration is enabled
 func (s *Settings) IsOpenAIEnabled() bool {
-	return s.OpenAI.APIBase != "" || s.Transient.Credentials.OpenAIToken != ""
+	return s.OpenAI.APIBase != "" || s.OpenAI.Token != ""
 }
 
 // IsMetaEnabled returns true if any meta check is enabled

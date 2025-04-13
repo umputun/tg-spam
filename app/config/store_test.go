@@ -106,9 +106,10 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 			settings.Server.Enabled = true
 			settings.Message.Spam = "spam message from store test"
 
-			// add transient data that should not be saved
-			settings.Transient.Credentials.TelegramToken = "should-not-be-saved"
-			settings.Transient.Credentials.OpenAIToken = "openai-token"
+			// add credentials that should be persisted
+			settings.Telegram.Token = "stored-telegram-token"
+			settings.OpenAI.Token = "stored-openai-token"
+			settings.Server.AuthHash = "stored-auth-hash"
 			settings.Transient.StorageTimeout = 5 * time.Minute
 			settings.Transient.ConfigDB = true
 			settings.Transient.Dbg = true
@@ -139,9 +140,10 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 			s.True(loaded.Server.Enabled)
 			s.Equal("spam message from store test", loaded.Message.Spam)
 
-			// transient data should be empty
-			s.Empty(loaded.Transient.Credentials.TelegramToken)
-			s.Empty(loaded.Transient.Credentials.OpenAIToken)
+			// credentials should be persisted
+			s.Equal("stored-telegram-token", loaded.Telegram.Token)
+			s.Equal("stored-openai-token", loaded.OpenAI.Token)
+							s.Equal("stored-auth-hash", loaded.Server.AuthHash)
 			s.Zero(loaded.Transient.StorageTimeout)
 			s.False(loaded.Transient.ConfigDB)
 			s.False(loaded.Transient.Dbg)
