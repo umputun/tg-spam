@@ -3,7 +3,7 @@ module github.com/umputun/tg-spam/_examples/simplechat
 go 1.24
 
 require (
-	github.com/umputun/tg-spam v1.17.0
+	github.com/umputun/tg-spam v1.18.0
 	modernc.org/sqlite v1.37.0
 )
 
@@ -18,7 +18,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd // indirect
-	github.com/sashabaranov/go-openai v1.38.0 // indirect
+	github.com/sashabaranov/go-openai v1.38.1 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
