@@ -171,8 +171,8 @@
                     <div class="form-text">Number of messages to be considered as first messages</div>
                 </div>
                 <div class="col-md-6 mb-3">
-                    <label for="multiLangLimit" class="form-label">Multi Lingual Words</label>
-                    <input type="number" min="0" class="form-control" id="multiLangLimit" name="multiLangLimit" value="{{.MultiLangLimit}}">
+                    <label for="multiLangWords" class="form-label">Multi Lingual Words</label>
+                    <input type="number" min="0" class="form-control" id="multiLangWords" name="multiLangWords" value="{{.MultiLangWords}}">
                     <div class="form-text">Limit for different languages in a message</div>
                 </div>
             </div>
@@ -180,12 +180,12 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="historySize" class="form-label">History Size</label>
-                    <input type="number" min="0" class="form-control" id="historySize" name="historySize" value="{{.HistorySize}}">
+                    <input type="number" min="0" class="form-control" id="historySize" name="historySize" value="{{.History.Size}}">
                     <div class="form-text">Number of messages to store in history</div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="abnormalSpacingEnabled" name="abnormalSpacingEnabled" {{if .AbnormalSpacingEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="abnormalSpacingEnabled" name="abnormalSpacingEnabled" {{if .AbnormalSpace.Enabled}}checked{{end}}>
                         <label class="form-check-label" for="abnormalSpacingEnabled">Abnormal Spacing Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
@@ -193,11 +193,11 @@
                         <label class="form-check-label" for="paranoidMode">Paranoid Mode</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaForwarded" name="metaForwarded" {{if .MetaForwarded}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="metaForwarded" name="metaForwarded" {{if .Meta.Forward}}checked{{end}}>
                         <label class="form-check-label" for="metaForwarded">Forward Prohibited</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="casEnabled" name="casEnabled" {{if .CasEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="casEnabled" name="casEnabled" {{if .IsCASEnabled}}checked{{end}}>
                         <label class="form-check-label" for="casEnabled">CAS Enabled</label>
                     </div>
                 </div>
@@ -214,12 +214,12 @@
                         <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
                         <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}%</td></tr>
                         <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
-                        <tr><th>Multi Lingual Words</th><td>{{.MultiLangLimit}}</td></tr>
-                        <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpacingEnabled}}</td></tr>
-                        <tr><th>History Size</th><td>{{.HistorySize}}</td></tr>
+                        <tr><th>Multi Lingual Words</th><td>{{.MultiLangWords}}</td></tr>
+                        <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpace.Enabled}}</td></tr>
+                        <tr><th>History Size</th><td>{{.History.Size}}</td></tr>
                         <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
-                        <tr><th>Forward Prohibited</th><td>{{.MetaForwarded}}</td></tr>
-                        <tr><th>CAS Enabled</th><td>{{.CasEnabled}}</td></tr>
+                        <tr><th>Forward Prohibited</th><td>{{.Meta.Forward}}</td></tr>
+                        <tr><th>CAS Enabled</th><td>{{.IsCASEnabled}}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -327,12 +327,12 @@
                 <div class="col-md-6 mb-3">
                     <label for="openAIModel" class="form-label">OpenAI Model</label>
                     <select class="form-select" id="openAIModel" name="openAIModel">
-                        <option value="gpt-3.5-turbo" {{if eq .OpenAIModel "gpt-3.5-turbo"}}selected{{end}}>GPT-3.5 Turbo</option>
-                        <option value="gpt-4" {{if eq .OpenAIModel "gpt-4"}}selected{{end}}>GPT-4</option>
-                        <option value="gpt-4-turbo" {{if eq .OpenAIModel "gpt-4-turbo"}}selected{{end}}>GPT-4 Turbo</option>
-                        <option value="gpt-4o" {{if eq .OpenAIModel "gpt-4o"}}selected{{end}}>GPT-4o</option>
-                        <option value="gpt-4o-mini" {{if eq .OpenAIModel "gpt-4o-mini"}}selected{{end}}>GPT-4o Mini</option>
-                        <option value="{{.OpenAIModel}}" {{if and (ne .OpenAIModel "gpt-3.5-turbo") (ne .OpenAIModel "gpt-4") (ne .OpenAIModel "gpt-4-turbo") (ne .OpenAIModel "gpt-4o") (ne .OpenAIModel "gpt-4o-mini")}}selected{{end}}>{{.OpenAIModel}}</option>
+                        <option value="gpt-3.5-turbo" {{if eq .OpenAI.Model "gpt-3.5-turbo"}}selected{{end}}>GPT-3.5 Turbo</option>
+                        <option value="gpt-4" {{if eq .OpenAI.Model "gpt-4"}}selected{{end}}>GPT-4</option>
+                        <option value="gpt-4-turbo" {{if eq .OpenAI.Model "gpt-4-turbo"}}selected{{end}}>GPT-4 Turbo</option>
+                        <option value="gpt-4o" {{if eq .OpenAI.Model "gpt-4o"}}selected{{end}}>GPT-4o</option>
+                        <option value="gpt-4o-mini" {{if eq .OpenAI.Model "gpt-4o-mini"}}selected{{end}}>GPT-4o Mini</option>
+                        <option value="{{.OpenAI.Model}}" {{if and (ne .OpenAI.Model "gpt-3.5-turbo") (ne .OpenAI.Model "gpt-4") (ne .OpenAI.Model "gpt-4-turbo") (ne .OpenAI.Model "gpt-4o") (ne .OpenAI.Model "gpt-4o-mini")}}selected{{end}}>{{.OpenAI.Model}}</option>
                     </select>
                     <div class="form-text">OpenAI model to use for checking messages</div>
                 </div>
@@ -344,10 +344,10 @@
                         <tr><th colspan="2">OpenAI Integration Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">OpenAI Enabled</th><td>{{.OpenAIEnabled}}</td></tr>
-                        <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
-                        <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
-                        <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
+                        <tr><th style="width: 30%">OpenAI Enabled</th><td>{{.IsOpenAIEnabled}}</td></tr>
+                        <tr><th>OpenAI Veto</th><td>{{.OpenAI.Veto}}</td></tr>
+                        <tr><th>OpenAI History Size</th><td>{{.OpenAI.HistorySize}}</td></tr>
+                        <tr><th>OpenAI Model</th><td>{{.OpenAI.Model}}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -439,12 +439,12 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="samplesDataPath" class="form-label">Samples Data Path</label>
-                    <input type="text" class="form-control" id="samplesDataPath" name="samplesDataPath" value="{{.SamplesDataPath}}">
+                    <input type="text" class="form-control" id="samplesDataPath" name="samplesDataPath" value="{{.Files.SamplesDataPath}}">
                     <div class="form-text">Path to store sample data files</div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="dynamicDataPath" class="form-label">Dynamic Data Path</label>
-                    <input type="text" class="form-control" id="dynamicDataPath" name="dynamicDataPath" value="{{.DynamicDataPath}}">
+                    <input type="text" class="form-control" id="dynamicDataPath" name="dynamicDataPath" value="{{.Files.DynamicDataPath}}">
                     <div class="form-text">Path to store dynamic data files</div>
                 </div>
             </div>
@@ -452,7 +452,7 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="watchIntervalSecs" class="form-label">Watch Interval Seconds</label>
-                    <input type="number" min="0" class="form-control" id="watchIntervalSecs" name="watchIntervalSecs" value="{{.WatchIntervalSecs}}">
+                    <input type="number" min="0" class="form-control" id="watchIntervalSecs" name="watchIntervalSecs" value="{{.Files.WatchInterval}}">
                     <div class="form-text">Interval to check for file changes</div>
                 </div>
                 <!-- StorageTimeout removed, as it's only controlled via CLI -->
@@ -465,11 +465,11 @@
                         <tr><th colspan="2">Data Storage Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
-                        <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
-                        <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
+                        <tr><th style="width: 30%">Samples Data Path</th><td>{{.Files.SamplesDataPath}}</td></tr>
+                        <tr><th>Dynamic Data Path</th><td>{{.Files.DynamicDataPath}}</td></tr>
+                        <tr><th>Watch Interval Seconds</th><td>{{.Files.WatchInterval}}</td></tr>
                         <!-- StorageTimeout shown as CLI-only setting -->
-                        <tr><th>Storage Timeout</th><td>{{.StorageTimeout}} <small class="text-muted">(set via CLI)</small></td></tr>
+                        <tr><th>Storage Timeout</th><td>{{.Transient.StorageTimeout}} <small class="text-muted">(set via CLI)</small></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -482,12 +482,12 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="superUsers" class="form-label">Super Users</label>
-                    <textarea class="form-control" id="superUsers" name="superUsers" rows="3">{{range $i, $user := .SuperUsers}}{{if $i}},{{end}}{{$user}}{{end}}</textarea>
+                    <textarea class="form-control" id="superUsers" name="superUsers" rows="3">{{range $i, $user := .Admin.SuperUsers}}{{if $i}},{{end}}{{$user}}{{end}}</textarea>
                     <div class="form-text">Comma-separated list of Telegram user IDs with special privileges</div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="disableAdminSpamForward" name="disableAdminSpamForward" {{if .DisableAdminSpamForward}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="disableAdminSpamForward" name="disableAdminSpamForward" {{if .Admin.DisableAdminSpamForward}}checked{{end}}>
                         <label class="form-check-label" for="disableAdminSpamForward">Disable Admin Spam Forward</label>
                     </div>
                     <div class="form-check form-switch mt-2">
@@ -495,15 +495,15 @@
                         <label class="form-check-label" for="noSpamReply">No Spam Reply</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="startupMessageEnabled" name="startupMessageEnabled" {{if .StartupMessageEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="startupMessageEnabled" name="startupMessageEnabled" {{if .IsStartupMessageEnabled}}checked{{end}}>
                         <label class="form-check-label" for="startupMessageEnabled">Startup Message Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="softBanEnabled" name="softBanEnabled" {{if .SoftBanEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="softBanEnabled" name="softBanEnabled" {{if .SoftBan}}checked{{end}}>
                         <label class="form-check-label" for="softBanEnabled">Soft Ban Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="trainingEnabled" name="trainingEnabled" {{if .TrainingEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="trainingEnabled" name="trainingEnabled" {{if .Training}}checked{{end}}>
                         <label class="form-check-label" for="trainingEnabled">Training Enabled</label>
                     </div>
                 </div>
@@ -515,12 +515,12 @@
                         <tr><th colspan="2">Bot Behavior Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Super Users</th><td>{{range .SuperUsers}}{{.}}<br>{{end}}</td></tr>
-                        <tr><th>Disable Admin Spam Forward</th><td>{{.DisableAdminSpamForward}}</td></tr>
+                        <tr><th style="width: 30%">Super Users</th><td>{{range .Admin.SuperUsers}}{{.}}<br>{{end}}</td></tr>
+                        <tr><th>Disable Admin Spam Forward</th><td>{{.Admin.DisableAdminSpamForward}}</td></tr>
                         <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
-                        <tr><th>Startup Message Enabled</th><td>{{.StartupMessageEnabled}}</td></tr>
-                        <tr><th>Soft Ban Enabled</th><td>{{.SoftBanEnabled}}</td></tr>
-                        <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
+                        <tr><th>Startup Message Enabled</th><td>{{.IsStartupMessageEnabled}}</td></tr>
+                        <tr><th>Soft Ban Enabled</th><td>{{.SoftBan}}</td></tr>
+                        <tr><th>Training Enabled</th><td>{{.Training}}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -533,22 +533,22 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="loggerEnabled" name="loggerEnabled" {{if .LoggerEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="loggerEnabled" name="loggerEnabled" {{if .Logger.Enabled}}checked{{end}}>
                         <label class="form-check-label" for="loggerEnabled">Logger Enabled</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="debugModeEnabled" name="debugModeEnabled" {{if .DebugModeEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="debugModeEnabled" name="debugModeEnabled" {{if .Transient.Dbg}}checked{{end}}>
                         <label class="form-check-label" for="debugModeEnabled">Debug Mode Enabled</label>
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="dryModeEnabled" name="dryModeEnabled" {{if .DryModeEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="dryModeEnabled" name="dryModeEnabled" {{if .Dry}}checked{{end}}>
                         <label class="form-check-label" for="dryModeEnabled">Dry Mode Enabled</label>
                         <div class="form-text">Run without making any actual changes</div>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="tgDebugModeEnabled" name="tgDebugModeEnabled" {{if .TGDebugModeEnabled}}checked{{end}}>
+                        <input class="form-check-input" type="checkbox" id="tgDebugModeEnabled" name="tgDebugModeEnabled" {{if .Transient.TGDbg}}checked{{end}}>
                         <label class="form-check-label" for="tgDebugModeEnabled">TG Debug Mode Enabled</label>
                         <div class="form-text">Enable Telegram API debug logging</div>
                     </div>
@@ -561,10 +561,10 @@
                         <tr><th colspan="2">System Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Logger Enabled</th><td>{{.LoggerEnabled}}</td></tr>
-                        <tr><th>Debug Mode Enabled</th><td>{{.DebugModeEnabled}}</td></tr>
-                        <tr><th>Dry Mode Enabled</th><td>{{.DryModeEnabled}}</td></tr>
-                        <tr><th>TG Debug Mode Enabled</th><td>{{.TGDebugModeEnabled}}</td></tr>
+                        <tr><th style="width: 30%">Logger Enabled</th><td>{{.Logger.Enabled}}</td></tr>
+                        <tr><th>Debug Mode Enabled</th><td>{{.Transient.Dbg}}</td></tr>
+                        <tr><th>Dry Mode Enabled</th><td>{{.Dry}}</td></tr>
+                        <tr><th>TG Debug Mode Enabled</th><td>{{.Transient.TGDbg}}</td></tr>
                     </tbody>
                 </table>
             </div>

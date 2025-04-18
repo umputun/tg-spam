@@ -2218,3 +2218,158 @@ func TestServer_logoutHandler(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "Logged out successfully")
 }
+
+// TestTemplateRendering tests that all templates render successfully with minimal settings
+func TestTemplateRendering(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		data     interface{}
+	}{
+		{
+			name:     "settings.html",
+			template: "settings.html",
+			data: struct {
+				*config.Settings
+				LuaAvailablePlugins []string
+				Version             string
+				Database            struct {
+					Type   string
+					GID    string
+					Status string
+				}
+				Backup struct {
+					URL      string
+					Filename string
+				}
+				System struct {
+					Uptime string
+				}
+				ConfigAvailable bool
+				LastUpdated     time.Time
+				ConfigDBMode    bool
+			}{
+				Settings: &config.Settings{
+					InstanceID:           "test-instance",
+					SimilarityThreshold:  0.8,
+					MinMsgLen:            10,
+					MaxEmoji:             5,
+					MinSpamProbability:   0.7,
+					MultiLangWords:       3,
+					NoSpamReply:          true,
+					ParanoidMode:         false,
+					FirstMessagesCount:   3,
+					Training:             true,
+					SoftBan:              false,
+					Telegram:             config.TelegramSettings{Group: "test-group"},
+					Admin:                config.AdminSettings{AdminGroup: "admin-group", SuperUsers: []string{"user1", "user2"}},
+					History:              config.HistorySettings{Size: 100, MinSize: 10},
+					Logger:               config.LoggerSettings{Enabled: true},
+					CAS:                  config.CASSettings{API: "https://api.cas.com"},
+					Meta:                 config.MetaSettings{LinksLimit: 3, Forward: true, Keyboard: false},
+					OpenAI:               config.OpenAISettings{Token: "sk-test", Veto: true, HistorySize: 5, Model: "gpt-4o"},
+					LuaPlugins:           config.LuaPluginsSettings{Enabled: true, EnabledPlugins: []string{"test.lua"}},
+					AbnormalSpace:        config.AbnormalSpaceSettings{Enabled: true},
+					Files:                config.FilesSettings{SamplesDataPath: "/tmp/samples", DynamicDataPath: "/tmp/dynamic", WatchInterval: 60},
+					Message:              config.MessageSettings{Startup: "Hello", Spam: "Detected spam"},
+					Server:               config.ServerSettings{Enabled: true, ListenAddr: ":8080"},
+				},
+				LuaAvailablePlugins: []string{"test.lua", "another.lua"},
+				Version:             "v1.0.0",
+				Database: struct {
+					Type   string
+					GID    string
+					Status string
+				}{Type: "sqlite", GID: "test-gid", Status: "Connected"},
+				Backup: struct {
+					URL      string
+					Filename string
+				}{URL: "/download/backup", Filename: "backup.sql.gz"},
+				System: struct {
+					Uptime string
+				}{Uptime: "1h 30m"},
+				ConfigAvailable: true,
+				LastUpdated:     time.Now(),
+				ConfigDBMode:    true,
+			},
+		},
+		{
+			name:     "detected_spam.html",
+			template: "detected_spam.html",
+			data: struct {
+				DetectedSpamEntries []storage.DetectedSpamInfo
+				TotalDetectedSpam   int
+				FilteredCount       int
+				Filter              string
+				OpenAIEnabled       bool
+			}{
+				DetectedSpamEntries: []storage.DetectedSpamInfo{
+					{
+						ID:        1,
+						GID:       "gid1",
+						Text:      "spam text",
+						UserID:    123,
+						UserName:  "user1",
+						Timestamp: time.Now(),
+						Added:     false,
+						Checks:    []spamcheck.Response{{Name: "test", Spam: true, Details: "details"}},
+					},
+				},
+				TotalDetectedSpam: 1,
+				FilteredCount:     1,
+				Filter:            "all",
+				OpenAIEnabled:     true,
+			},
+		},
+		{
+			name:     "manage_samples.html",
+			template: "manage_samples.html",
+			data: struct {
+				SpamSamples      []struct{ ID, Sample string }
+				HamSamples       []struct{ ID, Sample string }
+				TotalHamSamples  int
+				TotalSpamSamples int
+			}{
+				SpamSamples: []struct{ ID, Sample string }{
+					{ID: "id1", Sample: "spam sample 1"},
+				},
+				HamSamples: []struct{ ID, Sample string }{
+					{ID: "id2", Sample: "ham sample 1"},
+				},
+				TotalHamSamples:  1,
+				TotalSpamSamples: 1,
+			},
+		},
+		{
+			name:     "manage_users.html",
+			template: "manage_users.html",
+			data: struct {
+				ApprovedUsers      []approved.UserInfo
+				TotalApprovedUsers int
+			}{
+				ApprovedUsers: []approved.UserInfo{
+					{UserID: "123", UserName: "user1"},
+				},
+				TotalApprovedUsers: 1,
+			},
+		},
+		{
+			name:     "spam_check.html",
+			template: "spam_check.html",
+			data: struct {
+				Version string
+			}{
+				Version: "v1.0.0",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			err := tmpl.ExecuteTemplate(buf, tc.template, tc.data)
+			assert.NoError(t, err, "template should render without errors")
+			assert.NotEmpty(t, buf.String(), "template should render content")
+		})
+	}
+}
