@@ -184,7 +184,7 @@ func endsWith(l *lua.LState) int {
 // Lua usage: response, status_code, err = http_request(url, [method="GET"], [headers={...}], [body=""], [timeout=5])
 // Example: response, status, err = http_request("https://example.com/api", "POST", {["Content-Type"]="application/json"}, '{"key":"value"}', 10)
 func httpRequest(l *lua.LState) int {
-	url := l.CheckString(1)
+	urlStr := l.CheckString(1)
 
 	// optional parameters with defaults
 	method := "GET"
@@ -210,7 +210,7 @@ func httpRequest(l *lua.LState) int {
 	}
 
 	// create the request with context for proper cancellation
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequest(method, urlStr, body)
 	if err != nil {
 		l.Push(lua.LNil)
 		l.Push(lua.LNumber(0))

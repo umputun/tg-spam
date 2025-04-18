@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi/mocks"
@@ -73,25 +74,24 @@ func TestServer_RunAuth(t *testing.T) {
 	t.Logf("hashed password: %s", string(hashedPassword))
 
 	tests := []struct {
-		name      string
-		srv       *Server
-		port      string
-		authType  string
-		password  string
-		useHashed bool
+		name     string
+		srv      *Server
+		port     string
+		authType string
+		password string
 	}{
 		{
-			name: "plain password auth",
+			name: "no auth",
 			srv: NewServer(Config{
 				ListenAddr: ":9877",
 				Version:    "dev",
 				Detector:   mockDetector,
 				SpamFilter: mockSpamFilter,
-				AuthPasswd: "test",
+				// no auth hash provided - auth disabled
 			}),
 			port:     "9877",
-			authType: "plain",
-			password: "test",
+			authType: "none",
+			password: "",
 		},
 		{
 			name: "bcrypt hash auth",
@@ -102,10 +102,9 @@ func TestServer_RunAuth(t *testing.T) {
 				SpamFilter: mockSpamFilter,
 				AuthHash:   string(hashedPassword),
 			}),
-			port:      "9878",
-			authType:  "hash",
-			password:  "test",
-			useHashed: true,
+			port:     "9878",
+			authType: "hash",
+			password: "test",
 		},
 	}
 
@@ -138,51 +137,59 @@ func TestServer_RunAuth(t *testing.T) {
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 			})
 
-			t.Run("check unauthorized, no basic auth", func(t *testing.T) {
-				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-				if tc.useHashed {
+			if tc.authType == "hash" {
+				t.Run("check unauthorized, no basic auth", func(t *testing.T) {
+					resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
-				}
-			})
-
-			t.Run("check authorized", func(t *testing.T) {
-				reqBody, err := json.Marshal(map[string]string{
-					"msg":     "spam example",
-					"user_id": "user123",
 				})
-				require.NoError(t, err)
-				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
-				req.SetBasicAuth("tg-spam", tc.password)
-				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusOK, resp.StatusCode)
-			})
 
-			t.Run("wrong basic auth", func(t *testing.T) {
-				reqBody, err := json.Marshal(map[string]string{
-					"msg":     "spam example",
-					"user_id": "user123",
-				})
-				require.NoError(t, err)
-				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
-				req.SetBasicAuth("tg-spam", "bad")
-				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
-				t.Log(resp)
-				defer resp.Body.Close()
-				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-				if tc.useHashed {
+				t.Run("wrong basic auth", func(t *testing.T) {
+					reqBody, err := json.Marshal(map[string]string{
+						"msg":     "spam example",
+						"user_id": "user123",
+					})
+					require.NoError(t, err)
+					req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+					assert.NoError(t, err)
+					req.SetBasicAuth("tg-spam", "bad")
+					resp, err := http.DefaultClient.Do(req)
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 					assert.Equal(t, `Basic realm="restricted", charset="UTF-8"`, resp.Header.Get("WWW-Authenticate"))
-				}
-			})
+				})
+
+				t.Run("correct basic auth", func(t *testing.T) {
+					reqBody, err := json.Marshal(map[string]string{
+						"msg":     "spam example",
+						"user_id": "user123",
+					})
+					require.NoError(t, err)
+					req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
+					assert.NoError(t, err)
+					req.SetBasicAuth("tg-spam", tc.password)
+					resp, err := http.DefaultClient.Do(req)
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusOK, resp.StatusCode)
+				})
+			} else {
+				// no auth - all requests should succeed
+				t.Run("no auth required", func(t *testing.T) {
+					resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
+					assert.NoError(t, err)
+					t.Log(resp)
+					defer resp.Body.Close()
+					// no authentication required, but this path doesn't exist, so expect 404
+					assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+				})
+			}
 		})
 	}
 	cancel()
@@ -450,16 +457,20 @@ func TestServer_routes(t *testing.T) {
 	})
 
 	t.Run("get settings", func(t *testing.T) {
-		server.Settings.MinMsgLen = 10
+		// initialize AppSettings with the domain model
+		server.AppSettings = &config.Settings{
+			MinMsgLen: 10,
+		}
 		resp, err := http.Get(ts.URL + "/settings")
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
-		res := Settings{}
+		// decode response into config.Settings model
+		var res config.Settings
 		err = json.NewDecoder(resp.Body).Decode(&res)
 		assert.NoError(t, err)
-		assert.Equal(t, server.Settings, res)
+		assert.Equal(t, 10, res.MinMsgLen)
 	})
 }
 
@@ -886,7 +897,10 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 				}, nil
 			},
 		}
-		server := NewServer(Config{DetectedSpam: ds})
+		server := NewServer(Config{
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
@@ -918,7 +932,10 @@ func TestServer_htmlDetectedSpamHandler(t *testing.T) {
 				return nil, errors.New("test error")
 			},
 		}
-		server := NewServer(Config{DetectedSpam: ds})
+		server := NewServer(Config{
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 
 		req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
 		require.NoError(t, err)
@@ -1133,9 +1150,13 @@ func TestServer_htmlSpamCheckHandler(t *testing.T) {
 	t.Run("with full config options", func(t *testing.T) {
 		server := NewServer(Config{
 			Version: "2.0-test",
-			Settings: Settings{
-				PrimaryGroup:        "test-group",
-				AdminGroup:          "admin-group",
+			AppSettings: &config.Settings{
+				Telegram: config.TelegramSettings{
+					Group: "test-group",
+				},
+				Admin: config.AdminSettings{
+					AdminGroup: "admin-group",
+				},
 				SimilarityThreshold: 0.75,
 				MinMsgLen:           100,
 				ParanoidMode:        true,
@@ -1263,14 +1284,18 @@ func TestServer_getSettingsHandler(t *testing.T) {
 			},
 		}
 
-		settings := Settings{
-			InstanceID:        "test",
-			LuaPluginsEnabled: true,
-			LuaPluginsDir:     "/path/to/plugins",
-			LuaEnabledPlugins: []string{"plugin1", "plugin2"},
-		}
-
-		server := NewServer(Config{Version: "1.0", Detector: detectorMock, Settings: settings})
+		server := NewServer(Config{
+			Version:  "1.0",
+			Detector: detectorMock,
+			AppSettings: &config.Settings{
+				InstanceID: "test",
+				LuaPlugins: config.LuaPluginsSettings{
+					Enabled:        true,
+					PluginsDir:     "/path/to/plugins",
+					EnabledPlugins: []string{"plugin1", "plugin2"},
+				},
+			},
+		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
 		require.NoError(t, err)
@@ -1281,14 +1306,14 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
 
-		var respSettings Settings
+		var respSettings config.Settings
 		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
 		require.NoError(t, err)
-		assert.Equal(t, settings.InstanceID, respSettings.InstanceID)
-		assert.Equal(t, settings.LuaPluginsEnabled, respSettings.LuaPluginsEnabled)
-		assert.Equal(t, settings.LuaPluginsDir, respSettings.LuaPluginsDir)
-		assert.Equal(t, settings.LuaEnabledPlugins, respSettings.LuaEnabledPlugins)
-		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, respSettings.LuaAvailablePlugins)
+		assert.Equal(t, "test", respSettings.InstanceID)
+		assert.Equal(t, true, respSettings.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", respSettings.LuaPlugins.PluginsDir)
+		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, respSettings.LuaPlugins.EnabledPlugins)
+		// AvailablePlugins field has been removed - Lua plugin info comes from EnabledPlugins now
 		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
 	})
 
@@ -1299,12 +1324,16 @@ func TestServer_getSettingsHandler(t *testing.T) {
 			},
 		}
 
-		settings := Settings{
-			InstanceID:        "test",
-			LuaPluginsEnabled: false,
-		}
-
-		server := NewServer(Config{Version: "1.0", Detector: detectorMock, Settings: settings})
+		server := NewServer(Config{
+			Version:  "1.0",
+			Detector: detectorMock,
+			AppSettings: &config.Settings{
+				InstanceID: "test",
+				LuaPlugins: config.LuaPluginsSettings{
+					Enabled: false,
+				},
+			},
+		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
 		require.NoError(t, err)
@@ -1313,13 +1342,14 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
 
-		var respSettings Settings
+		var respSettings config.Settings
 		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
 		require.NoError(t, err)
-		assert.Equal(t, settings.InstanceID, respSettings.InstanceID)
-		assert.Equal(t, settings.LuaPluginsEnabled, respSettings.LuaPluginsEnabled)
-		assert.Empty(t, respSettings.LuaAvailablePlugins)
+		assert.Equal(t, "test", respSettings.InstanceID)
+		assert.Equal(t, false, respSettings.LuaPlugins.Enabled)
+		assert.Empty(t, respSettings.LuaPlugins.EnabledPlugins)
 		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
 	})
 }
@@ -1336,7 +1366,12 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		server := NewServer(Config{
 			Version:  "1.0",
 			Detector: detectorMock,
-			Settings: Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+			AppSettings: &config.Settings{
+				Admin: config.AdminSettings{
+					SuperUsers: []string{"user1", "user2"},
+				},
+				MinMsgLen: 150,
+			},
 		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
@@ -1368,7 +1403,12 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 			Version:       "1.0",
 			StorageEngine: sqlEngine,
 			Detector:      detectorMock,
-			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+			AppSettings: &config.Settings{
+				Admin: config.AdminSettings{
+					SuperUsers: []string{"user1", "user2"},
+				},
+				MinMsgLen: 150,
+			},
 		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
@@ -1397,7 +1437,12 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 			Version:       "1.0",
 			StorageEngine: mockEngine,
 			Detector:      detectorMock,
-			Settings:      Settings{SuperUsers: []string{"user1", "user2"}, MinMsgLen: 150},
+			AppSettings: &config.Settings{
+				Admin: config.AdminSettings{
+					SuperUsers: []string{"user1", "user2"},
+				},
+				MinMsgLen: 150,
+			},
 		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
@@ -1885,7 +1930,10 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 			},
 		}
 
-		server := NewServer(Config{DetectedSpam: ds})
+		server := NewServer(Config{
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
@@ -1935,7 +1983,10 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 			},
 		}
 
-		server := NewServer(Config{DetectedSpam: ds})
+		server := NewServer(Config{
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
@@ -1967,7 +2018,10 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 			},
 		}
 
-		server := NewServer(Config{DetectedSpam: ds})
+		server := NewServer(Config{
+			DetectedSpam: ds,
+			AppSettings:  &config.Settings{}, // add empty settings to avoid nil pointer in IsOpenAIEnabled
+		})
 		req, err := http.NewRequest("GET", "/download/detected_spam", http.NoBody)
 		require.NoError(t, err)
 
@@ -2163,4 +2217,159 @@ func TestServer_logoutHandler(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "Logged out successfully")
+}
+
+// TestTemplateRendering tests that all templates render successfully with minimal settings
+func TestTemplateRendering(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		data     interface{}
+	}{
+		{
+			name:     "settings.html",
+			template: "settings.html",
+			data: struct {
+				*config.Settings
+				LuaAvailablePlugins []string
+				Version             string
+				Database            struct {
+					Type   string
+					GID    string
+					Status string
+				}
+				Backup struct {
+					URL      string
+					Filename string
+				}
+				System struct {
+					Uptime string
+				}
+				ConfigAvailable bool
+				LastUpdated     time.Time
+				ConfigDBMode    bool
+			}{
+				Settings: &config.Settings{
+					InstanceID:           "test-instance",
+					SimilarityThreshold:  0.8,
+					MinMsgLen:            10,
+					MaxEmoji:             5,
+					MinSpamProbability:   0.7,
+					MultiLangWords:       3,
+					NoSpamReply:          true,
+					ParanoidMode:         false,
+					FirstMessagesCount:   3,
+					Training:             true,
+					SoftBan:              false,
+					Telegram:             config.TelegramSettings{Group: "test-group"},
+					Admin:                config.AdminSettings{AdminGroup: "admin-group", SuperUsers: []string{"user1", "user2"}},
+					History:              config.HistorySettings{Size: 100, MinSize: 10},
+					Logger:               config.LoggerSettings{Enabled: true},
+					CAS:                  config.CASSettings{API: "https://api.cas.com"},
+					Meta:                 config.MetaSettings{LinksLimit: 3, Forward: true, Keyboard: false},
+					OpenAI:               config.OpenAISettings{Token: "sk-test", Veto: true, HistorySize: 5, Model: "gpt-4o"},
+					LuaPlugins:           config.LuaPluginsSettings{Enabled: true, EnabledPlugins: []string{"test.lua"}},
+					AbnormalSpace:        config.AbnormalSpaceSettings{Enabled: true},
+					Files:                config.FilesSettings{SamplesDataPath: "/tmp/samples", DynamicDataPath: "/tmp/dynamic", WatchInterval: 60},
+					Message:              config.MessageSettings{Startup: "Hello", Spam: "Detected spam"},
+					Server:               config.ServerSettings{Enabled: true, ListenAddr: ":8080"},
+				},
+				LuaAvailablePlugins: []string{"test.lua", "another.lua"},
+				Version:             "v1.0.0",
+				Database: struct {
+					Type   string
+					GID    string
+					Status string
+				}{Type: "sqlite", GID: "test-gid", Status: "Connected"},
+				Backup: struct {
+					URL      string
+					Filename string
+				}{URL: "/download/backup", Filename: "backup.sql.gz"},
+				System: struct {
+					Uptime string
+				}{Uptime: "1h 30m"},
+				ConfigAvailable: true,
+				LastUpdated:     time.Now(),
+				ConfigDBMode:    true,
+			},
+		},
+		{
+			name:     "detected_spam.html",
+			template: "detected_spam.html",
+			data: struct {
+				DetectedSpamEntries []storage.DetectedSpamInfo
+				TotalDetectedSpam   int
+				FilteredCount       int
+				Filter              string
+				OpenAIEnabled       bool
+			}{
+				DetectedSpamEntries: []storage.DetectedSpamInfo{
+					{
+						ID:        1,
+						GID:       "gid1",
+						Text:      "spam text",
+						UserID:    123,
+						UserName:  "user1",
+						Timestamp: time.Now(),
+						Added:     false,
+						Checks:    []spamcheck.Response{{Name: "test", Spam: true, Details: "details"}},
+					},
+				},
+				TotalDetectedSpam: 1,
+				FilteredCount:     1,
+				Filter:            "all",
+				OpenAIEnabled:     true,
+			},
+		},
+		{
+			name:     "manage_samples.html",
+			template: "manage_samples.html",
+			data: struct {
+				SpamSamples      []struct{ ID, Sample string }
+				HamSamples       []struct{ ID, Sample string }
+				TotalHamSamples  int
+				TotalSpamSamples int
+			}{
+				SpamSamples: []struct{ ID, Sample string }{
+					{ID: "id1", Sample: "spam sample 1"},
+				},
+				HamSamples: []struct{ ID, Sample string }{
+					{ID: "id2", Sample: "ham sample 1"},
+				},
+				TotalHamSamples:  1,
+				TotalSpamSamples: 1,
+			},
+		},
+		{
+			name:     "manage_users.html",
+			template: "manage_users.html",
+			data: struct {
+				ApprovedUsers      []approved.UserInfo
+				TotalApprovedUsers int
+			}{
+				ApprovedUsers: []approved.UserInfo{
+					{UserID: "123", UserName: "user1"},
+				},
+				TotalApprovedUsers: 1,
+			},
+		},
+		{
+			name:     "spam_check.html",
+			template: "spam_check.html",
+			data: struct {
+				Version string
+			}{
+				Version: "v1.0.0",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			err := tmpl.ExecuteTemplate(buf, tc.template, tc.data)
+			assert.NoError(t, err, "template should render without errors")
+			assert.NotEmpty(t, buf.String(), "template should render content")
+		})
+	}
 }

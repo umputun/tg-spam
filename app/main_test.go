@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -88,6 +89,26 @@ func TestMakeSpamLogger(t *testing.T) {
 
 }
 
+// Helper function to create settings for testing
+func makeTestSettings() *config.Settings {
+	return &config.Settings{
+		InstanceID: "test-instance",
+		Logger: config.LoggerSettings{
+			Enabled:    false,
+			FileName:   "/tmp/test.log",
+			MaxSize:    "10M",
+			MaxBackups: 1,
+		},
+		Files: config.FilesSettings{
+			SamplesDataPath: "/tmp/samples",
+			DynamicDataPath: "/tmp/dynamic",
+		},
+		Transient: config.TransientSettings{
+			Dbg: true,
+		},
+	}
+}
+
 func TestMakeSpamLogWriter(t *testing.T) {
 	setupLog(true, "super-secret-token")
 	t.Run("happy path", func(t *testing.T) {
@@ -95,13 +116,13 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		require.NoError(t, err)
 		defer os.Remove(file.Name())
 
-		var opts options
-		opts.Logger.Enabled = true
-		opts.Logger.FileName = file.Name()
-		opts.Logger.MaxSize = "1M"
-		opts.Logger.MaxBackups = 1
+		settings := makeTestSettings()
+		settings.Logger.Enabled = true
+		settings.Logger.FileName = file.Name()
+		settings.Logger.MaxSize = "1M"
+		settings.Logger.MaxBackups = 1
 
-		writer, err := makeSpamLogWriter(opts)
+		writer, err := makeSpamLogWriter(settings)
 		require.NoError(t, err)
 
 		_, err = writer.Write([]byte("Test log entry\n"))
@@ -118,59 +139,107 @@ func TestMakeSpamLogWriter(t *testing.T) {
 	})
 
 	t.Run("failed on wrong size", func(t *testing.T) {
-		var opts options
-		opts.Logger.Enabled = true
-		opts.Logger.FileName = "/tmp"
-		opts.Logger.MaxSize = "1f"
-		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter(opts)
+		settings := makeTestSettings()
+		settings.Logger.Enabled = true
+		settings.Logger.FileName = "/tmp"
+		settings.Logger.MaxSize = "1f"
+		settings.Logger.MaxBackups = 1
+
+		writer, err := makeSpamLogWriter(settings)
 		assert.Error(t, err)
 		t.Log(err)
 		assert.Nil(t, writer)
 	})
 
 	t.Run("disabled", func(t *testing.T) {
-		var opts options
-		opts.Logger.Enabled = false
-		opts.Logger.FileName = "/tmp"
-		opts.Logger.MaxSize = "10M"
-		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter(opts)
+		settings := makeTestSettings()
+		settings.Logger.Enabled = false
+		settings.Logger.FileName = "/tmp"
+		settings.Logger.MaxSize = "10M"
+		settings.Logger.MaxBackups = 1
+
+		writer, err := makeSpamLogWriter(settings)
 		assert.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
 	})
 }
 
 func Test_makeDetector(t *testing.T) {
-	t.Run("no options", func(t *testing.T) {
-		var opts options
-		res := makeDetector(opts)
+	t.Run("basic settings", func(t *testing.T) {
+		settings := makeTestSettings()
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 	})
 
 	t.Run("with first msgs count", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.SamplesDataPath = "/tmp"
-		opts.Files.DynamicDataPath = "/tmp"
-		opts.FirstMessagesCount = 10
-		res := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.OpenAI.Token = "123"
+		settings.Files.SamplesDataPath = "/tmp"
+		settings.Files.DynamicDataPath = "/tmp"
+		settings.FirstMessagesCount = 10
+
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 10, res.FirstMessagesCount)
 		assert.Equal(t, true, res.FirstMessageOnly)
 	})
 
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.SamplesDataPath = "/tmp"
-		opts.Files.DynamicDataPath = "/tmp"
-		opts.FirstMessagesCount = 10
-		opts.ParanoidMode = true
-		res := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.OpenAI.Token = "123"
+		settings.Files.SamplesDataPath = "/tmp"
+		settings.Files.DynamicDataPath = "/tmp"
+		settings.FirstMessagesCount = 10
+		settings.ParanoidMode = true
+
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
 		assert.Equal(t, false, res.FirstMessageOnly)
+	})
+}
+
+func Test_initLuaPlugins(t *testing.T) {
+	t.Run("basic plugin initialization", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = "/path/to/plugins"
+		settings.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
+		settings.LuaPlugins.DynamicReload = true
+
+		detector := makeDetector(makeTestSettings()) // create a clean detector
+
+		// run the function to test
+		initLuaPlugins(detector, settings)
+
+		// verify that the detector's config matches the settings
+		assert.True(t, detector.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
+		assert.Equal(t, []string{"plugin1", "plugin2"}, detector.LuaPlugins.EnabledPlugins)
+		assert.True(t, detector.LuaPlugins.DynamicReload)
+
+		// verify the Lua engine was initialized
+		// we can't directly check detector.luaEngine since it's unexported
+		// but we can infer it's initialized because the settings were applied
+	})
+
+	t.Run("all enabled plugins", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = "/path/to/plugins"
+		// no specific plugins enabled - should enable all
+		settings.LuaPlugins.DynamicReload = false
+
+		detector := makeDetector(makeTestSettings()) // create a clean detector
+
+		// run the function to test
+		initLuaPlugins(detector, settings)
+
+		// verify the settings were transferred
+		assert.True(t, detector.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
+		assert.Empty(t, detector.LuaPlugins.EnabledPlugins)
+		assert.False(t, detector.LuaPlugins.DynamicReload)
 	})
 }
 
@@ -178,20 +247,21 @@ func Test_makeSpamBot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	t.Run("no options", func(t *testing.T) {
-		var opts options
-		_, err := makeSpamBot(ctx, opts, nil, nil)
+	t.Run("no settings", func(t *testing.T) {
+		settings := makeTestSettings()
+		_, err := makeSpamBot(ctx, settings, nil, nil)
 		assert.Error(t, err)
 	})
 
-	t.Run("with valid options", func(t *testing.T) {
-		var opts options
+	t.Run("with valid settings", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		opts.Files.SamplesDataPath = tmpDir
-		opts.Files.DynamicDataPath = tmpDir
-		opts.InstanceID = "gr1"
-		detector := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.Files.SamplesDataPath = tmpDir
+		settings.Files.DynamicDataPath = tmpDir
+		settings.InstanceID = "gr1"
+
+		detector := makeDetector(settings)
 		db, err := engine.NewSqlite(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
 		defer db.Close()
@@ -203,7 +273,7 @@ func Test_makeSpamBot(t *testing.T) {
 		err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 		require.NoError(t, err)
 
-		res, err := makeSpamBot(ctx, opts, db, detector)
+		res, err := makeSpamBot(ctx, settings, db, detector)
 		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})
@@ -213,23 +283,25 @@ func Test_activateServerOnly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var opts options
-	opts.Server.Enabled = true
-	opts.Server.ListenAddr = ":9988"
-	opts.Server.AuthPasswd = "auto"
-	opts.InstanceID = "gr1"
-	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	settings := makeTestSettings()
+	settings.Server.Enabled = true
+	settings.Server.ListenAddr = ":9988"
+	settings.Transient.WebAuthPasswd = "auto"
+	settings.InstanceID = "gr1"
+	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
 
-	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
+	// create sample directories
+	settings.Files.SamplesDataPath = t.TempDir()
+	settings.Files.DynamicDataPath = t.TempDir()
 
 	// write some sample files
-	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
+	fh, err := os.Create(path.Join(settings.Files.SamplesDataPath, "spam-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
 	require.NoError(t, err)
 	fh.Close()
 
-	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
+	fh, err = os.Create(path.Join(settings.Files.SamplesDataPath, "ham-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("ham1\nham2\nham3\n")
 	require.NoError(t, err)
@@ -237,7 +309,7 @@ func Test_activateServerOnly(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		err := execute(ctx, opts)
+		err := execute(ctx, settings)
 		assert.NoError(t, err)
 		close(done)
 	}()
@@ -264,7 +336,7 @@ func Test_activateServerOnly(t *testing.T) {
 }
 
 func Test_checkVolumeMount(t *testing.T) {
-	prepEnvAndFileSystem := func(opts *options, envValue string, dynamicDataPath string, notMountedExists bool) func() {
+	prepEnvAndFileSystem := func(settings *config.Settings, envValue string, dynamicDataPath string, notMountedExists bool) func() {
 		os.Setenv("TGSPAM_IN_DOCKER", envValue)
 
 		tempDir, _ := os.MkdirTemp("", "test")
@@ -279,7 +351,7 @@ func Test_checkVolumeMount(t *testing.T) {
 		if dynamicDataPath == "" {
 			dynamicDataPath = "dynamic"
 		}
-		opts.Files.DynamicDataPath = filepath.Join(tempDir, dynamicDataPath)
+		settings.Files.DynamicDataPath = filepath.Join(tempDir, dynamicDataPath)
 
 		return func() {
 			os.RemoveAll(tempDir)
@@ -331,11 +403,11 @@ func Test_checkVolumeMount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := options{}
-			cleanup := prepEnvAndFileSystem(&opts, tt.envValue, tt.dynamicDataPath, tt.notMountedExists)
+			settings := makeTestSettings()
+			cleanup := prepEnvAndFileSystem(settings, tt.envValue, tt.dynamicDataPath, tt.notMountedExists)
 			defer cleanup()
 
-			ok := checkVolumeMount(opts)
+			ok := checkVolumeMount(settings)
 			assert.Equal(t, tt.expectedOk, ok)
 		})
 	}
@@ -386,9 +458,9 @@ func Test_expandPath(t *testing.T) {
 
 func Test_migrateSamples(t *testing.T) {
 	tmpDir := t.TempDir()
-	opts := options{}
-	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = tmpDir, tmpDir
-	opts.InstanceID = "gr1"
+	settings := makeTestSettings()
+	settings.Files.SamplesDataPath, settings.Files.DynamicDataPath = tmpDir, tmpDir
+	settings.InstanceID = "gr1"
 
 	t.Run("full migration", func(t *testing.T) {
 		db, err := engine.NewSqlite(":memory:", "gr1")
@@ -398,26 +470,26 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create new files for migration, all 4 files should be migrated
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile),
 			[]byte("new spam1\nnew spam2\nnew spam 3"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, samplesHamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, samplesHamFile),
 			[]byte("new ham1\nnew ham2"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, dynamicSpamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, dynamicSpamFile),
 			[]byte("new dspam1\nnew dspam2\nnew dspam3"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile),
 			[]byte("new dham1\nnew dham2"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
 
 		// verify all files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile))
 		assert.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, samplesHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, samplesHamFile))
 		assert.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, dynamicSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, dynamicSpamFile))
 		assert.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
 		assert.Error(t, err, "original file should be renamed")
 
 		s, err := store.Stats(context.Background())
@@ -434,7 +506,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("nil storage", func(t *testing.T) {
-		err := migrateSamples(context.Background(), opts, nil)
+		err := migrateSamples(context.Background(), settings, nil)
 		assert.Error(t, err)
 	})
 
@@ -446,21 +518,21 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create already loaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"),
 			[]byte("old spam"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile+".loaded"),
 			[]byte("old ham"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
 
 		// verify old files untouched
-		data, err := os.ReadFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"))
+		data, err := os.ReadFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"))
 		require.NoError(t, err)
 		assert.Equal(t, "old spam", string(data))
 
 		// verify new files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile))
 		assert.Error(t, err, "original file should be renamed")
 	})
 
@@ -472,16 +544,16 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"), []byte("old spam"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile), []byte("new ham"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"), []byte("old spam"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte("new ham"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
 
 		// verify only unloaded files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
 		assert.Error(t, err, "unloaded file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile+".loaded"))
 		assert.NoError(t, err)
 
 		s, err := store.Stats(context.Background())
@@ -497,22 +569,22 @@ func Test_migrateSamples(t *testing.T) {
 		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
 	})
 }
 
 func Test_migrateDicts(t *testing.T) {
 	tmpDir := t.TempDir()
-	opts := options{}
-	opts.Files.SamplesDataPath = tmpDir
-	opts.InstanceID = "gr1"
+	settings := makeTestSettings()
+	settings.Files.SamplesDataPath = tmpDir
+	settings.InstanceID = "gr1"
 
 	t.Run("nil dictionary", func(t *testing.T) {
-		err := migrateDicts(context.Background(), opts, nil)
+		err := migrateDicts(context.Background(), settings, nil)
 		assert.Error(t, err)
 	})
 
@@ -524,23 +596,23 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create new files for migration
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
 			[]byte("stop1\nstop2\nstop3"), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("token1\ntoken2"), 0600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		assert.NoError(t, err)
 
 		// verify files renamed and moved correctly
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile))
 		assert.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"))
 		assert.NoError(t, err)
 
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
 		assert.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
 		assert.NoError(t, err)
 
 		// verify data imported correctly
@@ -558,18 +630,18 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create already loaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
 			[]byte("old stop1\nold stop2"), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"),
 			[]byte("old token1"), 0600))
 
 		// create new files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
 			[]byte("new stop1\nnew stop2"), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("new token1\nnew token2"), 0600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		assert.NoError(t, err)
 
 		// verify import happened correctly
@@ -579,7 +651,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.Equal(t, 2, s.TotalIgnoredWords)
 
 		// verify old files overwritten
-		data, err := os.ReadFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"))
+		data, err := os.ReadFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"))
 		require.NoError(t, err)
 		assert.Equal(t, "new stop1\nnew stop2", string(data))
 	})
@@ -592,10 +664,10 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create empty files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile), []byte(""), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		assert.NoError(t, err)
 
 		// verify stats
@@ -613,18 +685,18 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
 			[]byte("old stop1\nold stop2"), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("token1\ntoken2"), 0600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		assert.NoError(t, err)
 
 		// verify only unloaded file migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
 		assert.Error(t, err, "unloaded file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
 		assert.NoError(t, err)
 
 		// verify stats reflect only migrated data
@@ -780,5 +852,304 @@ func TestBackupDB(t *testing.T) {
 		nonExistentFile := filepath.Join(dir, "non-existent.db")
 		err := backupDB(nonExistentFile, "v1", 1)
 		require.NoError(t, err)
+	})
+}
+
+func TestSaveAndLoadConfig(t *testing.T) {
+	// setup test environment
+	setupLog(true)
+
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "config-test.db")
+
+	t.Run("save and load config", func(t *testing.T) {
+		// create test settings with some values
+		settings := &config.Settings{
+			InstanceID:          "test-instance",
+			Dry:                 true,
+			SoftBan:             true,
+			MinMsgLen:           100,
+			MaxEmoji:            5,
+			ParanoidMode:        true,
+			Training:            true,
+			MultiLangWords:      3,
+			FirstMessagesCount:  1,
+			MinSpamProbability:  50,
+			SimilarityThreshold: 0.5,
+			Telegram: config.TelegramSettings{
+				Group:        "test-group",
+				Timeout:      5 * time.Second,
+				IdleDuration: 10 * time.Second,
+				Token:        "test-token", // token directly in domain model
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "", // empty token
+			},
+			History: config.HistorySettings{
+				Size:     200,
+				Duration: 24 * time.Hour,
+				MinSize:  500,
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL:    dbFile,
+				StorageTimeout: 30 * time.Second,
+			},
+		}
+
+		// test saving config to DB
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, settings)
+		require.NoError(t, err)
+
+		// create a new settings struct to load into
+		loadedSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+				ConfigDB:    true,
+			},
+		}
+
+		// test loading config from DB
+		err = loadConfigFromDB(ctx, loadedSettings)
+		require.NoError(t, err)
+
+		// verify loaded values match original (except sensitive fields that should be cleared)
+		assert.Equal(t, settings.InstanceID, loadedSettings.InstanceID)
+		assert.Equal(t, settings.Dry, loadedSettings.Dry)
+		assert.Equal(t, settings.SoftBan, loadedSettings.SoftBan)
+		assert.Equal(t, settings.MinMsgLen, loadedSettings.MinMsgLen)
+		assert.Equal(t, settings.MaxEmoji, loadedSettings.MaxEmoji)
+		assert.Equal(t, settings.ParanoidMode, loadedSettings.ParanoidMode)
+		assert.Equal(t, settings.Training, loadedSettings.Training)
+		assert.Equal(t, settings.MultiLangWords, loadedSettings.MultiLangWords)
+		assert.Equal(t, settings.History.Duration, loadedSettings.History.Duration)
+		assert.Equal(t, settings.History.MinSize, loadedSettings.History.MinSize)
+		assert.Equal(t, settings.History.Size, loadedSettings.History.Size)
+
+		// group-related fields
+		assert.Equal(t, settings.Telegram.Group, loadedSettings.Telegram.Group)
+		assert.Equal(t, settings.Telegram.Timeout, loadedSettings.Telegram.Timeout)
+		assert.Equal(t, settings.Telegram.IdleDuration, loadedSettings.Telegram.IdleDuration)
+
+		// verify original transient fields were NOT loaded
+		assert.Equal(t, dbFile, loadedSettings.Transient.DataBaseURL)
+		assert.Equal(t, true, loadedSettings.Transient.ConfigDB)
+		assert.Empty(t, loadedSettings.Transient.StorageTimeout)
+	})
+
+	t.Run("verify tokens are stored with domain model", func(t *testing.T) {
+		// create test settings with token values in domain models
+		settings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Token: "telegram-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "openai-token",
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+				Dbg:         true, // debug mode enabled for testing
+			},
+		}
+
+		// test saving config to DB with debug mode
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, settings)
+		require.NoError(t, err)
+
+		// create a new settings struct to load into
+		loadedSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+				ConfigDB:    true,
+			},
+		}
+
+		// test loading config from DB
+		err = loadConfigFromDB(ctx, loadedSettings)
+		require.NoError(t, err)
+
+		// verify domain model tokens are loaded
+		assert.Equal(t, "telegram-token", loadedSettings.Telegram.Token)
+		assert.Equal(t, "openai-token", loadedSettings.OpenAI.Token)
+	})
+
+	t.Run("verify auth hash is generated and stored", func(t *testing.T) {
+		// create test settings with auth password but no hash
+		settings := &config.Settings{
+			InstanceID: "test-instance",
+			Server: config.ServerSettings{
+				Enabled:  true,
+				AuthUser: "test-user",
+				AuthHash: "", // no hash provided
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL:   dbFile,
+				WebAuthPasswd: "test-password", // password should be hashed
+			},
+		}
+
+		// save to DB
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, settings)
+		require.NoError(t, err)
+
+		// load from DB with a new settings struct
+		loadedSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+				ConfigDB:    true,
+			},
+		}
+
+		err = loadConfigFromDB(ctx, loadedSettings)
+		require.NoError(t, err)
+
+		// verify auth settings
+		assert.Equal(t, "test-user", loadedSettings.Server.AuthUser)
+
+		// verify hash in original settings was set
+		assert.NotEmpty(t, settings.Server.AuthHash, "Auth hash should be generated in original settings")
+		assert.True(t, strings.HasPrefix(settings.Server.AuthHash, "$2a$"),
+			"Auth hash should be a bcrypt hash starting with $2a$")
+
+		// verify hash loaded from database
+		assert.NotEmpty(t, loadedSettings.Server.AuthHash, "Auth hash should be loaded from database")
+		assert.True(t, strings.HasPrefix(loadedSettings.Server.AuthHash, "$2a$"),
+			"Loaded auth hash should be a bcrypt hash starting with $2a$")
+	})
+
+	t.Run("override cli values", func(t *testing.T) {
+		// this test simulates what happens in main.go, where we save CLI values, load from DB, then restore CLI values
+
+		// first save a configuration to the database
+		dbSettings := &config.Settings{
+			InstanceID:     "test-instance",
+			Dry:            true,
+			MultiLangWords: 5,
+			History: config.HistorySettings{
+				Duration: 48 * time.Hour,
+			},
+			Telegram: config.TelegramSettings{
+				Group: "db-group",
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+			},
+		}
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, dbSettings)
+		require.NoError(t, err)
+
+		// create settings with CLI values that should be preserved
+		cliSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Dry:        false,
+			Transient: config.TransientSettings{
+				DataBaseURL:    dbFile,
+				ConfigDB:       true,
+				Dbg:            true,
+				TGDbg:          true,
+				StorageTimeout: 30 * time.Second,
+				WebAuthPasswd:  "cli-password",
+			},
+			Telegram: config.TelegramSettings{
+				Group: "cli-group",
+				Token: "cli-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "openai-cli-token",
+			},
+			Server: config.ServerSettings{
+				AuthHash: "cli-hash",
+			},
+		}
+
+		// save original credentials and transient values
+		originalTransient := cliSettings.Transient
+		telegramToken := cliSettings.Telegram.Token
+		openAIToken := cliSettings.OpenAI.Token
+		authHash := cliSettings.Server.AuthHash
+
+		// test loading configuration from database
+		err = loadConfigFromDB(ctx, cliSettings)
+		require.NoError(t, err)
+
+		// restore transient values
+		cliSettings.Transient = originalTransient
+
+		// restore credentials directly
+		cliSettings.Telegram.Token = telegramToken
+		cliSettings.OpenAI.Token = openAIToken
+		cliSettings.Server.AuthHash = authHash
+
+		// now verify - CLI values should be preserved
+		assert.Equal(t, "test-instance", cliSettings.InstanceID)
+		assert.Equal(t, true, cliSettings.Transient.Dbg)
+		assert.Equal(t, true, cliSettings.Transient.TGDbg)
+		assert.Equal(t, "cli-password", cliSettings.Transient.WebAuthPasswd)
+		assert.Equal(t, "cli-hash", cliSettings.Server.AuthHash)
+		assert.Equal(t, "cli-token", cliSettings.Telegram.Token)
+		assert.Equal(t, "openai-cli-token", cliSettings.OpenAI.Token)
+		assert.Equal(t, 30*time.Second, cliSettings.Transient.StorageTimeout)
+
+		// DB values should be loaded for non-transient fields
+		assert.Equal(t, true, cliSettings.Dry)                      // from DB
+		assert.Equal(t, 5, cliSettings.MultiLangWords)              // from DB
+		assert.Equal(t, 48*time.Hour, cliSettings.History.Duration) // from DB
+		assert.Equal(t, "db-group", cliSettings.Telegram.Group)     // from DB
+	})
+
+	t.Run("error handling - database error", func(t *testing.T) {
+		// let's use a path that doesn't exist and that the user definitely doesn't have permissions to create
+		invalidPath := "/root/protected/file.db"
+		// on non-Unix systems, this might not work, so we'll skip the test if we can actually create this file
+		if _, err := os.Stat("/root"); err == nil {
+			t.Skip("Can access /root directory, this test might not be reliable")
+		}
+
+		invalidSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: invalidPath,
+				ConfigDB:    true,
+			},
+		}
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, invalidSettings)
+		assert.Error(t, err, "Expected error when trying to save to invalid database path")
+
+		err = loadConfigFromDB(ctx, invalidSettings)
+		assert.Error(t, err, "Expected error when trying to load from invalid database path")
+	})
+
+	t.Run("error handling - non-existent config", func(t *testing.T) {
+		// use a new database file to ensure no config exists
+		newDbFile := filepath.Join(tmpDir, "empty-config.db")
+
+		// first create a valid database with no config
+		db, err := engine.NewSqlite(newDbFile, "test-instance")
+		require.NoError(t, err)
+		db.Close()
+
+		emptySettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: newDbFile,
+				ConfigDB:    true,
+			},
+		}
+
+		ctx := context.Background()
+		// try to load from a database with no config
+		err = loadConfigFromDB(ctx, emptySettings)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to load") // matches "failed to load settings from database"
 	})
 }
