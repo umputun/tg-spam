@@ -1,0 +1,13 @@
+github.com/umputun/tg-spam/app/config/settings.go:173:	New			100.0%
+github.com/umputun/tg-spam/app/config/settings.go:178:	IsOpenAIEnabled		100.0%
+github.com/umputun/tg-spam/app/config/settings.go:183:	IsMetaEnabled		100.0%
+github.com/umputun/tg-spam/app/config/settings.go:196:	IsCASEnabled		100.0%
+github.com/umputun/tg-spam/app/config/settings.go:201:	IsStartupMessageEnabled	100.0%
+github.com/umputun/tg-spam/app/config/store.go:19:	NewStore		85.7%
+github.com/umputun/tg-spam/app/config/store.go:36:	Load			92.3%
+github.com/umputun/tg-spam/app/config/store.go:62:	Save			85.7%
+github.com/umputun/tg-spam/app/config/store.go:103:	Delete			85.7%
+github.com/umputun/tg-spam/app/config/store.go:117:	LastUpdated		90.0%
+github.com/umputun/tg-spam/app/config/store.go:138:	Exists			87.5%
+github.com/umputun/tg-spam/app/config/store.go:153:	initDbTable		87.5%
+total:							(statements)		88.9%

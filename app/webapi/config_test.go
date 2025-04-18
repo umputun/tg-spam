@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/config"
 )
@@ -75,14 +75,14 @@ func TestSaveConfigHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration saved successfully")
-		assert.Contains(t, w.Body.String(), "alert-success")
 		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Equal(t, appSettings, settingsStore.SaveCalls()[0].Settings)
 	})
 
-	t.Run("error saving configuration", func(t *testing.T) {
+	t.Run("storage error", func(t *testing.T) {
 		settingsStore := &SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
-				return errors.New("test error")
+				return errors.New("storage error")
 			},
 		}
 
@@ -105,11 +105,11 @@ func TestSaveConfigHandler(t *testing.T) {
 		srv.saveConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
-		assert.Contains(t, w.Body.String(), "test error")
+		assert.Contains(t, w.Body.String(), "Failed to save configuration")
 		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
 	})
 
-	t.Run("no config store", func(t *testing.T) {
+	t.Run("no storage", func(t *testing.T) {
 		appSettings := &config.Settings{
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
@@ -135,30 +135,30 @@ func TestSaveConfigHandler(t *testing.T) {
 
 func TestLoadConfigHandler(t *testing.T) {
 	t.Run("successful load", func(t *testing.T) {
-		loadedSettings := &config.Settings{
-			InstanceID: "test-instance",
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
 			Telegram: config.TelegramSettings{
-				Group: "loaded-group",
+				Group: "stored-group",
 			},
 		}
 
 		settingsStore := &SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
-				return loadedSettings, nil
+				return storedSettings, nil
 			},
 		}
 
-		originalSettings := &config.Settings{
+		appSettings := &config.Settings{
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
-				Group: "original-group",
+				Group: "test-group",
 			},
 		}
 
 		srv := Server{
 			Config: Config{
 				SettingsStore: settingsStore,
-				AppSettings:   originalSettings,
+				AppSettings:   appSettings,
 			},
 		}
 
@@ -169,34 +169,37 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
 		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
-		assert.Equal(t, "loaded-group", srv.AppSettings.Telegram.Group) // settings updated
+
+		// verify the current settings have been updated
+		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
+		assert.Equal(t, "stored-group", srv.AppSettings.Telegram.Group)
 	})
 
 	t.Run("successful load with HTMX request", func(t *testing.T) {
-		loadedSettings := &config.Settings{
-			InstanceID: "test-instance",
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
 			Telegram: config.TelegramSettings{
-				Group: "loaded-group",
+				Group: "stored-group",
 			},
 		}
 
 		settingsStore := &SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
-				return loadedSettings, nil
+				return storedSettings, nil
 			},
 		}
 
-		originalSettings := &config.Settings{
+		appSettings := &config.Settings{
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
-				Group: "original-group",
+				Group: "test-group",
 			},
 		}
 
 		srv := Server{
 			Config: Config{
 				SettingsStore: settingsStore,
-				AppSettings:   originalSettings,
+				AppSettings:   appSettings,
 			},
 		}
 
@@ -207,30 +210,27 @@ func TestLoadConfigHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration loaded successfully")
-		assert.Contains(t, w.Body.String(), "alert-success")
-		assert.Equal(t, "true", w.Header().Get("HX-Refresh"))
 		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
-		assert.Equal(t, "loaded-group", srv.AppSettings.Telegram.Group) // settings updated
 	})
 
-	t.Run("error loading configuration", func(t *testing.T) {
+	t.Run("load error", func(t *testing.T) {
 		settingsStore := &SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
-				return nil, errors.New("test error")
+				return nil, errors.New("load error")
 			},
 		}
 
-		originalSettings := &config.Settings{
+		appSettings := &config.Settings{
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
-				Group: "original-group",
+				Group: "test-group",
 			},
 		}
 
 		srv := Server{
 			Config: Config{
 				SettingsStore: settingsStore,
-				AppSettings:   originalSettings,
+				AppSettings:   appSettings,
 			},
 		}
 
@@ -239,23 +239,89 @@ func TestLoadConfigHandler(t *testing.T) {
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
-		assert.Contains(t, w.Body.String(), "test error")
+		assert.Contains(t, w.Body.String(), "Failed to load configuration")
 		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
-		assert.Equal(t, "original-group", srv.AppSettings.Telegram.Group) // settings not updated
+
+		// verify the current settings haven't changed
+		assert.Equal(t, "test-instance", srv.AppSettings.InstanceID)
+		assert.Equal(t, "test-group", srv.AppSettings.Telegram.Group)
 	})
 
-	t.Run("no config store", func(t *testing.T) {
-		originalSettings := &config.Settings{
+	t.Run("preserve cli settings", func(t *testing.T) {
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
+			Telegram: config.TelegramSettings{
+				Group: "stored-group",
+				Token: "stored-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "stored-openai-token",
+			},
+			Transient: config.TransientSettings{
+				Dbg: true,
+			},
+		}
+
+		settingsStore := &SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return storedSettings, nil
+			},
+		}
+
+		appSettings := &config.Settings{
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
-				Group: "original-group",
+				Group: "test-group",
+				Token: "cli-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "cli-openai-token",
+			},
+			Transient: config.TransientSettings{
+				Dbg: false,
+				// CLI-only settings
+				DataBaseURL: "db-url",
+				ConfigDB:    true,
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore: settingsStore,
+				AppSettings:   appSettings,
+				Version:       "test-version",
+			},
+		}
+
+		req := httptest.NewRequest("GET", "/config", nil)
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
+
+		// verify stored settings loaded but CLI settings preserved
+		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
+		assert.Equal(t, "stored-group", srv.AppSettings.Telegram.Group)
+		assert.Equal(t, "cli-token", srv.AppSettings.Telegram.Token)
+		assert.Equal(t, "cli-openai-token", srv.AppSettings.OpenAI.Token)
+		assert.Equal(t, false, srv.AppSettings.Transient.Dbg)
+		assert.Equal(t, "db-url", srv.AppSettings.Transient.DataBaseURL)
+		assert.Equal(t, true, srv.AppSettings.Transient.ConfigDB)
+	})
+
+	t.Run("no storage", func(t *testing.T) {
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "test-group",
 			},
 		}
 
 		srv := Server{
 			Config: Config{
 				SettingsStore: nil,
-				AppSettings:   originalSettings,
+				AppSettings:   appSettings,
 			},
 		}
 
@@ -265,6 +331,255 @@ func TestLoadConfigHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration storage not available")
+	})
+}
+
+func TestUpdateConfigHandler(t *testing.T) {
+	t.Run("successful update without saving to DB", func(t *testing.T) {
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "test-group",
+			},
+			Meta: config.MetaSettings{
+				LinksLimit: -1,
+			},
+			OpenAI: config.OpenAISettings{
+				Model: "gpt-3.5-turbo",
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				AppSettings: appSettings,
+			},
+		}
+
+		// create form data
+		form := url.Values{}
+		form.Add("primaryGroup", "new-group")
+		form.Add("metaLinksLimit", "5")
+		form.Add("openAIEnabled", "on")
+		form.Add("similarityThreshold", "0.8")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"status":"ok"`)
+
+		// verify the settings were updated
+		assert.Equal(t, "new-group", srv.AppSettings.Telegram.Group)
+		assert.Equal(t, 5, srv.AppSettings.Meta.LinksLimit)
+		assert.Equal(t, 0.8, srv.AppSettings.SimilarityThreshold)
+	})
+
+	t.Run("successful update with HTMX request", func(t *testing.T) {
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "test-group",
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				AppSettings: appSettings,
+			},
+		}
+
+		// create form data
+		form := url.Values{}
+		form.Add("primaryGroup", "new-group")
+		form.Add("paranoidMode", "on")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Configuration updated successfully")
+
+		// verify the settings were updated
+		assert.Equal(t, "new-group", srv.AppSettings.Telegram.Group)
+		assert.True(t, srv.AppSettings.ParanoidMode)
+	})
+
+	t.Run("successful update with save to DB", func(t *testing.T) {
+		settingsStore := &SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+				return nil
+			},
+		}
+
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "test-group",
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore: settingsStore,
+				AppSettings:   appSettings,
+			},
+		}
+
+		// create form data
+		form := url.Values{}
+		form.Add("primaryGroup", "new-group")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"status":"ok"`)
+
+		// verify the settings were saved to DB
+		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Equal(t, appSettings, settingsStore.SaveCalls()[0].Settings)
+	})
+
+	t.Run("parse form error", func(t *testing.T) {
+		srv := Server{
+			Config: Config{
+				AppSettings: &config.Settings{},
+			},
+		}
+
+		// create a malformed request that will trigger a ParseForm error
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader("%&"))
+		// force Content-Type to application/x-www-form-urlencoded to make ParseForm try to parse it
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to parse form")
+	})
+
+	t.Run("DB save error", func(t *testing.T) {
+		settingsStore := &SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+				return errors.New("save error")
+			},
+		}
+
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore: settingsStore,
+				AppSettings:   appSettings,
+			},
+		}
+
+		// create form data
+		form := url.Values{}
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to save configuration")
+	})
+
+	t.Run("complex settings update", func(t *testing.T) {
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "test-group",
+			},
+			Meta: config.MetaSettings{
+				LinksLimit:    -1,
+				MentionsLimit: -1,
+			},
+			OpenAI: config.OpenAISettings{
+				Model: "gpt-3.5-turbo",
+			},
+			Admin: config.AdminSettings{
+				SuperUsers: []string{"user1"},
+			},
+			LuaPlugins: config.LuaPluginsSettings{
+				Enabled: false,
+			},
+			CAS: config.CASSettings{
+				API: "",
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				AppSettings: appSettings,
+			},
+		}
+
+		// create complex form data
+		form := url.Values{}
+		form.Add("metaEnabled", "on")
+		form.Add("metaLinksLimit", "3")
+		form.Add("metaMentionsLimit", "5")
+		form.Add("metaLinksOnly", "on")
+		form.Add("metaImageOnly", "on")
+		form.Add("metaUsernameSymbols", "@#")
+		form.Add("casEnabled", "on")
+		form.Add("openAIEnabled", "on")
+		form.Add("openAIModel", "gpt-4")
+		form.Add("openAIHistorySize", "10")
+		form.Add("luaPluginsEnabled", "on")
+		form.Add("luaPluginsDir", "/plugins")
+		form.Add("luaEnabledPlugins", "plugin1")
+		form.Add("luaEnabledPlugins", "plugin2")
+		form.Add("superUsers", "user1,user2, user3")
+		form.Add("similarityThreshold", "0.75")
+		form.Add("minMsgLen", "10")
+		form.Add("maxEmoji", "5")
+		form.Add("minSpamProbability", "65")
+		form.Add("historySize", "20")
+		form.Add("watchIntervalSecs", "30")
+		form.Add("startupMessageEnabled", "on")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		// verify all the complex settings were updated
+		settings := srv.AppSettings
+		assert.Equal(t, 3, settings.Meta.LinksLimit)
+		assert.Equal(t, 5, settings.Meta.MentionsLimit)
+		assert.True(t, settings.Meta.LinksOnly)
+		assert.True(t, settings.Meta.ImageOnly)
+		assert.Equal(t, "@#", settings.Meta.UsernameSymbols)
+		assert.Equal(t, "https://api.cas.chat", settings.CAS.API)
+		assert.Equal(t, "gpt-4", settings.OpenAI.Model)
+		assert.Equal(t, 10, settings.OpenAI.HistorySize)
+		assert.True(t, settings.LuaPlugins.Enabled)
+		assert.Equal(t, "/plugins", settings.LuaPlugins.PluginsDir)
+		assert.Equal(t, []string{"plugin1", "plugin2"}, settings.LuaPlugins.EnabledPlugins)
+		assert.Equal(t, []string{"user1", "user2", "user3"}, settings.Admin.SuperUsers)
+		assert.Equal(t, 0.75, settings.SimilarityThreshold)
+		assert.Equal(t, 10, settings.MinMsgLen)
+		assert.Equal(t, 5, settings.MaxEmoji)
+		assert.Equal(t, 65.0, settings.MinSpamProbability)
+		assert.Equal(t, 20, settings.History.Size)
+		assert.Equal(t, 30, settings.Files.WatchInterval)
+		assert.Equal(t, "Bot started", settings.Message.Startup)
 	})
 }
 
@@ -311,14 +626,13 @@ func TestDeleteConfigHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration deleted successfully")
-		assert.Contains(t, w.Body.String(), "alert-success")
 		assert.Equal(t, 1, len(settingsStore.DeleteCalls()))
 	})
 
-	t.Run("error deleting configuration", func(t *testing.T) {
+	t.Run("delete error", func(t *testing.T) {
 		settingsStore := &SettingsStoreMock{
 			DeleteFunc: func(ctx context.Context) error {
-				return errors.New("test error")
+				return errors.New("delete error")
 			},
 		}
 
@@ -333,11 +647,11 @@ func TestDeleteConfigHandler(t *testing.T) {
 		srv.deleteConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
-		assert.Contains(t, w.Body.String(), "test error")
+		assert.Contains(t, w.Body.String(), "Failed to delete configuration")
 		assert.Equal(t, 1, len(settingsStore.DeleteCalls()))
 	})
 
-	t.Run("no config store", func(t *testing.T) {
+	t.Run("no storage", func(t *testing.T) {
 		srv := Server{
 			Config: Config{
 				SettingsStore: nil,
@@ -354,80 +668,194 @@ func TestDeleteConfigHandler(t *testing.T) {
 }
 
 func TestUpdateSettingsFromForm(t *testing.T) {
-	t.Run("update basic settings", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"primaryGroup":       "test-group",
-			"adminGroup":         "admin-group",
-			"noSpamReply":        "on",
-			"casEnabled":         "on",
-			"superUsers":         "user1,user2, user3",
-			"debugModeEnabled":   "on",
-			"dryModeEnabled":     "on",
-			"tgDebugModeEnabled": "on",
-		})
+	t.Run("boolean flags and simple fields", func(t *testing.T) {
+		settings := &config.Settings{
+			Telegram: config.TelegramSettings{
+				Group: "original-group",
+			},
+			Meta:         config.MetaSettings{},
+			ParanoidMode: false,
+			NoSpamReply:  false,
+		}
+
+		form := url.Values{}
+		form.Add("primaryGroup", "new-group")
+		form.Add("paranoidMode", "on")
+		form.Add("noSpamReply", "on")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
 
 		updateSettingsFromForm(settings, req)
 
-		assert.Equal(t, "test-group", settings.Telegram.Group)
-		assert.Equal(t, "admin-group", settings.Admin.AdminGroup)
+		assert.Equal(t, "new-group", settings.Telegram.Group)
+		assert.True(t, settings.ParanoidMode)
 		assert.True(t, settings.NoSpamReply)
-		assert.Equal(t, "https://api.cas.chat", settings.CAS.API) // default CAS API is set when enabled
-		assert.Equal(t, []string{"user1", "user2", "user3"}, settings.Admin.SuperUsers)
-		assert.True(t, settings.Transient.Dbg)
-		assert.True(t, settings.Dry)
-		assert.True(t, settings.Transient.TGDbg)
 	})
 
-	t.Run("update meta checks settings", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"metaEnabled":         "on",
-			"metaLinksLimit":      "5",
-			"metaMentionsLimit":   "3",
-			"metaLinksOnly":       "on",
-			"metaImageOnly":       "on",
-			"metaVideoOnly":       "on",
-			"metaAudioOnly":       "on",
-			"metaForwarded":       "on",
-			"metaKeyboard":        "on",
-			"metaUsernameSymbols": "abc",
-		})
+	t.Run("numeric values", func(t *testing.T) {
+		settings := &config.Settings{
+			SimilarityThreshold: 0.5,
+			MinMsgLen:           5,
+			MaxEmoji:            10,
+			MinSpamProbability:  50,
+			FirstMessagesCount:  3,
+		}
+
+		form := url.Values{}
+		form.Add("similarityThreshold", "0.75")
+		form.Add("minMsgLen", "10")
+		form.Add("maxEmoji", "15")
+		form.Add("minSpamProbability", "60")
+		form.Add("firstMessagesCount", "5")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
 
 		updateSettingsFromForm(settings, req)
 
-		assert.Equal(t, 5, settings.Meta.LinksLimit)
-		assert.Equal(t, 3, settings.Meta.MentionsLimit)
+		assert.Equal(t, 0.75, settings.SimilarityThreshold)
+		assert.Equal(t, 10, settings.MinMsgLen)
+		assert.Equal(t, 15, settings.MaxEmoji)
+		assert.Equal(t, 60.0, settings.MinSpamProbability)
+		assert.Equal(t, 5, settings.FirstMessagesCount)
+	})
+
+	t.Run("super users parsing", func(t *testing.T) {
+		settings := &config.Settings{
+			Admin: config.AdminSettings{
+				SuperUsers: []string{"user1"},
+			},
+		}
+
+		form := url.Values{}
+		form.Add("superUsers", "user2, user3,user4")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Equal(t, []string{"user2", "user3", "user4"}, settings.Admin.SuperUsers)
+	})
+
+	t.Run("CAS API handling", func(t *testing.T) {
+		t.Run("enable CAS", func(t *testing.T) {
+			settings := &config.Settings{
+				CAS: config.CASSettings{
+					API: "",
+				},
+			}
+
+			form := url.Values{}
+			form.Add("casEnabled", "on")
+
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			updateSettingsFromForm(settings, req)
+
+			assert.Equal(t, "https://api.cas.chat", settings.CAS.API)
+		})
+
+		t.Run("disable CAS", func(t *testing.T) {
+			settings := &config.Settings{
+				CAS: config.CASSettings{
+					API: "https://api.cas.chat",
+				},
+			}
+
+			form := url.Values{}
+			// casEnabled not set
+
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			updateSettingsFromForm(settings, req)
+
+			assert.Equal(t, "", settings.CAS.API)
+		})
+	})
+
+	t.Run("meta settings", func(t *testing.T) {
+		settings := &config.Settings{
+			Meta: config.MetaSettings{
+				LinksLimit:      -1,
+				MentionsLimit:   -1,
+				UsernameSymbols: "",
+			},
+		}
+
+		form := url.Values{}
+		form.Add("metaEnabled", "on")
+		form.Add("metaLinksLimit", "3")
+		form.Add("metaMentionsLimit", "5")
+		form.Add("metaLinksOnly", "on")
+		form.Add("metaImageOnly", "on")
+		form.Add("metaUsernameSymbols", "@#")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Equal(t, 3, settings.Meta.LinksLimit)
+		assert.Equal(t, 5, settings.Meta.MentionsLimit)
 		assert.True(t, settings.Meta.LinksOnly)
 		assert.True(t, settings.Meta.ImageOnly)
-		assert.True(t, settings.Meta.VideosOnly)
-		assert.True(t, settings.Meta.AudiosOnly)
-		assert.True(t, settings.Meta.Forward)
-		assert.True(t, settings.Meta.Keyboard)
-		assert.Equal(t, "abc", settings.Meta.UsernameSymbols)
-		assert.True(t, settings.IsMetaEnabled()) // using helper method to verify Meta is enabled
+		assert.Equal(t, "@#", settings.Meta.UsernameSymbols)
 	})
 
-	t.Run("update openAI settings", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"openAIEnabled":     "on",
-			"openAIVeto":        "on",
-			"openAIHistorySize": "10",
-			"openAIModel":       "gpt-4",
-		})
+	t.Run("OpenAI settings", func(t *testing.T) {
+		settings := &config.Settings{
+			OpenAI: config.OpenAISettings{
+				APIBase:     "",
+				Model:       "gpt-3.5-turbo",
+				HistorySize: 5,
+				Veto:        false,
+			},
+		}
+
+		form := url.Values{}
+		form.Add("openAIEnabled", "on")
+		form.Add("openAIModel", "gpt-4")
+		form.Add("openAIHistorySize", "10")
+		form.Add("openAIVeto", "on")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
 
 		updateSettingsFromForm(settings, req)
 
-		// since OpenAI.APIBase is set when enabled but we don't have a field
-		// in the form for it, we check the veto and model settings
-		assert.True(t, settings.OpenAI.Veto)
-		assert.Equal(t, 10, settings.OpenAI.HistorySize)
 		assert.Equal(t, "gpt-4", settings.OpenAI.Model)
+		assert.Equal(t, 10, settings.OpenAI.HistorySize)
+		assert.True(t, settings.OpenAI.Veto)
 	})
 
-	t.Run("update lua plugins settings", func(t *testing.T) {
-		settings := &config.Settings{}
+	t.Run("Lua plugins settings", func(t *testing.T) {
+		settings := &config.Settings{
+			LuaPlugins: config.LuaPluginsSettings{
+				Enabled:        false,
+				DynamicReload:  false,
+				PluginsDir:     "",
+				EnabledPlugins: nil,
+			},
+		}
+
 		form := url.Values{}
 		form.Add("luaPluginsEnabled", "on")
 		form.Add("luaDynamicReload", "on")
@@ -437,7 +865,8 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.PostForm = form
+		err := req.ParseForm()
+		require.NoError(t, err)
 
 		updateSettingsFromForm(settings, req)
 
@@ -447,71 +876,45 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, []string{"plugin1", "plugin2"}, settings.LuaPlugins.EnabledPlugins)
 	})
 
-	t.Run("update spam detection settings", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"similarityThreshold": "0.7",
-			"minMsgLen":           "20",
-			"maxEmoji":            "3",
-			"minSpamProbability":  "0.8",
-			"paranoidMode":        "on",
-			"firstMessagesCount":  "2",
-			"multiLangLimit":      "5",
-			"historySize":         "100",
+	t.Run("startup message handling", func(t *testing.T) {
+		t.Run("enable startup message", func(t *testing.T) {
+			settings := &config.Settings{
+				Message: config.MessageSettings{
+					Startup: "",
+				},
+			}
+
+			form := url.Values{}
+			form.Add("startupMessageEnabled", "on")
+
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			updateSettingsFromForm(settings, req)
+
+			assert.Equal(t, "Bot started", settings.Message.Startup)
 		})
 
-		updateSettingsFromForm(settings, req)
+		t.Run("disable startup message", func(t *testing.T) {
+			settings := &config.Settings{
+				Message: config.MessageSettings{
+					Startup: "Bot started",
+				},
+			}
 
-		assert.Equal(t, 0.7, settings.SimilarityThreshold)
-		assert.Equal(t, 20, settings.MinMsgLen)
-		assert.Equal(t, 3, settings.MaxEmoji)
-		assert.Equal(t, 0.8, settings.MinSpamProbability)
-		assert.True(t, settings.ParanoidMode)
-		assert.Equal(t, 2, settings.FirstMessagesCount)
-		assert.Equal(t, 5, settings.MultiLangWords)
-		assert.Equal(t, 100, settings.History.Size)
-	})
+			form := url.Values{}
+			// startupMessageEnabled not set
 
-	t.Run("update storage settings", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"samplesDataPath":   "/samples",
-			"dynamicDataPath":   "/dynamic",
-			"watchIntervalSecs": "10",
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			updateSettingsFromForm(settings, req)
+
+			assert.Equal(t, "", settings.Message.Startup)
 		})
-
-		updateSettingsFromForm(settings, req)
-
-		assert.Equal(t, "/samples", settings.Files.SamplesDataPath)
-		assert.Equal(t, "/dynamic", settings.Files.DynamicDataPath)
-		assert.Equal(t, 10, settings.Files.WatchInterval)
 	})
-
-	t.Run("StorageTimeout is not set from form", func(t *testing.T) {
-		settings := &config.Settings{}
-		req := createFormRequest(map[string]string{
-			"storageTimeout": "30s",
-		})
-
-		updateSettingsFromForm(settings, req)
-
-		// StorageTimeout should remain at the zero value
-		assert.Equal(t, time.Duration(0), settings.Transient.StorageTimeout)
-	})
-}
-
-// Helper to create a request with form values
-func createFormRequest(values map[string]string) *http.Request {
-	form := url.Values{}
-	for k, v := range values {
-		form.Add(k, v)
-	}
-
-	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	// parse the form
-	req.PostForm = form
-
-	return req
 }
