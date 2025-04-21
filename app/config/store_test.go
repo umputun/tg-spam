@@ -85,8 +85,16 @@ func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
 func (s *SettingsTestSuite) SetupTest() {
 	// drop config table before each test to ensure clean state
 	for _, db := range s.dbs {
-		_, err := db.Exec("DROP TABLE IF EXISTS config")
-		s.Require().NoError(err)
+		// Use a function to properly scope the lock and unlock operations
+		func() {
+			// Create a temporary lock to handle the DROP TABLE operation safely
+			lock := db.MakeLock()
+			lock.Lock()
+			defer lock.Unlock()
+			
+			_, err := db.Exec("DROP TABLE IF EXISTS config")
+			s.Require().NoError(err)
+		}()
 	}
 }
 
