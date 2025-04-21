@@ -2,9 +2,11 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,13 +87,13 @@ func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
 func (s *SettingsTestSuite) SetupTest() {
 	// drop config table before each test to ensure clean state
 	for _, db := range s.dbs {
-		// Use a function to properly scope the lock and unlock operations
+		// use a function to properly scope the lock and unlock operations
 		func() {
-			// Create a temporary lock to handle the DROP TABLE operation safely
+			// create a temporary lock to handle the DROP TABLE operation safely
 			lock := db.MakeLock()
 			lock.Lock()
 			defer lock.Unlock()
-			
+
 			_, err := db.Exec("DROP TABLE IF EXISTS config")
 			s.Require().NoError(err)
 		}()
@@ -353,6 +355,175 @@ func (s *SettingsTestSuite) TestStore_ComplexSettings() {
 			s.Equal("warning!", loaded.Message.Warn)
 			s.True(loaded.LuaPlugins.Enabled)
 			s.Equal([]string{"plugin1", "plugin2"}, loaded.LuaPlugins.EnabledPlugins)
+		})
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_WithEncryption() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create crypter
+			crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+			s.Require().NoError(err)
+
+			// create store with encryption
+			store, err := NewStore(s.ctx, db, WithCrypter(crypter))
+			s.Require().NoError(err)
+
+			// create settings with sensitive info
+			settings := New()
+			settings.InstanceID = "encrypted-test"
+			settings.Telegram.Token = "super-secret-telegram-token"
+			settings.OpenAI.Token = "super-secret-openai-token"
+			settings.Server.AuthHash = "super-secret-auth-hash"
+			settings.Telegram.Group = "non-sensitive-group"
+
+			// save settings with encryption
+			err = store.Save(s.ctx, settings)
+			s.Require().NoError(err)
+
+			// verify data is encrypted in the database
+			var record struct {
+				Data string `db:"data"`
+			}
+			query := db.Adopt("SELECT data FROM config WHERE gid = ?")
+			err = db.GetContext(s.ctx, &record, query, db.GID())
+			s.Require().NoError(err)
+
+			// check that the JSON contains encrypted values
+			s.True(strings.Contains(record.Data, EncryptPrefix),
+				"Database should contain encrypted values")
+
+			// test accessing the data with a direct load query
+			var rawSettings struct {
+				Telegram struct {
+					Token string `json:"token"`
+				} `json:"telegram"`
+				OpenAI struct {
+					Token string `json:"token"`
+				} `json:"openai"`
+			}
+			err = json.Unmarshal([]byte(record.Data), &rawSettings)
+			s.Require().NoError(err)
+
+			// verify sensitive fields are encrypted in the database
+			s.True(IsEncrypted(rawSettings.Telegram.Token),
+				"Telegram token should be encrypted in database")
+			s.True(IsEncrypted(rawSettings.OpenAI.Token),
+				"OpenAI token should be encrypted in database")
+
+			// load settings (should decrypt automatically)
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// check that decrypted values match original values
+			s.Equal("super-secret-telegram-token", loaded.Telegram.Token,
+				"Telegram token should be decrypted when loaded")
+			s.Equal("super-secret-openai-token", loaded.OpenAI.Token,
+				"OpenAI token should be decrypted when loaded")
+			s.Equal("super-secret-auth-hash", loaded.Server.AuthHash,
+				"Auth hash should be decrypted when loaded")
+			s.Equal("non-sensitive-group", loaded.Telegram.Group,
+				"Non-sensitive fields should be unchanged")
+
+			// now access without encryption
+			plainStore, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			// load settings (should still be encrypted)
+			encryptedLoaded, err := plainStore.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// check that values remain encrypted
+			s.True(IsEncrypted(encryptedLoaded.Telegram.Token),
+				"Telegram token should remain encrypted when loaded without crypter")
+			s.True(IsEncrypted(encryptedLoaded.OpenAI.Token),
+				"OpenAI token should remain encrypted when loaded without crypter")
+			s.True(IsEncrypted(encryptedLoaded.Server.AuthHash),
+				"Auth hash should remain encrypted when loaded without crypter")
+		})
+	}
+}
+
+func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			// create crypter
+			crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+			s.Require().NoError(err)
+
+			// custom sensitive fields - only encrypt Telegram token and a different field
+			customFields := []string{
+				"telegram.token",
+				"server.auth_user", // not normally encrypted
+			}
+
+			// create store with encryption and custom fields
+			store, err := NewStore(s.ctx, db,
+				WithCrypter(crypter),
+				WithSensitiveFields(customFields))
+			s.Require().NoError(err)
+
+			// verify custom fields were set
+			s.Equal(customFields, store.sensitiveFields)
+
+			// create settings with sensitive info
+			settings := New()
+			settings.InstanceID = "custom-fields-test"
+			settings.Telegram.Token = "super-secret-telegram-token"
+			settings.OpenAI.Token = "super-secret-openai-token"    // should NOT be encrypted
+			settings.Server.AuthHash = "super-secret-auth-hash"    // should NOT be encrypted
+			settings.Server.AuthUser = "custom-sensitive-username" // should be encrypted
+
+			// save settings with custom encryption fields
+			err = store.Save(s.ctx, settings)
+			s.Require().NoError(err)
+
+			// verify data is stored correctly in database
+			var record struct {
+				Data string `db:"data"`
+			}
+			query := db.Adopt("SELECT data FROM config WHERE gid = ?")
+			err = db.GetContext(s.ctx, &record, query, db.GID())
+			s.Require().NoError(err)
+
+			// parse the stored data
+			var rawSettings struct {
+				Telegram struct {
+					Token string `json:"token"`
+				} `json:"telegram"`
+				OpenAI struct {
+					Token string `json:"token"`
+				} `json:"openai"`
+				Server struct {
+					AuthHash string `json:"auth_hash"`
+					AuthUser string `json:"auth_user"`
+				} `json:"server"`
+			}
+			err = json.Unmarshal([]byte(record.Data), &rawSettings)
+			s.Require().NoError(err)
+
+			// verify only the custom fields are encrypted
+			s.True(IsEncrypted(rawSettings.Telegram.Token),
+				"Telegram token should be encrypted")
+			s.True(IsEncrypted(rawSettings.Server.AuthUser),
+				"Server auth user should be encrypted (custom field)")
+
+			// verify fields NOT in the custom list remain unencrypted
+			s.False(IsEncrypted(rawSettings.OpenAI.Token),
+				"OpenAI token should NOT be encrypted")
+			s.False(IsEncrypted(rawSettings.Server.AuthHash),
+				"Server auth hash should NOT be encrypted")
+
+			// load the settings back
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// verify proper decryption
+			s.Equal("super-secret-telegram-token", loaded.Telegram.Token)
+			s.Equal("custom-sensitive-username", loaded.Server.AuthUser)
+			s.Equal("super-secret-openai-token", loaded.OpenAI.Token)
+			s.Equal("super-secret-auth-hash", loaded.Server.AuthHash)
 		})
 	}
 }

@@ -39,9 +39,10 @@ import (
 )
 
 type options struct {
-	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
-	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite" json:"-"`
-	ConfigDB    bool   `long:"confdb" env:"CONFDB" description:"load configuration from database" json:"-"`
+	InstanceID         string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	DataBaseURL        string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
+	ConfigDB           bool   `long:"confdb" env:"CONFDB" description:"load configuration from database"`
+	ConfigDBEncryptKey string `long:"confdb-encrypt-key" env:"CONFDB_ENCRYPT_KEY" description:"encryption key for sensitive config values in database"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -57,7 +58,7 @@ type options struct {
 
 	HistoryDuration time.Duration `long:"history-duration" env:"HISTORY_DURATION" default:"24h" description:"history duration"`
 	HistoryMinSize  int           `long:"history-min-size" env:"HISTORY_MIN_SIZE" default:"1000" description:"history minimal size to keep"`
-	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout" json:"-"`
+	StorageTimeout  time.Duration `long:"storage-timeout" env:"STORAGE_TIMEOUT" default:"0s" description:"storage timeout"`
 
 	Logger struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
@@ -142,7 +143,7 @@ type options struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
 		AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password" json:"-"`
+		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
 		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
@@ -155,8 +156,8 @@ type options struct {
 	MaxBackups int `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of backups to keep, set 0 to disable"`
 
 	Dry   bool `long:"dry" env:"DRY" description:"dry mode, no bans"`
-	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode" json:"-"`
-	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode" json:"-"`
+	Dbg   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	TGDbg bool `long:"tg-dbg" env:"TG_DEBUG" description:"telegram debug mode"`
 }
 
 // default file names
@@ -1228,12 +1229,13 @@ func optToSettings(opts options) *config.Settings {
 
 	// set transient settings (not persisted to database)
 	settings.Transient = config.TransientSettings{
-		DataBaseURL:    opts.DataBaseURL,
-		StorageTimeout: opts.StorageTimeout,
-		ConfigDB:       opts.ConfigDB,
-		Dbg:            opts.Dbg,
-		TGDbg:          opts.TGDbg,
-		WebAuthPasswd:  opts.Server.AuthPasswd,
+		DataBaseURL:        opts.DataBaseURL,
+		StorageTimeout:     opts.StorageTimeout,
+		ConfigDB:           opts.ConfigDB,
+		Dbg:                opts.Dbg,
+		TGDbg:              opts.TGDbg,
+		WebAuthPasswd:      opts.Server.AuthPasswd,
+		ConfigDBEncryptKey: opts.ConfigDBEncryptKey,
 	}
 
 	// set credentials in their respective domain structures
@@ -1260,8 +1262,18 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
 
-	// create settings store
-	settingsStore, err := config.NewStore(ctx, db)
+	// create settings store with encryption if key provided
+	var storeOpts []config.StoreOption
+	if settings.Transient.ConfigDBEncryptKey != "" {
+		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
+		if cryptErr != nil {
+			log.Fatalf("[FATAL] invalid encryption key: %v", cryptErr)
+		}
+		storeOpts = append(storeOpts, config.WithCrypter(crypter))
+		log.Print("[INFO] configuration encryption enabled for database access")
+	}
+
+	settingsStore, err := config.NewStore(ctx, db, storeOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create settings store: %w", err)
 	}
@@ -1295,8 +1307,18 @@ func saveConfigToDB(ctx context.Context, settings *config.Settings) error {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
 
-	// create settings store
-	settingsStore, err := config.NewStore(ctx, db)
+	// create settings store with encryption if key provided
+	var storeOpts []config.StoreOption
+	if settings.Transient.ConfigDBEncryptKey != "" {
+		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
+		if cryptErr != nil {
+			log.Fatalf("[FATAL] invalid encryption key: %v", cryptErr)
+		}
+		storeOpts = append(storeOpts, config.WithCrypter(crypter))
+		log.Print("[INFO] configuration encryption enabled for database storage")
+	}
+
+	settingsStore, err := config.NewStore(ctx, db, storeOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create settings store: %w", err)
 	}

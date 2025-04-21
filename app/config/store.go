@@ -16,6 +16,8 @@ import (
 type Store struct {
 	*engine.SQL
 	engine.RWLocker
+	crypter         *Crypter
+	sensitiveFields []string
 }
 
 // all config queries
@@ -66,12 +68,22 @@ var configQueries = engine.NewQueryMap().
 	AddSame(CmdCountConfig, `SELECT COUNT(*) FROM config WHERE gid = ?`)
 
 // NewStore creates a new settings store
-func NewStore(ctx context.Context, db *engine.SQL) (*Store, error) {
+func NewStore(ctx context.Context, db *engine.SQL, opts ...StoreOption) (*Store, error) {
 	if db == nil {
 		return nil, fmt.Errorf("no db provided")
 	}
 
-	res := &Store{SQL: db, RWLocker: db.MakeLock()}
+	// create store with default options
+	res := &Store{
+		SQL:             db,
+		RWLocker:        db.MakeLock(),
+		sensitiveFields: defaultSensitiveFields(),
+	}
+
+	// apply options
+	for _, opt := range opts {
+		opt(res)
+	}
 
 	// initialize the database table using the TableConfig pattern
 	cfg := engine.TableConfig{
@@ -87,6 +99,32 @@ func NewStore(ctx context.Context, db *engine.SQL) (*Store, error) {
 	}
 
 	return res, nil
+}
+
+// StoreOption defines functional options for Store
+type StoreOption func(*Store)
+
+// WithCrypter adds a crypter to the store for field encryption
+func WithCrypter(crypter *Crypter) StoreOption {
+	return func(s *Store) {
+		s.crypter = crypter
+	}
+}
+
+// WithSensitiveFields sets the list of sensitive fields to encrypt/decrypt
+func WithSensitiveFields(fields []string) StoreOption {
+	return func(s *Store) {
+		s.sensitiveFields = fields
+	}
+}
+
+// defaultSensitiveFields returns the default list of sensitive fields
+func defaultSensitiveFields() []string {
+	return []string{
+		FieldTelegramToken,  // telegram bot token
+		FieldOpenAIToken,    // openAI API token
+		FieldServerAuthHash, // server auth hash
+	}
 }
 
 // Load retrieves the settings from the database
@@ -117,6 +155,13 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 		return nil, fmt.Errorf("failed to unmarshal settings: %w", err)
 	}
 
+	// decrypt sensitive fields if crypter is configured
+	if s.crypter != nil {
+		if err := s.crypter.DecryptSensitiveFields(result, s.sensitiveFields...); err != nil {
+			return nil, fmt.Errorf("failed to decrypt sensitive fields: %w", err)
+		}
+	}
+
 	return result, nil
 }
 
@@ -141,9 +186,23 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 	// - OpenAI.Token
 	// - Server.AuthHash
 
+	// marshal the settings to JSON
 	data, err := json.Marshal(&safeCopy)
 	if err != nil {
 		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	// encrypt sensitive fields if crypter is configured
+	if s.crypter != nil {
+		if encErr := s.crypter.EncryptSensitiveFields(&safeCopy, s.sensitiveFields...); encErr != nil {
+			return fmt.Errorf("failed to encrypt sensitive fields: %w", encErr)
+		}
+
+		// re-marshal after encryption
+		data, err = json.Marshal(&safeCopy)
+		if err != nil {
+			return fmt.Errorf("failed to marshal settings after encryption: %w", err)
+		}
 	}
 
 	query, err := configQueries.Pick(s.Type(), CmdUpsertConfig)

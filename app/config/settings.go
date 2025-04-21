@@ -165,6 +165,9 @@ type TransientSettings struct {
 	Dbg      bool `json:"-" yaml:"-"`
 	TGDbg    bool `json:"-" yaml:"-"`
 
+	// encryption for database stored configuration
+	ConfigDBEncryptKey string `json:"-" yaml:"-"`
+
 	// temporary auth password (used only to generate hash)
 	WebAuthPasswd string `json:"-" yaml:"-"`
 }
