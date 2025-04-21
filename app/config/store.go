@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
 )
@@ -15,6 +18,53 @@ type Store struct {
 	engine.RWLocker
 }
 
+// all config queries
+const (
+	CmdCreateConfigTable engine.DBCmd = iota + 1000
+	CmdCreateConfigIndexes
+	CmdUpsertConfig
+	CmdSelectConfig
+	CmdDeleteConfig
+	CmdSelectConfigUpdatedAt
+	CmdCountConfig
+)
+
+// queries holds all config queries
+var configQueries = engine.NewQueryMap().
+	Add(CmdCreateConfigTable, engine.Query{
+		Sqlite: `CREATE TABLE IF NOT EXISTS config (
+			id INTEGER PRIMARY KEY,
+			gid TEXT NOT NULL,
+			data TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(gid)
+		)`,
+		Postgres: `CREATE TABLE IF NOT EXISTS config (
+			id SERIAL PRIMARY KEY,
+			gid TEXT NOT NULL,
+			data TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(gid)
+		)`,
+	}).
+	AddSame(CmdCreateConfigIndexes, `CREATE INDEX IF NOT EXISTS idx_config_gid ON config(gid)`).
+	Add(CmdUpsertConfig, engine.Query{
+		Sqlite: `INSERT INTO config (gid, data, updated_at) 
+			VALUES (?, ?, ?) 
+			ON CONFLICT (gid) DO UPDATE 
+			SET data = excluded.data, updated_at = excluded.updated_at`,
+		Postgres: `INSERT INTO config (gid, data, updated_at) 
+			VALUES ($1, $2, $3) 
+			ON CONFLICT (gid) DO UPDATE 
+			SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`,
+	}).
+	AddSame(CmdSelectConfig, `SELECT data FROM config WHERE gid = ?`).
+	AddSame(CmdDeleteConfig, `DELETE FROM config WHERE gid = ?`).
+	AddSame(CmdSelectConfigUpdatedAt, `SELECT updated_at FROM config WHERE gid = ?`).
+	AddSame(CmdCountConfig, `SELECT COUNT(*) FROM config WHERE gid = ?`)
+
 // NewStore creates a new settings store
 func NewStore(ctx context.Context, db *engine.SQL) (*Store, error) {
 	if db == nil {
@@ -23,9 +73,16 @@ func NewStore(ctx context.Context, db *engine.SQL) (*Store, error) {
 
 	res := &Store{SQL: db, RWLocker: db.MakeLock()}
 
-	// initialize the database table
-	err := initDbTable(ctx, res.SQL)
-	if err != nil {
+	// initialize the database table using the TableConfig pattern
+	cfg := engine.TableConfig{
+		Name:          "config",
+		CreateTable:   CmdCreateConfigTable,
+		CreateIndexes: CmdCreateConfigIndexes,
+		MigrateFunc:   noopMigrate, // no migration needed for config table
+		QueriesMap:    configQueries,
+	}
+
+	if err := engine.InitTable(ctx, db, cfg); err != nil {
 		return nil, fmt.Errorf("failed to init config table: %w", err)
 	}
 
@@ -41,8 +98,13 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 		Data string `db:"data"`
 	}
 
-	query := s.Adopt("SELECT data FROM config WHERE gid = ?")
-	err := s.GetContext(ctx, &record, query, s.GID())
+	query, err := configQueries.Pick(s.Type(), CmdSelectConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get select query: %w", err)
+	}
+
+	query = s.Adopt(query)
+	err = s.GetContext(ctx, &record, query, s.GID())
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
 			return nil, fmt.Errorf("no settings found in database")
@@ -84,13 +146,12 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
-	query := s.Adopt(`
-		INSERT INTO config (gid, data, updated_at) 
-		VALUES (?, ?, ?) 
-		ON CONFLICT (gid) DO UPDATE 
-		SET data = excluded.data, updated_at = excluded.updated_at
-	`)
+	query, err := configQueries.Pick(s.Type(), CmdUpsertConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get upsert query: %w", err)
+	}
 
+	query = s.Adopt(query)
 	_, err = s.ExecContext(ctx, query, s.GID(), string(data), time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to save settings: %w", err)
@@ -104,8 +165,13 @@ func (s *Store) Delete(ctx context.Context) error {
 	s.Lock()
 	defer s.Unlock()
 
-	query := s.Adopt("DELETE FROM config WHERE gid = ?")
-	_, err := s.ExecContext(ctx, query, s.GID())
+	query, err := configQueries.Pick(s.Type(), CmdDeleteConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get delete query: %w", err)
+	}
+
+	query = s.Adopt(query)
+	_, err = s.ExecContext(ctx, query, s.GID())
 	if err != nil {
 		return fmt.Errorf("failed to delete settings: %w", err)
 	}
@@ -122,8 +188,13 @@ func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
 		UpdatedAt time.Time `db:"updated_at"`
 	}
 
-	query := s.Adopt("SELECT updated_at FROM config WHERE gid = ?")
-	err := s.GetContext(ctx, &record, query, s.GID())
+	query, err := configQueries.Pick(s.Type(), CmdSelectConfigUpdatedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get updated_at query: %w", err)
+	}
+
+	query = s.Adopt(query)
+	err = s.GetContext(ctx, &record, query, s.GID())
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
 			return time.Time{}, fmt.Errorf("no settings found in database")
@@ -140,8 +211,13 @@ func (s *Store) Exists(ctx context.Context) (bool, error) {
 	defer s.RUnlock()
 
 	var count int
-	query := s.Adopt("SELECT COUNT(*) FROM config WHERE gid = ?")
-	err := s.GetContext(ctx, &count, query, s.GID())
+	query, err := configQueries.Pick(s.Type(), CmdCountConfig)
+	if err != nil {
+		return false, fmt.Errorf("failed to get count query: %w", err)
+	}
+
+	query = s.Adopt(query)
+	err = s.GetContext(ctx, &count, query, s.GID())
 	if err != nil {
 		return false, fmt.Errorf("failed to check if settings exist: %w", err)
 	}
@@ -149,49 +225,9 @@ func (s *Store) Exists(ctx context.Context) (bool, error) {
 	return count > 0, nil
 }
 
-// initDbTable initializes the config table if it doesn't exist
-func initDbTable(ctx context.Context, db *engine.SQL) error {
-	var createTableSQL string
-
-	if db.Type() == engine.Postgres {
-		createTableSQL = `
-			CREATE TABLE IF NOT EXISTS config (
-				id SERIAL PRIMARY KEY,
-				gid TEXT NOT NULL,
-				data TEXT NOT NULL,
-				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				UNIQUE(gid)
-			);
-			
-			DO $$
-			BEGIN
-				IF NOT EXISTS (
-					SELECT 1 FROM pg_indexes WHERE indexname = 'idx_config_gid'
-				) THEN
-					CREATE INDEX idx_config_gid ON config(gid);
-				END IF;
-			END $$;
-		`
-	} else {
-		// sQLite
-		createTableSQL = `
-			CREATE TABLE IF NOT EXISTS config (
-				id INTEGER PRIMARY KEY,
-				gid TEXT NOT NULL,
-				data TEXT NOT NULL,
-				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				UNIQUE(gid)
-			);
-			
-			CREATE INDEX IF NOT EXISTS idx_config_gid ON config(gid);
-		`
-	}
-
-	_, err := db.ExecContext(ctx, createTableSQL)
-	if err != nil {
-		return fmt.Errorf("failed to create config table: %w", err)
-	}
+// noopMigrate is a no-op migration function for the config table
+// since there's no need for migrations currently
+func noopMigrate(_ context.Context, _ *sqlx.Tx, _ string) error {
+	log.Printf("[DEBUG] no migration needed for config table")
 	return nil
 }
