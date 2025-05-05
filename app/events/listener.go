@@ -214,8 +214,8 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
-	// ignore messages with empty text, no media, no video, no video note
-	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo {
+	// ignore messages with empty text, no media, no video, no video note, no forward
+	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo && !msg.WithForward {
 		return nil
 	}
 	ctx := context.TODO()

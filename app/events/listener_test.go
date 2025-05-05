@@ -527,6 +527,12 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 			if msg.Text == "text 123" && msg.From.Username == "user" {
 				return bot.Response{Send: true, Text: "bot's answer"}
 			}
+
+			// check for a forwarded message with no text
+			if msg.WithForward && msg.Text == "" {
+				return bot.Response{Send: true, Text: "detected forwarded spam"}
+			}
+
 			return bot.Response{}
 		},
 		UpdateSpamFunc: func(msg string) error {
@@ -2104,4 +2110,81 @@ func prepTestLocator(t *testing.T) (loc *storage.Locator, teardown func()) {
 	return loc, func() {
 		_ = os.Remove(f.Name())
 	}
+}
+
+func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) { return nil, nil },
+	}
+
+	// create bot mock that will detect forwarded messages with no text
+	botMock := &mocks.BotMock{
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Logf("on-message: %+v", msg)
+			if msg.WithForward && msg.Text == "" {
+				// this is the important check - we expect forwarded messages with no text to be processed
+				return bot.Response{
+					Send:          true,
+					Text:          "detected forwarded spam",
+					BanInterval:   bot.PermanentBanDuration,
+					User:          bot.User{ID: 456, Username: "spammer"},
+					DeleteReplyTo: true,
+				}
+			}
+			return bot.Response{}
+		},
+	}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        botMock,
+		Group:      "gr",
+		AdminGroup: "987654321",
+		Locator:    locator,
+		SuperUsers: SuperUsers{"super"},
+		chatID:     123, // set chat ID to match the message chat ID
+	}
+
+	// create a synthetic forwarded message with no text (like a giveaway message)
+	update := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat:          tbapi.Chat{ID: 123},
+			From:          &tbapi.User{ID: 456, UserName: "spammer"},
+			Date:          int(time.Now().Unix()),
+			Text:          "",                     // empty text
+			ForwardOrigin: &tbapi.MessageOrigin{}, // has forward origin
+			MessageID:     789,
+		},
+	}
+
+	// test if the message is processed
+	err := l.procEvents(update)
+	require.NoError(t, err)
+
+	// verify bot.OnMessage was called with the message
+	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	assert.True(t, botMock.OnMessageCalls()[0].Msg.WithForward)
+	assert.Equal(t, "", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.Equal(t, int64(456), botMock.OnMessageCalls()[0].Msg.From.ID)
+
+	// verify ban was requested
+	require.Equal(t, 1, len(mockAPI.RequestCalls()))
+	assert.Equal(t, int64(456), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
+
+	// verify spam logger was called
+	require.Equal(t, 1, len(mockLogger.SaveCalls()))
 }
