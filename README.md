@@ -157,6 +157,30 @@ This option is disabled by default. If `--space.enabled` is set or `env:SPACE_EN
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
 - `--space.min-words` (default:5) - the minimum number of words in the message to trigger the check
 
+### Sensitive Information Encryption in Database
+
+The bot supports encryption of sensitive fields when storing configuration in the database. This is useful when you want to store API tokens and other credentials securely. To enable encryption, set the `--confdb-encrypt-key` parameter or `CONFDB_ENCRYPT_KEY` environment variable to a secure master key.
+
+```bash
+# Enable encryption with environment variable (preferred method)
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam --confdb ...
+
+# Or with command line parameter (less secure, visible in process list)
+./tg-spam --confdb-encrypt-key="your-secure-master-key-at-least-20-chars" --confdb ...
+```
+
+When encryption is enabled, sensitive fields like Telegram token, OpenAI token, and server auth hash are automatically encrypted in the database and decrypted when loaded. This provides an extra layer of protection for your credentials, especially in shared database environments.
+
+#### Security Details
+
+- Uses industry-standard AES-GCM encryption with Argon2id key derivation
+- Creates instance-specific encryption keys to prevent cross-instance decryption
+- Requires a minimum key length of 20 characters to ensure adequate security
+- Environment variables are preferred over command-line parameters to prevent key exposure
+
+> **Important**: The encryption key must be kept secure and consistent across restarts. If the key changes, previously encrypted settings cannot be decrypted. For production use, consider using a secrets management system.
+
 ### Database Migration for samples (spam and ham), stop words and exclude tokens, after version (v1.16.0+)
 
 Starting from version 1.16.0, the bot has transitioned from using multiple text files to a fully database-driven architecture. Previously separate files for spam/ham samples, stop words, and excluded tokens are now stored directly in the database alongside other bot data.
@@ -366,6 +390,8 @@ Success! The new status is: DISABLED. /help
 ```
       --instance-id=                    instance id (default: tg-spam) [$INSTANCE_ID]
       --db=                             database URL, if empty uses sqlite (default: tg-spam.db) [$DB]
+      --confdb                          load configuration from database [$CONFDB]
+      --confdb-encrypt-key=             encryption key for sensitive config values in database [$CONFDB_ENCRYPT_KEY]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]

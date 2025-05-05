@@ -28,8 +28,8 @@
                                     <tr><th style="width: 30%">Version</th><td>{{.Version}}</td></tr>
                                     <tr><th>Uptime</th><td>{{.System.Uptime}}</td></tr>
                                     <tr><th>Instance ID</th><td>{{.InstanceID}}</td></tr>
-                                    <tr><th>Primary Group</th><td>{{.PrimaryGroup}}</td></tr>
-                                    <tr><th>Admin Group</th><td>{{.AdminGroup}}</td></tr>
+                                    <tr><th>Primary Group</th><td>{{.Telegram.Group}}</td></tr>
+                                    <tr><th>Admin Group</th><td>{{.Admin.AdminGroup}}</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -48,6 +48,14 @@
                                             <span class="badge" style="background-color: #e74c3c;">{{.Database.Status}}</span>
                                         {{end}}
                                     </td></tr>
+                                    {{if .ConfigDBMode}}
+                                    <tr><th>Config Mode</th><td>
+                                        <span class="badge" style="background-color: #28a745;">Database</span>
+                                    </td></tr>
+                                    {{if not .LastUpdated.IsZero}}
+                                    <tr><th>Config Updated</th><td>{{.LastUpdated.Format "2006-01-02 15:04:05"}}</td></tr>
+                                    {{end}}
+                                    {{end}}
                                 </tbody>
                             </table>
                         </div>
@@ -59,10 +67,15 @@
         <div class="col-md-4">
             <div class="card h-100">
                 <div class="card-header" style="background-color: #7c8994; color: white;">
-                    <h5 class="mb-0">Backup & Recovery</h5>
+                    <h5 class="mb-0">Backup</h5>
                 </div>
                 <div class="card-body">
+                    
                     <div class="d-grid gap-2">
+                        {{if .ConfigDBMode}}
+                        <!-- Configuration is saved automatically when using the "Save Changes" button at the bottom of the form -->
+                        {{end}}
+                        
                         <a href="{{.Backup.URL}}" class="btn btn-custom-blue" download="{{.Backup.Filename}}">
                             <i class="bi bi-download me-1"></i> Download Database Backup
                         </a>
@@ -82,47 +95,114 @@
     </div>
     
     <!-- Settings sections grouped by function -->
-    <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="spam-detection-tab" data-bs-toggle="tab" data-bs-target="#spam-detection" type="button" role="tab">
-                <i class="bi bi-shield-check me-1"></i>Spam Detection
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="meta-checks-tab" data-bs-toggle="tab" data-bs-target="#meta-checks" type="button" role="tab">
-                <i class="bi bi-check-circle me-1"></i>Meta Checks
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai-settings" type="button" role="tab">
-                <i class="bi bi-chat-square-text me-1"></i>OpenAI
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="lua-plugins-tab" data-bs-toggle="tab" data-bs-target="#lua-plugins" type="button" role="tab">
-                <i class="bi bi-code-square me-1"></i>Lua Plugins
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="data-storage-tab" data-bs-toggle="tab" data-bs-target="#data-storage" type="button" role="tab">
-                <i class="bi bi-hdd-stack me-1"></i>Data Storage
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="behavior-tab" data-bs-toggle="tab" data-bs-target="#behavior" type="button" role="tab">
-                <i class="bi bi-gear me-1"></i>Bot Behavior
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
-                <i class="bi bi-tools me-1"></i>System
-            </button>
-        </li>
-    </ul>
+    <form id="settings-form" method="PUT" action="/config" hx-put="/config" hx-target="#update-result" hx-swap="outerHTML">
+        <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="spam-detection-tab" data-bs-toggle="tab" data-bs-target="#spam-detection" type="button" role="tab">
+                    <i class="bi bi-shield-check me-1"></i>Spam Detection
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="meta-checks-tab" data-bs-toggle="tab" data-bs-target="#meta-checks" type="button" role="tab">
+                    <i class="bi bi-check-circle me-1"></i>Meta Checks
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai-settings" type="button" role="tab">
+                    <i class="bi bi-chat-square-text me-1"></i>OpenAI
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="lua-plugins-tab" data-bs-toggle="tab" data-bs-target="#lua-plugins" type="button" role="tab">
+                    <i class="bi bi-code-square me-1"></i>Lua Plugins
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="data-storage-tab" data-bs-toggle="tab" data-bs-target="#data-storage" type="button" role="tab">
+                    <i class="bi bi-hdd-stack me-1"></i>Data Storage
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="behavior-tab" data-bs-toggle="tab" data-bs-target="#behavior" type="button" role="tab">
+                    <i class="bi bi-gear me-1"></i>Bot Behavior
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
+                    <i class="bi bi-tools me-1"></i>System
+                </button>
+            </li>
+        </ul>
     
     <div class="tab-content p-3 border border-top-0 rounded-bottom mb-4 bg-light" id="settingsTabsContent">
         <!-- Spam Detection Settings -->
         <div class="tab-pane fade show active" id="spam-detection" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="similarityThreshold" class="form-label">Similarity Threshold</label>
+                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="similarityThreshold" name="similarityThreshold" value="{{.SimilarityThreshold}}">
+                    <div class="form-text">Threshold for text similarity detection (0-1)</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="minMsgLen" class="form-label">Min Message Length</label>
+                    <input type="number" min="0" class="form-control" id="minMsgLen" name="minMsgLen" value="{{.MinMsgLen}}">
+                    <div class="form-text">Minimum message length for checking</div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="maxEmoji" class="form-label">Max Emoji</label>
+                    <input type="number" min="0" class="form-control" id="maxEmoji" name="maxEmoji" value="{{.MaxEmoji}}">
+                    <div class="form-text">Maximum allowed emoji count</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="minSpamProbability" class="form-label">Min Spam Probability (%)</label>
+                    <input type="number" step="1" min="0" max="100" class="form-control" id="minSpamProbability" name="minSpamProbability" value="{{.MinSpamProbability}}">
+                    <div class="form-text">Minimum probability to consider message as spam (0-100%)</div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="firstMessagesCount" class="form-label">First Messages Count</label>
+                    <input type="number" min="0" class="form-control" id="firstMessagesCount" name="firstMessagesCount" value="{{.FirstMessagesCount}}">
+                    <div class="form-text">Number of messages to be considered as first messages</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="multiLangWords" class="form-label">Multi Lingual Words</label>
+                    <input type="number" min="0" class="form-control" id="multiLangWords" name="multiLangWords" value="{{.MultiLangWords}}">
+                    <div class="form-text">Limit for different languages in a message</div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="historySize" class="form-label">History Size</label>
+                    <input type="number" min="0" class="form-control" id="historySize" name="historySize" value="{{.History.Size}}">
+                    <div class="form-text">Number of messages to store in history</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="abnormalSpacingEnabled" name="abnormalSpacingEnabled" {{if .AbnormalSpace.Enabled}}checked{{end}}>
+                        <label class="form-check-label" for="abnormalSpacingEnabled">Abnormal Spacing Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="paranoidMode" name="paranoidMode" {{if .ParanoidMode}}checked{{end}}>
+                        <label class="form-check-label" for="paranoidMode">Paranoid Mode</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaForwarded" name="metaForwarded" {{if .Meta.Forward}}checked{{end}}>
+                        <label class="form-check-label" for="metaForwarded">Forward Prohibited</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="casEnabled" name="casEnabled" {{if .IsCASEnabled}}checked{{end}}>
+                        <label class="form-check-label" for="casEnabled">CAS Enabled</label>
+                    </div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
@@ -132,21 +212,75 @@
                         <tr><th style="width: 30%">Similarity Threshold</th><td>{{.SimilarityThreshold}}</td></tr>
                         <tr><th>Min Message Length</th><td>{{.MinMsgLen}}</td></tr>
                         <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
-                        <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}</td></tr>
+                        <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}%</td></tr>
                         <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
-                        <tr><th>Multi Lingual Words</th><td>{{.MultiLangLimit}}</td></tr>
-                        <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpacingEnabled}}</td></tr>
-                        <tr><th>History Size</th><td>{{.HistorySize}}</td></tr>
+                        <tr><th>Multi Lingual Words</th><td>{{.MultiLangWords}}</td></tr>
+                        <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpace.Enabled}}</td></tr>
+                        <tr><th>History Size</th><td>{{.History.Size}}</td></tr>
                         <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
-                        <tr><th>Forward Prohibited</th><td>{{.MetaForwarded}}</td></tr>
-                        <tr><th>CAS Enabled</th><td>{{.CasEnabled}}</td></tr>
+                        <tr><th>Forward Prohibited</th><td>{{.Meta.Forward}}</td></tr>
+                        <tr><th>CAS Enabled</th><td>{{.IsCASEnabled}}</td></tr>
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- Meta Checks Settings -->
         <div class="tab-pane fade" id="meta-checks" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="metaEnabled" name="metaEnabled" {{if .IsMetaEnabled}}checked{{end}}>
+                        <label class="form-check-label" for="metaEnabled">Meta Enabled</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="metaLinksLimit" class="form-label">Meta Links Limit</label>
+                    <input type="number" class="form-control" id="metaLinksLimit" name="metaLinksLimit" value="{{.Meta.LinksLimit}}">
+                    <div class="form-text">Max links in message (-1 to disable)</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="metaMentionsLimit" class="form-label">Meta Mentions Limit</label>
+                    <input type="number" class="form-control" id="metaMentionsLimit" name="metaMentionsLimit" value="{{.Meta.MentionsLimit}}">
+                    <div class="form-text">Max mentions in message (-1 to disable)</div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="metaUsernameSymbols" class="form-label">Meta Username Symbols</label>
+                    <input type="text" class="form-control" id="metaUsernameSymbols" name="metaUsernameSymbols" value="{{.Meta.UsernameSymbols}}">
+                    <div class="form-text">Symbols to check in usernames (leave empty to disable)</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="metaLinksOnly" name="metaLinksOnly" {{if .Meta.LinksOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaLinksOnly">Meta Links Only</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaImageOnly" name="metaImageOnly" {{if .Meta.ImageOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaImageOnly">Meta Image Only</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaVideoOnly" name="metaVideoOnly" {{if .Meta.VideosOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaVideoOnly">Meta Video Only</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaAudioOnly" name="metaAudioOnly" {{if .Meta.AudiosOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaAudioOnly">Meta Audio Only</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaKeyboard" name="metaKeyboard" {{if .Meta.Keyboard}}checked{{end}}>
+                        <label class="form-check-label" for="metaKeyboard">Meta Keyboard</label>
+                    </div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
@@ -165,27 +299,101 @@
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- OpenAI Settings -->
         <div class="tab-pane fade" id="openai-settings" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="openAIEnabled" name="openAIEnabled" {{if .IsOpenAIEnabled}}checked{{end}}>
+                        <label class="form-check-label" for="openAIEnabled">OpenAI Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="openAIVeto" name="openAIVeto" {{if .OpenAI.Veto}}checked{{end}}>
+                        <label class="form-check-label" for="openAIVeto">OpenAI Veto</label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="openAIHistorySize" class="form-label">OpenAI History Size</label>
+                    <input type="number" min="0" class="form-control" id="openAIHistorySize" name="openAIHistorySize" value="{{.OpenAI.HistorySize}}">
+                    <div class="form-text">Number of messages to include in OpenAI context</div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="openAIModel" class="form-label">OpenAI Model</label>
+                    <select class="form-select" id="openAIModel" name="openAIModel">
+                        <option value="gpt-3.5-turbo" {{if eq .OpenAI.Model "gpt-3.5-turbo"}}selected{{end}}>GPT-3.5 Turbo</option>
+                        <option value="gpt-4" {{if eq .OpenAI.Model "gpt-4"}}selected{{end}}>GPT-4</option>
+                        <option value="gpt-4-turbo" {{if eq .OpenAI.Model "gpt-4-turbo"}}selected{{end}}>GPT-4 Turbo</option>
+                        <option value="gpt-4o" {{if eq .OpenAI.Model "gpt-4o"}}selected{{end}}>GPT-4o</option>
+                        <option value="gpt-4o-mini" {{if eq .OpenAI.Model "gpt-4o-mini"}}selected{{end}}>GPT-4o Mini</option>
+                        <option value="{{.OpenAI.Model}}" {{if and (ne .OpenAI.Model "gpt-3.5-turbo") (ne .OpenAI.Model "gpt-4") (ne .OpenAI.Model "gpt-4-turbo") (ne .OpenAI.Model "gpt-4o") (ne .OpenAI.Model "gpt-4o-mini")}}selected{{end}}>{{.OpenAI.Model}}</option>
+                    </select>
+                    <div class="form-text">OpenAI model to use for checking messages</div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
                         <tr><th colspan="2">OpenAI Integration Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">OpenAI Enabled</th><td>{{.OpenAIEnabled}}</td></tr>
-                        <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
-                        <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
-                        <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
+                        <tr><th style="width: 30%">OpenAI Enabled</th><td>{{.IsOpenAIEnabled}}</td></tr>
+                        <tr><th>OpenAI Veto</th><td>{{.OpenAI.Veto}}</td></tr>
+                        <tr><th>OpenAI History Size</th><td>{{.OpenAI.HistorySize}}</td></tr>
+                        <tr><th>OpenAI Model</th><td>{{.OpenAI.Model}}</td></tr>
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- Lua Plugins Settings -->
         <div class="tab-pane fade" id="lua-plugins" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="luaPluginsEnabled" name="luaPluginsEnabled" {{if .LuaPlugins.Enabled}}checked{{end}}>
+                        <label class="form-check-label" for="luaPluginsEnabled">Lua Plugins Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="luaDynamicReload" name="luaDynamicReload" {{if .LuaPlugins.DynamicReload}}checked{{end}}>
+                        <label class="form-check-label" for="luaDynamicReload">Dynamic Reload</label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="luaPluginsDir" class="form-label">Plugins Directory</label>
+                    <input type="text" class="form-control" id="luaPluginsDir" name="luaPluginsDir" value="{{.LuaPlugins.PluginsDir}}">
+                    <div class="form-text">Directory containing Lua plugins</div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <label class="form-label">Enabled Plugins</label>
+                    <div class="form-text mb-2">Select which plugins to enable (if none selected, all are enabled)</div>
+                    <div class="row">
+                        {{range .LuaAvailablePlugins}}
+                        <div class="col-md-4 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="luaEnabledPlugins" value="{{.}}" id="plugin-{{.}}" 
+                                    {{$plugin := .}}{{range $.LuaPlugins.EnabledPlugins}}{{if eq . $plugin}}checked{{end}}{{end}}
+                                    {{if eq (len $.LuaPlugins.EnabledPlugins) 0}}checked{{end}}>
+                                <label class="form-check-label" for="plugin-{{.}}">{{.}}</label>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
@@ -222,62 +430,181 @@
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- Data Storage Settings -->
         <div class="tab-pane fade" id="data-storage" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="samplesDataPath" class="form-label">Samples Data Path</label>
+                    <input type="text" class="form-control" id="samplesDataPath" name="samplesDataPath" value="{{.Files.SamplesDataPath}}">
+                    <div class="form-text">Path to store sample data files</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="dynamicDataPath" class="form-label">Dynamic Data Path</label>
+                    <input type="text" class="form-control" id="dynamicDataPath" name="dynamicDataPath" value="{{.Files.DynamicDataPath}}">
+                    <div class="form-text">Path to store dynamic data files</div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="watchIntervalSecs" class="form-label">Watch Interval Seconds</label>
+                    <input type="number" min="0" class="form-control" id="watchIntervalSecs" name="watchIntervalSecs" value="{{.Files.WatchInterval}}">
+                    <div class="form-text">Interval to check for file changes</div>
+                </div>
+                <!-- StorageTimeout removed, as it's only controlled via CLI -->
+            </div>
+
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
                         <tr><th colspan="2">Data Storage Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Samples Data Path</th><td>{{.SamplesDataPath}}</td></tr>
-                        <tr><th>Dynamic Data Path</th><td>{{.DynamicDataPath}}</td></tr>
-                        <tr><th>Watch Interval Seconds</th><td>{{.WatchIntervalSecs}}</td></tr>
-                        <tr><th>Storage Timeout</th><td>{{.StorageTimeout}}</td></tr>
-                        <tr><th>Training Enabled</th><td>{{.TrainingEnabled}}</td></tr>
+                        <tr><th style="width: 30%">Samples Data Path</th><td>{{.Files.SamplesDataPath}}</td></tr>
+                        <tr><th>Dynamic Data Path</th><td>{{.Files.DynamicDataPath}}</td></tr>
+                        <tr><th>Watch Interval Seconds</th><td>{{.Files.WatchInterval}}</td></tr>
+                        <!-- StorageTimeout shown as CLI-only setting -->
+                        <tr><th>Storage Timeout</th><td>{{.Transient.StorageTimeout}} <small class="text-muted">(set via CLI)</small></td></tr>
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- Bot Behavior Settings -->
         <div class="tab-pane fade" id="behavior" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="superUsers" class="form-label">Super Users</label>
+                    <textarea class="form-control" id="superUsers" name="superUsers" rows="3">{{range $i, $user := .Admin.SuperUsers}}{{if $i}},{{end}}{{$user}}{{end}}</textarea>
+                    <div class="form-text">Comma-separated list of Telegram user IDs with special privileges</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="disableAdminSpamForward" name="disableAdminSpamForward" {{if .Admin.DisableAdminSpamForward}}checked{{end}}>
+                        <label class="form-check-label" for="disableAdminSpamForward">Disable Admin Spam Forward</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="noSpamReply" name="noSpamReply" {{if .NoSpamReply}}checked{{end}}>
+                        <label class="form-check-label" for="noSpamReply">No Spam Reply</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="startupMessageEnabled" name="startupMessageEnabled" {{if .IsStartupMessageEnabled}}checked{{end}}>
+                        <label class="form-check-label" for="startupMessageEnabled">Startup Message Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="softBanEnabled" name="softBanEnabled" {{if .SoftBan}}checked{{end}}>
+                        <label class="form-check-label" for="softBanEnabled">Soft Ban Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="trainingEnabled" name="trainingEnabled" {{if .Training}}checked{{end}}>
+                        <label class="form-check-label" for="trainingEnabled">Training Enabled</label>
+                    </div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
                         <tr><th colspan="2">Bot Behavior Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Super Users</th><td>{{range .SuperUsers}}{{.}}<br>{{end}}</td></tr>
-                        <tr><th>Disable Admin Spam Forward</th><td>{{.DisableAdminSpamForward}}</td></tr>
+                        <tr><th style="width: 30%">Super Users</th><td>{{range .Admin.SuperUsers}}{{.}}<br>{{end}}</td></tr>
+                        <tr><th>Disable Admin Spam Forward</th><td>{{.Admin.DisableAdminSpamForward}}</td></tr>
                         <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
-                        <tr><th>Startup Message Enabled</th><td>{{.StartupMessageEnabled}}</td></tr>
-                        <tr><th>Soft Ban Enabled</th><td>{{.SoftBanEnabled}}</td></tr>
+                        <tr><th>Startup Message Enabled</th><td>{{.IsStartupMessageEnabled}}</td></tr>
+                        <tr><th>Soft Ban Enabled</th><td>{{.SoftBan}}</td></tr>
+                        <tr><th>Training Enabled</th><td>{{.Training}}</td></tr>
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
         
         <!-- System Settings -->
         <div class="tab-pane fade" id="system" role="tabpanel">
+            {{if .ConfigDBMode}}
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="loggerEnabled" name="loggerEnabled" {{if .Logger.Enabled}}checked{{end}}>
+                        <label class="form-check-label" for="loggerEnabled">Logger Enabled</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="debugModeEnabled" name="debugModeEnabled" {{if .Transient.Dbg}}checked{{end}}>
+                        <label class="form-check-label" for="debugModeEnabled">Debug Mode Enabled</label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="dryModeEnabled" name="dryModeEnabled" {{if .Dry}}checked{{end}}>
+                        <label class="form-check-label" for="dryModeEnabled">Dry Mode Enabled</label>
+                        <div class="form-text">Run without making any actual changes</div>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="tgDebugModeEnabled" name="tgDebugModeEnabled" {{if .Transient.TGDbg}}checked{{end}}>
+                        <label class="form-check-label" for="tgDebugModeEnabled">TG Debug Mode Enabled</label>
+                        <div class="form-text">Enable Telegram API debug logging</div>
+                    </div>
+                </div>
+            </div>
+            {{else}}
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                     <thead class="custom-table-header">
                         <tr><th colspan="2">System Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Logger Enabled</th><td>{{.LoggerEnabled}}</td></tr>
-                        <tr><th>Debug Mode Enabled</th><td>{{.DebugModeEnabled}}</td></tr>
-                        <tr><th>Dry Mode Enabled</th><td>{{.DryModeEnabled}}</td></tr>
-                        <tr><th>TG Debug Mode Enabled</th><td>{{.TGDebugModeEnabled}}</td></tr>
+                        <tr><th style="width: 30%">Logger Enabled</th><td>{{.Logger.Enabled}}</td></tr>
+                        <tr><th>Debug Mode Enabled</th><td>{{.Transient.Dbg}}</td></tr>
+                        <tr><th>Dry Mode Enabled</th><td>{{.Dry}}</td></tr>
+                        <tr><th>TG Debug Mode Enabled</th><td>{{.Transient.TGDbg}}</td></tr>
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
     </div>
+
+    <!-- Submit button for form - only shown in ConfigDBMode -->
+    {{if .ConfigDBMode}}
+    <div class="container mb-5 mt-4">
+        <div class="d-flex justify-content-between">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-check-lg me-1"></i> Save Changes
+            </button>
+            <button type="reset" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Form
+            </button>
+        </div>
+        <div id="update-result" class="mt-3"></div>
+    </div>
+    {{end}}
+    </form>
 </div>
 
+<!-- JavaScript for dynamic editing when in ConfigDBMode -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Make the settings form interactive when in ConfigDBMode
+    const configDBMode = {{.ConfigDBMode}};
+    if (configDBMode) {
+        // Add handler for form submission
+        const form = document.getElementById('settings-form');
+        if (form) {
+            form.addEventListener('htmx:beforeRequest', function() {
+                const resultArea = document.getElementById('update-result');
+                resultArea.innerHTML = '<div class="text-center"><img src="/spinner.svg" width="30" alt="Loading..."></div>';
+            });
+        }
+    }
+});
+</script>
 </body>
 </html>
