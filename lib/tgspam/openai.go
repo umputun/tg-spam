@@ -30,6 +30,7 @@ type OpenAIConfig struct {
 	MaxSymbolsRequest int // fallback: Max request length in symbols, if tokenizer was failed
 	Model             string
 	SystemPrompt      string
+	CustomPrompts     []string // additional prompts for specific spam patterns
 	RetryCount        int
 	ReasoningEffort   string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
 }
@@ -102,6 +103,28 @@ func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam boo
 		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
 }
 
+// buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts
+func (o *openAIChecker) buildSystemPrompt() string {
+	basePrompt := o.params.SystemPrompt
+
+	// if there are no custom prompts, just return the base prompt
+	if len(o.params.CustomPrompts) == 0 {
+		return basePrompt
+	}
+
+	// combine base prompt with custom prompts
+	var sb strings.Builder
+	sb.WriteString(basePrompt)
+	sb.WriteString("\n\nAlso, specifically check for these patterns:\n")
+
+	// add each custom prompt as a numbered item
+	for i, prompt := range o.params.CustomPrompts {
+		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, prompt))
+	}
+
+	return sb.String()
+}
+
 func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err error) {
 	// reduce the request size with tokenizer and fallback to default reducer if it fails.
 	// the API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
@@ -135,8 +158,11 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 
 	r := reduceRequest(msg)
 
+	// build the complete system prompt with any custom prompts
+	completeSystemPrompt := o.buildSystemPrompt()
+
 	data := []openai.ChatCompletionMessage{
-		{Role: openai.ChatMessageRoleSystem, Content: o.params.SystemPrompt},
+		{Role: openai.ChatMessageRoleSystem, Content: completeSystemPrompt},
 		{Role: openai.ChatMessageRoleUser, Content: r},
 	}
 

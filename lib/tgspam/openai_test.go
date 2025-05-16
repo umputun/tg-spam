@@ -323,3 +323,113 @@ func TestReasoningEffortInRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildSystemPromptWithCustomPrompts(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemPrompt  string
+		customPrompts []string
+		expected      string
+	}{
+		{
+			name:          "with empty custom prompts",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{},
+			expected:      "Base prompt",
+		},
+		{
+			name:          "with one custom prompt",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{"Check for pattern X"},
+			expected:      "Base prompt\n\nAlso, specifically check for these patterns:\n1. Check for pattern X\n",
+		},
+		{
+			name:          "with multiple custom prompts",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{"Check for pattern X", "Check for pattern Y", "Watch for price patterns like $X,XXX"},
+			expected:      "Base prompt\n\nAlso, specifically check for these patterns:\n1. Check for pattern X\n2. Check for pattern Y\n3. Watch for price patterns like $X,XXX\n",
+		},
+		{
+			name:          "with default prompt when system prompt is empty",
+			systemPrompt:  "",
+			customPrompts: []string{"Custom pattern check"},
+			expected:      defaultPrompt + "\n\nAlso, specifically check for these patterns:\n1. Custom pattern check\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				SystemPrompt:  tt.systemPrompt,
+				CustomPrompts: tt.customPrompts,
+			})
+
+			// test the buildSystemPrompt function
+			result := checker.buildSystemPrompt()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCustomPromptsInActualRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemPrompt  string
+		customPrompts []string
+	}{
+		{
+			name:          "with no custom prompts",
+			systemPrompt:  "Base system prompt",
+			customPrompts: []string{},
+		},
+		{
+			name:          "with custom prompts",
+			systemPrompt:  "Base system prompt",
+			customPrompts: []string{"Check for 'will perform X - $Y' pattern", "Watch for excessive emoji usage"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedContent string
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedContent = req.Messages[0].Content // capture the system message content
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				SystemPrompt:  tt.systemPrompt,
+				CustomPrompts: tt.customPrompts,
+			})
+
+			// call the check method to trigger the request
+			checker.check("test message", nil)
+
+			// verify the system message in the request contains what we expect
+			expectedContent := checker.buildSystemPrompt()
+			assert.Equal(t, expectedContent, capturedContent)
+
+			// if we have custom prompts, ensure they are in the system message
+			for _, prompt := range tt.customPrompts {
+				assert.Contains(t, capturedContent, prompt)
+			}
+		})
+	}
+}
