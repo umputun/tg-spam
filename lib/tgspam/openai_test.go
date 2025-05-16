@@ -6,6 +6,7 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
@@ -207,6 +208,118 @@ History:
 			checker.check(tt.currentMsg, tt.history)
 			assert.Equal(t, tt.expectedMessage, capturedMsg, "message formatting mismatch")
 			assert.Equal(t, 1, len(clientMock.CreateChatCompletionCalls()))
+		})
+	}
+}
+
+func TestStripThoughtTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "no thought tags",
+			input:    "This is a normal response",
+			expected: "This is a normal response",
+		},
+		{
+			name:     "single thought tag",
+			input:    "This is <thought>some thinking process</thought> a response with thoughts",
+			expected: "This is  a response with thoughts",
+		},
+		{
+			name:     "multiple thought tags",
+			input:    "<thought>Initial thinking</thought>Response<thought>More thinking</thought>",
+			expected: "Response",
+		},
+		{
+			name:     "multiline thought tags",
+			input:    "Start\n<thought>\nMultiline\nthinking\n</thought>\nEnd",
+			expected: "Start\n\nEnd",
+		},
+		{
+			name:     "JSON content with thought tags",
+			input:    `{"result": "<thought>thinking about spam</thought>This is spam"}`,
+			expected: `{"result": "This is spam"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripThoughtTags(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestReasoningEffortInRequest(t *testing.T) {
+	tests := []struct {
+		name            string
+		reasoningEffort string
+		expectInRequest bool
+		expectedEffort  string
+	}{
+		{
+			name:            "empty reasoning effort",
+			reasoningEffort: "",
+			expectInRequest: false,
+		},
+		{
+			name:            "none reasoning effort",
+			reasoningEffort: "none",
+			expectInRequest: true,
+			expectedEffort:  "none",
+		},
+		{
+			name:            "low reasoning effort",
+			reasoningEffort: "low",
+			expectInRequest: true,
+			expectedEffort:  "low",
+		},
+		{
+			name:            "medium reasoning effort",
+			reasoningEffort: "medium",
+			expectInRequest: true,
+			expectedEffort:  "medium",
+		},
+		{
+			name:            "high reasoning effort",
+			reasoningEffort: "high",
+			expectInRequest: true,
+			expectedEffort:  "high",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedRequest openai.ChatCompletionRequest
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedRequest = req
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				Model:           "gpt-4o-mini",
+				ReasoningEffort: tt.reasoningEffort,
+			})
+
+			// call the check method to trigger the client call
+			checker.check("test message", nil)
+
+			// verify the reasoning_effort parameter in the request
+			if tt.expectInRequest {
+				require.Equal(t, tt.expectedEffort, capturedRequest.ReasoningEffort)
+			} else {
+				require.Empty(t, capturedRequest.ReasoningEffort)
+			}
 		})
 	}
 }
