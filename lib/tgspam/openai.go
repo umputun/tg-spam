@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	tokenizer "github.com/sandwich-go/gpt3-encoder"
@@ -30,6 +31,7 @@ type OpenAIConfig struct {
 	Model             string
 	SystemPrompt      string
 	RetryCount        int
+	ReasoningEffort   string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
 }
 
 type openAIClient interface {
@@ -138,14 +140,21 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 		{Role: openai.ChatMessageRoleUser, Content: r},
 	}
 
+	request := openai.ChatCompletionRequest{
+		Model:          o.params.Model,
+		MaxTokens:      o.params.MaxTokensResponse,
+		Messages:       data,
+		ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
+	}
+
+	// add reasoning_effort parameter if set
+	if o.params.ReasoningEffort != "" {
+		request.ReasoningEffort = o.params.ReasoningEffort
+	}
+
 	resp, err := o.client.CreateChatCompletion(
 		context.Background(),
-		openai.ChatCompletionRequest{
-			Model:          o.params.Model,
-			MaxTokens:      o.params.MaxTokensResponse,
-			Messages:       data,
-			ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
-		},
+		request,
 	)
 
 	if err != nil {
@@ -158,9 +167,23 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 		return openAIResponse{}, fmt.Errorf("no choices in response")
 	}
 
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &response); err != nil {
-		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", resp.Choices[0].Message.Content, err)
+	// strip <thought> tags from response content if present
+	content := resp.Choices[0].Message.Content
+	content = stripThoughtTags(content)
+
+	if err := json.Unmarshal([]byte(content), &response); err != nil {
+		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", content, err)
 	}
 
 	return response, nil
+}
+
+// stripThoughtTags removes any content enclosed in <thought></thought> tags
+func stripThoughtTags(content string) string {
+	// case 1: Remove all <thought>...</thought> blocks
+	thoughtPattern := `<thought>(?s).*?</thought>`
+	thoughtRegex := regexp.MustCompile(thoughtPattern)
+	content = thoughtRegex.ReplaceAllString(content, "")
+
+	return content
 }

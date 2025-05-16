@@ -99,6 +99,7 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
 -  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
 -  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
+-  For models that support "thinking mode" (like Gemini 2.5 Flash), you can control the model's reasoning behavior by setting `--openai.reasoning-effort=` to one of the following values: `none` (disables thinking, default), `low`, `medium`, or `high`. This parameter is particularly useful for controlling how much effort the model puts into its reasoning process. For most spam detection cases, setting this to `none` is recommended for faster responses. TG-Spam also automatically strips all `<thought></thought>` tags from responses, ensuring clean output regardless of the model's reasoning behavior.
 
 
 **Emoji Count**
@@ -430,6 +431,7 @@ openai:
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
+      --openai.reasoning-effort=        reasoning effort for thinking models, can be none, low, medium, high (default: none) [$OPENAI_REASONING_EFFORT]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]

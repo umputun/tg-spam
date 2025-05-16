@@ -97,6 +97,7 @@ type options struct {
 		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort                  string `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	LuaPlugins struct {
@@ -546,6 +547,7 @@ func makeDetector(opts options) *tgspam.Detector {
 			MaxTokensRequest:  opts.OpenAI.MaxTokensRequestMaxTokensRequest,
 			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
 			RetryCount:        opts.OpenAI.RetryCount,
+			ReasoningEffort:   opts.OpenAI.ReasoningEffort,
 		}
 
 		config := openai.DefaultConfig(opts.OpenAI.Token)
