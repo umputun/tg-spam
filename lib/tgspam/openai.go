@@ -178,12 +178,10 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 	return response, nil
 }
 
+var thoughtRegex = regexp.MustCompile(`<thought>(?s).*?</thought>`)
+
 // stripThoughtTags removes any content enclosed in <thought></thought> tags
 func stripThoughtTags(content string) string {
-	// case 1: Remove all <thought>...</thought> blocks
-	thoughtPattern := `<thought>(?s).*?</thought>`
-	thoughtRegex := regexp.MustCompile(thoughtPattern)
 	content = thoughtRegex.ReplaceAllString(content, "")
-
 	return content
 }

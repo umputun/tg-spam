@@ -87,17 +87,17 @@ type options struct {
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
-		Token                            string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
-		APIBase                          string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
-		Veto                             bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
-		Prompt                           string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		Model                            string `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
-		MaxTokensResponse                int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
-		MaxTokensRequestMaxTokensRequest int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
-		MaxSymbolsRequest                int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
-		RetryCount                       int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
-		HistorySize                      int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort                  string `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		Token             string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase           string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
+		Veto              bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt            string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+		Model             string `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
+		MaxTokensResponse int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+		MaxTokensRequest  int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+		MaxSymbolsRequest int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+		RetryCount        int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize       int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort   string `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	LuaPlugins struct {
@@ -544,7 +544,7 @@ func makeDetector(opts options) *tgspam.Detector {
 			SystemPrompt:      opts.OpenAI.Prompt,
 			Model:             opts.OpenAI.Model,
 			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
-			MaxTokensRequest:  opts.OpenAI.MaxTokensRequestMaxTokensRequest,
+			MaxTokensRequest:  opts.OpenAI.MaxTokensRequest,
 			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
 			RetryCount:        opts.OpenAI.RetryCount,
 			ReasoningEffort:   opts.OpenAI.ReasoningEffort,
