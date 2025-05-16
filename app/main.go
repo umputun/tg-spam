@@ -87,17 +87,18 @@ type options struct {
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
-		Token             string `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
-		APIBase           string `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
-		Veto              bool   `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
-		Prompt            string `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		Model             string `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
-		MaxTokensResponse int    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
-		MaxTokensRequest  int    `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
-		MaxSymbolsRequest int    `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
-		RetryCount        int    `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
-		HistorySize       int    `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort   string `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		Token             string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase           string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
+		Veto              bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt            string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+		CustomPrompts     []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
+		Model             string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
+		MaxTokensResponse int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+		MaxTokensRequest  int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+		MaxSymbolsRequest int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+		RetryCount        int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize       int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort   string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	LuaPlugins struct {
@@ -459,6 +460,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		OpenAIVeto:              opts.OpenAI.Veto,
 		OpenAIHistorySize:       opts.OpenAI.HistorySize,
 		OpenAIModel:             opts.OpenAI.Model,
+		OpenAICustomPrompts:     opts.OpenAI.CustomPrompts,
 		LuaPluginsEnabled:       opts.LuaPlugins.Enabled,
 		LuaPluginsDir:           opts.LuaPlugins.PluginsDir,
 		LuaEnabledPlugins:       opts.LuaPlugins.EnabledPlugins,
@@ -542,6 +544,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:      opts.OpenAI.Prompt,
+			CustomPrompts:     opts.OpenAI.CustomPrompts,
 			Model:             opts.OpenAI.Model,
 			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
 			MaxTokensRequest:  opts.OpenAI.MaxTokensRequest,

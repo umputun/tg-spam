@@ -88,6 +88,7 @@ type Settings struct {
 	MetaUsernameSymbols     string        `json:"meta_username_symbols"`
 	MultiLangLimit          int           `json:"multi_lang_limit"`
 	OpenAIEnabled           bool          `json:"openai_enabled"`
+	OpenAICustomPrompts     []string      `json:"openai_custom_prompts"`
 	LuaPluginsEnabled       bool          `json:"lua_plugins_enabled"`
 	LuaPluginsDir           string        `json:"lua_plugins_dir"`
 	LuaEnabledPlugins       []string      `json:"lua_enabled_plugins"`
