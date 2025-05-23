@@ -140,9 +140,22 @@ DROPLET_IP=$(doctl compute droplet get "$DROPLET_ID" --no-header --format Public
 
 echo_success "Droplet '$DROPLET_NAME' created successfully! IP Address: $DROPLET_IP"
 
-echo_info "Waiting for Droplet to be fully ready and SSH to be available (approx 60 seconds)..."
-sleep 60
-
+echo_info "Waiting for Droplet to be fully ready and SSH to be available..."
+START_TIME=$(date +%s)
+TIMEOUT=300 # Timeout after 5 minutes
+while true; do
+    if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 "root@${DROPLET_IP}" exit 2>/dev/null; then
+        echo_success "SSH is now available on the Droplet."
+        break
+    fi
+    CURRENT_TIME=$(date +%s)
+    ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+    if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
+        echo_error "Timeout waiting for SSH to become available. Please check the Droplet's status."
+        exit 1
+    fi
+    sleep 5
+done
 # 3. Configure TG-Spam on the Droplet
 echo_info "Configuring TG-Spam on the Droplet..."
 
