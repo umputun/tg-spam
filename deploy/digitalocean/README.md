@@ -53,7 +53,7 @@ Once the script finishes, your TG-Spam bot should be running on the newly create
 You can modify the following variables at the beginning of the `deploy_do.sh` script if needed:
 
 *   `DROPLET_SIZE`: The size of the Droplet (default: `s-1vcpu-1gb`).
-*   `DROPLET_IMAGE`: The OS image for the Droplet (default: `docker-20-04`). This image comes with Docker pre-installed.
+*   `DROPLET_IMAGE`: The OS image for the Droplet (default: `docker-24-04`). This image comes with Docker pre-installed.
 
 ## Post-Deployment
 
