@@ -126,7 +126,7 @@ doctl compute droplet create "$DROPLET_NAME" \
     --image "$DEFAULT_DROPLET_IMAGE" \
     --ssh-keys "$SSH_KEY_IDENTIFIER" \
     --user-data "#!/bin/bash
-mkdir -p ${TG_SPAM_INSTALL_PATH}" \
+mkdir -p \"${TG_SPAM_INSTALL_PATH}\"" \
     --wait \
     --format "ID,Name,PublicIPv4,Status"
 
