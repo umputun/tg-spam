@@ -1794,3 +1794,71 @@ func BenchmarkLoadSamples(b *testing.B) {
 		})
 	}
 }
+
+func TestDetector_ClassifierNaNHandling(t *testing.T) {
+	d := NewDetector(Config{})
+
+	t.Run("empty classifier no NaN", func(t *testing.T) {
+		// test classifier with no training data - should not produce NaN
+		spam, cr := d.Check(spamcheck.Request{Msg: "test message with no training data"})
+		assert.False(t, spam)
+		// no classifier check should be performed since classifier is empty
+		for _, r := range cr {
+			if r.Name == "classifier" {
+				t.Error("classifier check should not be performed with empty training data")
+			}
+		}
+	})
+
+	t.Run("minimal training data no NaN", func(t *testing.T) {
+		// load minimal training data
+		spamReader := strings.NewReader("spam")
+		hamReader := strings.NewReader("ham")
+		exclReader := strings.NewReader("")
+		_, err := d.LoadSamples(exclReader, []io.Reader{spamReader}, []io.Reader{hamReader})
+		require.NoError(t, err)
+
+		// check with unknown tokens - should not produce NaN
+		spam, cr := d.Check(spamcheck.Request{Msg: "completely unknown tokens that were never seen"})
+		assert.False(t, spam)
+
+		// find classifier result
+		var classifierResult *spamcheck.Response
+		for i := range cr {
+			if cr[i].Name == "classifier" {
+				classifierResult = &cr[i]
+				break
+			}
+		}
+
+		require.NotNil(t, classifierResult, "classifier result should be present")
+		assert.NotContains(t, classifierResult.Details, "NaN", "probability should not be NaN")
+
+		// verify the details format is correct
+		assert.Regexp(t, `probability of (spam|ham): \d+\.\d+%`, classifierResult.Details)
+	})
+
+	t.Run("edge case tokens no NaN", func(t *testing.T) {
+		// test with very unusual input that might trigger edge cases
+		testCases := []string{
+			"",    // empty string
+			"   ", // only spaces
+			"a",   // single char
+			"aa",  // two chars
+			"😀😀😀😀😀😀😀😀😀😀", // only emojis
+			"\n\n\n\n",                 // only newlines
+			strings.Repeat("a", 10000), // very long single token
+		}
+
+		for _, tc := range testCases {
+			spam, cr := d.Check(spamcheck.Request{Msg: tc})
+			// just verify no panic and no NaN in results
+			for _, r := range cr {
+				if r.Name == "classifier" {
+					assert.NotContains(t, r.Details, "NaN", "probability should not be NaN for input: %q", tc)
+				}
+			}
+			_ = spam // result doesn't matter, just checking for NaN
+		}
+	})
+}
