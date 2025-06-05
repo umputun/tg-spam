@@ -288,6 +288,18 @@ func TestSoftmax(t *testing.T) {
 			desc:     "Extreme differences should handle gracefully with clean underflow",
 		},
 		{
+			name:     "all negative infinity",
+			logProbs: map[spamClass]float64{good: math.Inf(-1), bad: math.Inf(-1)},
+			expected: map[spamClass]float64{good: 0.5, bad: 0.5},
+			desc:     "All -Inf values should return uniform distribution",
+		},
+		{
+			name:     "mixed with negative infinity",
+			logProbs: map[spamClass]float64{good: math.Inf(-1), bad: 0.0},
+			expected: map[spamClass]float64{good: 0.0, bad: 1.0},
+			desc:     "Mixed -Inf and normal values should handle correctly",
+		},
+		{
 			name:     "empty input",
 			logProbs: map[spamClass]float64{},
 			expected: nil,
