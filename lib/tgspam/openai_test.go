@@ -268,8 +268,7 @@ func TestReasoningEffortInRequest(t *testing.T) {
 		{
 			name:            "none reasoning effort",
 			reasoningEffort: "none",
-			expectInRequest: true,
-			expectedEffort:  "none",
+			expectInRequest: false,
 		},
 		{
 			name:            "low reasoning effort",
