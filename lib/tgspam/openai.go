@@ -173,8 +173,8 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 		ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
 	}
 
-	// add reasoning_effort parameter if set
-	if o.params.ReasoningEffort != "" {
+	// add reasoning_effort parameter if set and not "none"
+	if o.params.ReasoningEffort != "" && o.params.ReasoningEffort != "none" {
 		request.ReasoningEffort = o.params.ReasoningEffort
 	}
 
