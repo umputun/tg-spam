@@ -1,41 +1,50 @@
-# Database Configuration Support Plan - Implementation
+# Database Configuration Support - Implementation
 
 ## Overview
 
-This document outlines our implementation for supporting configuration parameters stored in a database for the TG-Spam application. The goal is to separate configuration concerns from CLI parameter parsing, creating a clean architecture for configuration management that supports the database as a configuration source while maintaining backward compatibility.
+This document describes the implemented database configuration support for the TG-Spam application. The feature allows storing and loading application configuration from a database, while maintaining backward compatibility with CLI-based configuration.
 
-## Key Design Changes
+## Key Design Decisions
 
-We've identified and addressed an architectural issue: we were using the CLI `options` struct for database storage and a separate `Settings` struct for the web UI, with manual conversions between them. This created duplication and coupled unrelated concerns.
-
-## Requirements
-
-1. Create a dedicated settings model separated from CLI parsing
-2. Support loading from both CLI and database with clear precedence
-3. Maintain backward compatibility with existing CLI configuration
-4. Support updating configuration via web interface
-5. Handle sensitive information securely
+1. **Package Structure**: Created a dedicated `config` package (not `settings`) to avoid confusion with the existing webapi Settings struct
+2. **Domain-Driven Design**: Configuration is organized by functional domains (Telegram, Admin, OpenAI, etc.)
+3. **Security First**: Sensitive fields are encrypted using AES-256-GCM with Argon2 key derivation
+4. **CLI Precedence**: CLI parameters always override database values for security-critical settings
 
 ## Implementation Summary
 
-We've created a new `settings` package that provides a clean domain model for application configuration. This package includes:
+The implementation consists of four main components:
 
-1. A `Settings` struct with all configuration parameters, properly organized by domain
-2. Secure handling of sensitive information via a `Transient` field
-3. A dedicated `Store` for persisting settings to the database
-4. Support for JSON and YAML serialization with appropriate tags
+1. **Config Package** (`app/config/`):
+   - `Settings` struct with domain-specific nested structures
+   - `Store` for database persistence using JSON storage
+   - `Crypter` for field-level encryption of sensitive data
+   - Support for both SQLite and PostgreSQL
+
+2. **CLI Integration**:
+   - `save-config` command to persist current configuration
+   - `--confdb` flag to enable database configuration mode
+   - `--confdb-encrypt-key` flag for encryption key
+
+3. **Web API Integration**:
+   - Configuration management endpoints (save, load, update, delete)
+   - HTMX-based UI updates
+   - Proper authentication and authorization
+
+4. **Security Features**:
+   - Encryption for tokens and passwords
+   - Transient settings that are never persisted
+   - CLI credentials take precedence over database values
 
 ## Implementation Details
 
-### 1. Settings Package
+### 1. Config Package
 
-We've created a clean settings package that completely separates configuration concerns from CLI parsing:
+The config package provides a clean domain model for application configuration:
 
 ```go
-// app/settings/settings.go
-package settings
-
-import "time"
+// app/config/settings.go
+package config
 
 // Settings represents application configuration independent of source (CLI, DB, etc)
 type Settings struct {
@@ -43,116 +52,156 @@ type Settings struct {
     InstanceID string `json:"instance_id" yaml:"instance_id" db:"instance_id"`
 
     // Group settings by domain
-    Telegram      TelegramSettings      `json:"telegram" yaml:"telegram"`
-    Admin         AdminSettings         `json:"admin" yaml:"admin"`
-    // Other domain-specific settings as separate structs...
+    Telegram      TelegramSettings      `json:"telegram" yaml:"telegram" db:"telegram"`
+    Admin         AdminSettings         `json:"admin" yaml:"admin" db:"admin"`
+    History       HistorySettings       `json:"history" yaml:"history" db:"history"`
+    Logger        LoggerSettings        `json:"logger" yaml:"logger" db:"logger"`
+    CAS           CASSettings           `json:"cas" yaml:"cas" db:"cas"`
+    Meta          MetaSettings          `json:"meta" yaml:"meta" db:"meta"`
+    OpenAI        OpenAISettings        `json:"openai" yaml:"openai" db:"openai"`
+    LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins" db:"lua_plugins"`
+    AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing" db:"abnormal_spacing"`
+    Files         FilesSettings         `json:"files" yaml:"files" db:"files"`
+    Message       MessageSettings       `json:"message" yaml:"message" db:"message"`
+    Server        ServerSettings        `json:"server" yaml:"server" db:"server"`
+
+    // Spam detection settings
+    SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
+    MinMsgLen           int     `json:"min_msg_len" yaml:"min_msg_len" db:"min_msg_len"`
+    MaxEmoji            int     `json:"max_emoji" yaml:"max_emoji" db:"max_emoji"`
+    MinSpamProbability  float64 `json:"min_spam_probability" yaml:"min_spam_probability" db:"min_spam_probability"`
+    MultiLangWords      int     `json:"multi_lang_words" yaml:"multi_lang_words" db:"multi_lang_words"`
 
     // Transient fields that should never be stored
     Transient TransientSettings `json:"-" yaml:"-"`
 }
 
-// Domain-specific settings types...
-
 // TransientSettings contains settings that should never be persisted
 type TransientSettings struct {
-    // Connection parameters, credentials, and control flags
-    DataBaseURL    string        `json:"-" yaml:"-"`
-    Credentials    Credentials   `json:"-" yaml:"-"`
-    // ...
+    DataBaseURL        string `json:"-" yaml:"-"`
+    StorageTimeout     time.Duration `json:"-" yaml:"-"`
+    ConfigDB           bool `json:"-" yaml:"-"`
+    Dbg                bool `json:"-" yaml:"-"`
+    TGDbg              bool `json:"-" yaml:"-"`
+    ConfigDBEncryptKey string `json:"-" yaml:"-"`
+    WebAuthPasswd      string `json:"-" yaml:"-"`
 }
 ```
 
-### 2. Settings Store
+### 2. Config Store
 
-We've implemented a dedicated storage layer that works directly with the Settings type:
+The store provides database persistence with encryption support:
 
 ```go
-// app/settings/store.go
-package settings
+// app/config/store.go
+package config
 
 // Store provides access to settings stored in database
 type Store struct {
     *engine.SQL
     engine.RWLocker
+    crypter         *Crypter
+    sensitiveFields []string
+}
+
+// NewStore creates a new settings store with options
+func NewStore(ctx context.Context, db *engine.SQL, opts ...StoreOption) (*Store, error) {
+    // Initialize with default sensitive fields
+    // Apply options (like encryption)
+    // Create database table if needed
 }
 
 // Load retrieves the settings from the database
 func (s *Store) Load(ctx context.Context) (*Settings, error) {
-    // Implementation...
+    // Load JSON from database
+    // Decrypt sensitive fields if crypter is configured
+    // Return parsed settings
 }
 
 // Save stores the settings to the database
 func (s *Store) Save(ctx context.Context, settings *Settings) error {
-    // Create a safe copy without sensitive information
-    safeCopy := *settings 
-    safeCopy.Transient = TransientSettings{} // Clear transient fields
-    
-    // Save to database...
+    // Create a safe copy without transient fields
+    // Encrypt sensitive fields if crypter is configured
+    // Save JSON to database
 }
 ```
 
 ### 3. CLI Integration
 
-In `main.go`, we'll integrate with the new settings package:
+The main.go integrates the config package seamlessly:
 
 ```go
-// In main.go:
+// Convert CLI options to domain settings model
+appSettings := optToSettings(opts)
 
-// Parse CLI options as usual
-var opts options
-p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
-// ...
-
-// If --confdb is set, load from database, otherwise create from CLI options
-var appSettings *settings.Settings
-
-if opts.ConfigDB {
-    // Make database connection using CLI parameters
-    db, err := makeDB(ctx, opts.DataBaseURL, opts.InstanceID)
-    if err != nil {
-        log.Printf("[ERROR] failed to connect to database for config: %v", err)
+// Handle save-config command
+if p.Active != nil && p.Active.Name == "save-config" {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    if err := saveConfigToDB(ctx, appSettings); err != nil {
+        log.Printf("[ERROR] failed to save configuration to database: %v", err)
         os.Exit(1)
     }
-    
-    // Load settings from database
-    store, err := settings.NewStore(ctx, db)
-    if err != nil {
-        log.Printf("[ERROR] failed to create settings store: %v", err)
-        os.Exit(1)
-    }
-    
-    appSettings, err = store.Load(ctx)
-    if err != nil {
-        log.Printf("[ERROR] failed to load settings from database: %v", err)
-        os.Exit(1)
-    }
-    
-    // Overlay critical parameters from CLI
-    applyCliOverrides(appSettings, opts)
-} else {
-    // Create settings from CLI options
-    appSettings = createSettingsFromOptions(opts)
+    cancel()
+    os.Exit(0)
 }
 
-// Use appSettings throughout the application...
+// If --confdb is set, load configuration from database
+if appSettings.Transient.ConfigDB {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    
+    // Save CLI credentials before loading from DB
+    transient := appSettings.Transient
+    telegramToken := appSettings.Telegram.Token
+    openAIToken := appSettings.OpenAI.Token
+    webAuthHash := appSettings.Server.AuthHash
+    
+    // Load from database
+    if err := loadConfigFromDB(ctx, appSettings); err != nil {
+        log.Printf("[ERROR] failed to load configuration from database: %v", err)
+        cancel()
+        os.Exit(1)
+    }
+    cancel()
+    
+    // Restore CLI values (they take precedence)
+    appSettings.Transient = transient
+    if telegramToken != "" {
+        appSettings.Telegram.Token = telegramToken
+    }
+    if openAIToken != "" {
+        appSettings.OpenAI.Token = openAIToken
+    }
+    if webAuthHash != "" {
+        appSettings.Server.AuthHash = webAuthHash
+    }
+}
 ```
 
 ### 4. Web API Integration
 
-The web API server will directly work with the Settings type:
+The web API provides full configuration management capabilities:
 
 ```go
-// In webapi/server.go:
-
-type Server struct {
-    // ...
-    Settings *settings.Settings
-    Store    *settings.Store
+// Configuration routes are added when ConfigDB mode is enabled
+if s.SettingsStore != nil && s.ConfigDBMode {
+    webUI.Route(func(config *routegroup.Bundle) {
+        config.HandleFunc("POST /config", s.saveConfigHandler)     // Save to DB
+        config.HandleFunc("GET /config", s.loadConfigHandler)      // Load from DB
+        config.HandleFunc("PUT /config", s.updateConfigHandler)    // Update settings
+        config.HandleFunc("DELETE /config", s.deleteConfigHandler) // Delete from DB
+    })
 }
 
-// ConfigHandler handles GET/POST/PUT requests for configuration
-func (s *Server) ConfigHandler(w http.ResponseWriter, r *http.Request) {
-    // Implementation using Settings directly instead of the old webapi.Settings
+// Settings are integrated throughout the server
+type Server struct {
+    Config
+}
+
+type Config struct {
+    // ... other fields ...
+    SettingsStore SettingsStore    // Interface for config persistence
+    AppSettings   *config.Settings // The actual settings
+    ConfigDBMode  bool            // Indicates DB config is enabled
 }
 ```
 
@@ -184,51 +233,91 @@ To maintain backward compatibility, we:
 - Add conversion functions between `options` and our new `Settings` type
 - Preserve the original behavior when `--confdb` is not specified
 
-## Current Status
+## Usage
 
-### Completed
+### Saving Configuration to Database
 
-1. ✅ Designed and implemented a complete `settings` package with:
-   - Well-structured domain-specific settings types
-   - Secure handling of credentials and sensitive information
-   - Support for multiple serialization formats (JSON, YAML, DB)
+To save the current configuration to the database:
 
-2. ✅ Implemented a `Store` component that:
-   - Works with both SQLite and PostgreSQL databases
-   - Handles safe storage and retrieval of settings
-   - Properly protects sensitive information
+```bash
+# Save current CLI configuration to database
+./tg-spam save-config --db "postgres://user:pass@localhost/tgspam"
 
-3. ✅ Created comprehensive tests that:
-   - Verify behavior with both SQLite and PostgreSQL
-   - Test all aspects of settings storage and retrieval
-   - Cover complex data structures and edge cases
+# Save with encryption enabled
+./tg-spam save-config --db "postgres://user:pass@localhost/tgspam" --confdb-encrypt-key "my-secret-key-at-least-20-chars"
+```
 
-### Implemented
+### Loading Configuration from Database
 
-1. ✅ Modified `main.go` to use the new settings system:
-   - Added conversion function `optToSettings` to convert CLI options to the Settings model
-   - Updated the save-config command to use the new Store
-   - Implemented proper credential handling with clear precedence rules
-   - Added proper CLI-to-DB and DB-to-CLI conversion logic
+To run the application with database configuration:
 
-2. ✅ Updated the web API to work with the domain-driven Settings type:
-   - Modified the web API to directly access credentials from their domain locations
-   - Ensured proper precedence of CLI credentials over database values
-   - Updated config handlers to work with the domain-driven Settings store
-   - Fixed settings.html to work with the new structure
+```bash
+# Load configuration from database
+./tg-spam --confdb --db "postgres://user:pass@localhost/tgspam" \
+    --telegram.token "BOT_TOKEN"
 
-3. ✅ Eliminated redundant credential abstractions:
-   - Removed unnecessary Credentials struct and its methods
-   - Moved credentials to their proper domain locations (Telegram.Token, OpenAI.Token, Server.AuthHash)
-   - Updated all code to directly access credentials from domain models
-   - Ensured proper handling of sensitive information
+# With encryption
+./tg-spam --confdb --db "postgres://user:pass@localhost/tgspam" \
+    --confdb-encrypt-key "my-secret-key-at-least-20-chars" \
+    --telegram.token "BOT_TOKEN"
+```
 
-4. ✅ Added and fixed tests to verify the full workflow:
-   - CLI to database storage tests
-   - Database to application loading tests
-   - Web UI to database update tests
-   - Comprehensive tests for domain-driven credential storage
+Note: Security-sensitive parameters (tokens, passwords) must still be provided via CLI for security reasons.
 
-### Current Status
+### Web UI Configuration Management
 
-The database configuration system is now fully implemented with proper domain-driven design. Credentials are stored with their respective domain models, and the system maintains proper precedence of CLI values over database values. The web interface has been updated to work with the new structure, and all tests are passing.
+When running with `--confdb` and `--server.enabled`, the web UI provides configuration management at:
+- POST `/config` - Save current configuration to database
+- GET `/config` - Load configuration from database
+- PUT `/config` - Update specific settings
+- DELETE `/config` - Remove configuration from database
+
+## Current Implementation Status
+
+### ✅ Completed Components
+
+1. **Config Package** (`app/config/`):
+   - `Settings` struct with all configuration organized by domain
+   - `Store` for database persistence with JSON serialization
+   - `Crypter` for AES-256-GCM encryption of sensitive fields
+   - Support for both SQLite and PostgreSQL databases
+   - Comprehensive test coverage
+
+2. **CLI Integration** (`app/main.go`):
+   - `save-config` command for persisting configuration
+   - `--confdb` flag to enable database configuration mode
+   - `--confdb-encrypt-key` for encryption support
+   - `optToSettings()` function for CLI to domain model conversion
+   - `loadConfigFromDB()` and `saveConfigToDB()` functions
+   - Proper precedence rules (CLI overrides DB for credentials)
+
+3. **Web API Integration** (`app/webapi/`):
+   - `SettingsStore` interface for configuration persistence
+   - Four configuration management endpoints
+   - HTMX integration for dynamic UI updates
+   - Routes only enabled when in ConfigDB mode
+   - Form-based updates with in-memory and DB persistence options
+
+4. **Security Features**:
+   - Field-level encryption for sensitive data
+   - Transient settings never persisted
+   - CLI credentials always take precedence
+   - Bcrypt hash generation for web authentication
+
+### 🔄 Implementation Details
+
+- The config package was chosen over "settings" to avoid confusion with the existing webapi Settings struct
+- Credentials are stored within their domain models (e.g., `Telegram.Token`, `OpenAI.Token`)
+- The system maintains backward compatibility - works exactly as before when `--confdb` is not used
+- All sensitive fields are automatically encrypted when an encryption key is provided
+- The implementation uses JSON for storage, making it human-readable when not encrypted
+
+### 📊 Test Coverage
+
+All components have been tested:
+- Config package tests pass for both SQLite and PostgreSQL
+- Encryption/decryption functionality verified
+- Web API handlers tested
+- Store operations (CRUD) fully covered
+
+The feature is complete and ready for production use.
