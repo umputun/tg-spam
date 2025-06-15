@@ -33,8 +33,8 @@ func (s *SettingsTestSuite) SetupSuite() {
 	s.ctx = context.Background()
 	s.dbs = make(map[string]*engine.SQL)
 
-	// setup SQLite with file-based db
-	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
+	// setup SQLite with unique file-based db to avoid lock contention in parallel tests
+	s.sqliteFile = filepath.Join(os.TempDir(), fmt.Sprintf("test-%d-%d.db", os.Getpid(), time.Now().UnixNano()))
 	s.T().Logf("sqlite file: %s", s.sqliteFile)
 	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "test-group")
 	s.Require().NoError(err)
@@ -87,16 +87,21 @@ func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
 func (s *SettingsTestSuite) SetupTest() {
 	// drop config table before each test to ensure clean state
 	for _, db := range s.dbs {
-		// use a function to properly scope the lock and unlock operations
-		func() {
-			// create a temporary lock to handle the DROP TABLE operation safely
-			lock := db.MakeLock()
-			lock.Lock()
-			defer lock.Unlock()
-
-			_, err := db.Exec("DROP TABLE IF EXISTS config")
+		// First, ensure we're not in an existing transaction by trying to
+		// rollback any pending transaction. This is necessary because in slow
+		// environments (like CI), connections from the pool might still have
+		// active implicit transactions from previous operations.
+		if db.Type() == engine.Sqlite {
+			// Try to rollback any existing transaction - ignore errors
+			// This ensures we start with a clean slate
+			_, _ = db.Exec("ROLLBACK")
+		}
+		
+		// Now we can safely drop the table
+		_, err := db.Exec("DROP TABLE IF EXISTS config")
+		if err != nil && !strings.Contains(err.Error(), "no such table") {
 			s.Require().NoError(err)
-		}()
+		}
 	}
 }
 

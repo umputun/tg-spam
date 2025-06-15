@@ -3,7 +3,9 @@
     "allow": [
       "Bash(go test:*)",
       "Bash(grep:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ],
     "deny": []
   }
