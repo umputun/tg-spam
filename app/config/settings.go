@@ -102,16 +102,18 @@ type MetaSettings struct {
 
 // OpenAISettings contains OpenAI integration settings
 type OpenAISettings struct {
-	APIBase           string `json:"api_base" yaml:"api_base" db:"openai_api_base"`
-	Veto              bool   `json:"veto" yaml:"veto" db:"openai_veto"`
-	Prompt            string `json:"prompt" yaml:"prompt" db:"openai_prompt"`
-	Model             string `json:"model" yaml:"model" db:"openai_model"`
-	Token             string `json:"token" yaml:"token" db:"openai_token"`
-	MaxTokensResponse int    `json:"max_tokens_response" yaml:"max_tokens_response" db:"openai_max_tokens_response"`
-	MaxTokensRequest  int    `json:"max_tokens_request" yaml:"max_tokens_request" db:"openai_max_tokens_request"`
-	MaxSymbolsRequest int    `json:"max_symbols_request" yaml:"max_symbols_request" db:"openai_max_symbols_request"`
-	RetryCount        int    `json:"retry_count" yaml:"retry_count" db:"openai_retry_count"`
-	HistorySize       int    `json:"history_size" yaml:"history_size" db:"openai_history_size"`
+	APIBase           string   `json:"api_base" yaml:"api_base" db:"openai_api_base"`
+	Veto              bool     `json:"veto" yaml:"veto" db:"openai_veto"`
+	Prompt            string   `json:"prompt" yaml:"prompt" db:"openai_prompt"`
+	CustomPrompts     []string `json:"custom_prompts" yaml:"custom_prompts" db:"openai_custom_prompts"`
+	Model             string   `json:"model" yaml:"model" db:"openai_model"`
+	Token             string   `json:"token" yaml:"token" db:"openai_token"`
+	MaxTokensResponse int      `json:"max_tokens_response" yaml:"max_tokens_response" db:"openai_max_tokens_response"`
+	MaxTokensRequest  int      `json:"max_tokens_request" yaml:"max_tokens_request" db:"openai_max_tokens_request"`
+	MaxSymbolsRequest int      `json:"max_symbols_request" yaml:"max_symbols_request" db:"openai_max_symbols_request"`
+	RetryCount        int      `json:"retry_count" yaml:"retry_count" db:"openai_retry_count"`
+	HistorySize       int      `json:"history_size" yaml:"history_size" db:"openai_history_size"`
+	ReasoningEffort   string   `json:"reasoning_effort" yaml:"reasoning_effort" db:"openai_reasoning_effort"`
 }
 
 // LuaPluginsSettings contains Lua plugins settings

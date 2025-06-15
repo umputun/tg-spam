@@ -782,8 +782,15 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 	}
 	class, prob, certain := d.classifier.classify(tokens...)
 	isSpam := class == ClassSpam && certain && (d.MinSpamProbability == 0 || prob >= d.MinSpamProbability)
+
+	// handle NaN or infinite probability values
+	probStr := "0.00"
+	if !math.IsNaN(prob) && !math.IsInf(prob, 0) {
+		probStr = fmt.Sprintf("%.2f", prob)
+	}
+
 	return spamcheck.Response{Name: "classifier", Spam: isSpam,
-		Details: fmt.Sprintf("probability of %s: %.2f%%", class, prob)}
+		Details: fmt.Sprintf("probability of %s: %s%%", class, probStr)}
 }
 
 // isStopWord checks if a given message or username contains any of the stop words.
