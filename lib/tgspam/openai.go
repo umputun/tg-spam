@@ -29,8 +29,8 @@ type OpenAIConfig struct {
 	MaxSymbolsRequest int // fallback: Max request length in symbols, if tokenizer was failed
 	Model             string
 	SystemPrompt      string
-	CustomPrompts     []string // Additional custom prompts that can be selected
-	ReasoningEffort   string   // Level of reasoning effort to use
+	CustomPrompts     []string // additional custom prompts that can be selected
+	ReasoningEffort   string   // level of reasoning effort to use
 	RetryCount        int
 }
 
