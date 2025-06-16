@@ -96,6 +96,9 @@
     
     <!-- Settings sections grouped by function -->
     <form id="settings-form" method="PUT" action="/config" hx-put="/config" hx-target="#update-result" hx-swap="outerHTML">
+        {{if .ConfigDBMode}}
+        <input type="hidden" name="saveToDb" value="true">
+        {{end}}
         <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="spam-detection-tab" data-bs-toggle="tab" data-bs-target="#spam-detection" type="button" role="tab">
@@ -287,15 +290,15 @@
                         <tr><th colspan="2">Meta Checks Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Meta Enabled</th><td>{{.MetaEnabled}}</td></tr>
-                        <tr><th>Meta Links Limit</th><td>{{if eq .MetaLinksLimit -1}}disabled{{else}}{{.MetaLinksLimit}}{{end}}</td></tr>
-                        <tr><th>Meta Mentions Limit</th><td>{{if eq .MetaMentionsLimit -1}}disabled{{else}}{{.MetaMentionsLimit}}{{end}}</td></tr>
-                        <tr><th>Meta Links Only</th><td>{{.MetaLinksOnly}}</td></tr>
-                        <tr><th>Meta Image Only</th><td>{{.MetaImageOnly}}</td></tr>
-                        <tr><th>Meta Video Only</th><td>{{.MetaVideoOnly}}</td></tr>
-                        <tr><th>Meta Audio Only</th><td>{{.MetaAudioOnly}}</td></tr>
-                        <tr><th>Meta Keyboard</th><td>{{.MetaKeyboard}}</td></tr>
-                        <tr><th>Meta Username Symbols</th><td>{{if eq .MetaUsernameSymbols ""}}disabled{{else}}{{.MetaUsernameSymbols}}{{end}}</td></tr>
+                        <tr><th style="width: 30%">Meta Enabled</th><td>{{.IsMetaEnabled}}</td></tr>
+                        <tr><th>Meta Links Limit</th><td>{{if eq .Meta.LinksLimit -1}}disabled{{else}}{{.Meta.LinksLimit}}{{end}}</td></tr>
+                        <tr><th>Meta Mentions Limit</th><td>{{if eq .Meta.MentionsLimit -1}}disabled{{else}}{{.Meta.MentionsLimit}}{{end}}</td></tr>
+                        <tr><th>Meta Links Only</th><td>{{.Meta.LinksOnly}}</td></tr>
+                        <tr><th>Meta Image Only</th><td>{{.Meta.ImageOnly}}</td></tr>
+                        <tr><th>Meta Video Only</th><td>{{.Meta.VideosOnly}}</td></tr>
+                        <tr><th>Meta Audio Only</th><td>{{.Meta.AudiosOnly}}</td></tr>
+                        <tr><th>Meta Keyboard</th><td>{{.Meta.Keyboard}}</td></tr>
+                        <tr><th>Meta Username Symbols</th><td>{{if eq .Meta.UsernameSymbols ""}}disabled{{else}}{{.Meta.UsernameSymbols}}{{end}}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -400,14 +403,14 @@
                         <tr><th colspan="2">Lua Plugins Settings</th></tr>
                     </thead>
                     <tbody>
-                        <tr><th style="width: 30%">Lua Plugins Enabled</th><td>{{.LuaPluginsEnabled}}</td></tr>
-                        <tr><th>Plugins Directory</th><td>{{if eq .LuaPluginsDir ""}}Not set{{else}}{{.LuaPluginsDir}}{{end}}</td></tr>
-                        <tr><th>Dynamic Reload</th><td>{{.LuaDynamicReload}}</td></tr>
+                        <tr><th style="width: 30%">Lua Plugins Enabled</th><td>{{.LuaPlugins.Enabled}}</td></tr>
+                        <tr><th>Plugins Directory</th><td>{{if eq .LuaPlugins.PluginsDir ""}}Not set{{else}}{{.LuaPlugins.PluginsDir}}{{end}}</td></tr>
+                        <tr><th>Dynamic Reload</th><td>{{.LuaPlugins.DynamicReload}}</td></tr>
                         <tr><th>Enabled Plugins</th><td>
-                            {{if and .LuaPluginsEnabled (eq (len .LuaEnabledPlugins) 0)}}
+                            {{if and .LuaPlugins.Enabled (eq (len .LuaPlugins.EnabledPlugins) 0)}}
                                 All plugins are enabled
-                            {{else if .LuaPluginsEnabled}}
-                                {{range .LuaEnabledPlugins}}
+                            {{else if .LuaPlugins.Enabled}}
+                                {{range .LuaPlugins.EnabledPlugins}}
                                     {{.}}<br>
                                 {{end}}
                             {{else}}
@@ -415,7 +418,7 @@
                             {{end}}
                         </td></tr>
                         <tr><th>Available Plugins</th><td>
-                            {{if .LuaPluginsEnabled}}
+                            {{if .LuaPlugins.Enabled}}
                                 {{if eq (len .LuaAvailablePlugins) 0}}
                                     No plugins available
                                 {{else}}

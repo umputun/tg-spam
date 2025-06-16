@@ -119,17 +119,21 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[DEBUG] updateConfigHandler: saveToDb=%s, SettingsStore=%v", r.FormValue("saveToDb"), s.SettingsStore != nil)
+
 	// update settings based on form values - auth settings are never modified
 	updateSettingsFromForm(s.AppSettings, r)
 
 	// save changes to database if requested
 	if r.FormValue("saveToDb") == "true" && s.SettingsStore != nil {
+		log.Printf("[DEBUG] Saving settings to database")
 		err := s.SettingsStore.Save(r.Context(), s.AppSettings)
 		if err != nil {
 			log.Printf("[ERROR] failed to save updated configuration: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
 			return
 		}
+		log.Printf("[DEBUG] Settings saved successfully")
 	}
 
 	if r.Header.Get("HX-Request") == "true" {

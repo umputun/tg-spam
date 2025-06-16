@@ -36,3 +36,6 @@ _examples/simplechat/messages.db
 var/
 tg-spam
 .claude
+issue.md
+*.bak
+*.local

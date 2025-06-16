@@ -167,6 +167,9 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 
 // Save stores the settings to the database
 func (s *Store) Save(ctx context.Context, settings *Settings) error {
+	if s == nil {
+		return fmt.Errorf("store is nil")
+	}
 	if settings == nil {
 		return fmt.Errorf("nil settings")
 	}
@@ -221,6 +224,9 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 
 // Delete removes the settings from the database
 func (s *Store) Delete(ctx context.Context) error {
+	if s == nil {
+		return fmt.Errorf("store is nil")
+	}
 	s.Lock()
 	defer s.Unlock()
 
@@ -240,6 +246,9 @@ func (s *Store) Delete(ctx context.Context) error {
 
 // LastUpdated returns the last update time of the settings
 func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
+	if s == nil {
+		return time.Time{}, fmt.Errorf("store is nil")
+	}
 	s.RLock()
 	defer s.RUnlock()
 
@@ -266,6 +275,9 @@ func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
 
 // Exists checks if settings exist in the database
 func (s *Store) Exists(ctx context.Context) (bool, error) {
+	if s == nil {
+		return false, fmt.Errorf("store is nil")
+	}
 	s.RLock()
 	defer s.RUnlock()
 

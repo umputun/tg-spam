@@ -196,8 +196,42 @@ func main() {
 		os.Exit(2)
 	}
 
-	// convert CLI options to domain settings model early
-	appSettings := optToSettings(opts)
+	// determine configuration source based on --confdb flag
+	var appSettings *config.Settings
+
+	if opts.ConfigDB {
+		// database configuration mode - load from database first
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		log.Printf("[INFO] loading configuration from database")
+
+		// create a new settings instance
+		appSettings = config.New()
+
+		// set transient values needed for database connection BEFORE loading
+		appSettings.Transient.ConfigDB = opts.ConfigDB
+		appSettings.Transient.ConfigDBEncryptKey = opts.ConfigDBEncryptKey
+		appSettings.Transient.DataBaseURL = opts.DataBaseURL
+		appSettings.InstanceID = opts.InstanceID
+		// set DynamicDataPath from opts so makeDB can properly construct the database path
+		appSettings.Files.DynamicDataPath = opts.Files.DynamicDataPath
+
+		// load settings from database
+		if err := loadConfigFromDB(ctx, appSettings); err != nil {
+			log.Printf("[ERROR] failed to load configuration from database: %v", err)
+			cancel()
+			os.Exit(1) //nolint:gocritic // cancel is called before exit
+		}
+
+		// apply remaining transient values from CLI (these are never stored in DB)
+		appSettings.Transient.Dbg = opts.Dbg
+		appSettings.Transient.TGDbg = opts.TGDbg
+		appSettings.Dry = opts.Dry
+	} else {
+		// traditional mode - CLI is source of truth
+		appSettings = optToSettings(opts)
+	}
 
 	// handle save-config command
 	if p.Active != nil && p.Active.Name == "save-config" {
@@ -209,44 +243,6 @@ func main() {
 		}
 		cancel()
 		os.Exit(exitCode)
-	}
-
-	// if --confdb is set, load configuration from the database
-	if appSettings.Transient.ConfigDB {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-		// save original transient values and credentials directly
-		transient := appSettings.Transient
-		telegramToken := appSettings.Telegram.Token
-		openAIToken := appSettings.OpenAI.Token
-		webAuthHash := appSettings.Server.AuthHash
-		webAuthPasswd := appSettings.Transient.WebAuthPasswd
-
-		// load settings from database
-		if err := loadConfigFromDB(ctx, appSettings); err != nil {
-			log.Printf("[ERROR] failed to load configuration from database: %v", err)
-			cancel()
-			os.Exit(1)
-		}
-		cancel()
-
-		// restore transient values
-		appSettings.Transient = transient
-
-		// restore CLI-provided credentials if they were set
-		// these override database values because CLI parameters take precedence
-		if telegramToken != "" {
-			appSettings.Telegram.Token = telegramToken
-		}
-		if openAIToken != "" {
-			appSettings.OpenAI.Token = openAIToken
-		}
-		if webAuthHash != "" {
-			appSettings.Server.AuthHash = webAuthHash
-		}
-		if webAuthPasswd != "" {
-			appSettings.Transient.WebAuthPasswd = webAuthPasswd
-		}
 	}
 
 	// setup logger with masked secrets, accessing them directly from domain models
@@ -413,26 +409,6 @@ func execute(ctx context.Context, settings *config.Settings) error {
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
-}
-
-// makeDBWithParams creates database connection using provided URL and instance ID
-// if dbURL is a file name, uses sqlite with dynamicDataPath, otherwise uses dbURL as is
-func makeDBWithParams(ctx context.Context, dbURL, instanceID string) (*engine.SQL, error) {
-	if dbURL == "" {
-		return nil, errors.New("empty database URL")
-	}
-
-	// dbURL without path separator is assumed to be a file name
-	// since we don't have access to dynamicDataPath here, we'll use the URL as is
-	// the caller should handle this by joining with the dynamic data path if needed
-	log.Printf("[DEBUG] data db: %s", dbURL)
-
-	db, err := engine.New(ctx, dbURL, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("can't make db %s, %w", dbURL, err)
-	}
-
-	return db, nil
 }
 
 // makeDB creates database connection based on the settings model
@@ -1260,10 +1236,8 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 
 	log.Print("[INFO] loading configuration from database")
 
-	// create database connection using the settings' database URL
-	dbURL := settings.Transient.DataBaseURL
-	instanceID := settings.InstanceID
-	db, err := makeDBWithParams(ctx, dbURL, instanceID)
+	// create database connection using the same logic as main data DB
+	db, err := makeDB(ctx, settings)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
