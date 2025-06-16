@@ -87,17 +87,17 @@ func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
 func (s *SettingsTestSuite) SetupTest() {
 	// drop config table before each test to ensure clean state
 	for _, db := range s.dbs {
-		// First, ensure we're not in an existing transaction by trying to
+		// first, ensure we're not in an existing transaction by trying to
 		// rollback any pending transaction. This is necessary because in slow
 		// environments (like CI), connections from the pool might still have
 		// active implicit transactions from previous operations.
 		if db.Type() == engine.Sqlite {
-			// Try to rollback any existing transaction - ignore errors
-			// This ensures we start with a clean slate
+			// try to rollback any existing transaction - ignore errors
+			// this ensures we start with a clean slate
 			_, _ = db.Exec("ROLLBACK")
 		}
-		
-		// Now we can safely drop the table
+
+		// now we can safely drop the table
 		_, err := db.Exec("DROP TABLE IF EXISTS config")
 		if err != nil && !strings.Contains(err.Error(), "no such table") {
 			s.Require().NoError(err)

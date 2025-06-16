@@ -36,7 +36,7 @@ type Crypter struct {
 
 // Argon2 parameters for key derivation
 const (
-	argon2Time    = 1         // number of iterations
+	argon2Time    = 3         // number of iterations (OWASP recommends at least 3)
 	argon2Memory  = 64 * 1024 // memory usage in KiB (64MB)
 	argon2Threads = 4         // number of threads
 	argon2KeyLen  = 32        // output key length (for AES-256)
@@ -49,7 +49,7 @@ func NewCrypter(masterKey, instanceID string) (*Crypter, error) {
 	}
 
 	if len(masterKey) < MinKeyLength {
-		return nil, fmt.Errorf("encryption key too short, minimum length is %d characters", MinKeyLength)
+		return nil, fmt.Errorf("encryption key too short, minimum length is %d characters (use a high-entropy random value)", MinKeyLength)
 	}
 
 	if instanceID == "" {
