@@ -855,6 +855,129 @@ func TestBackupDB(t *testing.T) {
 	})
 }
 
+func TestApplyCLIOverrides(t *testing.T) {
+	tests := []struct {
+		name           string
+		settings       config.Settings
+		opts           options
+		expectedPasswd string
+		expectedHash   string
+	}{
+		{
+			name: "override auth password when not default",
+			settings: config.Settings{
+				Server: config.ServerSettings{
+					AuthHash: "existing-hash",
+				},
+				Transient: config.TransientSettings{
+					WebAuthPasswd: "old-password",
+				},
+			},
+			opts: options{
+				Server: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+				}{
+					AuthPasswd: "new-password",
+				},
+			},
+			expectedPasswd: "new-password",
+			expectedHash:   "", // hash should be cleared
+		},
+		{
+			name: "override auth hash when explicitly provided",
+			settings: config.Settings{
+				Server: config.ServerSettings{
+					AuthHash: "old-hash",
+				},
+				Transient: config.TransientSettings{
+					WebAuthPasswd: "password",
+				},
+			},
+			opts: options{
+				Server: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+				}{
+					AuthPasswd: "auto", // default value
+					AuthHash:   "$2a$10$newHashFromCLI",
+				},
+			},
+			expectedPasswd: "", // password should be cleared
+			expectedHash:   "$2a$10$newHashFromCLI",
+		},
+		{
+			name: "no override when using default values",
+			settings: config.Settings{
+				Server: config.ServerSettings{
+					AuthHash: "existing-hash",
+				},
+				Transient: config.TransientSettings{
+					WebAuthPasswd: "existing-password",
+				},
+			},
+			opts: options{
+				Server: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+				}{
+					AuthPasswd: "auto", // default value
+					AuthHash:   "",     // empty hash
+				},
+			},
+			expectedPasswd: "existing-password",
+			expectedHash:   "existing-hash",
+		},
+		{
+			name: "hash takes precedence when both provided",
+			settings: config.Settings{
+				Server: config.ServerSettings{
+					AuthHash: "old-hash",
+				},
+				Transient: config.TransientSettings{
+					WebAuthPasswd: "old-password",
+				},
+			},
+			opts: options{
+				Server: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+				}{
+					AuthPasswd: "cli-password", // not default
+					AuthHash:   "$2a$10$cliHash",
+				},
+			},
+			expectedPasswd: "", // password cleared because hash takes precedence
+			expectedHash:   "$2a$10$cliHash",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// make a copy of settings to avoid modifying the test case
+			settingsCopy := tt.settings
+			applyCLIOverrides(&settingsCopy, tt.opts)
+
+			assert.Equal(t, tt.expectedPasswd, settingsCopy.Transient.WebAuthPasswd,
+				"WebAuthPasswd should match expected value")
+			assert.Equal(t, tt.expectedHash, settingsCopy.Server.AuthHash,
+				"AuthHash should match expected value")
+		})
+	}
+}
+
 func TestSaveAndLoadConfig(t *testing.T) {
 	// setup test environment
 	setupLog(true)

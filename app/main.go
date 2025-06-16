@@ -228,6 +228,9 @@ func main() {
 		appSettings.Transient.Dbg = opts.Dbg
 		appSettings.Transient.TGDbg = opts.TGDbg
 		appSettings.Dry = opts.Dry
+
+		// apply explicit CLI overrides for non-transient values
+		applyCLIOverrides(appSettings, opts)
 	} else {
 		// traditional mode - CLI is source of truth
 		appSettings = optToSettings(opts)
@@ -1226,6 +1229,35 @@ func optToSettings(opts options) *config.Settings {
 	settings.Server.AuthHash = opts.Server.AuthHash
 
 	return settings
+}
+
+// applyCLIOverrides applies explicit CLI overrides to settings loaded from database
+// Only overrides values that were explicitly set on the command line (not defaults)
+//
+// How to add new overrides:
+// 1. Check if the CLI option was explicitly provided (not using default value)
+// 2. Compare with the default value from the options struct definition
+// 3. Apply the override only if the value differs from the default
+//
+// Example for adding telegram token override:
+//
+//	if opts.Telegram.Token != "" {  // "" is the default
+//	    settings.Telegram.Token = opts.Telegram.Token
+//	}
+func applyCLIOverrides(settings *config.Settings, opts options) {
+	// override auth password if explicitly provided (not using default "auto")
+	if opts.Server.AuthPasswd != "auto" {
+		settings.Transient.WebAuthPasswd = opts.Server.AuthPasswd
+		// clear auth hash since we have a new password
+		settings.Server.AuthHash = ""
+	}
+
+	// override auth hash if explicitly provided
+	if opts.Server.AuthHash != "" {
+		settings.Server.AuthHash = opts.Server.AuthHash
+		// clear password since hash takes precedence
+		settings.Transient.WebAuthPasswd = ""
+	}
 }
 
 // loadConfigFromDB loads configuration from the database
