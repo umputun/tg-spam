@@ -978,6 +978,316 @@ func TestApplyCLIOverrides(t *testing.T) {
 	}
 }
 
+func TestOptToSettings(t *testing.T) {
+	tests := []struct {
+		name     string
+		opts     options
+		validate func(t *testing.T, settings *config.Settings)
+	}{
+		{
+			name: "all options converted",
+			opts: options{
+				InstanceID:          "test-instance",
+				MinMsgLen:           100,
+				MaxEmoji:            5,
+				MinSpamProbability:  0.8,
+				SimilarityThreshold: 0.9,
+				MultiLangWords:      3,
+				NoSpamReply:         true,
+				SuppressJoinMessage: true,
+				ParanoidMode:        true,
+				FirstMessagesCount:  10,
+				Training:            true,
+				SoftBan:             true,
+				Convert:             "enabled",
+				MaxBackups:          5,
+				Dry:                 true,
+				DataBaseURL:         "sqlite://test.db",
+				StorageTimeout:      30 * time.Second,
+				ConfigDB:            true,
+				ConfigDBEncryptKey:  "test-key",
+				Dbg:                 true,
+				TGDbg:               true,
+				AdminGroup:          "123456",
+				DisableAdminSpamForward: true,
+				TestingIDs:          []int64{1, 2, 3},
+				SuperUsers:          []string{"user1", "user2"},
+				HistoryDuration:     24 * time.Hour,
+				HistoryMinSize:      100,
+				HistorySize:         1000,
+				Telegram: struct {
+					Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
+					Group        string        `long:"group" env:"GROUP" description:"group name/id"`
+					Timeout      time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
+					IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
+				}{
+					Token:        "bot-token",
+					Group:        "test-group",
+					IdleDuration: 5 * time.Minute,
+					Timeout:      30 * time.Second,
+				},
+				Logger: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
+					FileName   string `long:"file" env:"FILE"  default:"tg-spam.log" description:"location of spam log"`
+					MaxSize    string `long:"max-size" env:"MAX_SIZE" default:"100M" description:"maximum size before it gets rotated"`
+					MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
+				}{
+					Enabled:    true,
+					FileName:   "test.log",
+					MaxSize:    "50M",
+					MaxBackups: 5,
+				},
+				CAS: struct {
+					API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
+					Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
+					UserAgent string        `long:"user-agent" env:"USER_AGENT" description:"User-Agent header for CAS API requests"`
+				}{
+					API:       "https://cas.example.com",
+					Timeout:   10 * time.Second,
+					UserAgent: "test-agent",
+				},
+				Meta: struct {
+					LinksLimit      int    `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
+					MentionsLimit   int    `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
+					ImageOnly       bool   `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
+					LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
+					VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
+					AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
+					Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
+					Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
+					UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
+				}{
+					LinksLimit:      2,
+					MentionsLimit:   3,
+					ImageOnly:       true,
+					LinksOnly:       true,
+					VideosOnly:      true,
+					AudiosOnly:      true,
+					Forward:         true,
+					Keyboard:        true,
+					UsernameSymbols: "@#$",
+				},
+				OpenAI: struct {
+					Token             string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+					APIBase           string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
+					Veto              bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+					Prompt            string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+					CustomPrompts     []string `long:"custom-prompt" env:"CUSTOM_PROMPTS" env-delim:"," description:"custom prompts for special cases"`
+					ReasoningEffort   string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"" description:"reasoning effort level (low, medium, high)"`
+					Model             string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
+					MaxTokensResponse int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+					MaxTokensRequest  int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+					MaxSymbolsRequest int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+					RetryCount        int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+					HistorySize       int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+				}{
+					Token:             "openai-token",
+					APIBase:           "https://custom.api.com",
+					Veto:              true,
+					Prompt:            "custom prompt",
+					CustomPrompts:     []string{"/path/to/prompts"},
+					Model:             "gpt-4",
+					MaxTokensResponse: 2048,
+					MaxTokensRequest:  32000,
+					MaxSymbolsRequest: 5000,
+					RetryCount:        3,
+					HistorySize:       5,
+					ReasoningEffort:   "high",
+				},
+				LuaPlugins: struct {
+					Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
+					PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
+					EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
+					DynamicReload  bool     `long:"dynamic-reload" env:"DYNAMIC_RELOAD" description:"dynamically reload plugins when they change"`
+				}{
+					Enabled:        true,
+					PluginsDir:     "/custom/plugins",
+					EnabledPlugins: []string{"plugin1", "plugin2"},
+					DynamicReload:  true,
+				},
+				AbnormalSpacing: struct {
+					Enabled                 bool    `long:"enabled" env:"ENABLED" description:"enable abnormal words check"`
+					SpaceRatioThreshold     float64 `long:"ratio" env:"RATIO" default:"0.3" description:"the ratio of spaces to all characters in the message"`
+					ShortWordRatioThreshold float64 `long:"short-ratio" env:"SHORT_RATIO" default:"0.7" description:"the ratio of short words to all words in the message"`
+					ShortWordLen            int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
+					MinWords                int     `long:"min-words" env:"MIN_WORDS" default:"5" description:"the minimum number of words in the message to check"`
+				}{
+					Enabled:                 true,
+					SpaceRatioThreshold:     0.4,
+					ShortWordRatioThreshold: 0.8,
+					ShortWordLen:            2,
+					MinWords:                10,
+				},
+				Files: struct {
+					SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
+					DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
+					WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
+				}{
+					SamplesDataPath: "/samples",
+					DynamicDataPath: "/dynamic",
+					WatchInterval:   10 * time.Minute,
+				},
+				Message: struct {
+					Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
+					Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
+					Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
+					Warn    string `long:"warn" env:"WARN" default:"You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!" description:"warning message"`
+				}{
+					Startup: "Bot started",
+					Spam:    "Spam detected for %s",
+					Dry:     "Spam detected for %s (dry)",
+					Warn:    "Warning for %s",
+				},
+				Server: struct {
+					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+				}{
+					Enabled:    true,
+					ListenAddr: ":9090",
+					AuthUser:   "admin",
+					AuthPasswd: "secret",
+					AuthHash:   "$2a$10$test",
+				},
+			},
+			validate: func(t *testing.T, settings *config.Settings) {
+				// verify all fields are correctly mapped
+				assert.Equal(t, "test-instance", settings.InstanceID)
+				assert.Equal(t, 100, settings.MinMsgLen)
+				assert.Equal(t, 5, settings.MaxEmoji)
+				assert.Equal(t, 0.8, settings.MinSpamProbability)
+				assert.Equal(t, 0.9, settings.SimilarityThreshold)
+				assert.Equal(t, 3, settings.MultiLangWords)
+				assert.True(t, settings.NoSpamReply)
+				assert.True(t, settings.SuppressJoinMessage)
+				assert.True(t, settings.ParanoidMode)
+				assert.Equal(t, 10, settings.FirstMessagesCount)
+				assert.True(t, settings.Training)
+				assert.True(t, settings.SoftBan)
+				assert.Equal(t, "enabled", settings.Convert)
+				assert.Equal(t, 5, settings.MaxBackups)
+				assert.True(t, settings.Dry)
+
+				// telegram settings
+				assert.Equal(t, "bot-token", settings.Telegram.Token)
+				assert.Equal(t, "test-group", settings.Telegram.Group)
+				assert.Equal(t, 5*time.Minute, settings.Telegram.IdleDuration)
+				assert.Equal(t, 30*time.Second, settings.Telegram.Timeout)
+
+				// admin settings
+				assert.Equal(t, "123456", settings.Admin.AdminGroup)
+				assert.True(t, settings.Admin.DisableAdminSpamForward)
+				assert.Equal(t, []int64{1, 2, 3}, settings.Admin.TestingIDs)
+				assert.Equal(t, []string{"user1", "user2"}, settings.Admin.SuperUsers)
+
+				// history settings
+				assert.Equal(t, 24*time.Hour, settings.History.Duration)
+				assert.Equal(t, 100, settings.History.MinSize)
+				assert.Equal(t, 1000, settings.History.Size)
+
+				// logger settings
+				assert.True(t, settings.Logger.Enabled)
+				assert.Equal(t, "test.log", settings.Logger.FileName)
+				assert.Equal(t, "50M", settings.Logger.MaxSize)
+				assert.Equal(t, 5, settings.Logger.MaxBackups)
+
+				// cas settings
+				assert.Equal(t, "https://cas.example.com", settings.CAS.API)
+				assert.Equal(t, 10*time.Second, settings.CAS.Timeout)
+				assert.Equal(t, "test-agent", settings.CAS.UserAgent)
+
+				// meta settings
+				assert.Equal(t, 2, settings.Meta.LinksLimit)
+				assert.Equal(t, 3, settings.Meta.MentionsLimit)
+				assert.True(t, settings.Meta.ImageOnly)
+				assert.True(t, settings.Meta.LinksOnly)
+				assert.True(t, settings.Meta.VideosOnly)
+				assert.True(t, settings.Meta.AudiosOnly)
+				assert.True(t, settings.Meta.Forward)
+				assert.True(t, settings.Meta.Keyboard)
+				assert.Equal(t, "@#$", settings.Meta.UsernameSymbols)
+
+				// openai settings
+				assert.Equal(t, "openai-token", settings.OpenAI.Token)
+				assert.Equal(t, "https://custom.api.com", settings.OpenAI.APIBase)
+				assert.True(t, settings.OpenAI.Veto)
+				assert.Equal(t, "custom prompt", settings.OpenAI.Prompt)
+				assert.Equal(t, []string{"/path/to/prompts"}, settings.OpenAI.CustomPrompts)
+				assert.Equal(t, "gpt-4", settings.OpenAI.Model)
+				assert.Equal(t, 2048, settings.OpenAI.MaxTokensResponse)
+				assert.Equal(t, 32000, settings.OpenAI.MaxTokensRequest)
+				assert.Equal(t, 5000, settings.OpenAI.MaxSymbolsRequest)
+				assert.Equal(t, 3, settings.OpenAI.RetryCount)
+				assert.Equal(t, 5, settings.OpenAI.HistorySize)
+				assert.Equal(t, "high", settings.OpenAI.ReasoningEffort)
+
+				// lua plugins settings
+				assert.True(t, settings.LuaPlugins.Enabled)
+				assert.Equal(t, "/custom/plugins", settings.LuaPlugins.PluginsDir)
+				assert.Equal(t, []string{"plugin1", "plugin2"}, settings.LuaPlugins.EnabledPlugins)
+				assert.True(t, settings.LuaPlugins.DynamicReload)
+
+				// abnormal space settings
+				assert.True(t, settings.AbnormalSpace.Enabled)
+				assert.Equal(t, 0.4, settings.AbnormalSpace.SpaceRatioThreshold)
+				assert.Equal(t, 0.8, settings.AbnormalSpace.ShortWordRatioThreshold)
+				assert.Equal(t, 2, settings.AbnormalSpace.ShortWordLen)
+				assert.Equal(t, 10, settings.AbnormalSpace.MinWords)
+
+				// files settings
+				assert.Equal(t, "/samples", settings.Files.SamplesDataPath)
+				assert.Equal(t, "/dynamic", settings.Files.DynamicDataPath)
+				assert.Equal(t, 10*60, settings.Files.WatchInterval) // converted to seconds
+
+				// message settings
+				assert.Equal(t, "Bot started", settings.Message.Startup)
+				assert.Equal(t, "Spam detected for %s", settings.Message.Spam)
+				assert.Equal(t, "Spam detected for %s (dry)", settings.Message.Dry)
+				assert.Equal(t, "Warning for %s", settings.Message.Warn)
+
+				// server settings
+				assert.True(t, settings.Server.Enabled)
+				assert.Equal(t, ":9090", settings.Server.ListenAddr)
+				assert.Equal(t, "admin", settings.Server.AuthUser)
+				assert.Equal(t, "$2a$10$test", settings.Server.AuthHash)
+
+				// transient settings
+				assert.Equal(t, "sqlite://test.db", settings.Transient.DataBaseURL)
+				assert.Equal(t, 30*time.Second, settings.Transient.StorageTimeout)
+				assert.True(t, settings.Transient.ConfigDB)
+				assert.Equal(t, "test-key", settings.Transient.ConfigDBEncryptKey)
+				assert.True(t, settings.Transient.Dbg)
+				assert.True(t, settings.Transient.TGDbg)
+				assert.Equal(t, "secret", settings.Transient.WebAuthPasswd)
+			},
+		},
+		{
+			name: "default values",
+			opts: options{
+				InstanceID: "default-instance",
+			},
+			validate: func(t *testing.T, settings *config.Settings) {
+				assert.Equal(t, "default-instance", settings.InstanceID)
+				// verify some defaults are applied
+				assert.Equal(t, 0, settings.MinMsgLen)
+				assert.Equal(t, 0, settings.MaxEmoji)
+				assert.False(t, settings.NoSpamReply)
+				assert.False(t, settings.ParanoidMode)
+				assert.Empty(t, settings.Telegram.Token)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := optToSettings(tc.opts)
+			tc.validate(t, result)
+		})
+	}
+}
+
 func TestSaveAndLoadConfig(t *testing.T) {
 	// setup test environment
 	setupLog(true)
@@ -1274,5 +1584,131 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		err = loadConfigFromDB(ctx, emptySettings)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to load") // matches "failed to load settings from database"
+	})
+
+	t.Run("encryption with config db encrypt key", func(t *testing.T) {
+		// create test settings with encryption key and sensitive data
+		encryptKey := "test-encryption-key-32-chars-long"
+		settings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Token: "telegram-secret-token",
+			},
+			OpenAI: config.OpenAISettings{
+				Token: "openai-secret-token",
+			},
+			Server: config.ServerSettings{
+				AuthHash: "$2a$10$secrethash",
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL:        dbFile,
+				ConfigDB:           true,
+				ConfigDBEncryptKey: encryptKey,
+			},
+		}
+
+		// save config to DB
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, settings)
+		require.NoError(t, err)
+
+		// load config without encryption key - should fail to decrypt
+		loadedSettingsNoKey := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL:        dbFile,
+				ConfigDB:           true,
+				ConfigDBEncryptKey: "", // no key
+			},
+		}
+
+		err = loadConfigFromDB(ctx, loadedSettingsNoKey)
+		require.NoError(t, err) // loading succeeds but tokens should be garbled
+
+		// verify tokens are not decrypted properly
+		assert.NotEqual(t, "telegram-secret-token", loadedSettingsNoKey.Telegram.Token)
+		assert.NotEqual(t, "openai-secret-token", loadedSettingsNoKey.OpenAI.Token)
+
+		// load config with correct encryption key
+		loadedSettingsWithKey := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL:        dbFile,
+				ConfigDB:           true,
+				ConfigDBEncryptKey: encryptKey,
+			},
+		}
+
+		err = loadConfigFromDB(ctx, loadedSettingsWithKey)
+		require.NoError(t, err)
+
+		// verify tokens are decrypted properly
+		assert.Equal(t, "telegram-secret-token", loadedSettingsWithKey.Telegram.Token)
+		assert.Equal(t, "openai-secret-token", loadedSettingsWithKey.OpenAI.Token)
+		assert.Equal(t, "$2a$10$secrethash", loadedSettingsWithKey.Server.AuthHash)
+	})
+
+	t.Run("save and load with CLI overrides", func(t *testing.T) {
+		// simulate the flow in main.go where CLI values override database values
+		
+		// first, save initial config to database
+		dbSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Telegram: config.TelegramSettings{
+				Group: "db-group",
+				Token: "db-token",
+			},
+			Server: config.ServerSettings{
+				Enabled:  true,
+				AuthUser: "db-user",
+				AuthHash: "$2a$10$dbhash",
+			},
+			Transient: config.TransientSettings{
+				DataBaseURL:   dbFile,
+				WebAuthPasswd: "db-password",
+			},
+		}
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, dbSettings)
+		require.NoError(t, err)
+
+		// create CLI options with overrides
+		cliOpts := options{
+			InstanceID: "test-instance",
+			Server: struct {
+				Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
+				ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
+				AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
+				AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+				AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
+			}{
+				AuthPasswd: "cli-password", // explicit CLI override
+			},
+		}
+
+		// load settings from database
+		loadedSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL: dbFile,
+				ConfigDB:    true,
+			},
+		}
+
+		err = loadConfigFromDB(ctx, loadedSettings)
+		require.NoError(t, err)
+
+		// apply CLI overrides
+		applyCLIOverrides(loadedSettings, cliOpts)
+
+		// verify database values were loaded
+		assert.Equal(t, "db-group", loadedSettings.Telegram.Group)
+		assert.Equal(t, "db-token", loadedSettings.Telegram.Token)
+		assert.Equal(t, "db-user", loadedSettings.Server.AuthUser)
+
+		// verify CLI override was applied
+		assert.Equal(t, "cli-password", loadedSettings.Transient.WebAuthPasswd)
+		assert.Empty(t, loadedSettings.Server.AuthHash) // hash cleared when password provided
 	})
 }
