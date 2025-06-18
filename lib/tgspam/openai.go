@@ -26,13 +26,14 @@ type OpenAIConfig struct {
 	// https://platform.openai.com/docs/api-reference/chat/create#chat/create-max_tokens
 	MaxTokensResponse int // hard limit for the number of tokens in the response
 	// the OpenAI has a limit for the number of tokens in the request + response (4097)
-	MaxTokensRequest  int // max request length in tokens
-	MaxSymbolsRequest int // fallback: Max request length in symbols, if tokenizer was failed
-	Model             string
-	SystemPrompt      string
-	CustomPrompts     []string // additional prompts for specific spam patterns
-	RetryCount        int
-	ReasoningEffort   string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
+	MaxTokensRequest             int // max request length in tokens
+	MaxSymbolsRequest            int // fallback: Max request length in symbols, if tokenizer was failed
+	Model                        string
+	SystemPrompt                 string
+	CustomPrompts                []string // additional prompts for specific spam patterns
+	RetryCount                   int
+	ReasoningEffort              string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
+	CheckShortMessagesWithOpenAI bool   // if true, check messages shorter than MinMsgLen with OpenAI
 }
 
 type openAIClient interface {

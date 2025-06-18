@@ -209,23 +209,34 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for message length exceed the minimum size, if min message length is set.
 	// the check is done after first simple checks, because stop words and emojis can be triggered by short messages as well.
+	isShortMessage := false
 	if len([]rune(req.Msg)) < d.MinMsgLen {
+		isShortMessage = true
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
-		if isSpamDetected(cr) {
-			d.spamHistory.Push(req)
-			return true, cr // spam from the checks above
+		// only return early if:
+		// 1. we already detected spam from simple checks above, OR
+		// 2. openai checker is not configured, OR
+		// 3. openai is configured but should skip short messages
+		if isSpamDetected(cr) || d.openaiChecker == nil || !d.openaiChecker.params.CheckShortMessagesWithOpenAI {
+			if isSpamDetected(cr) {
+				d.spamHistory.Push(req)
+				return true, cr // spam from the checks above
+			}
+			d.hamHistory.Push(req)
+			return false, cr
 		}
-		d.hamHistory.Push(req)
-		return false, cr
+		// if we get here, we have a short message but openai should still check it
 	}
 
 	// check for spam similarity if a similarity threshold is set and spam samples are loaded
-	if d.SimilarityThreshold > 0 && len(d.tokenizedSpam) > 0 {
+	// skip for short messages as similarity doesn't work well on short text
+	if !isShortMessage && d.SimilarityThreshold > 0 && len(d.tokenizedSpam) > 0 {
 		cr = append(cr, d.isSpamSimilarityHigh(cleanMsg))
 	}
 
 	// check for spam with classifier if classifier is loaded
-	if d.classifier.nAllDocument > 0 && d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0 {
+	// skip for short messages as classifier doesn't work well on short text
+	if !isShortMessage && d.classifier.nAllDocument > 0 && d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0 {
 		cr = append(cr, d.isSpamClassified(cleanMsg))
 	}
 

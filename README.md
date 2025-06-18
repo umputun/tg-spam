@@ -101,6 +101,7 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
 -  For models that support "thinking mode" (like Gemini 2.5 Flash), you can control the model's reasoning behavior by setting `--openai.reasoning-effort=` to one of the following values: `none` (disables thinking, default), `low`, `medium`, or `high`. This parameter is particularly useful for controlling how much effort the model puts into its reasoning process. For most spam detection cases, setting this to `none` is recommended for faster responses. TG-Spam also automatically strips all `<thought></thought>` tags from responses, ensuring clean output regardless of the model's reasoning behavior.
 - You can specify additional custom prompts to better detect certain spam patterns by using the `--openai.custom-prompt=[$OPENAI_CUSTOM_PROMPT]` parameter. This parameter can be repeated multiple times to add different spam patterns to check for. For example, to detect messages following the pattern "will perform <action> - $1,234", you can add `--openai.custom-prompt="Check if message follows pattern: 'will perform [action] - $[amount]' which is a common spam format"`. Custom prompts are appended to the base system prompt and help guide the AI in identifying specific spam patterns that might be difficult to detect with other methods.
+-  Messages shorter than `--min-msg-len` are typically skipped by most checks because short messages often lack sufficient context to accurately determine if they are spam. However, you can enable OpenAI checks for short messages by setting `--openai.check-short-messages`. This can be useful when dealing with concise spam patterns that OpenAI might be able to detect through its more sophisticated analysis, even with limited text. **Note**: Enabling this feature may increase API costs, especially in high-volume environments with many short messages.
 
 
 **Emoji Count**
@@ -433,6 +434,7 @@ openai:
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
       --openai.reasoning-effort=        reasoning effort for thinking models, can be none, low, medium, high (default: none) [$OPENAI_REASONING_EFFORT]
+      --openai.check-short-messages     check messages shorter than min-msg-len with OpenAI [$OPENAI_CHECK_SHORT_MESSAGES]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]

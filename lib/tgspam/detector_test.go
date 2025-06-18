@@ -86,6 +86,53 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.Equal(t, false, cr[2].Spam)
 		assert.Equal(t, "too short", cr[2].Details)
 	})
+
+	t.Run("short message skips classifier and similarity", func(t *testing.T) {
+		// load spam and ham samples to enable classifier and similarity checks
+		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 50, SimilarityThreshold: 0.5})
+		
+		spamSamples := strings.NewReader("buy cheap viagra now\nclick here for free money\nwin lottery prize")
+		hamSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
+		
+		lr, err := d.LoadSamples(strings.NewReader(""), []io.Reader{spamSamples}, []io.Reader{hamSamples})
+		require.NoError(t, err)
+		assert.Greater(t, lr.SpamSamples, 0)
+		assert.Greater(t, lr.HamSamples, 0)
+		
+		// test short message - should NOT have classifier or similarity results
+		spam, cr := d.Check(spamcheck.Request{Msg: "hi"})
+		assert.False(t, spam)
+		
+		// verify we only get message length check, no classifier or similarity
+		require.Len(t, cr, 1)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		
+		// verify classifier and similarity are NOT in the results
+		for _, r := range cr {
+			assert.NotEqual(t, "classifier", r.Name, "classifier should not run for short messages")
+			assert.NotEqual(t, "similarity", r.Name, "similarity should not run for short messages")
+		}
+		
+		// test long message - should have classifier and similarity results
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that should trigger all checks including classifier and similarity"})
+		assert.False(t, spam2)
+		
+		// verify we get classifier and similarity checks for long messages
+		hasClassifier := false
+		hasSimilarity := false
+		for _, r := range cr2 {
+			if r.Name == "classifier" {
+				hasClassifier = true
+			}
+			if r.Name == "similarity" {
+				hasSimilarity = true
+			}
+		}
+		assert.True(t, hasClassifier, "classifier should run for long messages")
+		assert.True(t, hasSimilarity, "similarity should run for long messages")
+	})
 }
 
 func TestDetector_CheckStopWords(t *testing.T) {
@@ -681,6 +728,162 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		assert.Equal(t, true, cr[1].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
 
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("with openai and MinMsgLen - short message skips openai by default", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// CheckShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		// verify openai was NOT called
+		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.Equal(t, true, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.Equal(t, true, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called for long message
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("with openai and MinMsgLen - short message checked when flag is true", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// explicitly set CheckShortMessagesWithOpenAI to true
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.Equal(t, true, cr[1].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
+		// verify openai WAS called even for short message
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.Equal(t, true, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.Equal(t, true, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called this time too
+		assert.Equal(t, 2, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("with openai and MinMsgLen - short message already spam skips openai", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// enable checking short messages with openai
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+		
+		// load stop words
+		_, err := d.LoadStopWords(strings.NewReader("viagra"))
+		assert.NoError(t, err)
+		
+		// test with short message containing stop word
+		spam, cr := d.Check(spamcheck.Request{Msg: "buy viagra"})
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam)
+		assert.Equal(t, "viagra", cr[0].Details)
+		assert.Equal(t, "message length", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "too short", cr[1].Details)
+		// verify openai was NOT called because spam was already detected
+		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("with openai enabled for short messages - still skips classifier/similarity", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50, SimilarityThreshold: 0.5})
+		
+		// load samples to enable classifier/similarity
+		spamSamples := strings.NewReader("buy cheap viagra now\nclick here for free money")
+		hamSamples := strings.NewReader("hello world\nhow are you")
+		lr, err := d.LoadSamples(strings.NewReader(""), []io.Reader{spamSamples}, []io.Reader{hamSamples})
+		require.NoError(t, err)
+		assert.Greater(t, lr.SpamSamples, 0)
+		assert.Greater(t, lr.HamSamples, 0)
+		
+		// setup openai mock
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"too short to tell", "confidence":30}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+		
+		// test short message
+		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
+		assert.Equal(t, false, spam)
+		
+		// verify we get message length and openai, but NO classifier or similarity
+		hasMessageLength := false
+		hasOpenAI := false
+		for _, r := range cr {
+			switch r.Name {
+			case "message length":
+				hasMessageLength = true
+				assert.Equal(t, false, r.Spam)
+				assert.Equal(t, "too short", r.Details)
+			case "openai":
+				hasOpenAI = true
+				assert.Equal(t, false, r.Spam)
+			case "classifier":
+				t.Error("classifier should not run for short messages even with openai enabled")
+			case "similarity":
+				t.Error("similarity should not run for short messages even with openai enabled")
+			}
+		}
+		
+		assert.True(t, hasMessageLength, "should have message length check")
+		assert.True(t, hasOpenAI, "should have openai check when enabled for short messages")
 		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
 	})
 }
