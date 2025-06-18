@@ -179,6 +179,16 @@
                         <tr><th>OpenAI Veto</th><td>{{.OpenAIVeto}}</td></tr>
                         <tr><th>OpenAI History Size</th><td>{{.OpenAIHistorySize}}</td></tr>
                         <tr><th>OpenAI Model</th><td>{{.OpenAIModel}}</td></tr>
+                        <tr><th>Check Short Messages</th><td>{{.OpenAICheckShortMessages}}</td></tr>
+                        <tr><th>Custom Prompts</th><td>
+                            {{if eq (len .OpenAICustomPrompts) 0}}
+                                None configured
+                            {{else}}
+                                {{range .OpenAICustomPrompts}}
+                                    {{.}}<br>
+                                {{end}}
+                            {{end}}
+                        </td></tr>
                     </tbody>
                 </table>
             </div>
