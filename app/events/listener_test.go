@@ -285,6 +285,47 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.True(t, botMock.OnMessageCalls()[0].Msg.WithForward)
 	})
+
+	t.Run("test spam check for edited message", func(t *testing.T) {
+		mockLogger.ResetCalls()
+		botMock.ResetCalls()
+		updMsg := tbapi.Update{
+			EditedMessage: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123},
+				Text: "edited spam message",
+				From: &tbapi.User{UserName: "edited_user", ID: 456},
+				Date: int(time.Now().Unix()), // Use current time for edited message
+				EditDate: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		// Configure botMock to return a spam response for the edited message
+		botMock.OnMessageFunc = func(msg bot.Message, checkOnly bool) bot.Response {
+			if msg.Text == "edited spam message" && msg.From.Username == "edited_user" {
+				return bot.Response{Send: true, Text: "edited message is spam", BanInterval: 1 * time.Minute,
+					User: bot.User{Username: "edited_user", ID: 456}, CheckResults: []spamcheck.Response{
+						{Name: "EditedCheck", Spam: true, Details: "Edited message detected as spam"}}}
+			}
+			return bot.Response{}
+		}
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		assert.Equal(t, "edited spam message", mockLogger.SaveCalls()[0].Msg.Text)
+		assert.Equal(t, "edited_user", mockLogger.SaveCalls()[0].Msg.From.Username)
+		assert.Equal(t, "edited message is spam", mockLogger.SaveCalls()[0].Response.Text)
+
+		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "edited spam message", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.Equal(t, "edited_user", botMock.OnMessageCalls()[0].Msg.From.Username)
+		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
+	})
 }
 
 func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
