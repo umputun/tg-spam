@@ -318,6 +318,10 @@
                         <input class="form-check-input" type="checkbox" id="openAIVeto" name="openAIVeto" {{if .OpenAI.Veto}}checked{{end}}>
                         <label class="form-check-label" for="openAIVeto">OpenAI Veto</label>
                     </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="openAICheckShortMessages" name="openAICheckShortMessages" {{if .OpenAI.CheckShortMessages}}checked{{end}}>
+                        <label class="form-check-label" for="openAICheckShortMessages">Check Short Messages</label>
+                    </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="openAIHistorySize" class="form-label">OpenAI History Size</label>
@@ -351,6 +355,7 @@
                         <tr><th>OpenAI Veto</th><td>{{.OpenAI.Veto}}</td></tr>
                         <tr><th>OpenAI History Size</th><td>{{.OpenAI.HistorySize}}</td></tr>
                         <tr><th>OpenAI Model</th><td>{{.OpenAI.Model}}</td></tr>
+                        <tr><th>Check Short Messages</th><td>{{.OpenAI.CheckShortMessages}}</td></tr>
                     </tbody>
                 </table>
             </div>
