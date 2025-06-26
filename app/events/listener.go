@@ -152,6 +152,19 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// handle edited messages
+			if update.EditedMessage != nil {
+				log.Printf("[INFO] processing edited message, id: %d", update.EditedMessage.MessageID)
+				// we need to process an edited message as a new message, so we create a new update object
+				// and copy the edited message to the message field.
+				editedUpdate := update
+				editedUpdate.Message = update.EditedMessage
+				if err := l.procEvents(editedUpdate); err != nil {
+					log.Printf("[WARN] failed to process edited message update: %v", err)
+				}
+				continue
+			}
+
 			if update.Message == nil {
 				continue
 			}
