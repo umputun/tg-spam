@@ -87,18 +87,19 @@ type options struct {
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
-		Token             string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
-		APIBase           string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
-		Veto              bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
-		Prompt            string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		CustomPrompts     []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
-		Model             string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
-		MaxTokensResponse int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
-		MaxTokensRequest  int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
-		MaxSymbolsRequest int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
-		RetryCount        int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
-		HistorySize       int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort   string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		Token              string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase            string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
+		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
+		Model              string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
+		MaxTokensResponse  int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+		MaxTokensRequest   int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	LuaPlugins struct {
@@ -436,52 +437,53 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	settings := webapi.Settings{
-		InstanceID:              opts.InstanceID,
-		PrimaryGroup:            opts.Telegram.Group,
-		AdminGroup:              opts.AdminGroup,
-		DisableAdminSpamForward: opts.DisableAdminSpamForward,
-		LoggerEnabled:           opts.Logger.Enabled,
-		SuperUsers:              opts.SuperUsers,
-		StorageTimeout:          opts.StorageTimeout,
-		NoSpamReply:             opts.NoSpamReply,
-		CasEnabled:              opts.CAS.API != "",
-		MetaEnabled:             opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "",
-		MetaLinksLimit:          opts.Meta.LinksLimit,
-		MetaMentionsLimit:       opts.Meta.MentionsLimit,
-		MetaLinksOnly:           opts.Meta.LinksOnly,
-		MetaImageOnly:           opts.Meta.ImageOnly,
-		MetaVideoOnly:           opts.Meta.VideosOnly,
-		MetaAudioOnly:           opts.Meta.AudiosOnly,
-		MetaForwarded:           opts.Meta.Forward,
-		MetaKeyboard:            opts.Meta.Keyboard,
-		MetaUsernameSymbols:     opts.Meta.UsernameSymbols,
-		MultiLangLimit:          opts.MultiLangWords,
-		OpenAIEnabled:           opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
-		OpenAIVeto:              opts.OpenAI.Veto,
-		OpenAIHistorySize:       opts.OpenAI.HistorySize,
-		OpenAIModel:             opts.OpenAI.Model,
-		OpenAICustomPrompts:     opts.OpenAI.CustomPrompts,
-		LuaPluginsEnabled:       opts.LuaPlugins.Enabled,
-		LuaPluginsDir:           opts.LuaPlugins.PluginsDir,
-		LuaEnabledPlugins:       opts.LuaPlugins.EnabledPlugins,
-		LuaDynamicReload:        opts.LuaPlugins.DynamicReload,
-		SamplesDataPath:         opts.Files.SamplesDataPath,
-		DynamicDataPath:         opts.Files.DynamicDataPath,
-		WatchIntervalSecs:       int(opts.Files.WatchInterval.Seconds()),
-		SimilarityThreshold:     opts.SimilarityThreshold,
-		MinMsgLen:               opts.MinMsgLen,
-		MaxEmoji:                opts.MaxEmoji,
-		MinSpamProbability:      opts.MinSpamProbability,
-		ParanoidMode:            opts.ParanoidMode,
-		FirstMessagesCount:      opts.FirstMessagesCount,
-		StartupMessageEnabled:   opts.Message.Startup != "",
-		TrainingEnabled:         opts.Training,
-		SoftBanEnabled:          opts.SoftBan,
-		AbnormalSpacingEnabled:  opts.AbnormalSpacing.Enabled,
-		HistorySize:             opts.HistorySize,
-		DebugModeEnabled:        opts.Dbg,
-		DryModeEnabled:          opts.Dry,
-		TGDebugModeEnabled:      opts.TGDbg,
+		InstanceID:               opts.InstanceID,
+		PrimaryGroup:             opts.Telegram.Group,
+		AdminGroup:               opts.AdminGroup,
+		DisableAdminSpamForward:  opts.DisableAdminSpamForward,
+		LoggerEnabled:            opts.Logger.Enabled,
+		SuperUsers:               opts.SuperUsers,
+		StorageTimeout:           opts.StorageTimeout,
+		NoSpamReply:              opts.NoSpamReply,
+		CasEnabled:               opts.CAS.API != "",
+		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "",
+		MetaLinksLimit:           opts.Meta.LinksLimit,
+		MetaMentionsLimit:        opts.Meta.MentionsLimit,
+		MetaLinksOnly:            opts.Meta.LinksOnly,
+		MetaImageOnly:            opts.Meta.ImageOnly,
+		MetaVideoOnly:            opts.Meta.VideosOnly,
+		MetaAudioOnly:            opts.Meta.AudiosOnly,
+		MetaForwarded:            opts.Meta.Forward,
+		MetaKeyboard:             opts.Meta.Keyboard,
+		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
+		MultiLangLimit:           opts.MultiLangWords,
+		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
+		OpenAIVeto:               opts.OpenAI.Veto,
+		OpenAIHistorySize:        opts.OpenAI.HistorySize,
+		OpenAIModel:              opts.OpenAI.Model,
+		OpenAICheckShortMessages: opts.OpenAI.CheckShortMessages,
+		OpenAICustomPrompts:      opts.OpenAI.CustomPrompts,
+		LuaPluginsEnabled:        opts.LuaPlugins.Enabled,
+		LuaPluginsDir:            opts.LuaPlugins.PluginsDir,
+		LuaEnabledPlugins:        opts.LuaPlugins.EnabledPlugins,
+		LuaDynamicReload:         opts.LuaPlugins.DynamicReload,
+		SamplesDataPath:          opts.Files.SamplesDataPath,
+		DynamicDataPath:          opts.Files.DynamicDataPath,
+		WatchIntervalSecs:        int(opts.Files.WatchInterval.Seconds()),
+		SimilarityThreshold:      opts.SimilarityThreshold,
+		MinMsgLen:                opts.MinMsgLen,
+		MaxEmoji:                 opts.MaxEmoji,
+		MinSpamProbability:       opts.MinSpamProbability,
+		ParanoidMode:             opts.ParanoidMode,
+		FirstMessagesCount:       opts.FirstMessagesCount,
+		StartupMessageEnabled:    opts.Message.Startup != "",
+		TrainingEnabled:          opts.Training,
+		SoftBanEnabled:           opts.SoftBan,
+		AbnormalSpacingEnabled:   opts.AbnormalSpacing.Enabled,
+		HistorySize:              opts.HistorySize,
+		DebugModeEnabled:         opts.Dbg,
+		DryModeEnabled:           opts.Dry,
+		TGDebugModeEnabled:       opts.TGDbg,
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
@@ -543,14 +545,15 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
-			SystemPrompt:      opts.OpenAI.Prompt,
-			CustomPrompts:     opts.OpenAI.CustomPrompts,
-			Model:             opts.OpenAI.Model,
-			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
-			MaxTokensRequest:  opts.OpenAI.MaxTokensRequest,
-			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
-			RetryCount:        opts.OpenAI.RetryCount,
-			ReasoningEffort:   opts.OpenAI.ReasoningEffort,
+			SystemPrompt:                 opts.OpenAI.Prompt,
+			CustomPrompts:                opts.OpenAI.CustomPrompts,
+			Model:                        opts.OpenAI.Model,
+			MaxTokensResponse:            opts.OpenAI.MaxTokensResponse,
+			MaxTokensRequest:             opts.OpenAI.MaxTokensRequest,
+			MaxSymbolsRequest:            opts.OpenAI.MaxSymbolsRequest,
+			RetryCount:                   opts.OpenAI.RetryCount,
+			ReasoningEffort:              opts.OpenAI.ReasoningEffort,
+			CheckShortMessagesWithOpenAI: opts.OpenAI.CheckShortMessages,
 		}
 
 		config := openai.DefaultConfig(opts.OpenAI.Token)
