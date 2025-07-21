@@ -605,13 +605,15 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 		}
 	}
 
-	updText := query.Message.Text + "\n\n**spam detection results**\n" + spamInfoText
+	// escape markdown special characters to preserve user links when re-parsing rendered text
+	// telegram returns rendered text without markdown syntax, so we need to escape before re-parsing
+	escapedMessage := escapeMarkDownV1Text(query.Message.Text) + "\n\n**spam detection results**\n" + spamInfoText
 	confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
 	if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
 		confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
 		confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
 	}
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, escapedMessage)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
 	editMsg.ParseMode = tbapi.ModeMarkdown
 	if err := send(editMsg, a.tbAPI); err != nil {

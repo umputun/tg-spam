@@ -572,10 +572,9 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 	})
 }
 
-func TestAdmin_PreserveUserLinks_Issue223(t *testing.T) {
-	// this test specifically addresses issue #223:
-	// pressing inline buttons removes telegram profile link from admin chat report
-	// especially for usernames with special characters like underscores
+func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
+	// test that clicking the info button preserves user links in admin chat,
+	// including edge cases with usernames containing markdown special characters
 
 	var markdownErrorCount, htmlSuccessCount int
 
@@ -585,10 +584,10 @@ func TestAdmin_PreserveUserLinks_Issue223(t *testing.T) {
 			switch msg := c.(type) {
 			case tbapi.EditMessageTextConfig:
 				if msg.ParseMode == tbapi.ModeMarkdown {
-					// simulate Telegram API failing on usernames with underscores in markdown mode
-					if strings.Contains(msg.Text, "user_name_with_underscore") {
-						markdownErrorCount++
-						return tbapi.Message{}, fmt.Errorf("Bad Request: can't parse entities: Character '_' is reserved")
+					// with the fix, underscore should be escaped
+					if strings.Contains(msg.Text, "user\\_name\\_with\\_underscore") {
+						// markdown should now succeed because special chars are escaped
+						return tbapi.Message{Text: msg.Text}, nil
 					}
 				} else if msg.ParseMode == tbapi.ModeHTML {
 					// HTML mode should succeed where markdown failed
@@ -620,14 +619,14 @@ func TestAdmin_PreserveUserLinks_Issue223(t *testing.T) {
 		markdownErrorCount = 0
 		htmlSuccessCount = 0
 
-		// setup query with a username that has underscores
+		// setup query with a username that has underscores (already rendered by Telegram)
 		query := &tbapi.CallbackQuery{
 			ID:   "test-callback-id",
 			Data: "!12345:999",
 			Message: &tbapi.Message{
 				MessageID: 789,
 				Chat:      tbapi.Chat{ID: 456},
-				Text:      "**permanently banned [user_name_with_underscore](tg://user?id=12345)**\n\nSpam message text",
+				Text:      "permanently banned user_name_with_underscore\n\nSpam message text",
 				From:      &tbapi.User{UserName: "bot"},
 			},
 			From: &tbapi.User{
@@ -651,11 +650,109 @@ func TestAdmin_PreserveUserLinks_Issue223(t *testing.T) {
 		err := adm.callbackShowInfo(query)
 		assert.NoError(t, err)
 
-		// our improved implementation should:
-		// 1. Try markdown first (which fails with usernames containing underscores)
-		// 2. Try HTML as a fallback (which should succeed and preserve the links)
-		assert.Equal(t, 1, markdownErrorCount, "Should have tried and failed with markdown")
-		assert.Equal(t, 1, htmlSuccessCount, "Should have tried and succeeded with HTML mode")
+		// with the fix, markdown should succeed on first attempt because underscore is escaped
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should succeed on first attempt with markdown")
+		assert.Equal(t, 0, markdownErrorCount, "Should not fail with markdown")
+		assert.Equal(t, 0, htmlSuccessCount, "Should not need HTML fallback")
+	})
+
+	t.Run("info button preserves link for normal username", func(t *testing.T) {
+		sendAttempts := 0
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				sendAttempts++
+				if editMsg, ok := c.(tbapi.EditMessageTextConfig); ok {
+					assert.Contains(t, editMsg.Text, "permanently banned")
+					assert.Contains(t, editMsg.Text, "spam detection results")
+					// for normal username without special chars, markdown should work fine
+					assert.Equal(t, tbapi.ModeMarkdown, editMsg.ParseMode)
+				}
+				return tbapi.Message{}, nil
+			},
+		}
+
+		adm := admin{
+			tbAPI:       mockAPI,
+			adminChatID: 123,
+		}
+
+		query := &tbapi.CallbackQuery{
+			ID:   "test",
+			Data: "!6236647121:123",
+			Message: &tbapi.Message{
+				MessageID: 123,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "permanently banned Евгения\n\nНужны 2-3 человека совершеннолетних, занятость из дома ! От 8К в день Пиши в лс",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+		}
+
+		adm.locator = &mocks.LocatorMock{
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{
+					Checks: []spamcheck.Response{
+						{Name: "stopword", Spam: true, Details: "в лс"},
+					},
+				}, true
+			},
+		}
+
+		err := adm.callbackShowInfo(query)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
+	})
+
+	t.Run("info button preserves link for username with underscore after fix", func(t *testing.T) {
+		sendAttempts := 0
+		var usedParseMode string
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				sendAttempts++
+				if editMsg, ok := c.(tbapi.EditMessageTextConfig); ok {
+					usedParseMode = editMsg.ParseMode
+					// with the fix, the underscore should be escaped as surkova\_vlada
+					assert.Contains(t, editMsg.Text, "surkova\\_vlada", "Underscore should be escaped")
+					assert.Equal(t, tbapi.ModeMarkdown, editMsg.ParseMode)
+					// markdown should now succeed because special chars are escaped
+					return tbapi.Message{}, nil
+				}
+				return tbapi.Message{}, nil
+			},
+		}
+
+		adm := admin{
+			tbAPI:       mockAPI,
+			adminChatID: 123,
+		}
+
+		query := &tbapi.CallbackQuery{
+			ID:   "test",
+			Data: "!5519827604:123",
+			Message: &tbapi.Message{
+				MessageID: 123,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "permanently banned surkova_vlada Влада Суркова\n\nЕсть способ заработка от 35 000 р в неделю.",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+		}
+
+		adm.locator = &mocks.LocatorMock{
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{
+					Checks: []spamcheck.Response{
+						{Name: "stopword", Spam: true, Details: "заработка"},
+					},
+				}, true
+			},
+		}
+
+		err := adm.callbackShowInfo(query)
+		assert.NoError(t, err)
+		// with the fix, markdown should succeed on first attempt
+		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
+		assert.Equal(t, tbapi.ModeMarkdown, usedParseMode, "Should use markdown mode successfully")
 	})
 }
 
