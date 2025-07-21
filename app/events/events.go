@@ -61,6 +61,9 @@ type Bot interface {
 	IsApprovedUser(userID int64) bool
 }
 
+// escapeMarkDownV1Text escapes special characters used in Telegram's MarkdownV1 parse mode.
+// It escapes: _ (underscore), * (asterisk), ` (backtick), [ (left bracket)
+// This is used when re-parsing already rendered text to prevent markdown parsing errors.
 func escapeMarkDownV1Text(text string) string {
 	escSymbols := []string{"_", "*", "`", "["}
 	for _, esc := range escSymbols {
