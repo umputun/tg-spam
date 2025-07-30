@@ -1,5 +1,109 @@
 # tg-spam Development Guidelines
 
+## Project Overview
+
+tg-spam is a Telegram anti-spam bot with clear separation of concerns and layered architecture.
+
+### Component Responsibilities & Boundaries
+
+**1. Detector (`lib/tgspam`)**
+- **Responsibility**: Pure spam detection logic
+- **Boundaries**: No side effects, no storage, no Telegram API knowledge
+- **Inputs**: Message text, metadata (links count, has images, etc.)
+- **Outputs**: Boolean (spam/ham) + array of check results
+- **Key insight**: Maintains in-memory state for approved users, samples, classifier, and message history
+
+**2. Bot/SpamFilter (`app/bot`)**
+- **Responsibility**: Business logic layer between detector and application
+- **Boundaries**: No direct Telegram API access, indirect storage access via interfaces
+- **What it does**:
+  - Wraps detector calls with bot-specific logic
+  - Manages approved users list (add/remove/check)
+  - Updates spam/ham samples dynamically
+  - Formats responses for the listener
+  - Loads samples from SamplesStore and DictStore interfaces
+- **Key insight**: This is where "approved user" logic lives, NOT in detector
+
+**3. Locator (`app/storage`)**
+- **Responsibility**: Message and spam data persistence
+- **Boundaries**: Pure storage, no business logic, no spam detection
+- **What it stores**:
+  - ALL messages (hash, user_id, msg_id, time) for later reference
+  - Spam detection results linked to user_id
+  - Used for: finding who sent a forwarded message, bulk deletion, analytics
+- **Key insight**: Separate from detector - messages stored regardless of spam status
+
+**4. Listener (`app/events`)**
+- **Responsibility**: Orchestration and Telegram API interaction
+- **Boundaries**: Only component that knows about Telegram API
+- **What it does**:
+  - Receives Telegram updates
+  - Stores EVERY message in Locator (for forensics)
+  - Calls Bot.OnMessage() for spam check
+  - Executes actions based on response (ban, delete, notify)
+  - Handles special cases (superusers, admin commands)
+- **Key insight**: This is the conductor - it has Bot and Locator interfaces
+
+**5. Admin Handler (`app/events/admin.go`)**
+- **Responsibility**: Process admin-initiated actions
+- **What it handles**:
+  - `/spam` command: Manual spam marking + user ban + sample update
+  - `/ban` command: Ban without updating samples  
+  - `/warn` command: Delete message + warning
+  - Forwarded messages to admin chat
+  - Unban callbacks from admin chat buttons
+- **Key insight**: Can override normal flow, operates on historical data via Locator
+
+**6. SuperUsers (`app/events/superusers.go`)**
+- **Responsibility**: Manage list of privileged users
+- **What it does**:
+  - Maintains list of users who can execute admin commands
+  - Prevents these users from being banned or marked as spam
+  - Can be specified by username or user ID
+- **Key insight**: Critical security component - superuser messages bypass all spam checks
+
+### Control Flow
+
+**Normal Message Flow:**
+1. User sends message to monitored chat (new or edited)
+2. Telegram → Listener.procEvents()
+3. Listener stores in Locator.AddMessage() (ALWAYS, even for spam)
+4. Listener calls Bot.OnMessage()
+5. Bot checks if user is approved (may skip some checks)
+6. Bot calls Detector.Check() with message + metadata
+7. Detector runs checks sequentially:
+   - Pre-checks (approved users with FirstMessageOnly)
+   - Stop words, emojis, meta checks
+   - Similarity, classifier (skipped for short messages)
+   - CAS API
+   - OpenAI (if configured):
+     - In veto mode: can override spam detection (reduce false positives)
+     - In normal mode: can detect spam the other checks missed
+8. Bot returns Response{Spam: bool, BanInterval, Text, DeleteReplyTo}
+9. Listener acts on response:
+   - If spam: ban user, delete message, notify admin chat
+   - If ham: add to approved users (after N messages)
+
+**Admin Command Flow:**
+1. Admin replies to message with `/spam`
+2. Listener detects superuser + reply + command
+3. Calls Admin.DirectSpamReport()
+4. Admin handler:
+   - Removes user from approved list
+   - Updates spam samples
+   - Deletes original message
+   - Bans user permanently
+   - Sends report to admin chat
+
+**Key Behavioral Rules:**
+- Approved users still go through checks unless FirstMessageOnly=true
+- Short messages skip similarity/classifier but not other checks
+- Superuser messages are NEVER marked as spam
+- All messages stored in Locator, even if deleted later
+- Admin commands work on historical data (can ban based on old messages)
+- Edited messages are treated as new messages for spam detection
+- OpenAI can work in two modes: veto spam (reduce false positives) or detect spam (reduce false negatives)
+
 ## Build & Test Commands
 - Build: `go build -o tg-spam ./app`
 - Run tests: `go test -race ./...`
