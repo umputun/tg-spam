@@ -90,35 +90,35 @@ func TestDetector_CheckWithShort(t *testing.T) {
 	t.Run("short message skips classifier and similarity", func(t *testing.T) {
 		// load spam and ham samples to enable classifier and similarity checks
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 50, SimilarityThreshold: 0.5})
-		
+
 		spamSamples := strings.NewReader("buy cheap viagra now\nclick here for free money\nwin lottery prize")
 		hamSamples := strings.NewReader("hello world\nhow are you\nhave a good day")
-		
+
 		lr, err := d.LoadSamples(strings.NewReader(""), []io.Reader{spamSamples}, []io.Reader{hamSamples})
 		require.NoError(t, err)
 		assert.Greater(t, lr.SpamSamples, 0)
 		assert.Greater(t, lr.HamSamples, 0)
-		
+
 		// test short message - should NOT have classifier or similarity results
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi"})
 		assert.False(t, spam)
-		
+
 		// verify we only get message length check, no classifier or similarity
 		require.Len(t, cr, 1)
 		assert.Equal(t, "message length", cr[0].Name)
 		assert.Equal(t, false, cr[0].Spam)
 		assert.Equal(t, "too short", cr[0].Details)
-		
+
 		// verify classifier and similarity are NOT in the results
 		for _, r := range cr {
 			assert.NotEqual(t, "classifier", r.Name, "classifier should not run for short messages")
 			assert.NotEqual(t, "similarity", r.Name, "similarity should not run for short messages")
 		}
-		
+
 		// test long message - should have classifier and similarity results
 		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that should trigger all checks including classifier and similarity"})
 		assert.False(t, spam2)
-		
+
 		// verify we get classifier and similarity checks for long messages
 		hasClassifier := false
 		hasSimilarity := false
@@ -742,7 +742,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		// CheckShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
+		// checkShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 
 		// test with short message (less than MinMsgLen)
@@ -817,11 +817,11 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		// enable checking short messages with openai
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
-		
+
 		// load stop words
 		_, err := d.LoadStopWords(strings.NewReader("viagra"))
 		assert.NoError(t, err)
-		
+
 		// test with short message containing stop word
 		spam, cr := d.Check(spamcheck.Request{Msg: "buy viagra"})
 		assert.Equal(t, true, spam)
@@ -838,7 +838,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 	t.Run("with openai enabled for short messages - still skips classifier/similarity", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50, SimilarityThreshold: 0.5})
-		
+
 		// load samples to enable classifier/similarity
 		spamSamples := strings.NewReader("buy cheap viagra now\nclick here for free money")
 		hamSamples := strings.NewReader("hello world\nhow are you")
@@ -846,7 +846,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		require.NoError(t, err)
 		assert.Greater(t, lr.SpamSamples, 0)
 		assert.Greater(t, lr.HamSamples, 0)
-		
+
 		// setup openai mock
 		mockOpenAIClient := &mocks.OpenAIClientMock{
 			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
@@ -858,11 +858,11 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
-		
+
 		// test short message
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
 		assert.Equal(t, false, spam)
-		
+
 		// verify we get message length and openai, but NO classifier or similarity
 		hasMessageLength := false
 		hasOpenAI := false
@@ -881,7 +881,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				t.Error("similarity should not run for short messages even with openai enabled")
 			}
 		}
-		
+
 		assert.True(t, hasMessageLength, "should have message length check")
 		assert.True(t, hasOpenAI, "should have openai check when enabled for short messages")
 		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
@@ -2063,5 +2063,175 @@ func TestDetector_ClassifierNaNHandling(t *testing.T) {
 			}
 			_ = spam // result doesn't matter, just checking for NaN
 		}
+	})
+}
+
+func TestDetector_ShortMessageApproval(t *testing.T) {
+	t.Run("short messages don't count towards approval", func(t *testing.T) {
+		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 3, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+
+		// send 3 short messages (less than MinMsgLen)
+		for i := 0; i < 3; i++ {
+			spam, cr := d.Check(spamcheck.Request{Msg: "hi", UserID: "123"})
+			assert.False(t, spam)
+			assert.NotEmpty(t, cr)
+			// find the message length check in results
+			found := false
+			for _, r := range cr {
+				if r.Name == "message length" {
+					assert.Equal(t, "too short", r.Details)
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "message length check not found")
+		}
+
+		// user should NOT be approved after 3 short messages
+		assert.False(t, d.IsApprovedUser("123"))
+
+		// now send a spam message with stopword
+		_, err := d.LoadStopWords(strings.NewReader("spam"))
+		require.NoError(t, err)
+		spam, cr := d.Check(spamcheck.Request{Msg: "spam", UserID: "123"})
+		// even though message is short, stopword check runs and detects spam
+		assert.True(t, spam)
+		found := false
+		for _, r := range cr {
+			if r.Name == "stopword" && r.Spam {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "stopword check should detect spam")
+
+		// send a normal length spam message - should be detected
+		spam, cr = d.Check(spamcheck.Request{Msg: "this is a spam message", UserID: "123"})
+		assert.True(t, spam)
+		// verify stopword check triggered
+		found = false
+		for _, r := range cr {
+			if r.Name == "stopword" && r.Spam {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "stopword check not found")
+	})
+
+	t.Run("normal messages count towards approval", func(t *testing.T) {
+		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 3, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+
+		// send 2 normal messages
+		for i := 0; i < 2; i++ {
+			spam, _ := d.Check(spamcheck.Request{Msg: "this is a normal message", UserID: "456"})
+			assert.False(t, spam)
+		}
+
+		// user should NOT be approved yet (need 3 messages)
+		assert.False(t, d.IsApprovedUser("456"))
+
+		// send 3rd normal message
+		spam, _ := d.Check(spamcheck.Request{Msg: "another normal message here", UserID: "456"})
+		assert.False(t, spam)
+
+		// user should NOT be approved yet (need count > FirstMessagesCount)
+		assert.False(t, d.IsApprovedUser("456"))
+
+		// after 3 messages, user is pre-approved (count >= FirstMessagesCount)
+		// but IsApprovedUser returns false because it checks count > FirstMessagesCount
+		// this is the existing behavior, not related to our fix
+
+		// 4th message will be pre-approved
+		spam, cr := d.Check(spamcheck.Request{Msg: "fourth normal message", UserID: "456"})
+		assert.False(t, spam)
+		assert.Equal(t, "pre-approved", cr[0].Name)
+
+		// count stays at 3 because pre-approved messages don't increment
+		d.lock.RLock()
+		actualCount := d.approvedUsers["456"].Count
+		d.lock.RUnlock()
+		assert.Equal(t, 3, actualCount)
+
+		// IsApprovedUser still returns false (3 > 3 is false)
+		assert.False(t, d.IsApprovedUser("456"))
+	})
+
+	t.Run("mix of short and normal messages", func(t *testing.T) {
+		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 3, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+
+		// send alternating short and normal messages
+		// short message 1
+		spam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "789"})
+		assert.False(t, spam)
+		assert.False(t, d.IsApprovedUser("789"))
+
+		// normal message 1
+		spam, _ = d.Check(spamcheck.Request{Msg: "this is a normal message", UserID: "789"})
+		assert.False(t, spam)
+		assert.False(t, d.IsApprovedUser("789"))
+
+		// short message 2
+		spam, _ = d.Check(spamcheck.Request{Msg: "ok", UserID: "789"})
+		assert.False(t, spam)
+		assert.False(t, d.IsApprovedUser("789"))
+
+		// normal message 2
+		spam, _ = d.Check(spamcheck.Request{Msg: "another normal message here", UserID: "789"})
+		assert.False(t, spam)
+		assert.False(t, d.IsApprovedUser("789"))
+
+		// short message 3
+		spam, _ = d.Check(spamcheck.Request{Msg: "yes", UserID: "789"})
+		assert.False(t, spam)
+		assert.False(t, d.IsApprovedUser("789"))
+
+		// normal message 3
+		spam, _ = d.Check(spamcheck.Request{Msg: "third normal message finally", UserID: "789"})
+		assert.False(t, spam)
+
+		// with the mix of short and normal messages, only the normal ones count
+		// after 3 normal messages, count is 3, user is pre-approved but IsApprovedUser
+		// returns false because it checks count > FirstMessagesCount
+		assert.False(t, d.IsApprovedUser("789"))
+	})
+
+	t.Run("short messages with storage", func(t *testing.T) {
+		mockUserStore := &mocks.UserStorageMock{
+			ReadFunc: func(context.Context) ([]approved.UserInfo, error) {
+				return []approved.UserInfo{}, nil
+			},
+			WriteFunc:  func(_ context.Context, au approved.UserInfo) error { return nil },
+			DeleteFunc: func(_ context.Context, id string) error { return nil },
+		}
+
+		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 2, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+		_, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+
+		// send 2 short messages
+		d.Check(spamcheck.Request{Msg: "hi", UserID: "111"})
+		d.Check(spamcheck.Request{Msg: "ok", UserID: "111"})
+
+		// storage should NOT be called for short messages
+		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
+
+		// send 2 normal messages
+		d.Check(spamcheck.Request{Msg: "normal message one", UserID: "111"})
+		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+
+		d.Check(spamcheck.Request{Msg: "normal message two", UserID: "111"})
+		assert.Equal(t, 2, len(mockUserStore.WriteCalls()))
+
+		// user is not approved yet (need > 2)
+		assert.False(t, d.IsApprovedUser("111"))
+
+		// after 2 messages, count is 2 which equals FirstMessagesCount
+		// so the 3rd message will be pre-approved and won't update storage
+		d.Check(spamcheck.Request{Msg: "normal message three", UserID: "111"})
+		// storage write is NOT called for pre-approved message
+		assert.Equal(t, 2, len(mockUserStore.WriteCalls()))
+		// IsApprovedUser returns false because count (2) is not > FirstMessagesCount (2)
+		assert.False(t, d.IsApprovedUser("111"))
 	})
 }

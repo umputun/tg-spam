@@ -291,10 +291,10 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		botMock.ResetCalls()
 		updMsg := tbapi.Update{
 			EditedMessage: &tbapi.Message{
-				Chat: tbapi.Chat{ID: 123},
-				Text: "edited spam message",
-				From: &tbapi.User{UserName: "edited_user", ID: 456},
-				Date: int(time.Now().Unix()), // Use current time for edited message
+				Chat:     tbapi.Chat{ID: 123},
+				Text:     "edited spam message",
+				From:     &tbapi.User{UserName: "edited_user", ID: 456},
+				Date:     int(time.Now().Unix()), // use current time for edited message
 				EditDate: int(time.Now().Unix()),
 			},
 		}
@@ -304,7 +304,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		close(updChan)
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
-		// Configure botMock to return a spam response for the edited message
+		// configure botMock to return a spam response for the edited message
 		botMock.OnMessageFunc = func(msg bot.Message, checkOnly bool) bot.Response {
 			if msg.Text == "edited spam message" && msg.From.Username == "edited_user" {
 				return bot.Response{Send: true, Text: "edited message is spam", BanInterval: 1 * time.Minute,

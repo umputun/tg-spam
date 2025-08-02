@@ -276,7 +276,8 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	// update approved users only if it's not paranoid mode and not a check-only request
-	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly {
+	// and only if the message was not too short (to ensure we have meaningful content)
+	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly && !isShortMessage {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
 		au := approved.UserInfo{
