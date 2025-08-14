@@ -305,7 +305,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	// update spam samples
-	if updateSamples {
+	if updateSamples && msgTxt != "" {
 		if err := a.bot.UpdateSpam(msgTxt); err != nil {
 			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
 		}

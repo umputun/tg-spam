@@ -1245,3 +1245,71 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		assert.Equal(t, 1, len(botMock.UpdateSpamCalls()), "Should update spam samples")
 	})
 }
+
+func TestAdmin_DirectSpamReport_ImageOnly(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+	}
+
+	botMock := &mocks.BotMock{
+		RemoveApprovedUserFunc: func(id int64) error {
+			return nil
+		},
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{
+				CheckResults: []spamcheck.Response{
+					{Name: "image-spam", Spam: true, Details: "First message with image"},
+				},
+			}
+		},
+		UpdateSpamFunc: func(msg string) error {
+			if msg == "" {
+				return fmt.Errorf("can't update spam samples: message can't be empty")
+			}
+			return nil
+		},
+	}
+
+	locatorMock := &mocks.LocatorMock{}
+
+	adm := &admin{
+		tbAPI:       mockAPI,
+		bot:         botMock,
+		primChatID:  123,
+		adminChatID: 456,
+		locator:     locatorMock,
+		superUsers:  SuperUsers{},
+	}
+
+	update := tbapi.Update{
+		Message: &tbapi.Message{
+			MessageID: 789,
+			Chat:      tbapi.Chat{ID: 123},
+			Text:      "/spam",
+			From:      &tbapi.User{UserName: "admin", ID: 111},
+			ReplyToMessage: &tbapi.Message{
+				MessageID: 999,
+				From:      &tbapi.User{ID: 666, UserName: "spammer"},
+				Text:      "",
+				Photo:     []tbapi.PhotoSize{{FileID: "photo123"}},
+			},
+		},
+	}
+
+	err := adm.directReport(update, true)
+	require.NoError(t, err, "Should handle image-only spam without error")
+
+	assert.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()), "Should remove user from approved list")
+	assert.Equal(t, int64(666), botMock.RemoveApprovedUserCalls()[0].ID)
+
+	assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should send detection results to admin")
+
+	assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 2, "Should delete message and ban user")
+
+	assert.Equal(t, 0, len(botMock.UpdateSpamCalls()), "Should not update spam samples for empty messages")
+}
