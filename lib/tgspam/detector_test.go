@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -256,6 +257,102 @@ func TestDetector_CheckEmojis(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d/2", tt.count), cr[0].Details)
 		})
 	}
+}
+
+func TestDetector_CheckDuplicates(t *testing.T) {
+	d := NewDetector(Config{
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 3,
+			Window:    time.Hour,
+		},
+	})
+
+	// first message - not spam
+	spam, cr := d.Check(spamcheck.Request{Msg: "test message", UserID: "123"})
+	assert.False(t, spam)
+	dupResp := findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.False(t, dupResp.Spam)
+
+	// second identical message - still not spam (threshold is 3)
+	spam, cr = d.Check(spamcheck.Request{Msg: "test message", UserID: "123"})
+	assert.False(t, spam)
+	dupResp = findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.False(t, dupResp.Spam)
+
+	// third identical message - should trigger spam
+	spam, cr = d.Check(spamcheck.Request{Msg: "test message", UserID: "123"})
+	assert.True(t, spam)
+	dupResp = findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.True(t, dupResp.Spam)
+	assert.Contains(t, dupResp.Details, "3 times")
+
+	// different message from same user - not spam
+	spam, cr = d.Check(spamcheck.Request{Msg: "different message", UserID: "123"})
+	assert.False(t, spam)
+
+	// same message from different user - not spam
+	spam, cr = d.Check(spamcheck.Request{Msg: "test message", UserID: "456"})
+	assert.False(t, spam)
+}
+
+func TestDetector_CheckDuplicatesDisabled(t *testing.T) {
+	// test with threshold 0 (disabled)
+	d := NewDetector(Config{
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 0,
+			Window:    time.Hour,
+		},
+	})
+
+	// send same message multiple times - should never trigger
+	for i := 0; i < 5; i++ {
+		spam, cr := d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
+		assert.False(t, spam)
+		dupResp := findResponseByName(cr, "duplicate")
+		if dupResp != nil {
+			assert.False(t, dupResp.Spam)
+			assert.Equal(t, "check disabled", dupResp.Details)
+		}
+	}
+}
+
+func TestDetector_CheckDuplicatesTimeWindow(t *testing.T) {
+	d := NewDetector(Config{
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 2,
+			Window:    100 * time.Millisecond,
+		},
+	})
+
+	// first message
+	spam, _ := d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
+	assert.False(t, spam)
+
+	// second message - should trigger
+	spam, cr := d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
+	assert.True(t, spam)
+	dupResp := findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.True(t, dupResp.Spam)
+
+	// wait for window to expire
+	time.Sleep(150 * time.Millisecond)
+
+	// third message - should not trigger as previous ones expired
+	spam, _ = d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
+	assert.False(t, spam)
 }
 
 func TestSpam_CheckIsCasSpam(t *testing.T) {
@@ -2234,4 +2331,14 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		// IsApprovedUser returns false because count (2) is not > FirstMessagesCount (2)
 		assert.False(t, d.IsApprovedUser("111"))
 	})
+}
+
+// helper function to find response by name
+func findResponseByName(responses []spamcheck.Response, name string) *spamcheck.Response {
+	for _, r := range responses {
+		if r.Name == name {
+			return &r
+		}
+	}
+	return nil
 }
