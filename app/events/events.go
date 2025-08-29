@@ -49,6 +49,7 @@ type Locator interface {
 	Spam(ctx context.Context, userID int64) (storage.SpamData, bool)
 	MsgHash(msg string) string
 	UserNameByID(ctx context.Context, userID int64) string
+	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
 }
 
 // Bot is an interface for bot events.

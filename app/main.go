@@ -132,6 +132,9 @@ type options struct {
 	ParanoidMode       bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 	FirstMessagesCount int  `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
 
+	AggressiveCleanup      bool `long:"aggressive-cleanup" env:"AGGRESSIVE_CLEANUP" description:"delete all messages from user when banned via /spam command"`
+	AggressiveCleanupLimit int  `long:"aggressive-cleanup-limit" env:"AGGRESSIVE_CLEANUP_LIMIT" default:"100" description:"max messages to delete in aggressive cleanup mode"`
+
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
 		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
@@ -183,6 +186,11 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(2)
+	}
+
+	// validate configuration parameters
+	if opts.AggressiveCleanupLimit < 0 || opts.AggressiveCleanupLimit > 10000 {
+		log.Fatalf("[ERROR] aggressive-cleanup-limit must be between 0 and 10000, got %d", opts.AggressiveCleanupLimit)
 	}
 
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
@@ -325,6 +333,8 @@ func execute(ctx context.Context, opts options) error {
 		SoftBanMode:             opts.SoftBan,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
 		Dry:                     opts.Dry,
+		AggressiveCleanup:       opts.AggressiveCleanup,
+		AggressiveCleanupLimit:  opts.AggressiveCleanupLimit,
 	}
 
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+

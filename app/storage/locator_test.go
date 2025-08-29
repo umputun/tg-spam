@@ -25,6 +25,63 @@ func (s *StorageTestSuite) TestNewLocator() {
 	}
 }
 
+func (s *StorageTestSuite) TestLocator_GetUserMessageIDs() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			locator, err := NewLocator(ctx, time.Hour, 1000, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE messages")
+			defer db.Exec("DROP TABLE spam")
+
+			userID := int64(100)
+
+			// add multiple messages for the same user
+			msgIDs := []int{10, 20, 30, 40, 50}
+			for i, msgID := range msgIDs {
+				msg := fmt.Sprintf("message%d", i)
+				s.Require().NoError(locator.AddMessage(ctx, msg, 123, userID, "user1", msgID))
+				time.Sleep(10 * time.Millisecond) // ensure different timestamps
+			}
+
+			// add message for different user
+			s.Require().NoError(locator.AddMessage(ctx, "other message", 123, 200, "user2", 60))
+
+			// get all message IDs for user
+			ids, err := locator.GetUserMessageIDs(ctx, userID, 100)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 5)
+
+			// should be in reverse chronological order (newest first)
+			s.Equal(50, ids[0])
+			s.Equal(40, ids[1])
+			s.Equal(30, ids[2])
+			s.Equal(20, ids[3])
+			s.Equal(10, ids[4])
+
+			// test with limit
+			ids, err = locator.GetUserMessageIDs(ctx, userID, 3)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 3)
+			s.Equal(50, ids[0])
+			s.Equal(40, ids[1])
+			s.Equal(30, ids[2])
+
+			// test different user
+			ids, err = locator.GetUserMessageIDs(ctx, 200, 100)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 1)
+			s.Equal(60, ids[0])
+
+			// test non-existent user
+			ids, err = locator.GetUserMessageIDs(ctx, 999, 100)
+			s.Require().NoError(err)
+			s.Empty(ids)
+		})
+	}
+}
+
 func (s *StorageTestSuite) TestLocator_AddAndRetrieveMessage() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {

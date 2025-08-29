@@ -66,9 +66,11 @@ var locatorQueries = engine.NewQueryMap().
 			CREATE INDEX IF NOT EXISTS idx_messages_user_name ON messages(user_name);
 			CREATE INDEX IF NOT EXISTS idx_spam_time ON spam(time);
 			CREATE INDEX IF NOT EXISTS idx_messages_gid ON messages(gid);
+			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_id_time ON messages(gid, user_id, time DESC);
 			CREATE INDEX IF NOT EXISTS idx_spam_gid ON spam(gid) `,
 		Postgres: `
 			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_id ON messages(gid, user_id);
+			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_id_time ON messages(gid, user_id, time DESC);
 			CREATE INDEX IF NOT EXISTS idx_messages_gid_user_name ON messages(gid, user_name);
 			CREATE INDEX IF NOT EXISTS idx_spam_gid_time ON spam(gid, time DESC);
 			CREATE INDEX IF NOT EXISTS idx_spam_user_id_gid ON spam(user_id, gid)`,
@@ -335,6 +337,17 @@ func (l *Locator) Spam(ctx context.Context, userID int64) (SpamData, bool) {
 // we use hash to avoid storing potentially long messages and all we need is just match
 func (l *Locator) MsgHash(msg string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(msg)))
+}
+
+// GetUserMessageIDs returns message IDs from a user for bulk deletion
+func (l *Locator) GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error) {
+	query := l.Adopt(`SELECT msg_id FROM messages WHERE user_id = ? AND gid = ? ORDER BY time DESC LIMIT ?`)
+	var msgIDs []int
+	err := l.SelectContext(ctx, &msgIDs, query, userID, l.GID(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user message IDs: %w", err)
+	}
+	return msgIDs, nil
 }
 
 // cleanupMessages removes old messages. Messages with expired ttl are removed if the total number of messages exceeds minSize.
