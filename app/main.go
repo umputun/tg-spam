@@ -117,6 +117,11 @@ type options struct {
 		MinWords                int     `long:"min-words" env:"MIN_WORDS" default:"5" description:"the minimum number of words in the message to check"`
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
+	Duplicates struct {
+		Threshold int           `long:"threshold" env:"THRESHOLD" default:"0" description:"duplicate messages to trigger spam (0=disabled)"`
+		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
+	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
+
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
@@ -544,6 +549,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.StorageTimeout > 0 { // if StorageTimeout is non-zero, set it. If zero, storage timeout is disabled
 		detectorConfig.StorageTimeout = opts.StorageTimeout
 	}
+
+	// set duplicate detection config
+	detectorConfig.DuplicateDetection.Threshold = opts.Duplicates.Threshold
+	detectorConfig.DuplicateDetection.Window = opts.Duplicates.Window
 
 	detector := tgspam.NewDetector(detectorConfig)
 

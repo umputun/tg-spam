@@ -154,6 +154,12 @@ This option is disabled by default. If `--meta.username-symbols` set or `env:MET
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
+**Duplicate message detection**
+
+This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly. Configure with:
+- `--duplicate-threshold=, [$DUPLICATE_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
+- `--duplicate-window=, [$DUPLICATE_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
+
 **Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
