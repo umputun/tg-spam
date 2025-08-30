@@ -42,6 +42,8 @@ type TelegramListener struct {
 	Locator                 Locator       // message locator to get info about messages
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
+	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
+	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
 
 	adminHandler *admin
 	chatID       int64
@@ -100,8 +102,11 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		}
 	}
 
-	l.adminHandler = &admin{tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg}
+	l.adminHandler = &admin{
+		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
+		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
+		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
+	}
 
 	adminForwardStatus := "enabled"
 	if l.DisableAdminSpamForward {

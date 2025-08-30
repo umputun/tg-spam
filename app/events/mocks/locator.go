@@ -22,6 +22,9 @@ import (
 //			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error {
 //				panic("mock out the AddSpam method")
 //			},
+//			GetUserMessageIDsFunc: func(ctx context.Context, userID int64, limit int) ([]int, error) {
+//				panic("mock out the GetUserMessageIDs method")
+//			},
 //			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
 //				panic("mock out the Message method")
 //			},
@@ -46,6 +49,9 @@ type LocatorMock struct {
 
 	// AddSpamFunc mocks the AddSpam method.
 	AddSpamFunc func(ctx context.Context, userID int64, checks []spamcheck.Response) error
+
+	// GetUserMessageIDsFunc mocks the GetUserMessageIDs method.
+	GetUserMessageIDsFunc func(ctx context.Context, userID int64, limit int) ([]int, error)
 
 	// MessageFunc mocks the Message method.
 	MessageFunc func(ctx context.Context, msg string) (storage.MsgMeta, bool)
@@ -85,6 +91,15 @@ type LocatorMock struct {
 			// Checks is the checks argument value.
 			Checks []spamcheck.Response
 		}
+		// GetUserMessageIDs holds details about calls to the GetUserMessageIDs method.
+		GetUserMessageIDs []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// UserID is the userID argument value.
+			UserID int64
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// Message holds details about calls to the Message method.
 		Message []struct {
 			// Ctx is the ctx argument value.
@@ -112,12 +127,13 @@ type LocatorMock struct {
 			UserID int64
 		}
 	}
-	lockAddMessage   sync.RWMutex
-	lockAddSpam      sync.RWMutex
-	lockMessage      sync.RWMutex
-	lockMsgHash      sync.RWMutex
-	lockSpam         sync.RWMutex
-	lockUserNameByID sync.RWMutex
+	lockAddMessage        sync.RWMutex
+	lockAddSpam           sync.RWMutex
+	lockGetUserMessageIDs sync.RWMutex
+	lockMessage           sync.RWMutex
+	lockMsgHash           sync.RWMutex
+	lockSpam              sync.RWMutex
+	lockUserNameByID      sync.RWMutex
 }
 
 // AddMessage calls AddMessageFunc.
@@ -224,6 +240,53 @@ func (mock *LocatorMock) ResetAddSpamCalls() {
 	mock.lockAddSpam.Lock()
 	mock.calls.AddSpam = nil
 	mock.lockAddSpam.Unlock()
+}
+
+// GetUserMessageIDs calls GetUserMessageIDsFunc.
+func (mock *LocatorMock) GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error) {
+	if mock.GetUserMessageIDsFunc == nil {
+		panic("LocatorMock.GetUserMessageIDsFunc: method is nil but Locator.GetUserMessageIDs was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		UserID int64
+		Limit  int
+	}{
+		Ctx:    ctx,
+		UserID: userID,
+		Limit:  limit,
+	}
+	mock.lockGetUserMessageIDs.Lock()
+	mock.calls.GetUserMessageIDs = append(mock.calls.GetUserMessageIDs, callInfo)
+	mock.lockGetUserMessageIDs.Unlock()
+	return mock.GetUserMessageIDsFunc(ctx, userID, limit)
+}
+
+// GetUserMessageIDsCalls gets all the calls that were made to GetUserMessageIDs.
+// Check the length with:
+//
+//	len(mockedLocator.GetUserMessageIDsCalls())
+func (mock *LocatorMock) GetUserMessageIDsCalls() []struct {
+	Ctx    context.Context
+	UserID int64
+	Limit  int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		UserID int64
+		Limit  int
+	}
+	mock.lockGetUserMessageIDs.RLock()
+	calls = mock.calls.GetUserMessageIDs
+	mock.lockGetUserMessageIDs.RUnlock()
+	return calls
+}
+
+// ResetGetUserMessageIDsCalls reset all the calls that were made to GetUserMessageIDs.
+func (mock *LocatorMock) ResetGetUserMessageIDsCalls() {
+	mock.lockGetUserMessageIDs.Lock()
+	mock.calls.GetUserMessageIDs = nil
+	mock.lockGetUserMessageIDs.Unlock()
 }
 
 // Message calls MessageFunc.
@@ -403,6 +466,10 @@ func (mock *LocatorMock) ResetCalls() {
 	mock.lockAddSpam.Lock()
 	mock.calls.AddSpam = nil
 	mock.lockAddSpam.Unlock()
+
+	mock.lockGetUserMessageIDs.Lock()
+	mock.calls.GetUserMessageIDs = nil
+	mock.lockGetUserMessageIDs.Unlock()
 
 	mock.lockMessage.Lock()
 	mock.calls.Message = nil

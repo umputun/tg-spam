@@ -245,6 +245,17 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 * Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
 
+**aggressive cleanup**
+
+When admins use `/spam` or `/ban` commands, the bot can optionally delete all recent messages from the banned user. This feature is disabled by default and can be configured with:
+- `--aggressive-cleanup` - Enable deletion of spammer's recent messages when banned
+- `--aggressive-cleanup-limit=` (default: 100) - Maximum number of messages to delete per user
+
+When enabled, the bot will:
+1. Ban the user as usual
+2. Asynchronously delete up to the specified number of recent messages from that user
+3. Send a notification to the admin chat showing how many messages were deleted
+4. Apply rate limiting (30 messages/second) to respect Telegram API limits
 
 ### Updating spam and ham samples dynamically
 

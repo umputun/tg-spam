@@ -20,16 +20,18 @@ import (
 // admin is a helper to handle all admin-group related stuff, created by listener
 // public methods kept public (on a private struct) to be able to recognize the api
 type admin struct {
-	tbAPI        TbAPI
-	bot          Bot
-	locator      Locator
-	superUsers   SuperUsers
-	primChatID   int64
-	adminChatID  int64
-	trainingMode bool
-	softBan      bool // if true, the user not banned automatically, but only restricted
-	dry          bool
-	warnMsg      string
+	tbAPI                  TbAPI
+	bot                    Bot
+	locator                Locator
+	superUsers             SuperUsers
+	primChatID             int64
+	adminChatID            int64
+	trainingMode           bool
+	softBan                bool // if true, the user not banned automatically, but only restricted
+	dry                    bool
+	warnMsg                string
+	aggressiveCleanup      bool
+	aggressiveCleanupLimit int
 }
 
 const (
@@ -249,6 +251,52 @@ func (a *admin) getForwardUsernameAndID(update tbapi.Update) (fwdID int64, usern
 	return 0, ""
 }
 
+// deleteUserMessages deletes all recent messages from a user with rate limiting
+func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
+	ctx := context.Background()
+	msgIDs, err := a.locator.GetUserMessageIDs(ctx, userID, a.aggressiveCleanupLimit)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user messages: %w", err)
+	}
+
+	// rate limit: telegram allows 30 msg/sec, we use 35ms delay (~28.6 msg/sec) to stay safely below
+	rateLimiter := time.NewTicker(35 * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	const maxConsecutiveFailures = 5
+	consecutiveFailures := 0
+	failed := 0
+
+	for _, msgID := range msgIDs {
+		<-rateLimiter.C
+
+		if consecutiveFailures >= maxConsecutiveFailures {
+			return deleted, fmt.Errorf("stopped after %d consecutive failures (deleted %d, failed %d)",
+				maxConsecutiveFailures, deleted, failed)
+		}
+
+		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+			BaseChatMessage: tbapi.BaseChatMessage{
+				MessageID:  msgID,
+				ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+			},
+		})
+		if err == nil {
+			deleted++
+			consecutiveFailures = 0 // reset on success
+		} else {
+			failed++
+			consecutiveFailures++
+			// continue on error - message might already be deleted
+		}
+	}
+
+	if failed > 0 {
+		log.Printf("[INFO] aggressive cleanup completed: deleted %d messages, failed %d", deleted, failed)
+	}
+	return deleted, nil
+}
+
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
 func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	log.Printf("[DEBUG] direct ban by admin %q: msg id: %d, from: %q (%d)",
@@ -341,6 +389,24 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 
 	if err := banUserOrChannel(banReq); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, err))
+	}
+
+	// aggressive cleanup - delete all messages from the spammer (non-blocking)
+	if a.aggressiveCleanup && !a.dry {
+		go func() {
+			deleted, err := a.deleteUserMessages(origMsg.From.ID)
+			if err != nil {
+				log.Printf("[WARN] aggressive cleanup failed: %v", err)
+				return
+			}
+			if deleted > 0 {
+				log.Printf("[INFO] aggressive cleanup: deleted %d messages from user %d", deleted, origMsg.From.ID)
+				notifyMsg := fmt.Sprintf("_deleted %d messages from spammer_", deleted)
+				if err := send(tbapi.NewMessage(a.adminChatID, notifyMsg), a.tbAPI); err != nil {
+					log.Printf("[WARN] failed to send deletion notification: %v", err)
+				}
+			}
+		}()
 	}
 
 	if err := errs.ErrorOrNil(); err != nil {
