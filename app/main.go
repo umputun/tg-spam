@@ -188,11 +188,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	// validate configuration parameters
-	if opts.AggressiveCleanupLimit < 0 || opts.AggressiveCleanupLimit > 10000 {
-		log.Fatalf("[ERROR] aggressive-cleanup-limit must be between 0 and 10000, got %d", opts.AggressiveCleanupLimit)
-	}
-
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
 	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" {
 		// auto passwd should not be masked as we print it
