@@ -34,15 +34,16 @@ import (
 // It uses a set of checks to determine if a message is spam, and also keeps a list of approved users.
 type Detector struct {
 	Config
-	classifier     classifier
-	openaiChecker  *openAIChecker
-	metaChecks     []MetaCheck
-	luaChecks      []plugin.Check // separate field for Lua plugin checks
-	tokenizedSpam  []map[string]int
-	approvedUsers  map[string]approved.UserInfo
-	stopWords      []string
-	excludedTokens map[string]struct{}
-	luaEngine      LuaPluginEngine
+	classifier        classifier
+	openaiChecker     *openAIChecker
+	duplicateDetector *duplicateDetector
+	metaChecks        []MetaCheck
+	luaChecks         []plugin.Check // separate field for Lua plugin checks
+	tokenizedSpam     []map[string]int
+	approvedUsers     map[string]approved.UserInfo
+	stopWords         []string
+	excludedTokens    map[string]struct{}
+	luaEngine         LuaPluginEngine
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
@@ -52,9 +53,6 @@ type Detector struct {
 	// can be passed to checkers supporting history
 	hamHistory  *spamcheck.LastRequests
 	spamHistory *spamcheck.LastRequests
-
-	// duplicate detection
-	duplicateDetector *duplicateDetector
 
 	lock sync.RWMutex
 }

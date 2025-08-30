@@ -190,14 +190,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	// validate configuration parameters
-	if opts.Duplicates.Threshold < 0 || opts.Duplicates.Threshold > 100 {
-		log.Fatalf("[ERROR] duplicate-threshold must be between 0 and 100, got %d", opts.Duplicates.Threshold)
-	}
-	if opts.Duplicates.Threshold > 0 && opts.Duplicates.Window <= 0 {
-		log.Fatalf("[ERROR] duplicate-window must be positive when duplicate detection is enabled")
-	}
-
 	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
 	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" {
 		// auto passwd should not be masked as we print it
