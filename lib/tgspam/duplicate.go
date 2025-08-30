@@ -13,13 +13,14 @@ import (
 
 // duplicateDetector tracks message history for duplicate detection
 type duplicateDetector struct {
-	threshold       int
-	window          time.Duration
-	cache           cache.Cache[int64, userHistory] // LRU cache with max users limit
-	mu              sync.RWMutex
-	lastCleanup     time.Time
-	cleanupInterval time.Duration
-	maxUsers        int
+	threshold         int
+	window            time.Duration
+	cache             cache.Cache[int64, userHistory] // LRU cache with max users limit
+	mu                sync.RWMutex
+	lastCleanup       time.Time
+	cleanupInterval   time.Duration
+	maxUsers          int
+	maxEntriesPerUser int
 }
 
 type userHistory struct {
@@ -39,13 +40,15 @@ func newDuplicateDetector(threshold int, window time.Duration) *duplicateDetecto
 	}
 
 	const defaultMaxUsers = 10000
+	const defaultMaxEntriesPerUser = 200 // prevent memory exhaustion from malicious users
 
 	return &duplicateDetector{
-		threshold:       threshold,
-		window:          window,
-		cache:           cache.NewCache[int64, userHistory]().WithMaxKeys(defaultMaxUsers).WithTTL(window * 2),
-		cleanupInterval: 10 * time.Minute,
-		maxUsers:        defaultMaxUsers,
+		threshold:         threshold,
+		window:            window,
+		cache:             cache.NewCache[int64, userHistory]().WithMaxKeys(defaultMaxUsers).WithTTL(window * 2),
+		cleanupInterval:   10 * time.Minute,
+		maxUsers:          defaultMaxUsers,
+		maxEntriesPerUser: defaultMaxEntriesPerUser,
 	}
 }
 
@@ -78,13 +81,16 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string) int {
 	msgHash := d.hash(msg)
 	now := time.Now()
 
-	// periodically cleanup expired entries for all users
+	// use mutex to protect the entire Get-Modify-Set operation
+	// this ensures atomicity for each user's history updates
 	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// periodically cleanup expired entries for all users
 	if now.Sub(d.lastCleanup) > d.cleanupInterval {
 		d.performCleanup(now)
 		d.lastCleanup = now
 	}
-	d.mu.Unlock()
 
 	// get or create user history
 	history, found := d.cache.Get(userID)
@@ -97,7 +103,8 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string) int {
 
 	// clean old entries
 	cutoff := now.Add(-d.window)
-	filtered := history.entries[:0]
+	// create a new slice to avoid sharing underlying array
+	filtered := make([]hashEntry, 0, len(history.entries)+1)
 	newHashCounts := make(map[string]int)
 
 	for _, entry := range history.entries {
@@ -110,6 +117,20 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string) int {
 	// add new entry
 	filtered = append(filtered, hashEntry{hash: msgHash, time: now})
 	newHashCounts[msgHash]++
+
+	// limit entries per user to prevent memory exhaustion
+	if len(filtered) > d.maxEntriesPerUser {
+		// remove oldest entries, keeping only the most recent ones
+		startIdx := len(filtered) - d.maxEntriesPerUser
+		// update hash counts for removed entries
+		for i := 0; i < startIdx; i++ {
+			newHashCounts[filtered[i].hash]--
+			if newHashCounts[filtered[i].hash] == 0 {
+				delete(newHashCounts, filtered[i].hash)
+			}
+		}
+		filtered = filtered[startIdx:]
+	}
 
 	history.entries = filtered
 	history.hashCounts = newHashCounts
@@ -139,7 +160,8 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 		}
 
 		// clean old entries
-		filtered := history.entries[:0]
+		// create a new slice to avoid sharing underlying array
+		filtered := make([]hashEntry, 0, len(history.entries))
 		newHashCounts := make(map[string]int)
 
 		for _, entry := range history.entries {

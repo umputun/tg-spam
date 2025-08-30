@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,6 +354,109 @@ func TestDetector_CheckDuplicatesTimeWindow(t *testing.T) {
 	// third message - should not trigger as previous ones expired
 	spam, _ = d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
 	assert.False(t, spam)
+}
+
+func TestDetector_CheckDuplicatesConcurrency(t *testing.T) {
+	d := NewDetector(Config{
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 50,
+			Window:    time.Minute,
+		},
+	})
+
+	userID := "12345"
+	message := "concurrent test message"
+	concurrency := 10
+	iterations := 10
+	expectedCount := concurrency * iterations
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	// send same message concurrently from same user
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				d.Check(spamcheck.Request{
+					UserID: userID,
+					Msg:    message,
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// verify the count is correct (no lost updates)
+	// one more check to get the final count
+	spam, cr := d.Check(spamcheck.Request{
+		UserID: userID,
+		Msg:    message,
+	})
+
+	assert.True(t, spam, "should be detected as spam after %d messages", expectedCount+1)
+
+	dupResp := findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.True(t, dupResp.Spam)
+
+	// extract count from details
+	var count int
+	_, err := fmt.Sscanf(dupResp.Details, "message repeated %d times", &count)
+	require.NoError(t, err)
+
+	// count should be exactly expectedCount + 1 (for the final check)
+	assert.Equal(t, expectedCount+1, count, "count should be accurate with no race conditions")
+}
+
+func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
+	d := NewDetector(Config{
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 2,         // low threshold to detect duplicates
+			Window:    time.Hour, // long window to keep all messages
+		},
+	})
+
+	userID := "12345" // use numeric user ID
+
+	// send many unique messages to try to exhaust memory
+	// the detector should limit to maxEntriesPerUser (200)
+	for i := 0; i < 300; i++ {
+		message := fmt.Sprintf("unique message %d", i)
+		d.Check(spamcheck.Request{
+			UserID: userID,
+			Msg:    message,
+		})
+	}
+
+	// now send a duplicate of an early message that should have been evicted
+	// message 50 was sent early (300-50 = 250 messages ago), so it should be evicted
+	spam, cr := d.Check(spamcheck.Request{
+		UserID: userID,
+		Msg:    "unique message 50",
+	})
+	assert.False(t, spam, "early message should have been evicted, not detected as duplicate")
+	dupResp := findResponseByName(cr, "duplicate")
+	assert.False(t, dupResp.Spam, "should not be spam since it was evicted")
+
+	// send a duplicate of a recent message that should still be tracked
+	// message 250 is within the last 200 messages, so it should still be tracked
+	spam, cr = d.Check(spamcheck.Request{
+		UserID: userID,
+		Msg:    "unique message 250",
+	})
+	assert.True(t, spam, "recent message should be tracked and trigger spam detection")
+	dupResp = findResponseByName(cr, "duplicate")
+	require.NotNil(t, dupResp)
+	assert.True(t, dupResp.Spam)
+	assert.Contains(t, dupResp.Details, "message repeated 2 times")
 }
 
 func TestSpam_CheckIsCasSpam(t *testing.T) {
