@@ -34,15 +34,16 @@ import (
 // It uses a set of checks to determine if a message is spam, and also keeps a list of approved users.
 type Detector struct {
 	Config
-	classifier     classifier
-	openaiChecker  *openAIChecker
-	metaChecks     []MetaCheck
-	luaChecks      []plugin.Check // separate field for Lua plugin checks
-	tokenizedSpam  []map[string]int
-	approvedUsers  map[string]approved.UserInfo
-	stopWords      []string
-	excludedTokens map[string]struct{}
-	luaEngine      LuaPluginEngine
+	classifier        classifier
+	openaiChecker     *openAIChecker
+	duplicateDetector *duplicateDetector
+	metaChecks        []MetaCheck
+	luaChecks         []plugin.Check // separate field for Lua plugin checks
+	tokenizedSpam     []map[string]int
+	approvedUsers     map[string]approved.UserInfo
+	stopWords         []string
+	excludedTokens    map[string]struct{}
+	luaEngine         LuaPluginEngine
 
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
@@ -86,6 +87,12 @@ type Config struct {
 		ShortWordRatioThreshold float64 // the ratio of short words to all words in the message
 		SpaceRatioThreshold     float64 // the ratio of spaces to all characters in the message
 	}
+
+	DuplicateDetection struct {
+		Threshold int           // number of duplicate messages to trigger spam (0=disabled)
+		Window    time.Duration // time window for duplicate detection
+	}
+
 	HistorySize int // history of recent messages to keep in memory
 }
 
@@ -129,15 +136,16 @@ type LoadResult struct {
 // NewDetector makes a new Detector with the given config.
 func NewDetector(p Config) *Detector {
 	res := &Detector{
-		Config:        p,
-		classifier:    newClassifier(),
-		approvedUsers: make(map[string]approved.UserInfo),
-		tokenizedSpam: []map[string]int{},
-		metaChecks:    []MetaCheck{},
-		luaChecks:     []plugin.Check{},
-		hamHistory:    spamcheck.NewLastRequests(p.HistorySize),
-		spamHistory:   spamcheck.NewLastRequests(p.HistorySize),
-		luaEngine:     nil, // will be set with WithLuaEngine if needed
+		Config:            p,
+		classifier:        newClassifier(),
+		approvedUsers:     make(map[string]approved.UserInfo),
+		tokenizedSpam:     []map[string]int{},
+		metaChecks:        []MetaCheck{},
+		luaChecks:         []plugin.Check{},
+		hamHistory:        spamcheck.NewLastRequests(p.HistorySize),
+		spamHistory:       spamcheck.NewLastRequests(p.HistorySize),
+		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
+		luaEngine:         nil, // will be set with WithLuaEngine if needed
 	}
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
@@ -182,6 +190,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for emojis if max allowed emojis is set
 	if d.MaxAllowedEmoji >= 0 {
 		cr = append(cr, d.isManyEmojis(req.Msg))
+	}
+
+	// check for duplicate messages
+	if d.duplicateDetector != nil {
+		cr = append(cr, d.duplicateDetector.check(req))
 	}
 
 	// check for spam with meta-checks
