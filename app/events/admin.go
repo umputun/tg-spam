@@ -259,7 +259,7 @@ func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
 		return 0, fmt.Errorf("failed to get user messages: %w", err)
 	}
 
-	// rate limit: 30 messages per second max (35ms delay between deletions)
+	// rate limit: telegram allows 30 msg/sec, we use 35ms delay (~28.6 msg/sec) to stay safely below
 	rateLimiter := time.NewTicker(35 * time.Millisecond)
 	defer rateLimiter.Stop()
 
