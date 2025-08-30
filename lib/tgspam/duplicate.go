@@ -73,7 +73,7 @@ func (d *duplicateDetector) check(req spamcheck.Request) spamcheck.Response {
 		}
 	}
 
-	return spamcheck.Response{Name: "duplicate", Spam: false}
+	return spamcheck.Response{Name: "duplicate", Spam: false, Details: "no duplicates found"}
 }
 
 // trackMessage tracks a message and returns the count of duplicates

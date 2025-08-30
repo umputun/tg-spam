@@ -2,6 +2,7 @@ package tgspam
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -104,6 +105,21 @@ func TestDuplicateDetector_Check(t *testing.T) {
 
 				if resp.Spam {
 					assert.Contains(t, resp.Details, "repeated")
+				}
+				
+				if !resp.Spam && tt.threshold > 0 {
+					// when check is enabled and no spam detected
+					if msg.UserID == "" {
+						assert.Equal(t, "check disabled", resp.Details)
+						continue
+					}
+					
+					if _, err := strconv.ParseInt(msg.UserID, 10, 64); err != nil {
+						assert.Equal(t, "invalid user id", resp.Details)
+						continue
+					}
+					
+					assert.Equal(t, "no duplicates found", resp.Details)
 				}
 			}
 		})
