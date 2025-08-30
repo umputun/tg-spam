@@ -114,6 +114,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 	log.Printf("[DEBUG] admin handler created, spam forwarding %s, %+v", adminForwardStatus, l.adminHandler)
 
+	if l.AggressiveCleanup {
+		log.Printf("[INFO] aggressive cleanup enabled, all messages from user will be deleted on ban, limit %d", l.AggressiveCleanupLimit)
+	}
+
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
 

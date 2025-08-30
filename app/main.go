@@ -553,6 +553,9 @@ func makeDetector(opts options) *tgspam.Detector {
 	// set duplicate detection config
 	detectorConfig.DuplicateDetection.Threshold = opts.Duplicates.Threshold
 	detectorConfig.DuplicateDetection.Window = opts.Duplicates.Window
+	if opts.Duplicates.Threshold > 0 {
+		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v", opts.Duplicates.Threshold, opts.Duplicates.Window)
+	}
 
 	detector := tgspam.NewDetector(detectorConfig)
 
