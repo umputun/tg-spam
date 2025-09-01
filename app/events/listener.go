@@ -288,6 +288,26 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 
+	// delete extra messages if spam detected (e.g., duplicates)
+	if len(resp.CheckResults) > 0 && !l.Dry && !l.TrainingMode {
+		for _, checkResult := range resp.CheckResults {
+			if checkResult.Spam && len(checkResult.ExtraDeleteIDs) > 0 {
+				log.Printf("[INFO] deleting %d extra messages from user %d", len(checkResult.ExtraDeleteIDs), msg.From.ID)
+				for _, msgID := range checkResult.ExtraDeleteIDs {
+					// add small delay to avoid rate limiting
+					time.Sleep(35 * time.Millisecond)
+					if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+						MessageID:  msgID,
+						ChatConfig: tbapi.ChatConfig{ChatID: fromChat},
+					}}); err != nil {
+						// don't fail the whole operation if some messages can't be deleted
+						log.Printf("[WARN] failed to delete extra message %d: %v", msgID, err)
+					}
+				}
+			}
+		}
+	}
+
 	// delete message if requested by bot
 	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
 		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{

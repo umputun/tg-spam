@@ -51,3 +51,13 @@
 - Documentation: All exported functions and types must be documented with standard Go comments
 - Interfaces: Define interfaces in consumer packages
 - Mocks: Generate with github.com/matryer/moq and store in mocks package
+
+## Spam Detection Architecture
+
+### ExtraDeleteIDs Feature
+- `spamcheck.Response` includes `ExtraDeleteIDs []int` field for additional message IDs to delete when spam is detected
+- Any spam checker can populate this field to request deletion of related messages
+- Currently used by duplicate detector to delete all previous duplicates when threshold is reached
+- The listener handles these deletions with rate limiting (35ms between deletions) to respect Telegram API limits
+- Deletion errors are logged but don't fail the operation (messages might be already deleted or too old)
+- Design principle: When a spammer is detected, aggressively clean up ALL their spam messages, not just the triggering one

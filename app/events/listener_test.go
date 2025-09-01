@@ -548,6 +548,93 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
 }
 
+func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+
+	deletedMessages := []int{}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			// track deleted messages
+			if delConfig, ok := c.(tbapi.DeleteMessageConfig); ok {
+				deletedMessages = append(deletedMessages, delConfig.MessageID)
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+
+	b := &mocks.BotMock{
+		OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Logf("on-message: %+v", msg)
+			if msg.Text == "spam spam spam" {
+				// simulate duplicate detector response with extra IDs
+				return bot.Response{
+					Send:        true,
+					Text:        "duplicate spam detected",
+					BanInterval: time.Hour,
+					User:        bot.User{Username: "user", ID: 1},
+					CheckResults: []spamcheck.Response{
+						{
+							Name:           "duplicate",
+							Spam:           true,
+							Details:        "message repeated 3 times",
+							ExtraDeleteIDs: []int{100, 101}, // previous duplicate messages to delete
+						},
+					},
+				}
+			}
+			return bot.Response{}
+		},
+	}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        b,
+		Group:      "gr",
+		Locator:    locator,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			MessageID: 102, // current message
+			Chat:      tbapi.Chat{ID: 123},
+			Text:      "spam spam spam",
+			From:      &tbapi.User{UserName: "user", ID: 1},
+			Date:      int(time.Now().Unix()),
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+
+	// verify that extra messages were deleted
+	assert.Contains(t, deletedMessages, 100, "should delete first duplicate")
+	assert.Contains(t, deletedMessages, 101, "should delete second duplicate")
+
+	// verify ban was called + 2 delete requests for extra messages
+	assert.Equal(t, 3, len(mockAPI.RequestCalls()), "should have 1 ban + 2 delete requests")
+}
+
 func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
