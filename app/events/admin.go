@@ -401,7 +401,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 			}
 			if deleted > 0 {
 				log.Printf("[INFO] aggressive cleanup: deleted %d messages from user %d", deleted, origMsg.From.ID)
-				notifyMsg := fmt.Sprintf("_deleted %d messages from spammer_", deleted)
+				notifyMsg := fmt.Sprintf("_deleted %d messages from spammer %q (%d)_", deleted, escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID)
 				if err := send(tbapi.NewMessage(a.adminChatID, notifyMsg), a.tbAPI); err != nil {
 					log.Printf("[WARN] failed to send deletion notification: %v", err)
 				}

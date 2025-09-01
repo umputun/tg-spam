@@ -1408,18 +1408,21 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 		}
 		assert.Equal(t, 5, deleteCount, "Should delete original + admin messages and 3 additional messages")
 
-		// verify notification was sent
+		// verify notification was sent with correct format
 		sendCalls := mockAPI.SendCalls()
 		foundNotification := false
+		var notificationMsg string
 		for _, call := range sendCalls {
 			if msg, ok := call.C.(tbapi.MessageConfig); ok {
-				if strings.Contains(msg.Text, "deleted 3 messages") {
+				if strings.Contains(msg.Text, "deleted 3 messages from spammer") {
 					foundNotification = true
+					notificationMsg = msg.Text
 					break
 				}
 			}
 		}
 		assert.True(t, foundNotification, "Should send notification about deleted messages")
+		assert.Contains(t, notificationMsg, "deleted 3 messages from spammer \"spammer\" (666)", "Notification should include username and ID")
 	})
 
 	t.Run("aggressive cleanup disabled", func(t *testing.T) {
