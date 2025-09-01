@@ -271,8 +271,8 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 		history, found := d.cache.Get(userID)
 		require.True(t, found)
 		require.NotNil(t, history)
-		assert.LessOrEqual(t, len(history.entries), 10)
-		assert.LessOrEqual(t, len(history.hashCounts), 3) // only 3 different messages
+		assert.Equal(t, 10, len(history.entries)) // exactly 10 messages sent per user
+		assert.Equal(t, 3, len(history.trackers)) // exactly 3 different messages (msg0, msg1, msg2)
 	}
 }
 

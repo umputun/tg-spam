@@ -24,14 +24,18 @@ type duplicateDetector struct {
 }
 
 type userHistory struct {
-	hashCounts map[string]int   // hash -> count for O(1) lookup
-	entries    []hashEntry      // for time-based cleanup
-	messageIDs map[string][]int // hash -> message IDs for deletion
+	entries  []hashEntry            // for time-based cleanup
+	trackers map[string]hashTracker // hash -> tracker with count and message IDs
 }
 
 type hashEntry struct {
 	hash string
 	time time.Time
+}
+
+type hashTracker struct {
+	count      int   // number of duplicates
+	messageIDs []int // message IDs for deletion
 }
 
 // newDuplicateDetector creates a new duplicate detector
@@ -98,74 +102,81 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 	history, found := d.cache.Get(userID)
 	if !found {
 		history = userHistory{
-			hashCounts: make(map[string]int),
-			entries:    make([]hashEntry, 0),
-			messageIDs: make(map[string][]int),
+			entries:  make([]hashEntry, 0),
+			trackers: make(map[string]hashTracker),
 		}
 	}
 
-	// initialize messageIDs map if nil (for backward compatibility)
-	if history.messageIDs == nil {
-		history.messageIDs = make(map[string][]int)
+	// initialize trackers map if nil (for backward compatibility)
+	if history.trackers == nil {
+		history.trackers = make(map[string]hashTracker)
 	}
 
 	// clean old entries
 	cutoff := now.Add(-d.window)
 	// create a new slice to avoid sharing underlying array
 	filtered := make([]hashEntry, 0, len(history.entries)+1)
-	newHashCounts := make(map[string]int)
-	newMessageIDs := make(map[string][]int)
+	newTrackers := make(map[string]hashTracker)
 
 	for _, entry := range history.entries {
 		if entry.time.After(cutoff) {
 			filtered = append(filtered, entry)
-			newHashCounts[entry.hash]++
+			tracker := newTrackers[entry.hash]
+			tracker.count++
+			newTrackers[entry.hash] = tracker
 		}
 	}
 
-	// preserve message IDs for entries still in window (do this separately to avoid duplicates)
-	for hash, ids := range history.messageIDs {
-		if newHashCounts[hash] > 0 {
-			newMessageIDs[hash] = ids
+	// preserve message IDs for entries still in window
+	for hash, oldTracker := range history.trackers {
+		if tracker, exists := newTrackers[hash]; exists {
+			tracker.messageIDs = oldTracker.messageIDs
+			newTrackers[hash] = tracker
 		}
 	}
 
 	// add new entry
 	filtered = append(filtered, hashEntry{hash: msgHash, time: now})
-	newHashCounts[msgHash]++
-	newMessageIDs[msgHash] = append(newMessageIDs[msgHash], messageID)
+	tracker := newTrackers[msgHash]
+	tracker.count++
+	tracker.messageIDs = append(tracker.messageIDs, messageID)
+	newTrackers[msgHash] = tracker
 
 	// limit entries per user to prevent memory exhaustion
 	if len(filtered) > d.maxEntriesPerUser {
 		// remove oldest entries, keeping only the most recent ones
 		startIdx := len(filtered) - d.maxEntriesPerUser
-		// update hash counts and message IDs for removed entries
+		// update trackers for removed entries
 		for i := 0; i < startIdx; i++ {
-			newHashCounts[filtered[i].hash]--
-			if newHashCounts[filtered[i].hash] == 0 {
-				delete(newHashCounts, filtered[i].hash)
-				delete(newMessageIDs, filtered[i].hash)
+			if t, exists := newTrackers[filtered[i].hash]; exists {
+				t.count--
+				if t.count == 0 {
+					delete(newTrackers, filtered[i].hash)
+				} else {
+					newTrackers[filtered[i].hash] = t
+				}
 			}
 		}
 		filtered = filtered[startIdx:]
 	}
 
-	count = newHashCounts[msgHash]
+	tracker = newTrackers[msgHash]
+	count = tracker.count
 
 	// if threshold reached, prepare extra IDs for deletion (excluding current message)
 	if count >= d.threshold {
-		if ids, ok := newMessageIDs[msgHash]; ok && len(ids) > 1 {
+		if len(tracker.messageIDs) > 1 {
 			// return all IDs except the current one (last in the list)
-			extraIDs = make([]int, len(ids)-1)
-			copy(extraIDs, ids[:len(ids)-1])
+			extraIDs = make([]int, len(tracker.messageIDs)-1)
+			copy(extraIDs, tracker.messageIDs[:len(tracker.messageIDs)-1])
 			// clear the IDs to prevent re-deletion
-			newMessageIDs[msgHash] = nil
+			tracker.messageIDs = nil
+			newTrackers[msgHash] = tracker
 		}
 	}
 
 	history.entries = filtered
-	history.hashCounts = newHashCounts
-	history.messageIDs = newMessageIDs
+	history.trackers = newTrackers
 
 	// update cache with modified history
 	d.cache.Set(userID, history, d.window*2)
@@ -194,12 +205,22 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 		// clean old entries
 		// create a new slice to avoid sharing underlying array
 		filtered := make([]hashEntry, 0, len(history.entries))
-		newHashCounts := make(map[string]int)
+		newTrackers := make(map[string]hashTracker)
 
 		for _, entry := range history.entries {
 			if entry.time.After(cutoff) {
 				filtered = append(filtered, entry)
-				newHashCounts[entry.hash]++
+				tracker := newTrackers[entry.hash]
+				tracker.count++
+				newTrackers[entry.hash] = tracker
+			}
+		}
+
+		// preserve message IDs for entries still in window
+		for hash, oldTracker := range history.trackers {
+			if tracker, exists := newTrackers[hash]; exists {
+				tracker.messageIDs = oldTracker.messageIDs
+				newTrackers[hash] = tracker
 			}
 		}
 
@@ -208,7 +229,7 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 			d.cache.Invalidate(userID)
 		} else {
 			history.entries = filtered
-			history.hashCounts = newHashCounts
+			history.trackers = newTrackers
 			// update cache with cleaned history
 			d.cache.Set(userID, history, d.window*2)
 		}

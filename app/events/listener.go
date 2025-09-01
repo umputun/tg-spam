@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 // TelegramListener listens to tg update, forward to bots and send back responses
@@ -289,24 +290,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// delete extra messages if spam detected (e.g., duplicates)
-	if len(resp.CheckResults) > 0 && !l.Dry && !l.TrainingMode {
-		for _, checkResult := range resp.CheckResults {
-			if checkResult.Spam && len(checkResult.ExtraDeleteIDs) > 0 {
-				log.Printf("[INFO] deleting %d extra messages from user %d", len(checkResult.ExtraDeleteIDs), msg.From.ID)
-				for _, msgID := range checkResult.ExtraDeleteIDs {
-					// add small delay to avoid rate limiting
-					time.Sleep(35 * time.Millisecond)
-					if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-						MessageID:  msgID,
-						ChatConfig: tbapi.ChatConfig{ChatID: fromChat},
-					}}); err != nil {
-						// don't fail the whole operation if some messages can't be deleted
-						log.Printf("[WARN] failed to delete extra message %d: %v", msgID, err)
-					}
-				}
-			}
-		}
-	}
+	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, fromChat)
 
 	// delete message if requested by bot
 	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
@@ -530,6 +514,32 @@ func (l *TelegramListener) updateSupers() error {
 		return fmt.Errorf("error getting chat administrators: %w", err)
 	}
 	return nil
+}
+
+// deleteExtraMessages deletes additional messages specified in check results (e.g., duplicate messages)
+func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response, userID, chatID int64) {
+	if len(checkResults) == 0 || l.Dry || l.TrainingMode {
+		return
+	}
+
+	for _, checkResult := range checkResults {
+		if !checkResult.Spam || len(checkResult.ExtraDeleteIDs) == 0 {
+			continue
+		}
+
+		log.Printf("[INFO] deleting %d extra messages from user %d", len(checkResult.ExtraDeleteIDs), userID)
+		for _, msgID := range checkResult.ExtraDeleteIDs {
+			// add small delay to avoid rate limiting
+			time.Sleep(35 * time.Millisecond)
+			if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+				MessageID:  msgID,
+				ChatConfig: tbapi.ChatConfig{ChatID: chatID},
+			}}); err != nil {
+				// don't fail the whole operation if some messages can't be deleted
+				log.Printf("[WARN] failed to delete extra message %d: %v", msgID, err)
+			}
+		}
+	}
 }
 
 // SuperUsers for moderators. Can be either username or user ID.
