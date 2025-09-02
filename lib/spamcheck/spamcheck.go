@@ -23,6 +23,7 @@ type MetaData struct {
 	HasAudio    bool `json:"has_audio"`    // true if the message has an audio
 	HasForward  bool `json:"has_forward"`  // true if the message has a forward
 	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
+	MessageID   int  `json:"message_id"`   // telegram message ID
 }
 
 func (r *Request) String() string {
@@ -32,10 +33,11 @@ func (r *Request) String() string {
 
 // Response is a result of spam check.
 type Response struct {
-	Name    string `json:"name"`    // name of the check
-	Spam    bool   `json:"spam"`    // true if spam
-	Details string `json:"details"` // details of the check
-	Error   error  `json:"-"`       // error message, if any. Do not serialize it
+	Name           string `json:"name"`                       // name of the check
+	Spam           bool   `json:"spam"`                       // true if spam
+	Details        string `json:"details"`                    // details of the check
+	Error          error  `json:"-"`                          // error message, if any. Do not serialize it
+	ExtraDeleteIDs []int  `json:"extra_delete_ids,omitempty"` // additional message IDs to delete when spam detected
 }
 
 func (r *Response) String() string {

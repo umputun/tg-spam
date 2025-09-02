@@ -106,19 +106,19 @@ func TestDuplicateDetector_Check(t *testing.T) {
 				if resp.Spam {
 					assert.Contains(t, resp.Details, "repeated")
 				}
-				
+
 				if !resp.Spam && tt.threshold > 0 {
 					// when check is enabled and no spam detected
 					if msg.UserID == "" {
 						assert.Equal(t, "check disabled", resp.Details)
 						continue
 					}
-					
+
 					if _, err := strconv.ParseInt(msg.UserID, 10, 64); err != nil {
 						assert.Equal(t, "invalid user id", resp.Details)
 						continue
 					}
-					
+
 					assert.Equal(t, "no duplicates found", resp.Details)
 				}
 			}
@@ -130,19 +130,62 @@ func TestDuplicateDetector_TimeWindow(t *testing.T) {
 	d := newDuplicateDetector(2, 100*time.Millisecond)
 
 	// send first message
-	resp := d.check(spamcheck.Request{Msg: "test", UserID: "123"})
+	resp := d.check(spamcheck.Request{Msg: "test", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1001}})
 	assert.False(t, resp.Spam)
 
 	// send second message - should trigger
-	resp = d.check(spamcheck.Request{Msg: "test", UserID: "123"})
+	resp = d.check(spamcheck.Request{Msg: "test", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1002}})
 	assert.True(t, resp.Spam)
 
 	// wait for window to expire
 	time.Sleep(150 * time.Millisecond)
 
 	// send third message - should not trigger as previous ones expired
-	resp = d.check(spamcheck.Request{Msg: "test", UserID: "123"})
+	resp = d.check(spamcheck.Request{Msg: "test", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1003}})
 	assert.False(t, resp.Spam)
+}
+
+func TestDuplicateDetector_ExtraDeleteIDs(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour) // long window to avoid expiry
+
+	// send first message
+	resp := d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1001}})
+	assert.False(t, resp.Spam)
+	assert.Nil(t, resp.ExtraDeleteIDs)
+
+	// send second message - still not spam
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1002}})
+	assert.False(t, resp.Spam)
+	assert.Nil(t, resp.ExtraDeleteIDs)
+
+	// send third message - should trigger spam with extra IDs
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1003}})
+	assert.True(t, resp.Spam)
+	assert.Equal(t, []int{1001, 1002}, resp.ExtraDeleteIDs, "should return first two message IDs")
+
+	// send fourth message - should still trigger but IDs were cleared
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1004}})
+	assert.True(t, resp.Spam)
+	assert.Nil(t, resp.ExtraDeleteIDs, "IDs should be cleared after first spam detection")
+}
+
+func TestDuplicateDetector_ExtraDeleteIDs_DifferentMessages(t *testing.T) {
+	d := newDuplicateDetector(2, time.Hour) // threshold of 2
+
+	// send different messages from same user - should not collect IDs
+	resp := d.check(spamcheck.Request{Msg: "hello", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1001}})
+	assert.False(t, resp.Spam)
+
+	resp = d.check(spamcheck.Request{Msg: "world", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1002}})
+	assert.False(t, resp.Spam)
+
+	// now send duplicates
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1003}})
+	assert.False(t, resp.Spam)
+
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1004}})
+	assert.True(t, resp.Spam)
+	assert.Equal(t, []int{1003}, resp.ExtraDeleteIDs, "should only include duplicate message ID")
 }
 
 func TestDuplicateDetector_AutomaticCleanup(t *testing.T) {
@@ -228,8 +271,8 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 		history, found := d.cache.Get(userID)
 		require.True(t, found)
 		require.NotNil(t, history)
-		assert.LessOrEqual(t, len(history.entries), 10)
-		assert.LessOrEqual(t, len(history.hashCounts), 3) // only 3 different messages
+		assert.Equal(t, 10, len(history.entries)) // exactly 10 messages sent per user
+		assert.Equal(t, 3, len(history.trackers)) // exactly 3 different messages (msg0, msg1, msg2)
 	}
 }
 
