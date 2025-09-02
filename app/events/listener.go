@@ -290,7 +290,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// delete extra messages if spam detected (e.g., duplicates)
-	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, fromChat)
+	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
 
 	// delete message if requested by bot
 	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
@@ -517,8 +517,14 @@ func (l *TelegramListener) updateSupers() error {
 }
 
 // deleteExtraMessages deletes additional messages specified in check results (e.g., duplicate messages)
-func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response, userID, chatID int64) {
+func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response, userID int64, username string, chatID int64) {
 	if len(checkResults) == 0 || l.Dry || l.TrainingMode {
+		return
+	}
+
+	// don't delete messages from superusers
+	if l.SuperUsers.IsSuper(username, userID) {
+		log.Printf("[DEBUG] skip extra deletions for superuser %s (%d)", username, userID)
 		return
 	}
 
