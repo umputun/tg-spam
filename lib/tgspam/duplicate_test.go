@@ -276,6 +276,153 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 	}
 }
 
+func TestDuplicateDetector_DurationBetweenDuplicates(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour) // threshold of 3, large window
+
+	// send first message
+	resp := d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1001}})
+	assert.False(t, resp.Spam)
+
+	// wait a bit
+	time.Sleep(100 * time.Millisecond)
+
+	// send second message
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1002}})
+	assert.False(t, resp.Spam)
+
+	// wait more
+	time.Sleep(200 * time.Millisecond)
+
+	// send third message - should trigger spam with actual duration
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1003}})
+	assert.True(t, resp.Spam)
+
+	// the duration should be approximately 300ms (between first and third message)
+	// check that it's not showing the configured window (1h)
+	assert.NotContains(t, resp.Details, "1h")
+	assert.Contains(t, resp.Details, "message repeated 3 times in")
+	// the duration should be rounded to seconds (0s since less than 1s)
+	assert.Contains(t, resp.Details, "message repeated 3 times in 0s")
+}
+
+func TestDuplicateDetector_InstantDuplicates(t *testing.T) {
+	d := newDuplicateDetector(2, time.Hour) // threshold of 2
+
+	// send two messages instantly
+	resp := d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1001}})
+	assert.False(t, resp.Spam)
+
+	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1002}})
+	assert.True(t, resp.Spam)
+
+	// when messages are sent very quickly, should show either "instantly" or 0s (rounded to seconds)
+	assert.Contains(t, resp.Details, "message repeated 2 times in")
+	// should show either "instantly" or "0s" when rounded to seconds
+	assert.Regexp(t, `message repeated 2 times in (instantly|0s)`, resp.Details)
+}
+
+func TestDuplicateDetector_MessageIDsGrowthExceedsMax(t *testing.T) {
+	d := newDuplicateDetector(1000, time.Hour) // very high threshold
+	// maxEntriesPerUser is 200 by default
+
+	// send 300 duplicate messages, staying below threshold but exceeding maxEntriesPerUser
+	for i := 0; i < 300; i++ {
+		resp := d.check(spamcheck.Request{
+			Msg:    "spam message",
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: 1000 + i},
+		})
+		assert.False(t, resp.Spam, "should not trigger spam with threshold 1000")
+	}
+
+	// check how many message IDs are stored
+	history, found := d.cache.Get(int64(123))
+	assert.True(t, found)
+
+	msgHash := d.hash("spam message")
+	tracker := history.trackers[msgHash]
+
+	t.Logf("maxEntriesPerUser: %d", d.maxEntriesPerUser)
+	t.Logf("Number of entries: %d", len(history.entries))
+	t.Logf("Number of message IDs stored: %d", len(tracker.messageIDs))
+
+	// entries should be limited to maxEntriesPerUser
+	assert.Equal(t, d.maxEntriesPerUser, len(history.entries))
+
+	// messageIDs should now be capped at 100 (or threshold if lower)
+	assert.LessOrEqual(t, len(tracker.messageIDs), 100, "messageIDs should be capped to prevent unbounded growth")
+	assert.Greater(t, len(tracker.messageIDs), 0, "should have some message IDs")
+}
+
+func TestDuplicateDetector_FirstSeenAfterTrimming(t *testing.T) {
+	d := newDuplicateDetector(10, time.Hour) // high threshold to avoid triggering spam
+	d.maxEntriesPerUser = 3                  // very small limit to force trimming
+
+	// send 5 messages with delays to have different timestamps
+	for i := 0; i < 5; i++ {
+		resp := d.check(spamcheck.Request{
+			Msg:    "same message",
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: 1000 + i},
+		})
+		assert.False(t, resp.Spam)
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// check the history
+	history, found := d.cache.Get(int64(123))
+	assert.True(t, found)
+	assert.Equal(t, 3, len(history.entries), "should only keep 3 most recent entries")
+
+	// check the tracker
+	msgHash := d.hash("same message")
+	tracker := history.trackers[msgHash]
+
+	// the firstSeen should now match the earliest entry we have after trimming
+	earliestEntry := history.entries[0]
+
+	t.Logf("FirstSeen: %v", tracker.firstSeen)
+	t.Logf("Earliest entry time: %v", earliestEntry.time)
+
+	// firstSeen should match the first entry after trimming
+	assert.Equal(t, earliestEntry.time, tracker.firstSeen, "firstSeen should be updated after trimming")
+}
+
+func TestDuplicateDetector_InvalidMessageIDs(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// send messages with invalid IDs
+	resp := d.check(spamcheck.Request{
+		Msg:    "test",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 0}, // invalid ID
+	})
+	assert.False(t, resp.Spam)
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "test",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: -1}, // negative ID
+	})
+	assert.False(t, resp.Spam)
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "test",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001}, // valid ID
+	})
+	assert.True(t, resp.Spam) // should trigger on 3rd duplicate
+
+	// check that invalid IDs are not in ExtraDeleteIDs
+	t.Logf("ExtraDeleteIDs: %v", resp.ExtraDeleteIDs)
+	for _, id := range resp.ExtraDeleteIDs {
+		assert.Greater(t, id, 0, "should not include invalid IDs (0 or negative)")
+	}
+
+	// extra IDs should only contain the valid ID (1001) if any
+	// but since we clear on threshold, it might be empty
+}
+
 func TestDuplicateDetector_LRUEviction(t *testing.T) {
 	d := newDuplicateDetector(2, time.Hour)
 	d.maxUsers = 3 // set small limit for testing

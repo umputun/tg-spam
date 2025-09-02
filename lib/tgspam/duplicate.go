@@ -34,8 +34,10 @@ type hashEntry struct {
 }
 
 type hashTracker struct {
-	count      int   // number of duplicates
-	messageIDs []int // message IDs for deletion
+	count      int       // number of duplicates
+	messageIDs []int     // message IDs for deletion
+	firstSeen  time.Time // timestamp of first occurrence
+	lastSeen   time.Time // timestamp of last occurrence
 }
 
 // newDuplicateDetector creates a new duplicate detector
@@ -71,10 +73,11 @@ func (d *duplicateDetector) check(req spamcheck.Request) spamcheck.Response {
 	count, extraIDs := d.trackMessage(userID, req.Msg, req.Meta.MessageID)
 
 	if count >= d.threshold {
+		msgHash := d.hash(req.Msg)
 		return spamcheck.Response{
 			Name:           "duplicate",
 			Spam:           true,
-			Details:        fmt.Sprintf("message repeated %d times in %s", count, d.window),
+			Details:        fmt.Sprintf("message repeated %d times in %s", count, d.formatDuration(userID, msgHash)),
 			ExtraDeleteIDs: extraIDs,
 		}
 	}
@@ -119,21 +122,38 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 	newTrackers := make(map[string]hashTracker)
 
 	for _, entry := range history.entries {
-		if entry.time.After(cutoff) {
-			filtered = append(filtered, entry)
-			tracker := newTrackers[entry.hash]
-			tracker.count++
-			newTrackers[entry.hash] = tracker
+		if !entry.time.After(cutoff) {
+			continue
 		}
+		filtered = append(filtered, entry)
+		tracker := newTrackers[entry.hash]
+		tracker.count++
+		// preserve first seen timestamp
+		if tracker.firstSeen.IsZero() {
+			tracker.firstSeen = entry.time
+		}
+		tracker.lastSeen = entry.time
+		newTrackers[entry.hash] = tracker
 	}
 
-	// NOTE: We intentionally preserve all known messageIDs for a given hash,
-	// not just those still in the time window. This allows bulk deletion of
-	// all duplicates detected historically once the threshold is reached.
-	// do not filter messageIDs here by the time window.
+	// NOTE: We preserve messageIDs for a given hash but limit them to prevent unbounded growth.
+	// we keep at most (threshold-1) + current message IDs since that's all we need for deletion.
+	maxMessageIDs := d.threshold
+	if maxMessageIDs > 100 {
+		maxMessageIDs = 100 // cap at 100 to prevent excessive memory usage
+	}
 	for hash, oldTracker := range history.trackers {
 		if tracker, exists := newTrackers[hash]; exists {
 			tracker.messageIDs = oldTracker.messageIDs
+			// limit the number of message IDs we keep
+			if len(tracker.messageIDs) > maxMessageIDs {
+				// keep only the most recent IDs
+				tracker.messageIDs = tracker.messageIDs[len(tracker.messageIDs)-maxMessageIDs:]
+			}
+			// preserve timestamps from old tracker if not set
+			if tracker.firstSeen.IsZero() && !oldTracker.firstSeen.IsZero() {
+				tracker.firstSeen = oldTracker.firstSeen
+			}
 			newTrackers[hash] = tracker
 		}
 	}
@@ -142,7 +162,24 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 	filtered = append(filtered, hashEntry{hash: msgHash, time: now})
 	tracker := newTrackers[msgHash]
 	tracker.count++
-	tracker.messageIDs = append(tracker.messageIDs, messageID)
+	// only append valid message IDs
+	if messageID > 0 {
+		tracker.messageIDs = append(tracker.messageIDs, messageID)
+		// limit the number of message IDs after adding the new one
+		maxMessageIDs := d.threshold
+		if maxMessageIDs > 100 {
+			maxMessageIDs = 100 // cap at 100 to prevent excessive memory usage
+		}
+		if len(tracker.messageIDs) > maxMessageIDs {
+			// keep only the most recent IDs
+			tracker.messageIDs = tracker.messageIDs[len(tracker.messageIDs)-maxMessageIDs:]
+		}
+	}
+	// update timestamps
+	if tracker.firstSeen.IsZero() {
+		tracker.firstSeen = now
+	}
+	tracker.lastSeen = now
 	newTrackers[msgHash] = tracker
 
 	// limit entries per user to prevent memory exhaustion
@@ -161,6 +198,19 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 			}
 		}
 		filtered = filtered[startIdx:]
+
+		// recalculate firstSeen for remaining entries
+		seenHashes := make(map[string]bool)
+		for _, entry := range filtered {
+			if t, exists := newTrackers[entry.hash]; exists {
+				if !seenHashes[entry.hash] {
+					// this is the first occurrence of this hash in the trimmed entries
+					t.firstSeen = entry.time
+					newTrackers[entry.hash] = t
+					seenHashes[entry.hash] = true
+				}
+			}
+		}
 	}
 
 	tracker = newTrackers[msgHash]
@@ -192,6 +242,29 @@ func (d *duplicateDetector) hash(msg string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(msg)))
 }
 
+// formatDuration returns the duration between first and last occurrence of a duplicate
+func (d *duplicateDetector) formatDuration(userID int64, msgHash string) string {
+	// get user history to find the tracker
+	history, found := d.cache.Get(userID)
+	if !found {
+		return d.window.String() // fallback to window if history not found
+	}
+
+	tracker, exists := history.trackers[msgHash]
+	if !exists || tracker.firstSeen.IsZero() || tracker.lastSeen.IsZero() {
+		return d.window.String() // fallback to window if timestamps not set
+	}
+
+	duration := tracker.lastSeen.Sub(tracker.firstSeen)
+	// if duration is 0 (all duplicates at same time), show "instantly"
+	if duration == 0 {
+		return "instantly"
+	}
+
+	// round to seconds for cleaner output
+	return duration.Round(time.Second).String()
+}
+
 // performCleanup removes expired entries for all users (must be called with lock held)
 func (d *duplicateDetector) performCleanup(now time.Time) {
 	// cache handles TTL-based eviction automatically
@@ -211,12 +284,18 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 		newTrackers := make(map[string]hashTracker)
 
 		for _, entry := range history.entries {
-			if entry.time.After(cutoff) {
-				filtered = append(filtered, entry)
-				tracker := newTrackers[entry.hash]
-				tracker.count++
-				newTrackers[entry.hash] = tracker
+			if !entry.time.After(cutoff) {
+				continue
 			}
+			filtered = append(filtered, entry)
+			tracker := newTrackers[entry.hash]
+			tracker.count++
+			// preserve first seen timestamp
+			if tracker.firstSeen.IsZero() {
+				tracker.firstSeen = entry.time
+			}
+			tracker.lastSeen = entry.time
+			newTrackers[entry.hash] = tracker
 		}
 
 		// NOTE: Same rationale as above — keep all known messageIDs for a hash
@@ -224,6 +303,10 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 		for hash, oldTracker := range history.trackers {
 			if tracker, exists := newTrackers[hash]; exists {
 				tracker.messageIDs = oldTracker.messageIDs
+				// preserve timestamps from old tracker if not set
+				if tracker.firstSeen.IsZero() && !oldTracker.firstSeen.IsZero() {
+					tracker.firstSeen = oldTracker.firstSeen
+				}
 				newTrackers[hash] = tracker
 			}
 		}
