@@ -127,7 +127,10 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 		}
 	}
 
-	// preserve message IDs for entries still in window
+	// NOTE: We intentionally preserve all known messageIDs for a given hash,
+	// not just those still in the time window. This allows bulk deletion of
+	// all duplicates detected historically once the threshold is reached.
+	// do not filter messageIDs here by the time window.
 	for hash, oldTracker := range history.trackers {
 		if tracker, exists := newTrackers[hash]; exists {
 			tracker.messageIDs = oldTracker.messageIDs
@@ -216,7 +219,8 @@ func (d *duplicateDetector) performCleanup(now time.Time) {
 			}
 		}
 
-		// preserve message IDs for entries still in window
+		// NOTE: Same rationale as above — keep all known messageIDs for a hash
+		// to allow deletion of all duplicates, beyond the time window.
 		for hash, oldTracker := range history.trackers {
 			if tracker, exists := newTrackers[hash]; exists {
 				tracker.messageIDs = oldTracker.messageIDs
