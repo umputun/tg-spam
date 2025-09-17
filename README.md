@@ -157,8 +157,8 @@ Using words that mix characters from multiple languages is a common spam techniq
 **Duplicate message detection**
 
 This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly. Configure with:
-- `--duplicate-threshold=, [$DUPLICATE_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
-- `--duplicate-window=, [$DUPLICATE_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
+- `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
+- `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 
 **Abnormal spacing check**
 
@@ -467,6 +467,10 @@ space:
       --space.short-ratio=              the ratio of short words to all words in the message (default: 0.7) [$SPACE_SHORT_RATIO]
       --space.short-word=               the length of the word to be considered short (default: 3) [$SPACE_SHORT_WORD]
       --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
+
+duplicates:
+      --duplicates.threshold=           duplicate messages to trigger spam (0=disabled) (default: 0) [$DUPLICATES_THRESHOLD]
+      --duplicates.window=              time window for duplicate detection (default: 1h) [$DUPLICATES_WINDOW]
 
 files:
       --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
