@@ -15,9 +15,12 @@
 - Go version: 1.24+
 - Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
 - Do not include "Test plan" sections in PR descriptions
-- Do not add comments that describe changes, progress, or historical modifications. Avoid comments like “new function,” “added test,” “now we changed this,” or “previously used X, now using Y.” Comments should only describe the current state and purpose of the code, not its history or evolution.
+- Do not add comments that describe changes, progress, or historical modifications. Avoid comments like "new function," "added test," "now we changed this," or "previously used X, now using Y." Comments should only describe the current state and purpose of the code, not its history or evolution.
 - Use `go:generate` for generating mocks, never modify generated files manually. Mocks are generated with `moq` and stored in the `mocks` package.
 - After important functionality added, update README.md accordingly
+- When adding new CLI parameters or environment variables, update BOTH:
+  1. The "All Application Options" section in README.md (should match `--help` output exactly)
+  2. The appropriate descriptive section in README.md (e.g., spam detection modules, OpenAI integration, etc.)
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
 - Don't add "Test plan" section to PRs
 

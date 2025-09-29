@@ -124,19 +124,19 @@ This option is disabled by default. If set to a positive number, the bot will ch
 
 **Links only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.links-only` set or `env:META_LINKS_ONLY` is `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
 
 **Image only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
 
 **Video only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
 
 **Audio only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
 
 **Forward check**
 
@@ -404,6 +404,8 @@ Success! The new status is: DISABLED. /help
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
       --paranoid                        paranoid mode, check all messages [$PARANOID]
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
+      --aggressive-cleanup              delete all messages from user when banned via /spam command [$AGGRESSIVE_CLEANUP]
+      --aggressive-cleanup-limit=       max messages to delete in aggressive cleanup mode (default: 100) [$AGGRESSIVE_CLEANUP_LIMIT]
       --training                        training mode, passive spam detection only [$TRAINING]
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
       --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
@@ -446,13 +448,14 @@ openai:
       --openai.apibase=                 custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                     veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=                  openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
+      --openai.custom-prompt=           additional custom prompts for specific spam patterns [$OPENAI_CUSTOM_PROMPT]
       --openai.model=                   openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
       --openai.max-tokens-response=     openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
-      --openai.reasoning-effort=        reasoning effort for thinking models, can be none, low, medium, high (default: none) [$OPENAI_REASONING_EFFORT]
+      --openai.reasoning-effort=[none|low|medium|high] reasoning effort for thinking models, none disables thinking (default: none) [$OPENAI_REASONING_EFFORT]
       --openai.check-short-messages     check messages shorter than min-msg-len with OpenAI [$OPENAI_CHECK_SHORT_MESSAGES]
 
 lua-plugins:
