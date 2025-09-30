@@ -235,7 +235,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
 			}
-			d.hamHistory.Push(req)
+			// don't add short messages to hamHistory as they haven't been properly checked
 			return false, cr
 		}
 		// if we get here, we have a short message but openai should still check it

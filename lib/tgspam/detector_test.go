@@ -2089,6 +2089,56 @@ func TestDetector_CheckHistory(t *testing.T) {
 	assert.Equal(t, 1, len(d.spamHistory.Last(5)), "spam history should remain unchanged")
 }
 
+func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
+	t.Run("short ham message without openai should not be added to history", func(t *testing.T) {
+		d := NewDetector(Config{HistorySize: 5, MinMsgLen: 10})
+		// no openai checker configured, so short messages won't be properly validated
+
+		// send a short message that isn't spam
+		isSpam, cr := d.Check(spamcheck.Request{Msg: "hi", UserID: "1"})
+		assert.False(t, isSpam)
+		assert.Contains(t, spamcheck.ChecksToString(cr), "message length")
+
+		// short unvalidated message should NOT be in hamHistory
+		hamMsgs := d.hamHistory.Last(5)
+		assert.Equal(t, 0, len(hamMsgs), "short unchecked messages should not be added to hamHistory")
+	})
+
+	t.Run("short ham message with openai enabled should be added to history", func(t *testing.T) {
+		d := NewDetector(Config{HistorySize: 5, MinMsgLen: 10, FirstMessageOnly: true})
+		mockClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{Message: openai.ChatCompletionMessage{Content: `{"spam":false,"reason":"good","confidence":30}`}}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockClient, OpenAIConfig{CheckShortMessagesWithOpenAI: true})
+
+		// send a short message that's checked by openai
+		isSpam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "1", UserName: "user1"})
+		assert.False(t, isSpam)
+
+		// properly validated short message should be in hamHistory
+		hamMsgs := d.hamHistory.Last(5)
+		assert.Equal(t, 1, len(hamMsgs), "short messages checked by openai should be added to hamHistory")
+		assert.Equal(t, "hi", hamMsgs[0].Msg)
+	})
+
+	t.Run("normal length ham message should be added to history", func(t *testing.T) {
+		d := NewDetector(Config{HistorySize: 5, MinMsgLen: 10})
+
+		// send a normal length message
+		isSpam, _ := d.Check(spamcheck.Request{Msg: "this is a normal length message", UserID: "1"})
+		assert.False(t, isSpam)
+
+		// normal messages should be in hamHistory
+		hamMsgs := d.hamHistory.Last(5)
+		assert.Equal(t, 1, len(hamMsgs), "normal length messages should be added to hamHistory")
+		assert.Equal(t, "this is a normal length message", hamMsgs[0].Msg)
+	})
+}
+
 func BenchmarkTokenize(b *testing.B) {
 	d := &Detector{
 		excludedTokens: map[string]struct{}{"the": {}, "and": {}, "or": {}, "but": {}, "in": {}, "on": {}, "at": {}, "to": {}},
