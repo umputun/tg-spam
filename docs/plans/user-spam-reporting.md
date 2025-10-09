@@ -55,6 +55,7 @@ var reportsQueries = engine.NewQueryMap().
             reported_user_name TEXT,
             msg_text TEXT,
             report_time TIMESTAMP,
+            notification_sent BOOLEAN DEFAULT 0,
             admin_msg_id INTEGER DEFAULT 0,
             UNIQUE(gid, msg_id, chat_id, reporter_user_id)
         )`,
@@ -69,6 +70,7 @@ var reportsQueries = engine.NewQueryMap().
             reported_user_name TEXT,
             msg_text TEXT,
             report_time TIMESTAMP,
+            notification_sent BOOLEAN DEFAULT false,
             admin_msg_id INTEGER DEFAULT 0,
             UNIQUE(gid, msg_id, chat_id, reporter_user_id)
         )`,
@@ -101,6 +103,7 @@ type Report struct {
     ReportedUserName string    `db:"reported_user_name"`
     MsgText          string    `db:"msg_text"`
     ReportTime       time.Time `db:"report_time"`
+    NotificationSent bool      `db:"notification_sent"`
     AdminMsgID       int       `db:"admin_msg_id"`
 }
 
@@ -112,8 +115,7 @@ func NewReports(ctx context.Context, db *engine.SQL) (*Reports, error)
 ```go
 // Reports is an interface for user spam reports storage
 type Reports interface {
-    Add(ctx context.Context, msgID int, chatID int64, reporterID int64, reporterName string,
-        reportedID int64, reportedName string, msgText string) error
+    Add(ctx context.Context, report storage.Report) error
     GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
     GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
     UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
@@ -272,87 +274,111 @@ Reports are deleted when:
 
 ## Iterative Development Plan
 
-### Iteration 1: Database Schema and Storage
-- [ ] create new file storage/reports.go
-- [ ] add Report struct to storage/reports.go (following DetectedSpamInfo pattern)
-  - [ ] all fields with db tags as shown in data structures section
-- [ ] add database command constants (use iota + 500 offset):
-  - [ ] CmdCreateReportsTable
-  - [ ] CmdCreateReportsIndexes
-  - [ ] CmdAddReport
-  - [ ] CmdGetReportsByMessage
-  - [ ] CmdGetReporterCountSince
-  - [ ] CmdUpdateReportsAdminMsgID
-  - [ ] CmdDeleteReporter
-  - [ ] CmdDeleteReportsByMessage
-- [ ] create reportsQueries map using engine.NewQueryMap():
-  - [ ] CmdCreateReportsTable: Use Add() with different SQLite/Postgres (INTEGER vs BIGINT, AUTOINCREMENT vs SERIAL)
-  - [ ] CmdCreateReportsIndexes: Use AddSame() (identical for both)
-  - [ ] CmdAddReport: Use AddSame() - INSERT...ON CONFLICT...DO NOTHING
-  - [ ] CmdGetReportsByMessage: Use AddSame() - SELECT with WHERE msg_id=? AND chat_id=? AND gid=?
-  - [ ] CmdGetReporterCountSince: Use AddSame() - SELECT COUNT(*) WHERE reporter_user_id=? AND report_time > ? AND gid=?
-  - [ ] CmdUpdateReportsAdminMsgID: Use AddSame() - UPDATE reports SET admin_msg_id=? WHERE msg_id=? AND chat_id=? AND gid=?
-  - [ ] CmdDeleteReporter: Use AddSame() - DELETE WHERE reporter_user_id=? AND msg_id=? AND chat_id=? AND gid=?
-  - [ ] CmdDeleteReportsByMessage: Use AddSame() - DELETE WHERE msg_id=? AND chat_id=? AND gid=?
-- [ ] implement Reports struct (follows ApprovedUsers/DetectedSpam pattern):
-  - [ ] struct with *engine.SQL and engine.RWLocker fields
-- [ ] implement NewReports(ctx context.Context, db *engine.SQL) (*Reports, error):
-  - [ ] check db != nil
-  - [ ] create Reports with db and db.MakeLock()
-  - [ ] create TableConfig with Name: "reports", CreateTable, CreateIndexes, QueriesMap
-  - [ ] call engine.InitTable
-  - [ ] return Reports or error
-- [ ] implement Add method:
-  - [ ] signature: func (r *Reports) Add(ctx context.Context, msgID int, chatID int64, reporterID int64, reporterName string, reportedID int64, reportedName string, msgText string) error
-  - [ ] Lock/defer Unlock
-  - [ ] log.Printf("[DEBUG] add report: msgID:%d, chatID:%d, reporter:%d, reported:%d", ...)
-  - [ ] get query using reportsQueries.Pick(r.Type(), CmdAddReport)
-  - [ ] use NamedExecContext with map containing all fields including gid (r.GID()), report_time (time.Now()), admin_msg_id (0)
-  - [ ] return fmt.Errorf("failed to insert report: %w", err) on error
-  - [ ] call r.cleanupOldReports(ctx) at end
-- [ ] implement GetByMessage method:
-  - [ ] signature: func (r *Reports) GetByMessage(ctx context.Context, msgID int, chatID int64) ([]Report, error)
-  - [ ] RLock/defer RUnlock
-  - [ ] get query using reportsQueries.Pick or r.Adopt
-  - [ ] use SelectContext(ctx, &reports, query, msgID, chatID, r.GID())
-  - [ ] return []Report{}, nil if no records (not an error)
-- [ ] implement GetReporterCountSince method:
-  - [ ] signature: func (r *Reports) GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
-  - [ ] RLock/defer RUnlock
-  - [ ] query: SELECT COUNT(*) FROM reports WHERE reporter_user_id=? AND report_time > ? AND gid=?
-  - [ ] use GetContext to get single int value
-- [ ] implement UpdateAdminMsgID method:
-  - [ ] signature: func (r *Reports) UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
-  - [ ] Lock/defer Unlock
-  - [ ] UPDATE reports SET admin_msg_id=? WHERE msg_id=? AND chat_id=? AND gid=?
-- [ ] implement DeleteReporter method:
-  - [ ] signature: func (r *Reports) DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
-  - [ ] Lock/defer Unlock
-  - [ ] DELETE FROM reports WHERE reporter_user_id=? AND msg_id=? AND chat_id=? AND gid=?
-  - [ ] log.Printf("[INFO] reporter %d removed from report msgID:%d, chatID:%d", reporterID, msgID, chatID)
-- [ ] implement DeleteByMessage method:
-  - [ ] signature: func (r *Reports) DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
-  - [ ] Lock/defer Unlock
-  - [ ] DELETE FROM reports WHERE msg_id=? AND chat_id=? AND gid=?
-  - [ ] log.Printf("[INFO] all reports deleted for msgID:%d, chatID:%d", msgID, chatID)
-- [ ] implement cleanupOldReports internal method:
-  - [ ] signature: func (r *Reports) cleanupOldReports(ctx context.Context) error
-  - [ ] no lock (called from Add which already has lock)
-  - [ ] query: DELETE FROM reports WHERE report_time < ? AND gid = ? AND admin_msg_id = 0
-  - [ ] use r.Adopt() and ExecContext(ctx, query, time.Now().Add(-7*24*time.Hour), r.GID())
-  - [ ] note: admin_msg_id = 0 means notification not sent yet
-- [ ] add Reports interface to app/events/events.go (after Locator interface)
-- [ ] generate mocks: `go generate ./app/events`
-- [ ] write tests in storage/reports_test.go:
-  - [ ] TestReports_Add
-  - [ ] TestReports_GetByMessage
-  - [ ] TestReports_GetReporterCountSince
-  - [ ] TestReports_UpdateAdminMsgID
-  - [ ] TestReports_DeleteReporter
-  - [ ] TestReports_DeleteByMessage
-  - [ ] TestReports_cleanupOldReports
-- [ ] run tests to verify database operations work
-- [ ] mark iteration 1 complete and document any changes from original plan in this section
+### Iteration 1: Database Schema and Storage ✅ COMPLETED
+- [x] create new file storage/reports.go
+- [x] add Report struct to storage/reports.go (following DetectedSpamInfo pattern)
+  - [x] all fields with db tags as shown in data structures section
+- [x] add database command constants (use iota + 500 offset):
+  - [x] CmdCreateReportsTable
+  - [x] CmdCreateReportsIndexes
+  - [x] CmdAddReport
+  - [x] CmdGetReportsByMessage
+  - [x] CmdGetReporterCountSince
+  - [x] CmdUpdateReportsAdminMsgID
+  - [x] CmdDeleteReporter
+  - [x] CmdDeleteReportsByMessage
+- [x] create reportsQueries map using engine.NewQueryMap():
+  - [x] CmdCreateReportsTable: Use Add() with different SQLite/Postgres (INTEGER vs BIGINT, AUTOINCREMENT vs SERIAL)
+  - [x] CmdCreateReportsIndexes: Use AddSame() (identical for both)
+  - [x] CmdAddReport: Use AddSame() - INSERT...ON CONFLICT...DO NOTHING
+  - [x] CmdGetReportsByMessage: Use AddSame() - SELECT with WHERE msg_id=? AND chat_id=? AND gid=?
+  - [x] CmdGetReporterCountSince: Use AddSame() - SELECT COUNT(*) WHERE reporter_user_id=? AND report_time > ? AND gid=?
+  - [x] CmdUpdateReportsAdminMsgID: Use AddSame() - UPDATE reports SET notification_sent=true, admin_msg_id=? WHERE msg_id=? AND chat_id=? AND gid=?
+  - [x] CmdDeleteReporter: Use AddSame() - DELETE WHERE reporter_user_id=? AND msg_id=? AND chat_id=? AND gid=?
+  - [x] CmdDeleteReportsByMessage: Use AddSame() - DELETE WHERE msg_id=? AND chat_id=? AND gid=?
+- [x] implement Reports struct (follows ApprovedUsers/DetectedSpam pattern):
+  - [x] struct with *engine.SQL and engine.RWLocker fields
+- [x] implement NewReports(ctx context.Context, db *engine.SQL) (*Reports, error):
+  - [x] check db != nil
+  - [x] create Reports with db and db.MakeLock()
+  - [x] create TableConfig with Name: "reports", CreateTable, CreateIndexes, QueriesMap
+  - [x] call engine.InitTable
+  - [x] return Reports or error
+- [x] implement Add method:
+  - [x] signature: func (r *Reports) Add(ctx context.Context, report Report) error
+  - [x] Lock/defer Unlock
+  - [x] log.Printf("[DEBUG] add report: msgID:%d, chatID:%d, reporter:%d, reported:%d", report fields...)
+  - [x] set auto-populated fields: gid (r.GID()), report_time (time.Now() if zero), notification_sent (false), admin_msg_id (0)
+  - [x] get query using reportsQueries.Pick(r.Type(), CmdAddReport)
+  - [x] use NamedExecContext with report struct
+  - [x] return fmt.Errorf("failed to insert report: %w", err) on error
+  - [x] call r.cleanupOldReports(ctx) at end
+- [x] implement GetByMessage method:
+  - [x] signature: func (r *Reports) GetByMessage(ctx context.Context, msgID int, chatID int64) ([]Report, error)
+  - [x] RLock/defer RUnlock
+  - [x] get query using reportsQueries.Pick or r.Adopt
+  - [x] use SelectContext(ctx, &reports, query, msgID, chatID, r.GID())
+  - [x] return []Report{}, nil if no records (not an error)
+- [x] implement GetReporterCountSince method:
+  - [x] signature: func (r *Reports) GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+  - [x] RLock/defer RUnlock
+  - [x] query: SELECT COUNT(*) FROM reports WHERE reporter_user_id=? AND report_time > ? AND gid=?
+  - [x] use GetContext to get single int value
+- [x] implement UpdateAdminMsgID method:
+  - [x] signature: func (r *Reports) UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+  - [x] Lock/defer Unlock
+  - [x] UPDATE reports SET notification_sent=true, admin_msg_id=? WHERE msg_id=? AND chat_id=? AND gid=?
+- [x] implement DeleteReporter method:
+  - [x] signature: func (r *Reports) DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
+  - [x] Lock/defer Unlock
+  - [x] DELETE FROM reports WHERE reporter_user_id=? AND msg_id=? AND chat_id=? AND gid=?
+  - [x] log.Printf("[INFO] reporter %d removed from report msgID:%d, chatID:%d", reporterID, msgID, chatID)
+- [x] implement DeleteByMessage method:
+  - [x] signature: func (r *Reports) DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+  - [x] Lock/defer Unlock
+  - [x] DELETE FROM reports WHERE msg_id=? AND chat_id=? AND gid=?
+  - [x] log.Printf("[INFO] all reports deleted for msgID:%d, chatID:%d", msgID, chatID)
+- [x] implement cleanupOldReports internal method:
+  - [x] signature: func (r *Reports) cleanupOldReports(ctx context.Context) error
+  - [x] no lock (called from Add which already has lock)
+  - [x] query: DELETE FROM reports WHERE report_time < ? AND gid = ? AND notification_sent = false
+  - [x] use r.Adopt() and ExecContext(ctx, query, time.Now().Add(-7*24*time.Hour), r.GID())
+  - [x] note: notification_sent = false means notification not sent yet
+- [x] add Reports interface to app/events/events.go (after Locator interface)
+- [x] generate mocks: `go generate ./app/events`
+- [x] write tests in storage/reports_test.go:
+  - [x] TestReports_Add
+  - [x] TestReports_GetByMessage
+  - [x] TestReports_GetReporterCountSince
+  - [x] TestReports_UpdateAdminMsgID
+  - [x] TestReports_DeleteReporter
+  - [x] TestReports_DeleteByMessage
+  - [x] TestReports_cleanupOldReports
+- [x] run tests to verify database operations work
+- [x] mark iteration 1 complete and document any changes from original plan in this section
+
+**Iteration 1 Completion Summary:**
+
+All tasks completed successfully. Changes from original plan:
+
+1. **Design Change: Two-field approach for notifications** - Changed from single `admin_msg_id` field (0 = not sent, >0 = sent) to explicit two-field design:
+   - `notification_sent BOOLEAN` - explicit flag for notification status
+   - `admin_msg_id INTEGER` - reference to admin chat message
+   - Rationale: More explicit and less error-prone than implicit "0 means not sent" logic
+
+2. **PostgreSQL Compatibility Fix** - Added `r.Adopt(query)` calls after `Pick()` in all read/update/delete methods:
+   - GetByMessage, GetReporterCountSince, UpdateAdminMsgID, DeleteReporter, DeleteByMessage
+   - Converts `?` placeholders to `$1, $2, ...` for PostgreSQL
+   - Without this, all methods except Add would fail on PostgreSQL with "syntax error at or near ?"
+
+3. **Migration Function** - Added no-op `migrate()` function required by `engine.InitTable`:
+   - Follows pattern from other storage modules
+   - No migration logic needed since this is a new table
+
+4. **Testing** - All tests pass on both SQLite and PostgreSQL:
+   - Comprehensive test coverage for all CRUD operations
+   - Cleanup logic verified (7-day expiration for un-notified reports)
+   - Database isolation tested
 
 ### Iteration 2: Configuration and Rate Limiting
 - [ ] add ReportOpts struct to main options (app/main.go or wherever Options is defined)
@@ -389,10 +415,10 @@ Reports are deleted when:
 - [ ] implement checkReportThreshold method in admin struct
 - [ ] query all reports for a message
 - [ ] check if count >= threshold
-- [ ] check if admin notification already sent (check if reports[0].AdminMsgID > 0)
-  - [ ] all reports for same message have same admin_msg_id (updated together)
-  - [ ] if admin_msg_id > 0, notification already sent, just update it
-  - [ ] if admin_msg_id == 0, no notification yet, send new one
+- [ ] check if admin notification already sent (check if reports[0].NotificationSent == true)
+  - [ ] all reports for same message have same notification_sent and admin_msg_id (updated together)
+  - [ ] if notification_sent == true, notification already sent, just update it using admin_msg_id
+  - [ ] if notification_sent == false, no notification yet, send new one
 - [ ] format reporter list for display
 - [ ] add tests for threshold logic
 - [ ] verify threshold triggering works correctly

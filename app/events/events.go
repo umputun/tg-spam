@@ -18,6 +18,7 @@ import (
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -50,6 +51,16 @@ type Locator interface {
 	MsgHash(msg string) string
 	UserNameByID(ctx context.Context, userID int64) string
 	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
+}
+
+// Reports is an interface for user spam reports storage
+type Reports interface {
+	Add(ctx context.Context, report storage.Report) error
+	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
+	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
 }
 
 // Bot is an interface for bot events.
