@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/storage"
 )
 
 // admin is a helper to handle all admin-group related stuff, created by listener
@@ -238,6 +239,93 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	if err := errs.ErrorOrNil(); err != nil {
 		return fmt.Errorf("direct warn report failed: %w", err)
 	}
+	return nil
+}
+
+// DirectUserReport handles messages replied with "/report" by regular users
+func (a *admin) DirectUserReport(update tbapi.Update) error {
+	origMsg := update.Message.ReplyToMessage
+
+	// validate reported message has a user (not from channel or anonymous admin)
+	if origMsg.From == nil {
+		log.Printf("[DEBUG] user report ignored: reported message from channel or anonymous admin")
+		return fmt.Errorf("cannot report messages from channels or anonymous admins")
+	}
+
+	log.Printf("[DEBUG] user report: msg id: %d, reporter: %q (%d), reported: %q (%d)",
+		origMsg.MessageID,
+		update.Message.From.UserName, update.Message.From.ID,
+		origMsg.From.UserName, origMsg.From.ID)
+
+	// validate reporter is not super user (super users should use /spam instead)
+	if a.superUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) {
+		return fmt.Errorf("report from super-user %s (%d), use /spam instead", update.Message.From.UserName, update.Message.From.ID)
+	}
+
+	// validate reported user is not super user
+	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
+	}
+
+	// check rate limit for reporter
+	rateLimited, err := a.checkReportRateLimit(context.Background(), update.Message.From.ID)
+	if err != nil {
+		return fmt.Errorf("failed to check rate limit: %w", err)
+	}
+	if rateLimited {
+		log.Printf("[INFO] reporter %d (%s) exceeded rate limit", update.Message.From.ID, update.Message.From.UserName)
+		// still delete the /report command to keep chat clean
+		_, _ = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  update.Message.MessageID,
+			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+		}})
+		return fmt.Errorf("rate limit exceeded for reporter %d", update.Message.From.ID)
+	}
+
+	// delete the /report command message immediately to keep chat clean
+	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+		MessageID:  update.Message.MessageID,
+		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+	}})
+	if err != nil {
+		log.Printf("[WARN] failed to delete report message %d: %v", update.Message.MessageID, err)
+	} else {
+		log.Printf("[INFO] report message %d deleted", update.Message.MessageID)
+	}
+
+	// extract message text
+	msgTxt := origMsg.Text
+	if msgTxt == "" { // if no text, try to get it from the transformed message
+		m := transform(origMsg)
+		msgTxt = m.Text
+	}
+
+	// check if reports storage is initialized
+	if a.reports == nil {
+		return fmt.Errorf("reports storage not initialized")
+	}
+
+	// create report
+	report := storage.Report{
+		MsgID:            origMsg.MessageID,
+		ChatID:           a.primChatID,
+		ReporterUserID:   update.Message.From.ID,
+		ReporterUserName: update.Message.From.UserName,
+		ReportedUserID:   origMsg.From.ID,
+		ReportedUserName: origMsg.From.UserName,
+		MsgText:          msgTxt,
+	}
+
+	// store report
+	if err := a.reports.Add(context.Background(), report); err != nil {
+		return fmt.Errorf("failed to add report: %w", err)
+	}
+
+	// check if threshold reached (will be implemented in iteration 4)
+	if err := a.checkReportThreshold(origMsg.MessageID, a.primChatID); err != nil {
+		log.Printf("[WARN] failed to check report threshold: %v", err)
+	}
+
 	return nil
 }
 
@@ -853,8 +941,6 @@ func (a *admin) sinceQuery(query *tbapi.CallbackQuery) time.Duration {
 
 // checkReportRateLimit checks if a reporter has exceeded their rate limit
 // returns true if rate limit exceeded, false otherwise
-//
-//nolint:unused // used in iteration 3 for /report command handler
 func (a *admin) checkReportRateLimit(ctx context.Context, reporterID int64) (bool, error) {
 	if a.reportRateLimit <= 0 {
 		// rate limiting disabled, no need for storage
@@ -876,4 +962,16 @@ func (a *admin) checkReportRateLimit(ctx context.Context, reporterID int64) (boo
 	}
 
 	return false, nil
+}
+
+// checkReportThreshold checks if report threshold is reached and sends admin notification if needed
+// stub for iteration 3, full implementation in iteration 4
+func (a *admin) checkReportThreshold(msgID int, chatID int64) error {
+	log.Printf("[DEBUG] checkReportThreshold stub called for msgID:%d, chatID:%d", msgID, chatID)
+	// TODO: implement in iteration 4
+	// - query all reports for the message
+	// - check if count >= threshold
+	// - check if admin notification already sent
+	// - send or update admin notification
+	return nil
 }

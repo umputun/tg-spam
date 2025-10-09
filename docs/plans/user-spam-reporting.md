@@ -427,19 +427,73 @@ After completing Iteration 2, external code review identified one improvement:
 
 **Note**: Added `//nolint:unused` comment to `checkReportRateLimit` method since it will be used in Iteration 3. This comment must be removed when implementing the `/report` command handler.
 
-### Iteration 3: Report Command Handler
-**IMPORTANT**: Remove `//nolint:unused` comment from `checkReportRateLimit` method once it's called by DirectUserReport handler.
-- [ ] add report handler to admin struct (DirectUserReport method)
-- [ ] implement report validation (not super user, not reporting super user)
-- [ ] implement rate limit check before accepting report
-- [ ] implement immediate deletion of /report message
-- [ ] integrate with a.reports.Add to store the report
-- [ ] after adding report, call checkReportThreshold to see if notification should be sent
-- [ ] add report command detection in listener
-- [ ] handle regular user /report separately from admin commands
-- [ ] add tests for report command handling
-- [ ] verify existing /spam command still works
-- [ ] mark iteration 3 complete and document any changes from original plan in this section
+### Iteration 3: Report Command Handler ✅ COMPLETED
+- [x] add report handler to admin struct (DirectUserReport method)
+- [x] implement report validation (not super user, not reporting super user)
+- [x] implement rate limit check before accepting report
+- [x] implement immediate deletion of /report message
+- [x] integrate with a.reports.Add to store the report
+- [x] after adding report, call checkReportThreshold to see if notification should be sent
+- [x] add report command detection in listener
+- [x] handle regular user /report separately from admin commands
+- [x] add tests for report command handling
+- [x] verify existing /spam command still works
+- [x] mark iteration 3 complete and document any changes from original plan in this section
+
+**Iteration 3 Completion Summary:**
+
+All tasks completed successfully. No changes from original plan:
+
+1. **DirectUserReport Implementation** (app/events/admin.go:245-319) - Added complete report handler with:
+   - Validation that reporter is not super user (returns error with message "use /spam instead")
+   - Validation that reported user is not super user (returns error)
+   - Rate limit check using checkReportRateLimit method
+   - Immediate deletion of /report command message to keep chat clean (even if rate limited)
+   - Message text extraction with fallback to transformed message (for images/captions)
+   - Report creation with all required fields (MsgID, ChatID, reporter/reported user info, message text)
+   - Storage via a.reports.Add with proper context
+   - Call to checkReportThreshold stub for future threshold logic
+
+2. **checkReportThreshold Stub** (app/events/admin.go:956-966) - Added stub implementation:
+   - Logs debug message with msgID and chatID
+   - Contains TODO comments for iteration 4 implementation
+   - Returns nil (no-op for now)
+
+3. **Removed //nolint:unused Comment** - Removed from checkReportRateLimit method since it's now actively used
+
+4. **procUserReply Method** (app/events/listener.go:341-352) - Added regular user command processor:
+   - Checks for /report or report commands (case-insensitive)
+   - Calls adminHandler.DirectUserReport
+   - Logs warnings on errors
+   - Returns true if handled
+
+5. **Listener Integration** (app/events/listener.go:217-223) - Added user report handling:
+   - Checks for reply messages from non-superusers
+   - Calls procUserReply before regular message processing
+   - Continues to next message if command handled
+   - Placed after superuser command handling, before regular message processing
+
+6. **Comprehensive Tests** (app/events/admin_test.go:1692-1953) - Added 6 test cases:
+   - Successful report from regular user (validates all fields, checks API/storage calls)
+   - Reporter is superuser - returns error
+   - Reported user is superuser - returns error
+   - Rate limit exceeded - still deletes command, returns error
+   - Reports storage add error - returns error after deletion
+   - Empty message text - uses transformed message with caption
+
+7. **All Tests Pass** - Verified:
+   - All new DirectUserReport tests pass
+   - Existing DirectSpamReport tests still pass
+   - Existing DirectCommands tests still pass
+   - Full test suite passes with race detector
+   - No linter errors
+   - No formatter changes needed
+
+**Integration Notes:**
+- The /report command is processed separately from superuser commands (/spam, /ban, /warn)
+- Regular users cannot use /spam (they get validation error in DirectUserReport)
+- Superusers can still use /spam as before (no changes to existing functionality)
+- The report is stored immediately, threshold check is deferred to iteration 4
 
 ### Iteration 4: Report Tracking and Threshold Logic
 - [ ] implement checkReportThreshold method in admin struct

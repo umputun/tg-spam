@@ -214,6 +214,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
+			// handle spam reports from regular users
+			if update.Message.ReplyToMessage != nil && !fromSuper {
+				if l.procUserReply(update) {
+					// user command processed, skip the rest
+					continue
+				}
+			}
+
 			// process regular messages, the main part of the bot
 			if err := l.procEvents(update); err != nil {
 				log.Printf("[WARN] failed to process update: %v", err)
@@ -332,6 +340,19 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
 		if err := l.adminHandler.DirectWarnReport(update); err != nil {
 			log.Printf("[WARN] failed to process direct warning request: %v", err)
+		}
+		return true
+	}
+	return false
+}
+
+// procUserReply processes regular user commands (reply) /report
+func (l *TelegramListener) procUserReply(update tbapi.Update) (handled bool) {
+	switch {
+	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
+		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)
+		if err := l.adminHandler.DirectUserReport(update); err != nil {
+			log.Printf("[WARN] failed to process user spam report: %v", err)
 		}
 		return true
 	}
