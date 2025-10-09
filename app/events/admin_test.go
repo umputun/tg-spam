@@ -1688,3 +1688,340 @@ func TestAdmin_checkReportRateLimit(t *testing.T) {
 		assert.False(t, exceeded)
 	})
 }
+
+func TestAdmin_DirectUserReport(t *testing.T) {
+	t.Run("successful report from regular user", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 5, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, int(999), report.MsgID)
+				assert.Equal(t, int64(123), report.ChatID)
+				assert.Equal(t, int64(111), report.ReporterUserID)
+				assert.Equal(t, "reporter", report.ReporterUserName)
+				assert.Equal(t, int64(666), report.ReportedUserID)
+				assert.Equal(t, "spammer", report.ReportedUserName)
+				assert.Equal(t, "spam message", report.MsgText)
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:            mockAPI,
+			primChatID:       123,
+			adminChatID:      456,
+			superUsers:       SuperUsers{"superuser"},
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+			reportThreshold:  2,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
+		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report to storage")
+		assert.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()), "should check rate limit")
+	})
+
+	t.Run("reporter is superuser - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{"superuser"},
+			reports:     mockReports,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "superuser", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "use /spam instead")
+		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
+		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+	})
+
+	t.Run("reported user is superuser - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{"superuser"},
+			reports:     mockReports,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "superuser"},
+					Text:      "some message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "from super-user")
+		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
+		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+	})
+
+	t.Run("rate limit exceeded - should delete command and return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 10, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:            mockAPI,
+			primChatID:       123,
+			adminChatID:      456,
+			superUsers:       SuperUsers{},
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rate limit exceeded")
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report when rate limited")
+	})
+
+	t.Run("reports storage add error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 5, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				return fmt.Errorf("database error")
+			},
+		}
+
+		adm := &admin{
+			tbAPI:            mockAPI,
+			primChatID:       123,
+			adminChatID:      456,
+			superUsers:       SuperUsers{},
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to add report")
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
+		assert.Equal(t, 1, len(mockReports.AddCalls()), "should attempt to add report")
+	})
+
+	t.Run("empty message text - should use transformed message", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 5, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Contains(t, report.MsgText, "caption from image")
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:            mockAPI,
+			primChatID:       123,
+			adminChatID:      456,
+			superUsers:       SuperUsers{},
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+			reportThreshold:  2,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "",
+					Caption:   "caption from image",
+					Photo:     []tbapi.PhotoSize{{FileID: "photo123"}},
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report with transformed text")
+	})
+
+	t.Run("reported message from channel - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{},
+			reports:     mockReports,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      nil, // channel or anonymous admin message
+					SenderChat: &tbapi.Chat{
+						ID:   -100123456789,
+						Type: "channel",
+					},
+					Text: "channel message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
+		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+	})
+
+	t.Run("reports storage not initialized - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:            mockAPI,
+			primChatID:       123,
+			adminChatID:      456,
+			superUsers:       SuperUsers{},
+			reports:          nil, // not initialized
+			reportRateLimit:  0,   // disabled, so rate check passes
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := adm.DirectUserReport(update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reports storage not initialized")
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+	})
+}
