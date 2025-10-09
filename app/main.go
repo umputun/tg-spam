@@ -122,6 +122,12 @@ type options struct {
 		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
+	Report struct {
+		Threshold  int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
+		RateLimit  int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
+		RatePeriod time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
+	} `group:"report" namespace:"report" env-namespace:"REPORT"`
+
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
@@ -280,6 +286,12 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
 
+	// make reports storage
+	reportsStore, err := storage.NewReports(ctx, dataDB)
+	if err != nil {
+		return fmt.Errorf("can't make reports store, %w", err)
+	}
+
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
@@ -329,6 +341,10 @@ func execute(ctx context.Context, opts options) error {
 		AdminGroup:              opts.AdminGroup,
 		TestingIDs:              opts.TestingIDs,
 		Locator:                 locator,
+		Reports:                 reportsStore,
+		ReportThreshold:         opts.Report.Threshold,
+		ReportRateLimit:         opts.Report.RateLimit,
+		ReportRatePeriod:        opts.Report.RatePeriod,
 		TrainingMode:            opts.Training,
 		SoftBanMode:             opts.SoftBan,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,

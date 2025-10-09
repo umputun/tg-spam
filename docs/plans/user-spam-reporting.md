@@ -380,25 +380,55 @@ All tasks completed successfully. Changes from original plan:
    - Cleanup logic verified (7-day expiration for un-notified reports)
    - Database isolation tested
 
-### Iteration 2: Configuration and Rate Limiting
-- [ ] add ReportOpts struct to main options (app/main.go or wherever Options is defined)
-  - [ ] Threshold field with tag: `long:"threshold" env:"THRESHOLD" default:"2"`
-  - [ ] RateLimit field with tag: `long:"rate-limit" env:"RATE_LIMIT" default:"10"`
-  - [ ] RatePeriod field with tag: `long:"rate-period" env:"RATE_PERIOD" default:"1h"`
-- [ ] add Report field to main Options struct with tag: `group:"report" namespace:"report" env-namespace:"REPORT"`
-- [ ] create Reports storage instance in main/listener initialization:
-  - [ ] call storage.NewReports(ctx, db) where db is created
-  - [ ] pass reports instance when creating listener/admin
-- [ ] add reports, reportThreshold, reportRateLimit, reportRatePeriod fields to admin struct in app/events/admin.go
-- [ ] pass configuration values when creating admin struct in app/events/listener.go (reports instance, opts.Report.Threshold, etc)
-- [ ] implement checkReportRateLimit method in admin struct (returns bool and error)
-  - [ ] call a.reports.GetReporterCountSince with reportRatePeriod
-  - [ ] compare count against reportRateLimit
-- [ ] add tests for rate limiting logic
-- [ ] verify existing functionality still works
-- [ ] mark iteration 2 complete and document any changes from original plan in this section
+### Iteration 2: Configuration and Rate Limiting ✅ COMPLETED
+- [x] add ReportOpts struct to main options (app/main.go or wherever Options is defined)
+  - [x] Threshold field with tag: `long:"threshold" env:"THRESHOLD" default:"2"`
+  - [x] RateLimit field with tag: `long:"rate-limit" env:"RATE_LIMIT" default:"10"`
+  - [x] RatePeriod field with tag: `long:"rate-period" env:"RATE_PERIOD" default:"1h"`
+- [x] add Report field to main Options struct with tag: `group:"report" namespace:"report" env-namespace:"REPORT"`
+- [x] create Reports storage instance in main/listener initialization:
+  - [x] call storage.NewReports(ctx, db) where db is created
+  - [x] pass reports instance when creating listener/admin
+- [x] add reports, reportThreshold, reportRateLimit, reportRatePeriod fields to admin struct in app/events/admin.go
+- [x] pass configuration values when creating admin struct in app/events/listener.go (reports instance, opts.Report.Threshold, etc)
+- [x] implement checkReportRateLimit method in admin struct (returns bool and error)
+  - [x] call a.reports.GetReporterCountSince with reportRatePeriod
+  - [x] compare count against reportRateLimit
+- [x] add tests for rate limiting logic
+- [x] verify existing functionality still works
+- [x] mark iteration 2 complete and document any changes from original plan in this section
+
+**Iteration 2 Completion Summary:**
+
+All tasks completed successfully. No changes from original plan:
+
+1. **Configuration Structure** - Added Report struct to options with three fields (Threshold, RateLimit, RatePeriod) following the same pattern as Duplicates configuration
+2. **Storage Instance Creation** - Created Reports storage instance in main.go execute() function after locator creation
+3. **TelegramListener Integration** - Added Reports field and three config fields (ReportThreshold, ReportRateLimit, ReportRatePeriod) to TelegramListener struct
+4. **Admin Handler Integration** - Added reports field and three config fields to admin struct, updated initialization in listener.go
+5. **Rate Limiting Implementation** - Implemented checkReportRateLimit method with proper error handling:
+   - Returns early if reports storage is nil (error)
+   - Returns early if rate limiting is disabled (reportRateLimit <= 0)
+   - Calls GetReporterCountSince with calculated time window
+   - Returns true if count >= limit, false otherwise
+6. **Comprehensive Testing** - Added 5 test cases covering all scenarios:
+   - Rate limit exceeded
+   - Rate limit not exceeded
+   - Rate limiting disabled
+   - Reports storage not initialized (error case)
+   - Database error (error case)
+7. **All Tests Pass** - Verified all existing tests still pass with race detector enabled
+
+**Post-Iteration External Review Fix:**
+
+After completing Iteration 2, external code review identified one improvement:
+
+- **Check Order in checkReportRateLimit** - The original implementation checked if `reports` storage is nil before checking if rate limiting is disabled. This meant deployments that intentionally disable the feature (by setting `reportRateLimit=0`) would still require storage wiring or receive an error. Fixed by reordering checks to short-circuit on disabled state first (check `reportRateLimit <= 0` before `reports == nil`). This allows the feature to be cleanly disabled without requiring storage infrastructure.
+
+**Note**: Added `//nolint:unused` comment to `checkReportRateLimit` method since it will be used in Iteration 3. This comment must be removed when implementing the `/report` command handler.
 
 ### Iteration 3: Report Command Handler
+**IMPORTANT**: Remove `//nolint:unused` comment from `checkReportRateLimit` method once it's called by DirectUserReport handler.
 - [ ] add report handler to admin struct (DirectUserReport method)
 - [ ] implement report validation (not super user, not reporting super user)
 - [ ] implement rate limit check before accepting report
