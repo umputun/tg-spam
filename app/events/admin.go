@@ -23,6 +23,7 @@ type admin struct {
 	tbAPI                  TbAPI
 	bot                    Bot
 	locator                Locator
+	reports                Reports
 	superUsers             SuperUsers
 	primChatID             int64
 	adminChatID            int64
@@ -30,6 +31,9 @@ type admin struct {
 	softBan                bool // if true, the user not banned automatically, but only restricted
 	dry                    bool
 	warnMsg                string
+	reportThreshold        int
+	reportRateLimit        int
+	reportRatePeriod       time.Duration
 	aggressiveCleanup      bool
 	aggressiveCleanupLimit int
 }
@@ -845,4 +849,31 @@ func (a *admin) sinceQuery(query *tbapi.CallbackQuery) time.Duration {
 		res = 0
 	}
 	return res
+}
+
+// checkReportRateLimit checks if a reporter has exceeded their rate limit
+// returns true if rate limit exceeded, false otherwise
+//
+//nolint:unused // used in iteration 3 for /report command handler
+func (a *admin) checkReportRateLimit(ctx context.Context, reporterID int64) (bool, error) {
+	if a.reportRateLimit <= 0 {
+		// rate limiting disabled, no need for storage
+		return false, nil
+	}
+	if a.reports == nil {
+		return false, errors.New("reports storage not initialized")
+	}
+
+	since := time.Now().Add(-a.reportRatePeriod)
+	count, err := a.reports.GetReporterCountSince(ctx, reporterID, since)
+	if err != nil {
+		return false, fmt.Errorf("failed to get reporter count: %w", err)
+	}
+
+	if count >= a.reportRateLimit {
+		log.Printf("[DEBUG] reporter %d exceeded rate limit: %d >= %d", reporterID, count, a.reportRateLimit)
+		return true, nil
+	}
+
+	return false, nil
 }

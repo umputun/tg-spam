@@ -41,6 +41,10 @@ type TelegramListener struct {
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
+	Reports                 Reports       // reports storage for user spam reports
+	ReportThreshold         int           // number of reports to trigger admin notification
+	ReportRateLimit         int           // max reports per user per period
+	ReportRatePeriod        time.Duration // rate limit time period
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
@@ -104,8 +108,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{
-		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
+		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, reports: l.Reports, primChatID: l.chatID, adminChatID: l.adminChatID,
 		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
+		reportThreshold: l.ReportThreshold, reportRateLimit: l.ReportRateLimit, reportRatePeriod: l.ReportRatePeriod,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
 	}
 

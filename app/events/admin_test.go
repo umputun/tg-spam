@@ -1595,3 +1595,96 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 		assert.Equal(t, 0, deleted)
 	})
 }
+
+func TestAdmin_checkReportRateLimit(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("rate limit exceeded", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 10, nil
+			},
+		}
+
+		adm := &admin{
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		exceeded, err := adm.checkReportRateLimit(ctx, 123)
+		require.NoError(t, err)
+		assert.True(t, exceeded, "rate limit should be exceeded")
+		require.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()))
+	})
+
+	t.Run("rate limit not exceeded", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 5, nil
+			},
+		}
+
+		adm := &admin{
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		exceeded, err := adm.checkReportRateLimit(ctx, 123)
+		require.NoError(t, err)
+		assert.False(t, exceeded, "rate limit should not be exceeded")
+		require.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()))
+	})
+
+	t.Run("rate limiting disabled", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 100, nil
+			},
+		}
+
+		adm := &admin{
+			reports:          mockReports,
+			reportRateLimit:  0,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		exceeded, err := adm.checkReportRateLimit(ctx, 123)
+		require.NoError(t, err)
+		assert.False(t, exceeded, "rate limit should be disabled")
+		require.Equal(t, 0, len(mockReports.GetReporterCountSinceCalls()), "should not call GetReporterCountSince when disabled")
+	})
+
+	t.Run("reports storage not initialized", func(t *testing.T) {
+		adm := &admin{
+			reports:          nil,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		exceeded, err := adm.checkReportRateLimit(ctx, 123)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reports storage not initialized")
+		assert.False(t, exceeded)
+	})
+
+	t.Run("database error", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 0, fmt.Errorf("database error")
+			},
+		}
+
+		adm := &admin{
+			reports:          mockReports,
+			reportRateLimit:  10,
+			reportRatePeriod: 1 * time.Hour,
+		}
+
+		exceeded, err := adm.checkReportRateLimit(ctx, 123)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get reporter count")
+		assert.False(t, exceeded)
+	})
+}
