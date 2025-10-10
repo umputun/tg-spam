@@ -516,6 +516,33 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 		return nil
 	}
 
+	// report callbacks (two-char prefixes starting with "R")
+	if len(callbackData) >= 3 && callbackData[:1] == "R" {
+		switch callbackData[:2] {
+		case "R+": // approve ban
+			if err := a.callbackReportBan(query); err != nil {
+				return fmt.Errorf("failed to approve report ban: %w", err)
+			}
+			log.Printf("[DEBUG] report ban approved, chatID: %d, callback: %q", chatID, callbackData)
+			return nil
+		case "R-": // reject report
+			if err := a.callbackReportReject(query); err != nil {
+				return fmt.Errorf("failed to reject report: %w", err)
+			}
+			log.Printf("[DEBUG] report rejected, chatID: %d, callback: %q", chatID, callbackData)
+			return nil
+		case "R?": // ban reporter confirmation (will be implemented in iteration 8)
+			log.Printf("[DEBUG] ban reporter confirmation requested, chatID: %d, callback: %q", chatID, callbackData)
+			return fmt.Errorf("ban reporter confirmation not yet implemented")
+		case "R!": // ban specific reporter (will be implemented in iteration 8)
+			log.Printf("[DEBUG] ban specific reporter requested, chatID: %d, callback: %q", chatID, callbackData)
+			return fmt.Errorf("ban specific reporter not yet implemented")
+		case "RX": // cancel ban reporter (will be implemented in iteration 8)
+			log.Printf("[DEBUG] cancel ban reporter requested, chatID: %d, callback: %q", chatID, callbackData)
+			return fmt.Errorf("cancel ban reporter not yet implemented")
+		}
+	}
+
 	// if callback msgsData starts with "?", we should show a confirmation message
 	if strings.HasPrefix(callbackData, confirmationPrefix) {
 		if err := a.callbackAskBanConfirmation(query); err != nil {
@@ -893,7 +920,12 @@ func (a *admin) parseCallbackData(data string) (userID int64, msgID int, err err
 	}
 
 	// remove prefix if present from the parsed data
-	if data[:1] == confirmationPrefix || data[:1] == banPrefix || data[:1] == infoPrefix {
+	// check for two-char report prefixes first (R+, R-, R?, R!, RX)
+	if len(data) >= 3 && data[:1] == "R" {
+		// two-char report prefix
+		data = data[2:]
+	} else if data[:1] == confirmationPrefix || data[:1] == banPrefix || data[:1] == infoPrefix {
+		// single-char prefix
 		data = data[1:]
 	}
 
@@ -1134,5 +1166,122 @@ func (a *admin) updateReportNotification(_ context.Context, reports []storage.Re
 
 	log.Printf("[INFO] updated report notification for msgID:%d (reported user:%d, %d reports total, admin_msg_id:%d)",
 		msgID, reportedUserID, len(reports), adminMsgID)
+	return nil
+}
+
+// callbackReportBan handles the callback when admin approves a user report and bans the reported user
+// callback data: R+reportedUserID:msgID
+func (a *admin) callbackReportBan(query *tbapi.CallbackQuery) error {
+	// parse callback data
+	reportedUserID, msgID, err := a.parseCallbackData(query.Data)
+	if err != nil {
+		return fmt.Errorf("failed to parse callback data: %w", err)
+	}
+
+	// get reports from database to find chatID and message text
+	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	if err != nil {
+		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
+	}
+	if len(reports) == 0 {
+		return fmt.Errorf("no reports found for msgID:%d", msgID)
+	}
+
+	chatID := reports[0].ChatID
+	msgText := reports[0].MsgText
+	reportedUserName := reports[0].ReportedUserName
+
+	// remove user from approved list
+	if remErr := a.bot.RemoveApprovedUser(reportedUserID); remErr != nil {
+		log.Printf("[DEBUG] can't remove user %d from approved list: %v", reportedUserID, remErr)
+	}
+
+	// update spam samples with message text (if not empty)
+	if !a.dry && msgText != "" {
+		if spamErr := a.bot.UpdateSpam(msgText); spamErr != nil {
+			log.Printf("[WARN] failed to update spam samples: %v", spamErr)
+		}
+	}
+
+	// delete reported message from primary chat
+	if !a.dry {
+		_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  msgID,
+			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
+		}})
+		if err != nil {
+			log.Printf("[WARN] failed to delete reported message %d: %v", msgID, err)
+		} else {
+			log.Printf("[INFO] reported message %d deleted", msgID)
+		}
+	}
+
+	// ban reported user permanently
+	banReq := banRequest{
+		duration: bot.PermanentBanDuration,
+		userID:   reportedUserID,
+		chatID:   chatID,
+		tbAPI:    a.tbAPI,
+		dry:      a.dry,
+		training: a.trainingMode,
+		userName: reportedUserName,
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		log.Printf("[WARN] failed to ban user %d: %v", reportedUserID, err)
+	}
+
+	// delete all reports for this message
+	if err := a.reports.DeleteByMessage(context.Background(), msgID, chatID); err != nil {
+		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
+	}
+
+	// update admin notification text with confirmation
+	updText := query.Message.Text + fmt.Sprintf("\n\n_banned by %s in %v_", query.From.UserName, a.sinceQuery(query))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+	if err := send(editMsg, a.tbAPI); err != nil {
+		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
+			query.Message.Chat.ID, query.Message.MessageID, err)
+	}
+
+	log.Printf("[INFO] report ban approved for user %d by admin %s", reportedUserID, query.From.UserName)
+	return nil
+}
+
+// callbackReportReject handles the callback when admin rejects a user report
+// callback data: R-reportedUserID:msgID
+func (a *admin) callbackReportReject(query *tbapi.CallbackQuery) error {
+	// parse callback data
+	_, msgID, err := a.parseCallbackData(query.Data)
+	if err != nil {
+		return fmt.Errorf("failed to parse callback data: %w", err)
+	}
+
+	// get chatID from reports
+	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	if err != nil {
+		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
+	}
+	if len(reports) == 0 {
+		return fmt.Errorf("no reports found for msgID:%d", msgID)
+	}
+
+	chatID := reports[0].ChatID
+
+	// delete all reports for this message
+	if err := a.reports.DeleteByMessage(context.Background(), msgID, chatID); err != nil {
+		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
+	}
+
+	// update admin notification text with confirmation
+	updText := query.Message.Text + fmt.Sprintf("\n\n_rejected by %s in %v_", query.From.UserName, a.sinceQuery(query))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
+	if err := send(editMsg, a.tbAPI); err != nil {
+		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
+			query.Message.Chat.ID, query.Message.MessageID, err)
+	}
+
+	log.Printf("[INFO] report rejected by admin %s for msgID:%d", query.From.UserName, msgID)
 	return nil
 }

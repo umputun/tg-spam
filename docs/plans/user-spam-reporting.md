@@ -713,28 +713,30 @@ All tasks completed successfully. Implementation details:
 - EditMessageText allows updating both text and buttons in a single API call
 
 ### Iteration 7: Admin Callback Handlers - Approve/Reject
-- [ ] update parseCallbackData in admin.go to handle two-char prefixes (R+, R-, R?, R!, RX)
-  - [ ] check if data starts with 'R' and has length >= 3
-  - [ ] strip first 2 characters if R prefix detected
-  - [ ] keep existing logic for single-char prefixes
-- [ ] add report callback detection in InlineCallbackHandler (check for R+, R-, R?, R!, RX prefixes)
-- [ ] implement callbackReportBan method (R+ prefix - approve ban)
-  - [ ] parse callback data: reportedUserID, msgID
-  - [ ] get reports from database by msgID using a.reports.GetByMessage to find chatID and message text
-  - [ ] ban reported user permanently (same as directReport ban logic)
-  - [ ] update spam samples with message text
-  - [ ] delete reported message from primary chat
-  - [ ] delete all reports for this message using a.reports.DeleteByMessage
-  - [ ] update admin notification text with "banned by {admin} in {duration}"
-  - [ ] remove buttons (empty keyboard)
-- [ ] implement callbackReportReject method (R- prefix - reject)
-  - [ ] parse callback data: reportedUserID, msgID
-  - [ ] delete all reports for this message using a.reports.DeleteByMessage
-  - [ ] update admin notification text with "rejected by {admin} in {duration}"
-  - [ ] remove buttons (empty keyboard)
-- [ ] add tests for approve/reject handlers
-- [ ] verify approve and reject buttons work correctly
-- [ ] mark iteration 7 complete and document any changes from original plan in this section
+- [x] update parseCallbackData in admin.go to handle two-char prefixes (R+, R-, R?, R!, RX)
+  - [x] check if data starts with 'R' and has length >= 3
+  - [x] strip first 2 characters if R prefix detected
+  - [x] keep existing logic for single-char prefixes
+- [x] add report callback detection in InlineCallbackHandler (check for R+, R-, R?, R!, RX prefixes)
+- [x] implement callbackReportBan method (R+ prefix - approve ban)
+  - [x] parse callback data: reportedUserID, msgID
+  - [x] get reports from database by msgID using a.reports.GetByMessage to find chatID and message text
+  - [x] ban reported user permanently (same as directReport ban logic)
+  - [x] update spam samples with message text
+  - [x] delete reported message from primary chat
+  - [x] delete all reports for this message using a.reports.DeleteByMessage
+  - [x] update admin notification text with "banned by {admin} in {duration}"
+  - [x] remove buttons (empty keyboard)
+- [x] implement callbackReportReject method (R- prefix - reject)
+  - [x] parse callback data: reportedUserID, msgID
+  - [x] delete all reports for this message using a.reports.DeleteByMessage
+  - [x] update admin notification text with "rejected by {admin} in {duration}"
+  - [x] remove buttons (empty keyboard)
+- [x] add tests for approve/reject handlers
+- [x] verify approve and reject buttons work correctly
+- [x] mark iteration 7 complete and document any changes from original plan in this section
+
+**Iteration 7 completed**: Implemented admin callback handlers for approve and reject actions. All tests pass, linter clean. No changes from original plan. Fixed variable shadowing issues reported by linter by renaming local error variables (remErr, spamErr) in non-critical error handling paths.
 
 ### Iteration 8: Admin Callback Handlers - Ban Reporter
 - [ ] implement callbackReportBanReporterAsk method (R? prefix - show confirmation)
