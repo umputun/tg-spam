@@ -1711,6 +1711,9 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 				assert.Equal(t, "spam message", report.MsgText)
 				return nil
 			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil // threshold not reached
+			},
 		}
 
 		adm := &admin{
@@ -1917,6 +1920,9 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 				assert.Contains(t, report.MsgText, "caption from image")
 				return nil
 			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil // threshold not reached
+			},
 		}
 
 		adm := &admin{
@@ -2023,5 +2029,622 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reports storage not initialized")
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+	})
+}
+
+func TestAdmin_CheckReportThreshold(t *testing.T) {
+	t.Run("threshold not reached - should return without action", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111},
+				}, nil
+			},
+		}
+
+		adm := &admin{
+			reports:         mockReports,
+			reportThreshold: 3, // need 3 reports
+		}
+
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+	})
+
+	t.Run("threshold reached for new notification - should return without error", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				// return 2 reports, threshold is 2, notification not sent yet
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, NotificationSent: false},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, NotificationSent: false},
+				}, nil
+			},
+		}
+
+		adm := &admin{
+			reports:         mockReports,
+			reportThreshold: 2,
+		}
+
+		// should call sendReportNotification (stub for now), verify no error
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+	})
+
+	t.Run("threshold reached for existing notification - should return without error", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				// return 3 reports, threshold is 2, notification already sent
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, NotificationSent: true, AdminMsgID: 999},
+				}, nil
+			},
+		}
+
+		adm := &admin{
+			reports:         mockReports,
+			reportThreshold: 2,
+		}
+
+		// should call updateReportNotification (stub for now), verify no error
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+	})
+
+	t.Run("exactly at threshold - should trigger notification", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, NotificationSent: false},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, NotificationSent: false},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, NotificationSent: false},
+				}, nil
+			},
+		}
+
+		adm := &admin{
+			reports:         mockReports,
+			reportThreshold: 3, // exactly 3 reports
+		}
+
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+	})
+
+	t.Run("reports storage not initialized - should return error", func(t *testing.T) {
+		adm := &admin{
+			reports:         nil,
+			reportThreshold: 2,
+		}
+
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reports storage not initialized")
+	})
+
+	t.Run("GetByMessage error - should return error", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return nil, fmt.Errorf("database error")
+			},
+		}
+
+		adm := &admin{
+			reports:         mockReports,
+			reportThreshold: 2,
+		}
+
+		err := adm.checkReportThreshold(context.Background(), 100, 200)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get reports")
+		assert.Contains(t, err.Error(), "database error")
+	})
+}
+
+func TestAdmin_SendReportNotification(t *testing.T) {
+	t.Run("successful notification with single report", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				assert.Equal(t, 100, msgID)
+				assert.Equal(t, int64(200), chatID)
+				assert.Equal(t, 999, adminMsgID)
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam message"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send message")
+		assert.Equal(t, 1, len(mockReports.UpdateAdminMsgIDCalls()), "should update admin msg ID")
+		assert.Equal(t, int64(456), sentMsg.ChatID, "should send to admin chat")
+		assert.Equal(t, tbapi.ModeMarkdown, sentMsg.ParseMode, "should use markdown")
+		assert.Contains(t, sentMsg.Text, "User spam reported (1 reports)", "should contain report count")
+		assert.Contains(t, sentMsg.Text, "spammer", "should contain reported user name")
+		assert.Contains(t, sentMsg.Text, "spam message", "should contain message text")
+		assert.Contains(t, sentMsg.Text, "reporter1", "should contain reporter name")
+
+		// verify inline keyboard
+		keyboard, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.True(t, ok, "should have inline keyboard")
+		require.Equal(t, 1, len(keyboard.InlineKeyboard), "should have 1 row")
+		require.Equal(t, 3, len(keyboard.InlineKeyboard[0]), "should have 3 buttons")
+		assert.Equal(t, "✅ Approve Ban", keyboard.InlineKeyboard[0][0].Text)
+		assert.Equal(t, "R+666:100", *keyboard.InlineKeyboard[0][0].CallbackData)
+		assert.Equal(t, "❌ Reject", keyboard.InlineKeyboard[0][1].Text)
+		assert.Equal(t, "R-666:100", *keyboard.InlineKeyboard[0][1].CallbackData)
+		assert.Equal(t, "⛔️ Ban Reporter", keyboard.InlineKeyboard[0][2].Text)
+		assert.Equal(t, "R?666:100", *keyboard.InlineKeyboard[0][2].CallbackData)
+	})
+
+	t.Run("successful notification with multiple reports", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam message"},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 222, ReporterUserName: "reporter2", MsgText: "spam message"},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 333, ReporterUserName: "reporter3", MsgText: "spam message"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Contains(t, sentMsg.Text, "User spam reported (3 reports)", "should contain report count")
+		assert.Contains(t, sentMsg.Text, "reporter1", "should contain first reporter")
+		assert.Contains(t, sentMsg.Text, "reporter2", "should contain second reporter")
+		assert.Contains(t, sentMsg.Text, "reporter3", "should contain third reporter")
+	})
+
+	t.Run("long message text should be truncated", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		longMsg := strings.Repeat("spam ", 100) // 500 chars
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: longMsg},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Contains(t, sentMsg.Text, "...", "should truncate long message")
+	})
+
+	t.Run("reporter without username - should use user ID", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "", MsgText: "spam"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Contains(t, sentMsg.Text, "user111", "should use userID as fallback")
+	})
+
+	t.Run("admin chat not configured - should skip notification", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 0, // not configured
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(mockAPI.SendCalls()), "should not send message")
+	})
+
+	t.Run("empty reports list - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		err := adm.sendReportNotification(context.Background(), []storage.Report{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no reports provided")
+	})
+
+	t.Run("send error - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, fmt.Errorf("network error")
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to send notification")
+		assert.Contains(t, err.Error(), "network error")
+	})
+
+	t.Run("UpdateAdminMsgID error - should not fail", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return fmt.Errorf("database error")
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam"},
+		}
+
+		// should not fail even if UpdateAdminMsgID fails
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should still send message")
+		assert.Equal(t, 1, len(mockReports.UpdateAdminMsgIDCalls()), "should attempt to update admin msg ID")
+	})
+
+	t.Run("names with markdown special characters should be escaped", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			reports:     mockReports,
+		}
+
+		// names with various markdown special characters
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spam_user*bot", ReporterUserID: 111, ReporterUserName: "test_reporter", MsgText: "spam"},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spam_user*bot", ReporterUserID: 222, ReporterUserName: "admin[test]", MsgText: "spam"},
+		}
+
+		err := adm.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+
+		// verify escaped characters in reported user name
+		assert.Contains(t, sentMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
+		assert.NotContains(t, sentMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+
+		// verify escaped characters in reporter names
+		assert.Contains(t, sentMsg.Text, "test\\_reporter", "first reporter name should be escaped")
+		assert.Contains(t, sentMsg.Text, "admin\\[test]", "second reporter name should have escaped bracket")
+		assert.NotContains(t, sentMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
+		assert.NotContains(t, sentMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
+	})
+}
+
+func TestAdmin_UpdateReportNotification(t *testing.T) {
+	t.Run("successful update with multiple reporters", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.EditMessageTextConfig)
+				editedMsg = msg
+				return tbapi.Message{MessageID: 888}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam message", AdminMsgID: 888},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 222, ReporterUserName: "reporter2", MsgText: "spam message", AdminMsgID: 888},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 333, ReporterUserName: "reporter3", MsgText: "spam message", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should edit message")
+		assert.Equal(t, int64(456), editedMsg.ChatID, "should edit in admin chat")
+		assert.Equal(t, 888, editedMsg.MessageID, "should edit correct message")
+		assert.Equal(t, tbapi.ModeMarkdown, editedMsg.ParseMode, "should use markdown")
+		assert.Contains(t, editedMsg.Text, "User spam reported (3 reports)", "should contain updated report count")
+		assert.Contains(t, editedMsg.Text, "spammer", "should contain reported user name")
+		assert.Contains(t, editedMsg.Text, "spam message", "should contain message text")
+		assert.Contains(t, editedMsg.Text, "reporter1", "should contain first reporter")
+		assert.Contains(t, editedMsg.Text, "reporter2", "should contain second reporter")
+		assert.Contains(t, editedMsg.Text, "reporter3", "should contain third reporter")
+
+		// verify inline keyboard
+		require.NotNil(t, editedMsg.ReplyMarkup, "should have inline keyboard")
+		require.Equal(t, 1, len(editedMsg.ReplyMarkup.InlineKeyboard), "should have 1 row")
+		require.Equal(t, 3, len(editedMsg.ReplyMarkup.InlineKeyboard[0]), "should have 3 buttons")
+		assert.Equal(t, "✅ Approve Ban", editedMsg.ReplyMarkup.InlineKeyboard[0][0].Text)
+		assert.Equal(t, "R+666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
+		assert.Equal(t, "❌ Reject", editedMsg.ReplyMarkup.InlineKeyboard[0][1].Text)
+		assert.Equal(t, "R-666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
+		assert.Equal(t, "⛔️ Ban Reporter", editedMsg.ReplyMarkup.InlineKeyboard[0][2].Text)
+		assert.Equal(t, "R?666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][2].CallbackData)
+	})
+
+	t.Run("successful update adding new reporter to existing notification", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.EditMessageTextConfig)
+				editedMsg = msg
+				return tbapi.Message{MessageID: 888}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		// simulating adding a second reporter to an existing notification
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam message", AdminMsgID: 888},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 222, ReporterUserName: "reporter2", MsgText: "spam message", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Contains(t, editedMsg.Text, "User spam reported (2 reports)", "should update to 2 reports")
+		assert.Contains(t, editedMsg.Text, "reporter1", "should still contain first reporter")
+		assert.Contains(t, editedMsg.Text, "reporter2", "should add second reporter")
+	})
+
+	t.Run("long message text should be truncated", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.EditMessageTextConfig)
+				editedMsg = msg
+				return tbapi.Message{MessageID: 888}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		longMsg := strings.Repeat("spam ", 100)
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: longMsg, AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.True(t, strings.Contains(editedMsg.Text, "..."), "should truncate long message")
+		msgStart := strings.Index(editedMsg.Text, "spam")
+		msgEnd := strings.Index(editedMsg.Text[msgStart:], "**Reporters:**")
+		msgTextInNotif := editedMsg.Text[msgStart : msgStart+msgEnd]
+		assert.True(t, len(msgTextInNotif) < len(longMsg), "message should be shorter than original")
+	})
+
+	t.Run("reporter without username should use fallback", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.EditMessageTextConfig)
+				editedMsg = msg
+				return tbapi.Message{MessageID: 888}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "", MsgText: "spam", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Contains(t, editedMsg.Text, "user111", "should use fallback username")
+	})
+
+	t.Run("admin chat not configured should skip gracefully", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				t.Fatal("should not send message")
+				return tbapi.Message{}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 0, // not configured
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(mockAPI.SendCalls()), "should not send message")
+	})
+
+	t.Run("empty reports list should return error", func(t *testing.T) {
+		adm := &admin{
+			adminChatID: 456,
+		}
+
+		err := adm.updateReportNotification(context.Background(), []storage.Report{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reports list is empty")
+	})
+
+	t.Run("send error should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, fmt.Errorf("telegram api error")
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to edit admin notification")
+	})
+
+	t.Run("names with markdown special characters should be escaped", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.EditMessageTextConfig)
+				editedMsg = msg
+				return tbapi.Message{MessageID: 888}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+		}
+
+		// names with various markdown special characters
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spam_user*bot", ReporterUserID: 111, ReporterUserName: "test_reporter", MsgText: "spam", AdminMsgID: 888},
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spam_user*bot", ReporterUserID: 222, ReporterUserName: "admin[test]", MsgText: "spam", AdminMsgID: 888},
+		}
+
+		err := adm.updateReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+
+		// verify escaped characters in reported user name
+		assert.Contains(t, editedMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
+		assert.NotContains(t, editedMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+
+		// verify escaped characters in reporter names
+		assert.Contains(t, editedMsg.Text, "test\\_reporter", "first reporter name should be escaped")
+		assert.Contains(t, editedMsg.Text, "admin\\[test]", "second reporter name should have escaped bracket")
+		assert.NotContains(t, editedMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
+		assert.NotContains(t, editedMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
 	})
 }

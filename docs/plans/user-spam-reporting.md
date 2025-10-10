@@ -495,47 +495,222 @@ All tasks completed successfully. No changes from original plan:
 - Superusers can still use /spam as before (no changes to existing functionality)
 - The report is stored immediately, threshold check is deferred to iteration 4
 
-### Iteration 4: Report Tracking and Threshold Logic
-- [ ] implement checkReportThreshold method in admin struct
-- [ ] query all reports for a message
-- [ ] check if count >= threshold
-- [ ] check if admin notification already sent (check if reports[0].NotificationSent == true)
-  - [ ] all reports for same message have same notification_sent and admin_msg_id (updated together)
-  - [ ] if notification_sent == true, notification already sent, just update it using admin_msg_id
-  - [ ] if notification_sent == false, no notification yet, send new one
-- [ ] format reporter list for display
-- [ ] add tests for threshold logic
-- [ ] verify threshold triggering works correctly
-- [ ] mark iteration 4 complete and document any changes from original plan in this section
+### Iteration 4: Report Tracking and Threshold Logic ✅ COMPLETED
+- [x] implement checkReportThreshold method in admin struct
+- [x] query all reports for a message
+- [x] check if count >= threshold
+- [x] check if admin notification already sent (check if reports[0].NotificationSent == true)
+  - [x] all reports for same message have same notification_sent and admin_msg_id (updated together)
+  - [x] if notification_sent == true, notification already sent, just update it using admin_msg_id
+  - [x] if notification_sent == false, no notification yet, send new one
+- [x] format reporter list for display (deferred to iterations 5/6)
+- [x] add tests for threshold logic
+- [x] verify threshold triggering works correctly
+- [x] mark iteration 4 complete and document any changes from original plan in this section
 
-### Iteration 5: Admin Notification
-- [ ] implement sendReportNotification method in admin struct
-  - [ ] parameter: reports []storage.Report (assumes all reports are for same message)
-  - [ ] extract reported user info from first report (all have same reported user)
-  - [ ] format message text (escape markdown using escapeMarkDownV1Text)
-  - [ ] format reporter list with markdown links: [username](tg://user?id=123)
-  - [ ] create notification text: "User spam reported (N reports)" + reported user + message + reporters
-  - [ ] create inline keyboard with 3 buttons using tbapi.NewInlineKeyboardMarkup:
-    - [ ] "Approve Ban" → callback: R+reportedUserID:msgID
-    - [ ] "Reject" → callback: R-reportedUserID:msgID
-    - [ ] "Ban Reporter" → callback: R?reportedUserID:msgID
-  - [ ] send to admin chat using tbAPI.Send
-  - [ ] get sent message ID from response
-  - [ ] call a.reports.UpdateAdminMsgID to store admin message ID
-- [ ] add tests for notification formatting
-- [ ] verify notification appears in admin chat
-- [ ] mark iteration 5 complete and document any changes from original plan in this section
+**Iteration 4 Completion Summary:**
 
-### Iteration 6: Update Existing Notification
-- [ ] implement updateReportNotification method in admin struct
-- [ ] fetch existing admin message by ID from reports
-- [ ] append new reporter to list
-- [ ] update message text with new reporter count
-- [ ] keep same 3 buttons (no change to button row)
-- [ ] edit existing admin message
-- [ ] add tests for notification updates
-- [ ] verify multiple reports update same message
-- [ ] mark iteration 6 complete and document any changes from original plan in this section
+All tasks completed successfully. Implementation details:
+
+1. **checkReportThreshold Implementation** (app/events/admin.go:967-1000) - Complete threshold checking logic:
+   - Added ctx parameter to method signature
+   - Validates reports storage is initialized
+   - Queries all reports for the message using a.reports.GetByMessage
+   - Checks if report count >= threshold
+   - Returns early with DEBUG log if threshold not reached
+   - Logs INFO when threshold reached
+   - Determines if notification already sent by checking reports[0].NotificationSent
+   - Calls updateReportNotification if notification exists (NotificationSent == true)
+   - Calls sendReportNotification if no notification yet (NotificationSent == false)
+
+2. **Stub Methods Created** (app/events/admin.go:1002-1025):
+   - sendReportNotification - stub for iteration 5, logs DEBUG message
+   - updateReportNotification - stub for iteration 6, logs DEBUG message
+   - Both methods take ctx and reports []storage.Report parameters
+   - Both return nil (no-op for now)
+
+3. **DirectUserReport Integration** (app/events/admin.go:325) - Updated to pass context:
+   - Changed from `checkReportThreshold(msgID, chatID)` to `checkReportThreshold(context.Background(), msgID, chatID)`
+   - Errors are logged but don't fail the operation (user report still succeeds even if threshold check fails)
+
+4. **Comprehensive Tests** (app/events/admin_test.go:2029-2142) - Added 6 test cases:
+   - Threshold not reached - verifies early return without calling send/update
+   - Threshold reached for new notification - verifies sendReportNotification path
+   - Threshold reached for existing notification - verifies updateReportNotification path
+   - Exactly at threshold - edge case verification
+   - Reports storage not initialized - error handling
+   - GetByMessage error - error propagation
+
+5. **Existing Test Updates** - Fixed DirectUserReport tests to include GetByMessageFunc:
+   - Added GetByMessageFunc returning empty list to "successful report from regular user" test
+   - Added GetByMessageFunc returning empty list to "empty message text" test
+   - Tests that don't reach checkReportThreshold (early returns) don't need the mock
+
+6. **All Tests Pass** - Verified:
+   - All new checkReportThreshold tests pass
+   - All existing DirectUserReport tests still pass
+   - Full test suite passes with race detector
+   - No linter errors
+   - No formatter changes needed
+
+**Design Notes:**
+- Deferred "format reporter list for display" to iterations 5 and 6 where the actual formatting will be implemented in the notification methods
+- The threshold logic is complete and ready for integration with actual notification sending in the next iterations
+- Error handling follows existing patterns: errors are logged but don't prevent the user report from being recorded
+
+### Iteration 5: Admin Notification ✅ COMPLETED
+- [x] implement sendReportNotification method in admin struct
+  - [x] parameter: reports []storage.Report (assumes all reports are for same message)
+  - [x] extract reported user info from first report (all have same reported user)
+  - [x] format message text (escape markdown using escapeMarkDownV1Text)
+  - [x] format reporter list with markdown links: [username](tg://user?id=123)
+  - [x] create notification text: "User spam reported (N reports)" + reported user + message + reporters
+  - [x] create inline keyboard with 3 buttons using tbapi.NewInlineKeyboardMarkup:
+    - [x] "Approve Ban" → callback: R+reportedUserID:msgID
+    - [x] "Reject" → callback: R-reportedUserID:msgID
+    - [x] "Ban Reporter" → callback: R?reportedUserID:msgID
+  - [x] send to admin chat using tbAPI.Send
+  - [x] get sent message ID from response
+  - [x] call a.reports.UpdateAdminMsgID to store admin message ID
+- [x] add tests for notification formatting
+- [x] verify notification appears in admin chat (via tests)
+- [x] mark iteration 5 complete and document any changes from original plan in this section
+
+**Iteration 5 Completion Summary:**
+
+All tasks completed successfully. Implementation details:
+
+1. **sendReportNotification Implementation** (app/events/admin.go:1002-1074) - Complete notification sending logic:
+   - Validates reports list is not empty
+   - Returns early if admin chat not configured (adminChatID == 0)
+   - Extracts info from first report (all reports have same message/reported user)
+   - Escapes message text for markdown safety using escapeMarkDownV1Text
+   - Truncates long messages to 200 chars with "..." suffix
+   - Formats reporter list with markdown links: `[username](tg://user?id=123)`
+   - Uses fallback `user{ID}` when reporter username is empty
+   - Creates notification message with format:
+     ```
+     **User spam reported (N reports)**
+
+     [reportedUserName](tg://user?id=reportedUserID)
+
+     {message text}
+
+     **Reporters:**
+     - [reporter1](tg://user?id=111)
+     - [reporter2](tg://user?id=222)
+     ```
+   - Creates inline keyboard with 3 buttons using two-char prefixes:
+     - ✅ Approve Ban → `R+reportedUserID:msgID`
+     - ❌ Reject → `R-reportedUserID:msgID`
+     - ⛔️ Ban Reporter → `R?reportedUserID:msgID`
+   - Sends to admin chat with ParseMode=Markdown and LinkPreview disabled
+   - Updates all reports with admin message ID via UpdateAdminMsgID
+   - Logs warning if UpdateAdminMsgID fails but doesn't fail the operation
+   - Logs INFO message with notification details
+
+2. **Comprehensive Tests** (app/events/admin_test.go:2150-2391) - Added 8 test cases:
+   - Successful notification with single report - verifies all fields and keyboard structure
+   - Successful notification with multiple reports - verifies all reporters included
+   - Long message text truncation - verifies 200 char limit with "..."
+   - Reporter without username - verifies fallback to `user{ID}` format
+   - Admin chat not configured - verifies graceful skip
+   - Empty reports list - verifies error handling
+   - Send error - verifies error propagation
+   - UpdateAdminMsgID error - verifies operation continues (only logs warning)
+
+3. **Message Formatting Details**:
+   - Message text has newlines replaced with spaces for single-line display
+   - All user-generated text escaped with escapeMarkDownV1Text
+   - Markdown links use `tg://user?id={ID}` format for user mentions
+   - Button emojis: ✅ (approve), ❌ (reject), ⛔️ (ban reporter)
+   - Callback data format: `R{action}{userID}:{msgID}` (two-char prefix)
+
+4. **Error Handling**:
+   - Empty reports → error returned
+   - Admin chat not configured → silent skip (no error)
+   - Send failure → error returned
+   - UpdateAdminMsgID failure → logged warning, operation succeeds
+
+5. **All Tests Pass** - Verified:
+   - All 8 new sendReportNotification tests pass
+   - All existing tests still pass
+   - Full test suite passes with race detector (2.413s)
+   - No linter errors
+   - No formatter changes needed
+
+**Design Notes:**
+- Message truncation at 200 chars prevents admin chat spam from very long messages
+- UpdateAdminMsgID failure doesn't fail the operation since the notification was sent successfully
+- Admin chat not configured is treated as valid state (allows deployments without admin chat)
+- Two-char callback prefixes (R+, R-, R?) avoid conflicts with existing single-char prefixes (?, +, !)
+- Reporter name fallback ensures notification always displays something even for users without usernames
+
+### Iteration 6: Update Existing Notification ✅ COMPLETED
+- [x] implement updateReportNotification method in admin struct
+- [x] fetch existing admin message by ID from reports
+- [x] append new reporter to list
+- [x] update message text with new reporter count
+- [x] keep same 3 buttons (no change to button row)
+- [x] edit existing admin message
+- [x] add tests for notification updates
+- [x] verify multiple reports update same message
+- [x] mark iteration 6 complete and document any changes from original plan in this section
+
+**Iteration 6 Completion Summary:**
+
+All tasks completed successfully. Implementation details:
+
+1. **updateReportNotification Implementation** (app/events/admin.go:1074-1137) - Complete notification update logic:
+   - Validates reports list is not empty
+   - Returns early if admin chat not configured (adminChatID == 0)
+   - Extracts info from first report (all reports have same message/reported user/admin_msg_id)
+   - Escapes message text for markdown safety using escapeMarkDownV1Text
+   - Truncates long messages to 200 chars with "..." suffix
+   - Formats reporter list with markdown links: `[username](tg://user?id=123)`
+   - Uses fallback `user{ID}` when reporter username is empty
+   - Creates same notification format as sendReportNotification but with updated reporter count and list
+   - Creates inline keyboard with same 3 buttons (Approve Ban, Reject, Ban Reporter)
+   - Uses EditMessageText to update existing admin message
+   - Logs INFO message with update details
+
+2. **API Field Changes** - Updated to use new telegram-bot-api LinkPreviewOptions:
+   - Changed from `DisableWebPagePreview: true` to `LinkPreviewOptions: tbapi.LinkPreviewOptions{IsDisabled: true}`
+   - This is the correct field for the newer version of the telegram-bot-api library
+
+3. **Comprehensive Tests** (app/events/admin_test.go:2393-2574) - Added 7 test cases:
+   - Successful update with multiple reporters - verifies all fields, keyboard structure, and message format
+   - Successful update adding new reporter - verifies incremental update from 1 to 2 reporters
+   - Long message text truncation - verifies 200 char limit with "..."
+   - Reporter without username - verifies fallback to `user{ID}` format
+   - Admin chat not configured - verifies graceful skip
+   - Empty reports list - verifies error handling
+   - Send error - verifies error propagation
+
+4. **Message Formatting** - Identical to sendReportNotification:
+   - Same notification format with updated count: "User spam reported (N reports)"
+   - Same markdown links for reported user and reporters
+   - Same button layout with callback prefixes (R+, R-, R?)
+   - Message text has newlines replaced with spaces for single-line display
+   - All user-generated text escaped with escapeMarkDownV1Text
+
+5. **Error Handling**:
+   - Empty reports → error returned
+   - Admin chat not configured → silent skip (no error)
+   - Send failure → error returned
+
+6. **All Tests Pass** - Verified:
+   - All 7 new updateReportNotification tests pass
+   - All existing tests still pass (DirectUserReport, checkReportThreshold, sendReportNotification)
+   - Full admin test suite passes with race detector (1.977s)
+   - No linter errors
+   - No formatter changes needed
+
+**Design Notes:**
+- Message formatting is intentionally identical to sendReportNotification for consistency
+- The update always recreates the entire message with the full reporter list (not incremental)
+- Admin chat not configured is treated as valid state (allows deployments without admin chat)
+- EditMessageText allows updating both text and buttons in a single API call
 
 ### Iteration 7: Admin Callback Handlers - Approve/Reject
 - [ ] update parseCallbackData in admin.go to handle two-char prefixes (R+, R-, R?, R!, RX)
