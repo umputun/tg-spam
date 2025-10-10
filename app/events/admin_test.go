@@ -2801,3 +2801,194 @@ func TestAdmin_CallbackReportReject(t *testing.T) {
 		assert.Contains(t, err.Error(), "no reports found")
 	})
 }
+
+func TestAdmin_CallbackReportBanReporterAsk(t *testing.T) {
+	t.Run("show confirmation with multiple reporters", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if editMarkup, ok := c.(tbapi.EditMessageReplyMarkupConfig); ok {
+					assert.Equal(t, int64(456), editMarkup.ChatID)
+					assert.Equal(t, 999, editMarkup.MessageID)
+					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 3)
+					assert.Equal(t, "Ban reporter1", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
+					assert.Equal(t, "R!111:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
+					assert.Equal(t, "Ban reporter2", editMarkup.ReplyMarkup.InlineKeyboard[1][0].Text)
+					assert.Equal(t, "R!222:100", *editMarkup.ReplyMarkup.InlineKeyboard[1][0].CallbackData)
+					assert.Equal(t, "Cancel", editMarkup.ReplyMarkup.InlineKeyboard[2][0].Text)
+					assert.Equal(t, "RX666:100", *editMarkup.ReplyMarkup.InlineKeyboard[2][0].CallbackData)
+				}
+				return tbapi.Message{}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReporterUserID: 111, ReporterUserName: "reporter1"},
+					{MsgID: 100, ChatID: 200, ReporterUserID: 222, ReporterUserName: "reporter2"},
+				}, nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:      mockAPI,
+			primChatID: 200,
+			reports:    mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data:    "R?666:100",
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999},
+		}
+
+		err := adm.callbackReportBanReporterAsk(query)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
+		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+	})
+
+	t.Run("no reports found", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		adm := &admin{primChatID: 200, reports: mockReports}
+		query := &tbapi.CallbackQuery{Data: "R?666:100", Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}}}
+
+		err := adm.callbackReportBanReporterAsk(query)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no reports found")
+	})
+}
+
+func TestAdmin_CallbackReportBanReporterConfirm(t *testing.T) {
+	t.Run("ban reporter with remaining reporters", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		var callCount int
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				callCount++
+				if callCount == 1 {
+					return []storage.Report{
+						{MsgID: 100, ChatID: 200, ReporterUserID: 111, ReporterUserName: "reporter1", ReportedUserID: 666, ReportedUserName: "spammer"},
+						{MsgID: 100, ChatID: 200, ReporterUserID: 222, ReporterUserName: "reporter2", ReportedUserID: 666, ReportedUserName: "spammer"},
+					}, nil
+				}
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReporterUserID: 222, ReporterUserName: "reporter2", ReportedUserID: 666, ReportedUserName: "spammer"},
+				}, nil
+			},
+			DeleteReporterFunc: func(ctx context.Context, reporterID int64, msgID int, chatID int64) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:      mockAPI,
+			primChatID: 200,
+			reports:    mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data:    "R!111:100",
+			From:    &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
+		}
+
+		err := adm.callbackReportBanReporterConfirm(query)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
+		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
+	})
+
+	t.Run("ban last reporter", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		var callCount int
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				callCount++
+				if callCount == 1 {
+					return []storage.Report{
+						{MsgID: 100, ChatID: 200, ReporterUserID: 111, ReporterUserName: "reporter1", ReportedUserID: 666, ReportedUserName: "spammer"},
+					}, nil
+				}
+				return []storage.Report{}, nil
+			},
+			DeleteReporterFunc: func(ctx context.Context, reporterID int64, msgID int, chatID int64) error {
+				return nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:      mockAPI,
+			primChatID: 200,
+			reports:    mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data:    "R!111:100",
+			From:    &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
+		}
+
+		err := adm.callbackReportBanReporterConfirm(query)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
+		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
+		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+	})
+}
+
+func TestAdmin_CallbackReportCancel(t *testing.T) {
+	t.Run("restore original buttons", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if editMarkup, ok := c.(tbapi.EditMessageReplyMarkupConfig); ok {
+					assert.Equal(t, int64(456), editMarkup.ChatID)
+					assert.Equal(t, 999, editMarkup.MessageID)
+					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 2)
+					assert.Equal(t, "Approve", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
+					assert.Equal(t, "R+666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
+					assert.Equal(t, "Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
+					assert.Equal(t, "R-666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
+					assert.Equal(t, "Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[1][0].Text)
+					assert.Equal(t, "R?666:100", *editMarkup.ReplyMarkup.InlineKeyboard[1][0].CallbackData)
+				}
+				return tbapi.Message{}, nil
+			},
+		}
+
+		adm := &admin{tbAPI: mockAPI}
+
+		query := &tbapi.CallbackQuery{
+			Data:    "RX666:100",
+			From:    &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999},
+		}
+
+		err := adm.callbackReportCancel(query)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+	})
+}

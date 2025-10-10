@@ -739,31 +739,33 @@ All tasks completed successfully. Implementation details:
 **Iteration 7 completed**: Implemented admin callback handlers for approve and reject actions. All tests pass, linter clean. No changes from original plan. Fixed variable shadowing issues reported by linter by renaming local error variables (remErr, spamErr) in non-critical error handling paths.
 
 ### Iteration 8: Admin Callback Handlers - Ban Reporter
-- [ ] implement callbackReportBanReporterAsk method (R? prefix - show confirmation)
-  - [ ] parse callback data: reportedUserID, msgID
-  - [ ] get all reports for this message using a.reports.GetByMessage
-  - [ ] generate inline keyboard with one button per reporter: "Ban [username]" callback: R!reporterID:msgID
-  - [ ] add "Cancel" button in new row with callback: RX+reportedUserID:msgID
-  - [ ] update buttons only using tbapi.NewEditMessageReplyMarkup
-- [ ] implement callbackReportBanReporterConfirm method (R! prefix - ban specific reporter)
-  - [ ] parse callback data: reporterID, msgID
-  - [ ] ban reporter permanently using banUserOrChannel
-  - [ ] delete reporter from database using a.reports.DeleteReporter
-  - [ ] get remaining reports for this message using a.reports.GetByMessage
-  - [ ] if no reporters remain:
-    - [ ] delete all reports for this message using a.reports.DeleteByMessage
-    - [ ] update admin notification: "all reporters banned by {admin} in {duration}"
-    - [ ] remove buttons (empty keyboard)
-  - [ ] if reporters remain:
-    - [ ] update admin notification text to remove banned reporter from list
-    - [ ] restore original buttons (Approve, Reject, Ban Reporter) using tbapi.NewEditMessageText
-- [ ] implement callbackReportCancel method (RX prefix - cancel ban reporter)
-  - [ ] parse callback data: reportedUserID, msgID
-  - [ ] restore original button layout (Approve, Reject, Ban Reporter)
-  - [ ] update buttons only using tbapi.NewEditMessageReplyMarkup
-- [ ] add tests for ban reporter flow
-- [ ] verify confirmation dialog works correctly
-- [ ] mark iteration 8 complete and document any changes from original plan in this section
+- [x] implement callbackReportBanReporterAsk method (R? prefix - show confirmation)
+  - [x] parse callback data: reportedUserID, msgID
+  - [x] get all reports for this message using a.reports.GetByMessage
+  - [x] generate inline keyboard with one button per reporter: "Ban [username]" callback: R!reporterID:msgID
+  - [x] add "Cancel" button in new row with callback: RX+reportedUserID:msgID
+  - [x] update buttons only using tbapi.NewEditMessageReplyMarkup
+- [x] implement callbackReportBanReporterConfirm method (R! prefix - ban specific reporter)
+  - [x] parse callback data: reporterID, msgID
+  - [x] ban reporter permanently using banUserOrChannel
+  - [x] delete reporter from database using a.reports.DeleteReporter
+  - [x] get remaining reports for this message using a.reports.GetByMessage
+  - [x] if no reporters remain:
+    - [x] delete all reports for this message using a.reports.DeleteByMessage
+    - [x] update admin notification: "all reporters banned by {admin} in {duration}"
+    - [x] remove buttons (empty keyboard)
+  - [x] if reporters remain:
+    - [x] update admin notification text to remove banned reporter from list
+    - [x] restore original buttons (Approve, Reject, Ban Reporter) using tbapi.NewEditMessageText
+- [x] implement callbackReportCancel method (RX prefix - cancel ban reporter)
+  - [x] parse callback data: reportedUserID, msgID
+  - [x] restore original button layout (Approve, Reject, Ban Reporter)
+  - [x] update buttons only using tbapi.NewEditMessageReplyMarkup
+- [x] add tests for ban reporter flow
+- [x] verify confirmation dialog works correctly
+- [x] mark iteration 8 complete and document any changes from original plan in this section
+
+**Iteration 8 completed**: Implemented ban reporter confirmation flow with three callback handlers (R?, R!, RX). All tests pass, linter clean. Fixed field name issues (ReporterID → ReporterUserID), variable shadowing (banErr, delErr), misspellings (cancelled → canceled), preallocation, and markdown escaping bug in notification rebuild (msgText now properly escaped and newlines flattened to match sendReportNotification pattern). No significant changes from original plan.
 
 ### Iteration 9: Integration and Testing
 - [ ] test full flow: report → threshold → notification → admin action
