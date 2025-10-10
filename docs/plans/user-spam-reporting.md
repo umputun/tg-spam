@@ -768,26 +768,34 @@ All tasks completed successfully. Implementation details:
 **Iteration 8 completed**: Implemented ban reporter confirmation flow with three callback handlers (R?, R!, RX). All tests pass, linter clean. Fixed field name issues (ReporterID → ReporterUserID), variable shadowing (banErr, delErr), misspellings (cancelled → canceled), preallocation, and markdown escaping bug in notification rebuild (msgText now properly escaped and newlines flattened to match sendReportNotification pattern). No significant changes from original plan.
 
 ### Iteration 9: Integration and Testing
-- [ ] test full flow: report → threshold → notification → admin action
-- [ ] test multiple reporters updating same notification
-- [ ] test rate limiting prevents spam
-- [ ] test report command deletion keeps chat clean
-- [ ] test ban reporter confirmation flow
-- [ ] test training mode behavior
-- [ ] test soft ban mode behavior
-- [ ] test dry mode behavior
-- [ ] verify no regressions in existing /spam functionality
-- [ ] verify no regressions in existing ban functionality
-- [ ] mark iteration 9 complete and document any changes from original plan in this section
+- [x] test full flow: report → threshold → notification → admin action
+- [x] test multiple reporters updating same notification
+- [x] test rate limiting prevents spam
+- [x] test report command deletion keeps chat clean
+- [x] test ban reporter confirmation flow
+- [x] test training mode behavior
+- [x] test soft ban mode behavior
+- [x] test dry mode behavior
+- [x] verify no regressions in existing /spam functionality
+- [x] verify no regressions in existing ban functionality
+- [x] mark iteration 9 complete and document any changes from original plan in this section
+
+**Iteration 9 completed**: Verified full integration and testing. All 45+ report-related tests pass across storage and events packages. Tests cover full flow from user report through threshold detection, notification, and admin actions (approve, reject, ban reporter). Rate limiting, command deletion, and all modes (training, soft ban, dry) work correctly. Storage tests verify both SQLite and PostgreSQL compatibility. No regressions detected in existing functionality. All tests pass with race detector, linter clean.
 
 ### Iteration 10: Documentation
-- [ ] update README.md with /report command documentation
-- [ ] add "User Reporting" section explaining the feature
-- [ ] document all new CLI flags in "All Application Options"
-- [ ] document configuration examples
-- [ ] add usage examples for users and admins
-- [ ] update ARCHITECTURE.md if needed
-- [ ] mark iteration 10 complete and document any changes from original plan in this section
+- [x] update README.md with /report command documentation
+- [x] add "User Reporting" section explaining the feature
+- [x] document all new CLI flags in "All Application Options"
+- [x] document configuration examples
+- [x] add usage examples for users and admins
+- [x] update ARCHITECTURE.md if needed
+- [x] mark iteration 10 complete and document any changes from original plan in this section
+
+**Iteration 10 completed**: Added comprehensive documentation to README.md. Created "User Spam Reporting" section explaining feature functionality, threshold mechanism, admin actions, and rate limiting. Documented all four CLI flags (report.enabled, report.threshold, report.rate-limit, report.rate-period) in "All Application Options" section with proper formatting and environment variable names. Added configuration example to docker-compose.yml with all report settings. ARCHITECTURE.md doesn't exist (confirmed).
+
+**Additional work beyond plan**: Added missing `report.enabled` flag to configuration structure (main.go lines 125-130, listener.go line 45) and implemented enabled check in /report handler (listener.go lines 354-357). This flag defaults to false, ensuring feature is opt-in. All tests pass (45+ report tests), linter clean.
+
+**Correction after external review**: Fixed README.md:278-280 to accurately document the actual inline buttons ("Approve Ban", "Reject", "Ban Reporter") instead of non-existent buttons ("Unban User", "Ignore All"). Documentation now matches implementation.
 
 ### Iteration 11: Final Validation
 - [ ] run full test suite: `go test -race ./...`
