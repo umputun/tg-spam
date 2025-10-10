@@ -162,6 +162,11 @@ func TestAdmin_parseCallbackData(t *testing.T) {
 		{"valid prefix+ with valid data", "+12345:678", 12345, 678, false},
 		{"valid prefix! with valid data", "!12345:678", 12345, 678, false},
 		{"valid prefix? with valid data", "?12345:678", 12345, 678, false},
+		{"valid prefix R+ with valid data", "R+12345:678", 12345, 678, false},
+		{"valid prefix R- with valid data", "R-12345:678", 12345, 678, false},
+		{"valid prefix R? with valid data", "R?12345:678", 12345, 678, false},
+		{"valid prefix R! with valid data", "R!12345:678", 12345, 678, false},
+		{"valid prefix RX with valid data", "RX12345:678", 12345, 678, false},
 	}
 
 	for _, tt := range tests {
@@ -2646,5 +2651,153 @@ func TestAdmin_UpdateReportNotification(t *testing.T) {
 		assert.Contains(t, editedMsg.Text, "admin\\[test]", "second reporter name should have escaped bracket")
 		assert.NotContains(t, editedMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
 		assert.NotContains(t, editedMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
+	})
+}
+
+func TestAdmin_CallbackReportBan(t *testing.T) {
+	t.Run("successful ban approval", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam msg"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error {
+				return nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(userID int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			primChatID:  200,
+			reports:     mockReports,
+			bot:         mockBot,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R+666:100",
+			From: &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{
+				Chat:      tbapi.Chat{ID: 456},
+				MessageID: 999,
+				Text:      "**User spam reported (1 reports)**",
+				Date:      int(time.Now().Unix()),
+			},
+		}
+
+		err := adm.callbackReportBan(query)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
+		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()))
+	})
+
+	t.Run("no reports found", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		adm := &admin{
+			adminChatID: 456,
+			primChatID:  200,
+			reports:     mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R+666:100",
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 456},
+			},
+		}
+
+		err := adm.callbackReportBan(query)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no reports found")
+	})
+}
+
+func TestAdmin_CallbackReportReject(t *testing.T) {
+	t.Run("successful reject", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error {
+				return nil
+			},
+		}
+
+		adm := &admin{
+			tbAPI:       mockAPI,
+			adminChatID: 456,
+			primChatID:  200,
+			reports:     mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R-666:100",
+			From: &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{
+				Chat:      tbapi.Chat{ID: 456},
+				MessageID: 999,
+				Text:      "**User spam reported (1 reports)**",
+				Date:      int(time.Now().Unix()),
+			},
+		}
+
+		err := adm.callbackReportReject(query)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
+		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+	})
+
+	t.Run("no reports found", func(t *testing.T) {
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		adm := &admin{
+			adminChatID: 456,
+			primChatID:  200,
+			reports:     mockReports,
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R-666:100",
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 456},
+			},
+		}
+
+		err := adm.callbackReportReject(query)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no reports found")
 	})
 }
