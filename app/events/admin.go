@@ -321,8 +321,8 @@ func (a *admin) DirectUserReport(update tbapi.Update) error {
 		return fmt.Errorf("failed to add report: %w", err)
 	}
 
-	// check if threshold reached (will be implemented in iteration 4)
-	if err := a.checkReportThreshold(origMsg.MessageID, a.primChatID); err != nil {
+	// check if threshold reached
+	if err := a.checkReportThreshold(context.Background(), origMsg.MessageID, a.primChatID); err != nil {
 		log.Printf("[WARN] failed to check report threshold: %v", err)
 	}
 
@@ -965,13 +965,174 @@ func (a *admin) checkReportRateLimit(ctx context.Context, reporterID int64) (boo
 }
 
 // checkReportThreshold checks if report threshold is reached and sends admin notification if needed
-// stub for iteration 3, full implementation in iteration 4
-func (a *admin) checkReportThreshold(msgID int, chatID int64) error {
-	log.Printf("[DEBUG] checkReportThreshold stub called for msgID:%d, chatID:%d", msgID, chatID)
-	// TODO: implement in iteration 4
-	// - query all reports for the message
-	// - check if count >= threshold
-	// - check if admin notification already sent
-	// - send or update admin notification
+func (a *admin) checkReportThreshold(ctx context.Context, msgID int, chatID int64) error {
+	if a.reports == nil {
+		return errors.New("reports storage not initialized")
+	}
+
+	// query all reports for this message
+	reports, err := a.reports.GetByMessage(ctx, msgID, chatID)
+	if err != nil {
+		return fmt.Errorf("failed to get reports: %w", err)
+	}
+
+	// check if threshold reached
+	if len(reports) < a.reportThreshold {
+		log.Printf("[DEBUG] report threshold not reached for msgID:%d, chatID:%d: %d < %d",
+			msgID, chatID, len(reports), a.reportThreshold)
+		return nil
+	}
+
+	log.Printf("[INFO] report threshold reached for msgID:%d, chatID:%d: %d reports",
+		msgID, chatID, len(reports))
+
+	// check if admin notification already sent
+	if len(reports) > 0 && reports[0].NotificationSent {
+		// notification already sent, update it
+		log.Printf("[DEBUG] updating existing notification for msgID:%d, admin_msg_id:%d",
+			msgID, reports[0].AdminMsgID)
+		return a.updateReportNotification(ctx, reports)
+	}
+
+	// no notification sent yet, send new one
+	log.Printf("[DEBUG] sending new notification for msgID:%d", msgID)
+	return a.sendReportNotification(ctx, reports)
+}
+
+// sendReportNotification sends a new admin notification for user reports
+func (a *admin) sendReportNotification(ctx context.Context, reports []storage.Report) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("no reports provided")
+	}
+	if a.adminChatID == 0 {
+		log.Printf("[DEBUG] admin chat not configured, skipping notification")
+		return nil
+	}
+
+	// extract info from first report (all reports have same message/reported user)
+	firstReport := reports[0]
+	msgID := firstReport.MsgID
+	chatID := firstReport.ChatID
+	reportedUserID := firstReport.ReportedUserID
+	reportedUserName := firstReport.ReportedUserName
+
+	// escape message text for markdown
+	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
+	msgText = truncateString(msgText, 200, "...")
+
+	// format reporter list
+	reporterList := make([]string, 0, len(reports))
+	for _, report := range reports {
+		reporterName := report.ReporterUserName
+		if reporterName == "" {
+			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
+		}
+		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
+			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
+	}
+
+	// format notification message
+	notificationText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s",
+		len(reports),
+		escapeMarkDownV1Text(reportedUserName),
+		reportedUserID,
+		msgText,
+		strings.Join(reporterList, "\n"))
+
+	// create inline keyboard with action buttons
+	// callback format: R+reportedUserID:msgID, R-reportedUserID:msgID, R?reportedUserID:msgID
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+		),
+	)
+
+	// send to admin chat
+	tbMsg := tbapi.NewMessage(a.adminChatID, notificationText)
+	tbMsg.ParseMode = tbapi.ModeMarkdown
+	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	tbMsg.ReplyMarkup = keyboard
+
+	resp, err := a.tbAPI.Send(tbMsg)
+	if err != nil {
+		return fmt.Errorf("failed to send notification to admin chat: %w", err)
+	}
+
+	// update all reports with admin message ID
+	if err := a.reports.UpdateAdminMsgID(ctx, msgID, chatID, resp.MessageID); err != nil {
+		log.Printf("[WARN] failed to update admin message ID for msgID:%d: %v", msgID, err)
+		// don't fail - notification was sent successfully
+	}
+
+	log.Printf("[INFO] user report notification sent to admin chat: msgID:%d, reported:%s (%d), %d reports",
+		msgID, reportedUserName, reportedUserID, len(reports))
+	return nil
+}
+
+// updateReportNotification updates existing admin notification when new reports come in after threshold reached
+func (a *admin) updateReportNotification(_ context.Context, reports []storage.Report) error {
+	// validate reports list
+	if len(reports) == 0 {
+		return fmt.Errorf("reports list is empty")
+	}
+
+	// skip if admin chat not configured
+	if a.adminChatID == 0 {
+		log.Printf("[DEBUG] admin chat not configured, skipping report notification update")
+		return nil
+	}
+
+	// extract info from first report (all reports have same message/reported user/admin_msg_id)
+	firstReport := reports[0]
+	adminMsgID := firstReport.AdminMsgID
+	msgID := firstReport.MsgID
+	chatID := firstReport.ChatID
+	reportedUserID := firstReport.ReportedUserID
+	reportedUserName := firstReport.ReportedUserName
+
+	// escape message text for markdown
+	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
+	msgText = truncateString(msgText, 200, "...")
+
+	// format reporter list
+	reporterList := make([]string, 0, len(reports))
+	for _, report := range reports {
+		reporterName := report.ReporterUserName
+		if reporterName == "" {
+			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
+		}
+		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
+			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
+	}
+
+	// create notification message
+	notification := fmt.Sprintf("**User spam reported (%d reports)**\n\n", len(reports)) +
+		fmt.Sprintf("[%s](tg://user?id=%d)\n\n", escapeMarkDownV1Text(reportedUserName), reportedUserID) +
+		fmt.Sprintf("%s\n\n", msgText) +
+		fmt.Sprintf("**Reporters:**\n%s", strings.Join(reporterList, "\n"))
+
+	// create inline keyboard with 3 buttons (same as sendReportNotification)
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+		),
+	)
+
+	// edit existing admin message
+	editMsg := tbapi.NewEditMessageText(a.adminChatID, adminMsgID, notification)
+	editMsg.ParseMode = "Markdown"
+	editMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	editMsg.ReplyMarkup = &keyboard
+
+	if _, err := a.tbAPI.Send(editMsg); err != nil {
+		return fmt.Errorf("failed to edit admin notification for msgID:%d, chatID:%d: %w", msgID, chatID, err)
+	}
+
+	log.Printf("[INFO] updated report notification for msgID:%d (reported user:%d, %d reports total, admin_msg_id:%d)",
+		msgID, reportedUserID, len(reports), adminMsgID)
 	return nil
 }

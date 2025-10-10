@@ -84,6 +84,16 @@ func escapeMarkDownV1Text(text string) string {
 	return text
 }
 
+// truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
+// this is safe for multi-byte UTF-8 characters (emoji, cyrillic, etc.)
+func truncateString(s string, maxRunes int, suffix string) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + suffix
+}
+
 // send a message to the telegram as markdown first and if failed - as plain text
 func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 	withParseMode := func(tbMsg tbapi.Chattable, parseMode string) tbapi.Chattable {
