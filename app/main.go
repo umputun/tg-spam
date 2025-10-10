@@ -123,6 +123,7 @@ type options struct {
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
 	Report struct {
+		Enabled    bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
 		Threshold  int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
 		RateLimit  int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
 		RatePeriod time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
@@ -342,6 +343,7 @@ func execute(ctx context.Context, opts options) error {
 		TestingIDs:              opts.TestingIDs,
 		Locator:                 locator,
 		Reports:                 reportsStore,
+		ReportEnabled:           opts.Report.Enabled,
 		ReportThreshold:         opts.Report.Threshold,
 		ReportRateLimit:         opts.Report.RateLimit,
 		ReportRatePeriod:        opts.Report.RatePeriod,

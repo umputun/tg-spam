@@ -42,6 +42,7 @@ type TelegramListener struct {
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
 	Reports                 Reports       // reports storage for user spam reports
+	ReportEnabled           bool          // enable user spam reporting
 	ReportThreshold         int           // number of reports to trigger admin notification
 	ReportRateLimit         int           // max reports per user per period
 	ReportRatePeriod        time.Duration // rate limit time period
@@ -350,6 +351,10 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 func (l *TelegramListener) procUserReply(update tbapi.Update) (handled bool) {
 	switch {
 	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
+		if !l.ReportEnabled {
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+			return true
+		}
 		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)
 		if err := l.adminHandler.DirectUserReport(update); err != nil {
 			log.Printf("[WARN] failed to process user spam report: %v", err)
