@@ -175,12 +175,18 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
-	// approved user don't need to be checked
-	if req.UserID != "" && d.FirstMessageOnly && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
-		return false, []spamcheck.Response{{Name: "pre-approved", Spam: false, Details: "user already approved"}}
+	// check for duplicate messages FIRST - behavioral check that applies to all users
+	if d.duplicateDetector != nil {
+		cr = append(cr, d.duplicateDetector.check(req))
 	}
 
-	// all the checks are performed sequentially, so we can collect all the results
+	// approved user don't need content analysis checks, but only skip if no spam detected by behavioral checks
+	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
+		// include previous check results (e.g., duplicate check) in the response
+		return false, append(cr, spamcheck.Response{Name: "pre-approved", Spam: false, Details: "user already approved"})
+	}
+
+	// all the remaining checks are performed sequentially, so we can collect all the results
 
 	// check for stop words if any stop words are loaded
 	if len(d.stopWords) > 0 {
@@ -190,11 +196,6 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// check for emojis if max allowed emojis is set
 	if d.MaxAllowedEmoji >= 0 {
 		cr = append(cr, d.isManyEmojis(req.Msg))
-	}
-
-	// check for duplicate messages
-	if d.duplicateDetector != nil {
-		cr = append(cr, d.duplicateDetector.check(req))
 	}
 
 	// check for spam with meta-checks

@@ -156,7 +156,11 @@ Using words that mix characters from multiple languages is a common spam techniq
 
 **Duplicate message detection**
 
-This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly. Configure with:
+This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly.
+
+**Important**: Duplicate detection is a behavioral check that runs for **all users**, including approved users. This differs from content-based checks (similarity, classifier, OpenAI) which are skipped for approved users for performance reasons. The rationale is that approved users can still exhibit spam behavior by sending duplicate messages, and this pattern should be detected regardless of trust status.
+
+Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
 - `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 

@@ -459,6 +459,167 @@ func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
 	assert.Contains(t, dupResp.Details, "message repeated 2 times")
 }
 
+func TestDetector_DuplicateDetectionForApprovedUsers(t *testing.T) {
+	// this test demonstrates bug: approved users bypass duplicate detection
+	d := NewDetector(Config{
+		FirstMessageOnly:   true,
+		FirstMessagesCount: 1,
+		DuplicateDetection: struct {
+			Threshold int
+			Window    time.Duration
+		}{
+			Threshold: 2,
+			Window:    5 * time.Minute,
+		},
+	})
+
+	userID := "8050302772" // real user from the bug report
+	duplicateMsg := "Кто не против пообщатся"
+
+	// first message - user not approved yet
+	req1 := spamcheck.Request{
+		Msg:    duplicateMsg,
+		UserID: userID,
+		Meta:   spamcheck.MetaData{MessageID: 658144},
+	}
+	spam1, results1 := d.Check(req1)
+
+	// should be ham, user gets approved
+	assert.False(t, spam1, "first message should be ham")
+	dupResp1 := findResponseByName(results1, "duplicate")
+	require.NotNil(t, dupResp1, "duplicate check should have run")
+	assert.False(t, dupResp1.Spam, "first message is not a duplicate")
+
+	// verify user is now approved
+	d.lock.RLock()
+	userInfo := d.approvedUsers[userID]
+	d.lock.RUnlock()
+	assert.Equal(t, 1, userInfo.Count, "user should have count=1 after first message")
+
+	// second identical message - user IS approved now
+	req2 := spamcheck.Request{
+		Msg:    duplicateMsg,
+		UserID: userID,
+		Meta:   spamcheck.MetaData{MessageID: 658145},
+	}
+	spam2, results2 := d.Check(req2)
+
+	// BUG: currently returns false (pre-approved), should detect duplicate spam
+	assert.True(t, spam2, "duplicate message should be detected as spam even for approved user")
+
+	// verify duplicate check ran and detected spam
+	dupResp2 := findResponseByName(results2, "duplicate")
+	require.NotNil(t, dupResp2, "duplicate check should have run for approved user")
+	assert.True(t, dupResp2.Spam, "duplicate check should detect spam")
+	assert.Contains(t, dupResp2.Details, "message repeated 2 times")
+
+	// verify ExtraDeleteIDs are set for cleanup
+	assert.NotEmpty(t, dupResp2.ExtraDeleteIDs, "should have extra message IDs to delete")
+	assert.Contains(t, dupResp2.ExtraDeleteIDs, 658144, "should include first message ID for deletion")
+}
+
+func TestDetector_DuplicateDetectionEdgeCases(t *testing.T) {
+	t.Run("approved user with different messages - no false positive", func(t *testing.T) {
+		// approved users should be able to send different messages without spam detection
+		d := NewDetector(Config{
+			FirstMessageOnly:   true,
+			FirstMessagesCount: 1,
+			DuplicateDetection: struct {
+				Threshold int
+				Window    time.Duration
+			}{
+				Threshold: 2,
+				Window:    5 * time.Minute,
+			},
+		})
+
+		userID := "12345"
+
+		// first message - gets approved
+		spam1, _ := d.Check(spamcheck.Request{Msg: "first message", UserID: userID})
+		assert.False(t, spam1)
+
+		// second different message from approved user - should be ham
+		spam2, results2 := d.Check(spamcheck.Request{Msg: "second different message", UserID: userID})
+		assert.False(t, spam2, "different message from approved user should be ham")
+
+		// verify it was pre-approved (duplicate check ran but found no duplicates)
+		preApproved := findResponseByName(results2, "pre-approved")
+		assert.NotNil(t, preApproved, "should have pre-approved response")
+	})
+
+	t.Run("duplicate spam with ExtraDeleteIDs", func(t *testing.T) {
+		// test that ExtraDeleteIDs are returned for cleanup when duplicates detected
+		d := NewDetector(Config{
+			FirstMessageOnly:   true,
+			FirstMessagesCount: 2, // need 2 messages before approval
+			DuplicateDetection: struct {
+				Threshold int
+				Window    time.Duration
+			}{
+				Threshold: 3, // trigger on 3rd duplicate
+				Window:    5 * time.Minute,
+			},
+		})
+
+		userID := "999"
+		msg := "spam spam spam"
+
+		// send 3 identical messages
+		d.Check(spamcheck.Request{Msg: msg, UserID: userID, Meta: spamcheck.MetaData{MessageID: 100}})
+		d.Check(spamcheck.Request{Msg: msg, UserID: userID, Meta: spamcheck.MetaData{MessageID: 101}})
+		spam3, results3 := d.Check(spamcheck.Request{Msg: msg, UserID: userID, Meta: spamcheck.MetaData{MessageID: 102}})
+
+		assert.True(t, spam3, "third duplicate should be spam")
+		dupResp := findResponseByName(results3, "duplicate")
+		require.NotNil(t, dupResp)
+		assert.True(t, dupResp.Spam)
+
+		// should have ExtraDeleteIDs for previous duplicates
+		assert.Len(t, dupResp.ExtraDeleteIDs, 2, "should have 2 previous message IDs")
+		assert.Contains(t, dupResp.ExtraDeleteIDs, 100)
+		assert.Contains(t, dupResp.ExtraDeleteIDs, 101)
+	})
+
+	t.Run("pre-approval still works for non-duplicate content checks", func(t *testing.T) {
+		// ensure approved users still skip expensive content checks (similarity, classifier)
+		d := NewDetector(Config{
+			FirstMessageOnly:    true,
+			FirstMessagesCount:  1,
+			SimilarityThreshold: 0.8, // enable similarity check
+			MinMsgLen:           10,
+			DuplicateDetection: struct {
+				Threshold int
+				Window    time.Duration
+			}{
+				Threshold: 2,
+				Window:    5 * time.Minute,
+			},
+		})
+
+		// load spam samples for similarity check
+		d.LoadSamples(bytes.NewBufferString(""), []io.Reader{bytes.NewBufferString("buy crypto now\nget rich quick")}, []io.Reader{bytes.NewBufferString("hello world")})
+
+		userID := "777"
+
+		// first message - user gets approved
+		spam1, _ := d.Check(spamcheck.Request{Msg: "first message here", UserID: userID})
+		assert.False(t, spam1)
+
+		// second message similar to spam samples but from approved user
+		spam2, results2 := d.Check(spamcheck.Request{Msg: "buy crypto now and get rich", UserID: userID})
+		assert.False(t, spam2, "approved user should skip content checks")
+
+		// verify similarity check was NOT run (pre-approval skipped it)
+		similarityResp := findResponseByName(results2, "similarity")
+		assert.Nil(t, similarityResp, "similarity check should be skipped for approved users")
+
+		// but duplicate check should have run
+		dupResp := findResponseByName(results2, "duplicate")
+		assert.NotNil(t, dupResp, "duplicate check should run for approved users")
+	})
+}
+
 func TestSpam_CheckIsCasSpam(t *testing.T) {
 	tests := []struct {
 		name           string
