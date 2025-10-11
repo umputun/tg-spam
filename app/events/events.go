@@ -18,6 +18,7 @@ import (
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -52,6 +53,16 @@ type Locator interface {
 	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
 }
 
+// Reports is an interface for user spam reports storage
+type Reports interface {
+	Add(ctx context.Context, report storage.Report) error
+	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
+	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
+}
+
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
@@ -71,6 +82,16 @@ func escapeMarkDownV1Text(text string) string {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
+// this is safe for multi-byte UTF-8 characters (emoji, cyrillic, etc.)
+func truncateString(s string, maxRunes int, suffix string) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + suffix
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

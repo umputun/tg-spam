@@ -41,6 +41,11 @@ type TelegramListener struct {
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
+	Reports                 Reports       // reports storage for user spam reports
+	ReportEnabled           bool          // enable user spam reporting
+	ReportThreshold         int           // number of reports to trigger admin notification
+	ReportRateLimit         int           // max reports per user per period
+	ReportRatePeriod        time.Duration // rate limit time period
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
@@ -104,8 +109,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{
-		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, primChatID: l.chatID, adminChatID: l.adminChatID,
+		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, reports: l.Reports, primChatID: l.chatID, adminChatID: l.adminChatID,
 		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
+		reportThreshold: l.ReportThreshold, reportRateLimit: l.ReportRateLimit, reportRatePeriod: l.ReportRatePeriod,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
 	}
 
@@ -205,6 +211,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if update.Message.ReplyToMessage != nil && fromSuper {
 				if l.procSuperReply(update) {
 					// superuser command processed, skip the rest
+					continue
+				}
+			}
+
+			// handle spam reports from regular users
+			if update.Message.ReplyToMessage != nil && !fromSuper {
+				if l.procUserReply(update) {
+					// user command processed, skip the rest
 					continue
 				}
 			}
@@ -327,6 +341,23 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
 		if err := l.adminHandler.DirectWarnReport(update); err != nil {
 			log.Printf("[WARN] failed to process direct warning request: %v", err)
+		}
+		return true
+	}
+	return false
+}
+
+// procUserReply processes regular user commands (reply) /report
+func (l *TelegramListener) procUserReply(update tbapi.Update) (handled bool) {
+	switch {
+	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
+		if !l.ReportEnabled {
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+			return true
+		}
+		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)
+		if err := l.adminHandler.DirectUserReport(update); err != nil {
+			log.Printf("[WARN] failed to process user spam report: %v", err)
 		}
 		return true
 	}
