@@ -419,6 +419,10 @@ Success! The new status is: DISABLED. /help
       --dbg                             debug mode [$DEBUG]
       --tg-dbg                          telegram debug mode [$TG_DEBUG]
 
+delete:
+      --delete.join-messages            delete join messages immediately [$DELETE_JOIN_MESSAGES]
+      --delete.leave-messages           delete leave messages immediately [$DELETE_LEAVE_MESSAGES]
+
 telegram:
       --telegram.token=                 telegram bot token [$TELEGRAM_TOKEN]
       --telegram.group=                 group name/id [$TELEGRAM_GROUP]
@@ -506,7 +510,9 @@ Help Options:
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
-- `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out. This is useful to keep the group clean from spam messages.
+- `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out (for detected spammers only). This tracks join messages in the locator and removes them when a user is banned. This is useful to keep the group clean after removing spammers.
+- `delete.join-messages` - if set to `true`, the bot will immediately delete all join messages ("User joined the group"). This keeps the chat clean by preventing join message clutter, regardless of whether users turn out to be spammers. Can be used together with `suppress-join-message` for maximum cleanup.
+- `delete.leave-messages` - if set to `true`, the bot will immediately delete all leave messages ("User left the group" or "User was removed"). This keeps the chat clean by preventing leave message clutter.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production.
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
 - `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled. Also note that only messages meeting the minimum length requirement (`--min-msg-len`) count towards this limit, preventing users from bypassing detection by sending multiple short messages.

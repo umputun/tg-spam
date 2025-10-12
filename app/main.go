@@ -68,6 +68,11 @@ type options struct {
 	NoSpamReply         bool              `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 	SuppressJoinMessage bool              `long:"suppress-join-message" env:"SUPPRESS_JOIN_MESSAGE" description:"delete join message if user is kicked out"`
 
+	Delete struct {
+		JoinMessages  bool `long:"join-messages" env:"JOIN_MESSAGES" description:"delete join messages immediately"`
+		LeaveMessages bool `long:"leave-messages" env:"LEAVE_MESSAGES" description:"delete leave messages immediately"`
+	} `group:"delete" namespace:"delete" env-namespace:"DELETE"`
+
 	CAS struct {
 		API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
 		Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
@@ -325,6 +330,8 @@ func execute(ctx context.Context, opts options) error {
 		WarnMsg:                 opts.Message.Warn,
 		NoSpamReply:             opts.NoSpamReply,
 		SuppressJoinMessage:     opts.SuppressJoinMessage,
+		DeleteJoinMessages:      opts.Delete.JoinMessages,
+		DeleteLeaveMessages:     opts.Delete.LeaveMessages,
 		SpamLogger:              spamLogger,
 		AdminGroup:              opts.AdminGroup,
 		TestingIDs:              opts.TestingIDs,
