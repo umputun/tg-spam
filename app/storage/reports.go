@@ -251,11 +251,14 @@ func (r *Reports) DeleteByMessage(ctx context.Context, msgID int, chatID int64) 
 	return nil
 }
 
-// cleanupOldReports removes reports older than 7 days that never reached threshold (notification_sent = false)
+// cleanupOldReports removes reports older than 7 days that never reached threshold (notification_sent = false).
+// retention period: 7 days - reports that reached threshold are deleted immediately after ban/reject,
+// this cleanup handles reports that never reached threshold (e.g., single report with threshold=2).
 func (r *Reports) cleanupOldReports(ctx context.Context) error {
 	// no lock - called from Add which already has lock
+	const retentionDays = 7
 	query := r.Adopt("DELETE FROM reports WHERE gid = ? AND report_time < ? AND notification_sent = ?")
-	cutoffTime := time.Now().Add(-7 * 24 * time.Hour)
+	cutoffTime := time.Now().Add(-retentionDays * 24 * time.Hour)
 
 	result, err := r.ExecContext(ctx, query, r.GID(), cutoffTime, false)
 	if err != nil {

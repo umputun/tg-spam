@@ -35,3 +35,4 @@ _examples/simplechat/messages.db
 *.loaded
 var/
 tg-spam
+tg-spam-*

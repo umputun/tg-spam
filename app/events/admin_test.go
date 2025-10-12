@@ -1746,7 +1746,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
 		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report to storage")
@@ -1779,7 +1779,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "use /spam instead")
 		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
@@ -1812,7 +1812,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "from super-user")
 		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
@@ -1856,7 +1856,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "rate limit exceeded")
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
@@ -1903,7 +1903,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to add report")
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
@@ -1957,7 +1957,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report with transformed text")
 	})
@@ -1992,7 +1992,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
 		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
@@ -2030,7 +2030,7 @@ func TestAdmin_DirectUserReport(t *testing.T) {
 			},
 		}
 
-		err := adm.DirectUserReport(update)
+		err := adm.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reports storage not initialized")
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
@@ -2700,7 +2700,7 @@ func TestAdmin_CallbackReportBan(t *testing.T) {
 			},
 		}
 
-		err := adm.callbackReportBan(query)
+		err := adm.callbackReportBan(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
 		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
@@ -2727,7 +2727,7 @@ func TestAdmin_CallbackReportBan(t *testing.T) {
 			},
 		}
 
-		err := adm.callbackReportBan(query)
+		err := adm.callbackReportBan(context.Background(), query)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no reports found")
 	})
@@ -2770,7 +2770,7 @@ func TestAdmin_CallbackReportReject(t *testing.T) {
 			},
 		}
 
-		err := adm.callbackReportReject(query)
+		err := adm.callbackReportReject(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
 		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
@@ -2796,7 +2796,7 @@ func TestAdmin_CallbackReportReject(t *testing.T) {
 			},
 		}
 
-		err := adm.callbackReportReject(query)
+		err := adm.callbackReportReject(context.Background(), query)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no reports found")
 	})
@@ -2841,7 +2841,7 @@ func TestAdmin_CallbackReportBanReporterAsk(t *testing.T) {
 			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999},
 		}
 
-		err := adm.callbackReportBanReporterAsk(query)
+		err := adm.callbackReportBanReporterAsk(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
 		assert.Equal(t, 1, len(mockAPI.SendCalls()))
@@ -2857,7 +2857,7 @@ func TestAdmin_CallbackReportBanReporterAsk(t *testing.T) {
 		adm := &admin{primChatID: 200, reports: mockReports}
 		query := &tbapi.CallbackQuery{Data: "R?666:100", Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}}}
 
-		err := adm.callbackReportBanReporterAsk(query)
+		err := adm.callbackReportBanReporterAsk(context.Background(), query)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no reports found")
 	})
@@ -2905,7 +2905,7 @@ func TestAdmin_CallbackReportBanReporterConfirm(t *testing.T) {
 			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
 		}
 
-		err := adm.callbackReportBanReporterConfirm(query)
+		err := adm.callbackReportBanReporterConfirm(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
 		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
@@ -2952,7 +2952,7 @@ func TestAdmin_CallbackReportBanReporterConfirm(t *testing.T) {
 			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
 		}
 
-		err := adm.callbackReportBanReporterConfirm(query)
+		err := adm.callbackReportBanReporterConfirm(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
 		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
@@ -2968,11 +2968,11 @@ func TestAdmin_CallbackReportCancel(t *testing.T) {
 					assert.Equal(t, int64(456), editMarkup.ChatID)
 					assert.Equal(t, 999, editMarkup.MessageID)
 					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 2)
-					assert.Equal(t, "Approve", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
+					assert.Equal(t, "✅ Approve Ban", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
 					assert.Equal(t, "R+666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
-					assert.Equal(t, "Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
+					assert.Equal(t, "❌ Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
 					assert.Equal(t, "R-666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
-					assert.Equal(t, "Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[1][0].Text)
+					assert.Equal(t, "⛔️ Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[1][0].Text)
 					assert.Equal(t, "R?666:100", *editMarkup.ReplyMarkup.InlineKeyboard[1][0].CallbackData)
 				}
 				return tbapi.Message{}, nil
@@ -2987,7 +2987,7 @@ func TestAdmin_CallbackReportCancel(t *testing.T) {
 			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999},
 		}
 
-		err := adm.callbackReportCancel(query)
+		err := adm.callbackReportCancel(context.Background(), query)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(mockAPI.SendCalls()))
 	})

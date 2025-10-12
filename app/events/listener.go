@@ -158,7 +158,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 			// handle admin chat inline buttons
 			if update.CallbackQuery != nil {
-				if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
+				if err := l.adminHandler.InlineCallbackHandler(ctx, update.CallbackQuery); err != nil {
 					log.Printf("[WARN] failed to process callback: %v", err)
 					errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
 					if errResp != nil {
@@ -217,7 +217,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 			// handle spam reports from regular users
 			if update.Message.ReplyToMessage != nil && !fromSuper {
-				if l.procUserReply(update) {
+				if l.procUserReply(ctx, update) {
 					// user command processed, skip the rest
 					continue
 				}
@@ -347,16 +347,17 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 	return false
 }
 
-// procUserReply processes regular user commands (reply) /report
-func (l *TelegramListener) procUserReply(update tbapi.Update) (handled bool) {
+// procUserReply processes regular user commands (reply) /report.
+// feature check is intentionally inside this function to keep command detection logic centralized.
+func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
 	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
 		if !l.ReportEnabled {
 			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
-			return true
+			return true // command is suppressed when feature is disabled
 		}
 		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)
-		if err := l.adminHandler.DirectUserReport(update); err != nil {
+		if err := l.adminHandler.DirectUserReport(ctx, update); err != nil {
 			log.Printf("[WARN] failed to process user spam report: %v", err)
 		}
 		return true

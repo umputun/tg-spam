@@ -287,10 +287,13 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
 
-	// make reports storage
-	reportsStore, err := storage.NewReports(ctx, dataDB)
-	if err != nil {
-		return fmt.Errorf("can't make reports store, %w", err)
+	// make reports storage if feature is enabled
+	var reportsStore *storage.Reports
+	if opts.Report.Enabled {
+		reportsStore, err = storage.NewReports(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make reports store, %w", err)
+		}
 	}
 
 	// activate web server if enabled

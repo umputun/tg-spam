@@ -243,7 +243,7 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 }
 
 // DirectUserReport handles messages replied with "/report" by regular users
-func (a *admin) DirectUserReport(update tbapi.Update) error {
+func (a *admin) DirectUserReport(ctx context.Context, update tbapi.Update) error {
 	origMsg := update.Message.ReplyToMessage
 
 	// validate reported message has a user (not from channel or anonymous admin)
@@ -262,13 +262,13 @@ func (a *admin) DirectUserReport(update tbapi.Update) error {
 		return fmt.Errorf("report from super-user %s (%d), use /spam instead", update.Message.From.UserName, update.Message.From.ID)
 	}
 
-	// validate reported user is not super user
-	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+	// validate reported user is not super user (check both username and ID)
+	if a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
 	// check rate limit for reporter
-	rateLimited, err := a.checkReportRateLimit(context.Background(), update.Message.From.ID)
+	rateLimited, err := a.checkReportRateLimit(ctx, update.Message.From.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check rate limit: %w", err)
 	}
@@ -317,12 +317,12 @@ func (a *admin) DirectUserReport(update tbapi.Update) error {
 	}
 
 	// store report
-	if err := a.reports.Add(context.Background(), report); err != nil {
+	if err := a.reports.Add(ctx, report); err != nil {
 		return fmt.Errorf("failed to add report: %w", err)
 	}
 
 	// check if threshold reached
-	if err := a.checkReportThreshold(context.Background(), origMsg.MessageID, a.primChatID); err != nil {
+	if err := a.checkReportThreshold(ctx, origMsg.MessageID, a.primChatID); err != nil {
 		log.Printf("[WARN] failed to check report threshold: %v", err)
 	}
 
@@ -509,7 +509,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 
 // InlineCallbackHandler handles a callback from Telegram, which is a response to a message with inline keyboard.
 // The callback contains user info, which is used to unban the user.
-func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
+func (a *admin) InlineCallbackHandler(ctx context.Context, query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
 	chatID := query.Message.Chat.ID // this is ID of admin chat
 	if chatID != a.adminChatID {    // ignore callbacks from other chats, only admin chat is allowed
@@ -520,31 +520,31 @@ func (a *admin) InlineCallbackHandler(query *tbapi.CallbackQuery) error {
 	if len(callbackData) >= 3 && callbackData[:1] == "R" {
 		switch callbackData[:2] {
 		case "R+": // approve ban
-			if err := a.callbackReportBan(query); err != nil {
+			if err := a.callbackReportBan(ctx, query); err != nil {
 				return fmt.Errorf("failed to approve report ban: %w", err)
 			}
 			log.Printf("[DEBUG] report ban approved, chatID: %d, callback: %q", chatID, callbackData)
 			return nil
 		case "R-": // reject report
-			if err := a.callbackReportReject(query); err != nil {
+			if err := a.callbackReportReject(ctx, query); err != nil {
 				return fmt.Errorf("failed to reject report: %w", err)
 			}
 			log.Printf("[DEBUG] report rejected, chatID: %d, callback: %q", chatID, callbackData)
 			return nil
 		case "R?": // ban reporter - show confirmation
-			if err := a.callbackReportBanReporterAsk(query); err != nil {
+			if err := a.callbackReportBanReporterAsk(ctx, query); err != nil {
 				return fmt.Errorf("failed to show ban reporter confirmation: %w", err)
 			}
 			log.Printf("[DEBUG] ban reporter confirmation shown, chatID: %d, callback: %q", chatID, callbackData)
 			return nil
 		case "R!": // ban specific reporter
-			if err := a.callbackReportBanReporterConfirm(query); err != nil {
+			if err := a.callbackReportBanReporterConfirm(ctx, query); err != nil {
 				return fmt.Errorf("failed to ban reporter: %w", err)
 			}
 			log.Printf("[DEBUG] reporter banned, chatID: %d, callback: %q", chatID, callbackData)
 			return nil
 		case "RX": // cancel ban reporter
-			if err := a.callbackReportCancel(query); err != nil {
+			if err := a.callbackReportCancel(ctx, query); err != nil {
 				return fmt.Errorf("failed to cancel ban reporter: %w", err)
 			}
 			log.Printf("[DEBUG] ban reporter canceled, chatID: %d, callback: %q", chatID, callbackData)
@@ -1180,7 +1180,7 @@ func (a *admin) updateReportNotification(_ context.Context, reports []storage.Re
 
 // callbackReportBan handles the callback when admin approves a user report and bans the reported user
 // callback data: R+reportedUserID:msgID
-func (a *admin) callbackReportBan(query *tbapi.CallbackQuery) error {
+func (a *admin) callbackReportBan(ctx context.Context, query *tbapi.CallbackQuery) error {
 	// parse callback data
 	reportedUserID, msgID, err := a.parseCallbackData(query.Data)
 	if err != nil {
@@ -1188,7 +1188,7 @@ func (a *admin) callbackReportBan(query *tbapi.CallbackQuery) error {
 	}
 
 	// get reports from database to find chatID and message text
-	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	reports, err := a.reports.GetByMessage(ctx, msgID, a.primChatID)
 	if err != nil {
 		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
 	}
@@ -1240,7 +1240,7 @@ func (a *admin) callbackReportBan(query *tbapi.CallbackQuery) error {
 	}
 
 	// delete all reports for this message
-	if err := a.reports.DeleteByMessage(context.Background(), msgID, chatID); err != nil {
+	if err := a.reports.DeleteByMessage(ctx, msgID, chatID); err != nil {
 		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
 	}
 
@@ -1259,7 +1259,7 @@ func (a *admin) callbackReportBan(query *tbapi.CallbackQuery) error {
 
 // callbackReportReject handles the callback when admin rejects a user report
 // callback data: R-reportedUserID:msgID
-func (a *admin) callbackReportReject(query *tbapi.CallbackQuery) error {
+func (a *admin) callbackReportReject(ctx context.Context, query *tbapi.CallbackQuery) error {
 	// parse callback data
 	_, msgID, err := a.parseCallbackData(query.Data)
 	if err != nil {
@@ -1267,7 +1267,7 @@ func (a *admin) callbackReportReject(query *tbapi.CallbackQuery) error {
 	}
 
 	// get chatID from reports
-	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	reports, err := a.reports.GetByMessage(ctx, msgID, a.primChatID)
 	if err != nil {
 		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
 	}
@@ -1278,7 +1278,7 @@ func (a *admin) callbackReportReject(query *tbapi.CallbackQuery) error {
 	chatID := reports[0].ChatID
 
 	// delete all reports for this message
-	if err := a.reports.DeleteByMessage(context.Background(), msgID, chatID); err != nil {
+	if err := a.reports.DeleteByMessage(ctx, msgID, chatID); err != nil {
 		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
 	}
 
@@ -1297,7 +1297,7 @@ func (a *admin) callbackReportReject(query *tbapi.CallbackQuery) error {
 
 // callbackReportBanReporterAsk handles the callback when admin wants to ban a reporter (show confirmation)
 // callback data: R?reportedUserID:msgID
-func (a *admin) callbackReportBanReporterAsk(query *tbapi.CallbackQuery) error {
+func (a *admin) callbackReportBanReporterAsk(ctx context.Context, query *tbapi.CallbackQuery) error {
 	// parse callback data
 	reportedUserID, msgID, err := a.parseCallbackData(query.Data)
 	if err != nil {
@@ -1305,7 +1305,7 @@ func (a *admin) callbackReportBanReporterAsk(query *tbapi.CallbackQuery) error {
 	}
 
 	// get all reports for this message
-	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	reports, err := a.reports.GetByMessage(ctx, msgID, a.primChatID)
 	if err != nil {
 		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
 	}
@@ -1351,7 +1351,7 @@ func (a *admin) callbackReportBanReporterAsk(query *tbapi.CallbackQuery) error {
 
 // callbackReportBanReporterConfirm handles the callback when admin confirms banning a specific reporter
 // callback data: R!reporterID:msgID
-func (a *admin) callbackReportBanReporterConfirm(query *tbapi.CallbackQuery) error {
+func (a *admin) callbackReportBanReporterConfirm(ctx context.Context, query *tbapi.CallbackQuery) error {
 	// parse callback data
 	reporterID, msgID, err := a.parseCallbackData(query.Data)
 	if err != nil {
@@ -1359,7 +1359,7 @@ func (a *admin) callbackReportBanReporterConfirm(query *tbapi.CallbackQuery) err
 	}
 
 	// get reports to find chatID and reporter details
-	reports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	reports, err := a.reports.GetByMessage(ctx, msgID, a.primChatID)
 	if err != nil {
 		return fmt.Errorf("failed to get reports for msgID:%d: %w", msgID, err)
 	}
@@ -1396,19 +1396,19 @@ func (a *admin) callbackReportBanReporterConfirm(query *tbapi.CallbackQuery) err
 	}
 
 	// delete reporter from database
-	if delErr := a.reports.DeleteReporter(context.Background(), reporterID, msgID, chatID); delErr != nil {
+	if delErr := a.reports.DeleteReporter(ctx, reporterID, msgID, chatID); delErr != nil {
 		log.Printf("[WARN] failed to delete reporter %d from database: %v", reporterID, delErr)
 	}
 
 	// get remaining reports
-	remainingReports, err := a.reports.GetByMessage(context.Background(), msgID, a.primChatID)
+	remainingReports, err := a.reports.GetByMessage(ctx, msgID, a.primChatID)
 	if err != nil {
 		log.Printf("[WARN] failed to get remaining reports for msgID:%d: %v", msgID, err)
 	}
 
 	if len(remainingReports) == 0 {
 		// no reporters remain - delete all reports and update notification
-		if delErr := a.reports.DeleteByMessage(context.Background(), msgID, chatID); delErr != nil {
+		if delErr := a.reports.DeleteByMessage(ctx, msgID, chatID); delErr != nil {
 			log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, delErr)
 		}
 
@@ -1451,11 +1451,11 @@ func (a *admin) callbackReportBanReporterConfirm(query *tbapi.CallbackQuery) err
 		// restore original buttons
 		keyboard := [][]tbapi.InlineKeyboardButton{
 			{
-				tbapi.NewInlineKeyboardButtonData("Approve", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
-				tbapi.NewInlineKeyboardButtonData("Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
+				tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
+				tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
 			},
 			{
-				tbapi.NewInlineKeyboardButtonData("Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+				tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 			},
 		}
 
@@ -1473,7 +1473,7 @@ func (a *admin) callbackReportBanReporterConfirm(query *tbapi.CallbackQuery) err
 
 // callbackReportCancel handles the callback when admin cancels ban reporter action
 // callback data: RXreportedUserID:msgID
-func (a *admin) callbackReportCancel(query *tbapi.CallbackQuery) error {
+func (a *admin) callbackReportCancel(_ context.Context, query *tbapi.CallbackQuery) error {
 	// parse callback data
 	reportedUserID, msgID, err := a.parseCallbackData(query.Data)
 	if err != nil {
@@ -1483,11 +1483,11 @@ func (a *admin) callbackReportCancel(query *tbapi.CallbackQuery) error {
 	// restore original button layout
 	keyboard := [][]tbapi.InlineKeyboardButton{
 		{
-			tbapi.NewInlineKeyboardButtonData("Approve", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
-			tbapi.NewInlineKeyboardButtonData("Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
 		},
 		{
-			tbapi.NewInlineKeyboardButtonData("Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 		},
 	}
 
