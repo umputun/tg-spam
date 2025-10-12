@@ -183,11 +183,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			if update.Message.NewChatMembers != nil {
-				// immediately delete join message if requested
+				// handle join messages with mutually exclusive logic to prevent double-deletion:
+				// - if DeleteJoinMessages=true: delete immediately, don't store in locator
+				// - if DeleteJoinMessages=false: store in locator for potential later deletion via SuppressJoinMessage
+				// this prevents "message not found" errors when both flags are enabled
 				if l.DeleteJoinMessages {
 					l.deleteSystemMessage(update.Message.MessageID, update.Message.Chat.ID, "join")
 				} else {
-					// save join messages to locator only if not deleting immediately
 					err := l.procNewChatMemberMessage(update)
 					if err != nil {
 						log.Printf("[WARN] failed to process new chat member: %v", err)
