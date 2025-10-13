@@ -1,28 +1,30 @@
 module github.com/umputun/tg-spam
 
-go 1.24
+go 1.24.0
 
 require (
-	github.com/OvyFlash/telegram-bot-api v0.0.0-20250326000532-e3e08517d757
+	github.com/OvyFlash/telegram-bot-api v0.0.0-20250903213241-2ddbaeebe9a5
 	github.com/didip/tollbooth/v8 v8.0.1
 	github.com/fatih/color v1.18.0
-	github.com/forPelevin/gomoji v1.3.0
+	github.com/forPelevin/gomoji v1.4.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-pkgz/expirable-cache/v3 v3.1.0
 	github.com/go-pkgz/fileutils v0.4.0
-	github.com/go-pkgz/lgr v0.12.0
-	github.com/go-pkgz/rest v1.20.3
-	github.com/go-pkgz/routegroup v1.4.1
+	github.com/go-pkgz/lgr v0.12.1
+	github.com/go-pkgz/repeater v1.2.0
+	github.com/go-pkgz/rest v1.20.4
+	github.com/go-pkgz/routegroup v1.5.3
 	github.com/go-pkgz/testutils v0.4.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/sandwich-go/gpt3-encoder v0.0.0-20230203030618-cd99729dd0dd
-	github.com/sashabaranov/go-openai v1.38.1
+	github.com/sashabaranov/go-openai v1.41.2
 	github.com/stretchr/testify v1.10.0
 	github.com/yuin/gopher-lua v1.1.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.37.0
+	modernc.org/sqlite v1.39.1
 )
 
 require (
@@ -64,7 +66,6 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-pkgz/expirable-cache/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -85,7 +86,7 @@ require (
 	github.com/moby/term v0.5.2 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
-	github.com/ncruces/go-strftime v0.1.9 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -94,7 +95,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/samber/lo v1.49.1 // indirect
+	github.com/samber/lo v1.52.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/testcontainers/testcontainers-go v0.36.0 // indirect
@@ -111,14 +112,14 @@ require (
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
-	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.62.1 // indirect
+	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.9.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 )

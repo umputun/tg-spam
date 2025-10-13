@@ -330,8 +330,9 @@ func (config MessageConfig) method() string {
 // ForwardConfig contains information about a ForwardMessage request.
 type ForwardConfig struct {
 	BaseChat
-	FromChat  ChatConfig
-	MessageID int // required
+	FromChat            ChatConfig
+	MessageID           int // required
+	VideoStartTimestamp int64
 }
 
 func (config ForwardConfig) params() (Params, error) {
@@ -345,6 +346,7 @@ func (config ForwardConfig) params() (Params, error) {
 	}
 	params.Merge(p1)
 	params.AddNonZero("message_id", config.MessageID)
+	params.AddNonZero64("video_start_timestamp", config.VideoStartTimestamp)
 
 	return params, nil
 }
@@ -386,6 +388,7 @@ type CopyMessageConfig struct {
 	BaseChat
 	FromChat              ChatConfig
 	MessageID             int
+	VideoStartTimestamp   int64
 	Caption               string
 	ParseMode             string
 	CaptionEntities       []MessageEntity
@@ -404,6 +407,7 @@ func (config CopyMessageConfig) params() (Params, error) {
 	}
 	params.Merge(p1)
 	params.AddNonZero("message_id", config.MessageID)
+	params.AddNonZero64("video_start_timestamp", config.VideoStartTimestamp)
 	params.AddNonEmpty("caption", config.Caption)
 	params.AddNonEmpty("parse_mode", config.ParseMode)
 	params.AddBool("show_caption_above_media", config.ShowCaptionAboveMedia)
@@ -628,6 +632,8 @@ type VideoConfig struct {
 	BaseSpoiler
 	Thumb                 RequestFileData
 	Duration              int
+	Cover                 RequestFileData
+	StartTimestamp        int64
 	Caption               string
 	ParseMode             string
 	CaptionEntities       []MessageEntity
@@ -642,6 +648,7 @@ func (config VideoConfig) params() (Params, error) {
 	}
 
 	params.AddNonZero("duration", config.Duration)
+	params.AddNonZero64("start_timestamp", config.StartTimestamp)
 	params.AddNonEmpty("caption", config.Caption)
 	params.AddNonEmpty("parse_mode", config.ParseMode)
 	params.AddBool("supports_streaming", config.SupportsStreaming)
@@ -677,6 +684,12 @@ func (config VideoConfig) files() []RequestFile {
 		})
 	}
 
+	if config.Cover != nil {
+		files = append(files, RequestFile{
+			Name: "cover",
+			Data: config.Cover,
+		})
+	}
 	return files
 }
 
@@ -1227,37 +1240,15 @@ func (config EditMessageMediaConfig) params() (Params, error) {
 		return params, err
 	}
 
-	if config.Media.getMedia().NeedsUpload() {
-		config.Media.setUploadMedia(fmt.Sprintf("attach://file-%d", 0))
-	}
+	preparedMedia := prepareInputMediaForParams([]InputMedia{config.Media})
 
-	if thumb := config.Media.getThumb(); thumb != nil && thumb.NeedsUpload() {
-		config.Media.setUploadThumb(fmt.Sprintf("attach://file-%d-thumb", 0))
-	}
-
-	err = params.AddInterface("media", config.Media)
+	err = params.AddInterface("media", preparedMedia[0])
 
 	return params, err
 }
 
 func (config EditMessageMediaConfig) files() []RequestFile {
-	files := []RequestFile{}
-
-	if config.Media.getMedia().NeedsUpload() {
-		files = append(files, RequestFile{
-			Name: "file-0",
-			Data: config.Media.getMedia(),
-		})
-	}
-
-	if thumb := config.Media.getThumb(); thumb != nil && thumb.NeedsUpload() {
-		files = append(files, RequestFile{
-			Name: "file-0-thumb",
-			Data: thumb,
-		})
-	}
-
-	return files
+	return prepareInputMediaForFiles([]InputMedia{config.Media})
 }
 
 // EditMessageReplyMarkupConfig allows you to modify the reply markup
@@ -1327,6 +1318,30 @@ func (config UserProfilePhotosConfig) params() (Params, error) {
 	params.AddNonZero64("user_id", config.UserID)
 	params.AddNonZero("offset", config.Offset)
 	params.AddNonZero("limit", config.Limit)
+
+	return params, nil
+}
+
+// SetUserEmojiStatusConfig changes the emoji status for a given user that
+// previously allowed the bot to manage their emoji status via
+// the Mini App method requestEmojiStatusAccess.
+// Returns True on success.
+type SetUserEmojiStatusConfig struct {
+	UserID                    int64 // required
+	EmojiStatusCustomEmojiID  string
+	EmojiStatusExpirationDate int64
+}
+
+func (SetUserEmojiStatusConfig) method() string {
+	return "setUserEmojiStatus"
+}
+
+func (config SetUserEmojiStatusConfig) params() (Params, error) {
+	params := make(Params)
+
+	params.AddNonZero64("user_id", config.UserID)
+	params.AddNonEmpty("emoji_status_custom_emoji_id", config.EmojiStatusCustomEmojiID)
+	params.AddNonZero64("emoji_status_expiration_date	", config.EmojiStatusExpirationDate)
 
 	return params, nil
 }
@@ -1493,6 +1508,38 @@ func (config AnswerWebAppQueryConfig) params() (Params, error) {
 
 	params["web_app_query_id"] = config.WebAppQueryID
 	err := params.AddInterface("result", config.Result)
+
+	return params, err
+}
+
+// SavePreparedInlineMessageConfig stores a message that can be sent by a user of a Mini App.
+// Returns a PreparedInlineMessage object.
+type SavePreparedInlineMessageConfig[T InlineQueryResults] struct {
+	UserID            int64 // required
+	Result            T     // required
+	AllowUserChats    bool
+	AllowBotChats     bool
+	AllowGroupChats   bool
+	AllowChannelChats bool
+}
+
+func (config SavePreparedInlineMessageConfig[T]) method() string {
+	return "savePreparedInlineMessage"
+}
+
+func (config SavePreparedInlineMessageConfig[T]) params() (Params, error) {
+	params := make(Params)
+
+	params.AddNonZero64("user_id", config.UserID)
+	err := params.AddInterface("result", config.Result)
+	if err != nil {
+		return params, err
+	}
+
+	params.AddBool("allow_user_chats", config.AllowUserChats)
+	params.AddBool("allow_bot_chats", config.AllowBotChats)
+	params.AddBool("allow_group_chats", config.AllowGroupChats)
+	params.AddBool("allow_channel_chats", config.AllowChannelChats)
 
 	return params, err
 }
@@ -2058,7 +2105,12 @@ func (config InvoiceConfig) params() (Params, error) {
 
 	params.AddNonEmpty("provider_token", config.ProviderToken)
 	params.AddNonZero("max_tip_amount", config.MaxTipAmount)
-	err = params.AddInterface("suggested_tip_amounts", config.SuggestedTipAmounts)
+	if len(config.SuggestedTipAmounts) > 0 {
+		err = params.AddInterface("suggested_tip_amounts", config.SuggestedTipAmounts)
+		if err != nil {
+			return params, err
+		}
+	}
 	params.AddNonEmpty("start_parameter", config.StartParameter)
 	params.AddNonEmpty("provider_data", config.ProviderData)
 	params.AddNonEmpty("photo_url", config.PhotoURL)
@@ -2082,12 +2134,14 @@ func (config InvoiceConfig) method() string {
 
 // InvoiceLinkConfig contains information for createInvoiceLink method
 type InvoiceLinkConfig struct {
+	BusinessConnectionID      BusinessConnectionID
 	Title                     string         // Required
 	Description               string         // Required
 	Payload                   string         // Required
 	ProviderToken             string         // Required
 	Currency                  string         // Required
 	Prices                    []LabeledPrice // Required
+	SubscriptionPeriod        int
 	MaxTipAmount              int
 	SuggestedTipAmounts       []int
 	ProviderData              string
@@ -2105,7 +2159,10 @@ type InvoiceLinkConfig struct {
 }
 
 func (config InvoiceLinkConfig) params() (Params, error) {
-	params := make(Params)
+	params, err := config.BusinessConnectionID.params()
+	if err != nil {
+		return params, err
+	}
 
 	params["title"] = config.Title
 	params["description"] = config.Description
@@ -2115,9 +2172,15 @@ func (config InvoiceLinkConfig) params() (Params, error) {
 		return params, err
 	}
 
+	params.AddNonZero("subscription_period", config.SubscriptionPeriod)
 	params.AddNonEmpty("provider_token", config.ProviderToken)
 	params.AddNonZero("max_tip_amount", config.MaxTipAmount)
-	err := params.AddInterface("suggested_tip_amounts", config.SuggestedTipAmounts)
+	if len(config.SuggestedTipAmounts) > 0 {
+		err := params.AddInterface("suggested_tip_amounts", config.SuggestedTipAmounts)
+		if err != nil {
+			return params, err
+		}
+	}
 	params.AddNonEmpty("provider_data", config.ProviderData)
 	params.AddNonEmpty("photo_url", config.PhotoURL)
 	params.AddNonZero("photo_size", config.PhotoSize)
@@ -2131,7 +2194,7 @@ func (config InvoiceLinkConfig) params() (Params, error) {
 	params.AddBool("send_email_to_provider", config.SendEmailToProvider)
 	params.AddBool("is_flexible", config.IsFlexible)
 
-	return params, err
+	return params, nil
 }
 
 func (config InvoiceLinkConfig) method() string {
@@ -2223,6 +2286,28 @@ func (config RefundStarPaymentConfig) params() (Params, error) {
 	return params, nil
 }
 
+// EditUserStarSubscriptionConfig allows the bot to cancel or re-enable extension
+// of a subscription paid in Telegram Stars. Returns True on success.
+type EditUserStarSubscriptionConfig struct {
+	UserID                  int64  // required
+	TelegramPaymentChargeID string // required
+	IsCanceled              bool   // required
+}
+
+func (config EditUserStarSubscriptionConfig) method() string {
+	return "editUserStarSubscription"
+}
+
+func (config EditUserStarSubscriptionConfig) params() (Params, error) {
+	params := make(Params)
+
+	params["telegram_payment_charge_id"] = config.TelegramPaymentChargeID
+	params.AddNonZero64("user_id", config.UserID)
+	params.AddBool("is_canceled", config.IsCanceled)
+
+	return params, nil
+}
+
 // DeleteMessageConfig contains information of a message in a chat to delete.
 type DeleteMessageConfig struct {
 	BaseChatMessage
@@ -2247,6 +2332,129 @@ func (config DeleteMessagesConfig) method() string {
 
 func (config DeleteMessagesConfig) params() (Params, error) {
 	return config.BaseChatMessages.params()
+}
+
+// GetAvailableGiftsConfig returns the list of gifts that can be sent by the bot
+// to users and channel chats. Requires no parameters. Returns a Gifts object.
+type GetAvailableGiftsConfig struct{}
+
+func (config GetAvailableGiftsConfig) method() string {
+	return "getAvailableGifts"
+}
+
+func (config GetAvailableGiftsConfig) params() (Params, error) {
+	return nil, nil
+}
+
+// SendGiftConfig sends a gift to the given user or channel chat.
+// The gift can't be converted to Telegram Stars by the receiver.
+// Returns True on success.
+type SendGiftConfig struct {
+	UserID        int64
+	Chat          ChatConfig
+	GiftID        string // required
+	PayForUpgrade bool
+	Text          string
+	TextParseMode string
+	TextEntities  []MessageEntity
+}
+
+func (config SendGiftConfig) method() string {
+	return "sendGift"
+}
+
+func (config SendGiftConfig) params() (Params, error) {
+	params := make(Params)
+	params.AddNonZero64("user_id", config.UserID)
+
+	p1, err := config.Chat.params()
+	if err != nil {
+		return params, err
+	}
+	params.Merge(p1)
+
+	params.AddNonEmpty("gift_id", config.GiftID)
+	params.AddBool("pay_for_upgrade", config.PayForUpgrade)
+	params.AddNonEmpty("text", config.Text)
+	params.AddNonEmpty("text_parse_mode", config.Text)
+	params.AddInterface("text_entities", config.TextEntities)
+
+	return params, nil
+}
+
+// VerifyUserConfig verifies a user on behalf of the organization
+// which is represented by the bot.
+// Returns True on success.
+type VerifyUserConfig struct {
+	UserID            int64 // required
+	CustomDescription string
+}
+
+func (config VerifyUserConfig) method() string {
+	return "verifyUser"
+}
+
+func (config VerifyUserConfig) params() (Params, error) {
+	params := make(Params)
+	params.AddNonZero64("user_id", config.UserID)
+	params.AddNonEmpty("custom_description", config.CustomDescription)
+
+	return params, nil
+}
+
+// VerifyChatConfig verifies a chat on behalf of the organization
+// which is represented by the bot.
+// Returns True on success.
+type VerifyChatConfig struct {
+	Chat              ChatConfig
+	CustomDescription string
+}
+
+func (config VerifyChatConfig) method() string {
+	return "verifyChat"
+}
+
+func (config VerifyChatConfig) params() (Params, error) {
+	params, err := config.Chat.params()
+	if err != nil {
+		return params, err
+	}
+	params.AddNonEmpty("custom_description", config.CustomDescription)
+
+	return params, nil
+}
+
+// RemoveUserVerificationConfig removes verification from a user who is currently
+// verified on behalf of the organization represented by the bot.
+// Returns True on success.
+type RemoveUserVerificationConfig struct {
+	UserID int64 // required
+}
+
+func (config RemoveUserVerificationConfig) method() string {
+	return "removeUserVerification"
+}
+
+func (config RemoveUserVerificationConfig) params() (Params, error) {
+	params := make(Params)
+	params.AddNonZero64("user_id", config.UserID)
+
+	return params, nil
+}
+
+// RemoveChatVerificationConfig removes verification from a chat who is currently
+// verified on behalf of the organization represented by the bot.
+// Returns True on success.
+type RemoveChatVerificationConfig struct {
+	Chat ChatConfig
+}
+
+func (config RemoveChatVerificationConfig) method() string {
+	return "removeChatVerification"
+}
+
+func (config RemoveChatVerificationConfig) params() (Params, error) {
+	return config.Chat.params()
 }
 
 // PinChatMessageConfig contains information of a message in a chat to pin.
