@@ -652,9 +652,9 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "HTTP error",
+			name:           "HTTP 503 service unavailable",
 			mockResp:       `{"ok": false, "description": "not found"}`,
-			mockStatusCode: 500,
+			mockStatusCode: 503,
 			expected:       false,
 		},
 	}
@@ -682,21 +682,25 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 			assert.Equal(t, "cas", cr[0].Name)
 			assert.Equal(t, tt.expected, cr[0].Spam)
 
-			respDetails := struct {
-				OK          bool   `json:"ok"`
-				Description string `json:"description"`
-			}{}
-			err := json.Unmarshal([]byte(tt.mockResp), &respDetails)
-			require.NoError(t, err)
-			expResp := strings.ToLower(respDetails.Description)
-			if expResp == "" {
-				expResp = "spam detected"
+			// for 5xx errors, retry logic kicks in, so we expect different behavior
+			if tt.mockStatusCode >= 500 {
+				assert.Contains(t, cr[0].Details, "failed to send request")
+				assert.Greater(t, len(mockedHTTPClient.DoCalls()), 1, "should retry on 5xx errors")
+			} else {
+				respDetails := struct {
+					OK          bool   `json:"ok"`
+					Description string `json:"description"`
+				}{}
+				err := json.Unmarshal([]byte(tt.mockResp), &respDetails)
+				require.NoError(t, err)
+				expResp := strings.ToLower(respDetails.Description)
+				if expResp == "" {
+					expResp = "spam detected"
+				}
+				expResp = strings.TrimSuffix(expResp, ".")
+				assert.Equal(t, expResp, cr[0].Details)
+				assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
 			}
-			expResp = strings.TrimSuffix(expResp, ".")
-			assert.Equal(t, expResp, cr[0].Details)
-
-			assert.Equal(t, respDetails.Description, respDetails.Description)
-			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
 		})
 	}
 }
@@ -788,6 +792,277 @@ func TestSpam_CheckIsCasSpamUserAgent(t *testing.T) {
 			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
 		})
 	}
+}
+
+func TestSpam_CheckIsCasSpamRetry(t *testing.T) {
+	t.Run("retry on network failure then success", func(t *testing.T) {
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				if callCount == 1 {
+					return nil, fmt.Errorf("network error")
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "not found"}`)),
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 2, callCount, "should retry once after network failure")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+	})
+
+	t.Run("retry on 5xx error then success", func(t *testing.T) {
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				if callCount == 1 {
+					return &http.Response{
+						StatusCode: 500,
+						Body:       io.NopCloser(bytes.NewBufferString("Internal Server Error")),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "not found"}`)),
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 2, callCount, "should retry once after 5xx error")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+	})
+
+	t.Run("max retries exceeded", func(t *testing.T) {
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				return nil, fmt.Errorf("network error")
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 3, callCount, "should attempt 3 times with Repeats=3")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+		assert.Contains(t, casCheck.Details, "failed to send request")
+	})
+}
+
+func TestSpam_CheckIsCasSpamHTMLResponse(t *testing.T) {
+	t.Run("retry on HTML response then success", func(t *testing.T) {
+		// test issue #325: CAS returns HTML error page instead of JSON, then succeeds
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				if callCount == 1 {
+					return &http.Response{
+						StatusCode: 200,
+						Header:     http.Header{"Content-Type": []string{"text/html"}},
+						Body:       io.NopCloser(bytes.NewBufferString("<html><body>Error</body></html>")),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "not found"}`)),
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 2, callCount, "should retry once after HTML response")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+	})
+
+	t.Run("max retries on persistent HTML response", func(t *testing.T) {
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"text/html"}},
+					Body:       io.NopCloser(bytes.NewBufferString("<html><body>Error</body></html>")),
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 3, callCount, "should attempt 3 times with Repeats=3")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+		assert.Contains(t, casCheck.Details, "unexpected content type")
+	})
+}
+
+func TestSpam_CheckIsCasSpamNon200Status(t *testing.T) {
+	t.Run("retry on 4xx errors then success", func(t *testing.T) {
+		callCount := 0
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				if callCount == 1 {
+					return &http.Response{
+						StatusCode: 429,
+						Body:       io.NopCloser(bytes.NewBufferString("Rate limited")),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "not found"}`)),
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{
+			CasAPI:           "http://localhost",
+			HTTPClient:       mockedHTTPClient,
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+		})
+		spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, 2, callCount, "should retry once after 429 error")
+		var casCheck *spamcheck.Response
+		for _, check := range cr {
+			if check.Name == "cas" {
+				casCheck = &check
+				break
+			}
+		}
+		require.NotNil(t, casCheck)
+		assert.False(t, casCheck.Spam)
+	})
+
+	t.Run("max retries on persistent 4xx errors", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			statusCode int
+		}{
+			{"400 Bad Request", 400},
+			{"404 Not Found", 404},
+			{"429 Too Many Requests", 429},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				callCount := 0
+				mockedHTTPClient := &mocks.HTTPClientMock{
+					DoFunc: func(req *http.Request) (*http.Response, error) {
+						callCount++
+						return &http.Response{
+							StatusCode: tt.statusCode,
+							Body:       io.NopCloser(bytes.NewBufferString("Error")),
+						}, nil
+					},
+				}
+
+				d := NewDetector(Config{
+					CasAPI:           "http://localhost",
+					HTTPClient:       mockedHTTPClient,
+					MaxAllowedEmoji:  -1,
+					FirstMessageOnly: true,
+				})
+				spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+				assert.False(t, spam)
+				assert.Equal(t, 3, callCount, "should attempt 3 times with Repeats=3")
+				var casCheck *spamcheck.Response
+				for _, check := range cr {
+					if check.Name == "cas" {
+						casCheck = &check
+						break
+					}
+				}
+				require.NotNil(t, casCheck)
+				assert.False(t, casCheck.Spam)
+				assert.Contains(t, casCheck.Details, "unexpected status")
+			})
+		}
+	})
 }
 
 func TestDetector_CheckSimilarity(t *testing.T) {
