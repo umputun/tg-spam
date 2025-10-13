@@ -19,6 +19,8 @@ import (
 	"unicode"
 
 	"github.com/forPelevin/gomoji"
+	"github.com/go-pkgz/repeater"
+	"github.com/go-pkgz/repeater/strategy"
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -768,9 +770,47 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 		req.Header.Set("User-Agent", d.CasUserAgent)
 	}
 
-	resp, err := d.HTTPClient.Do(req)
+	var resp *http.Response
+	// wrap HTTP call with retry logic: 3 attempts, 500ms initial delay, exponential backoff with jitter
+	rptr := repeater.New(&strategy.Backoff{
+		Repeats:  3,
+		Duration: 500 * time.Millisecond,
+		Factor:   2.0,
+		Jitter:   true,
+	})
+
+	err = rptr.Do(context.Background(), func() error {
+		var httpErr error
+		resp, httpErr = d.HTTPClient.Do(req)
+		if httpErr != nil {
+			return fmt.Errorf("http request failed: %w", httpErr) // retry on network errors
+		}
+
+		// retry on 5xx server errors
+		if resp.StatusCode >= 500 {
+			_ = resp.Body.Close() // ignore close error on retry
+			return fmt.Errorf("server error: %d", resp.StatusCode)
+		}
+
+		// retry on non-200 status
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		}
+
+		// retry on HTML responses (issue #325)
+		contentType := resp.Header.Get("Content-Type")
+		if contentType != "" && !strings.Contains(contentType, "application/json") {
+			_ = resp.Body.Close()
+			return fmt.Errorf("unexpected content type: %s", contentType)
+		}
+
+		return nil // success - exit retry loop
+	})
+
 	if err != nil {
-		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("ffailed to send request %s: %v", reqURL, err)}
+		log.Printf("[WARN] CAS API request failed for user %s after retries: %v", msgID, err)
+		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to send request %s: %v", reqURL, err)}
 	}
 	defer resp.Body.Close()
 
@@ -780,6 +820,7 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		log.Printf("[WARN] CAS API response parse error for user %s: %v", msgID, err)
 		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to parse response from %s: %v", reqURL, err)}
 	}
 	respData.Description = strings.ToLower(respData.Description)

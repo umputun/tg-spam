@@ -53,6 +53,40 @@ func NewDeleteMessages(chatID int64, messageIDs []int) DeleteMessagesConfig {
 	}
 }
 
+// NewVerifyUser verifies user on behalf of the organization
+// which is represented by the bot
+func NewVerifyUser(userID int64, customDescription string) VerifyUserConfig {
+	return VerifyUserConfig{
+		UserID:            userID,
+		CustomDescription: customDescription,
+	}
+}
+
+// NewVerifyChat verifies chat on behalf of the organization
+// which is represented by the bot
+func NewVerifyChat(chat ChatConfig, customDescription string) VerifyChatConfig {
+	return VerifyChatConfig{
+		Chat:              chat,
+		CustomDescription: customDescription,
+	}
+}
+
+// NewRemoveUserVerification removes verification from a user who is currently
+// verified on behalf of the organization represented by the bot.
+func NewRemoveUserVerification(userID int64) RemoveUserVerificationConfig {
+	return RemoveUserVerificationConfig{
+		UserID:            userID,
+	}
+}
+
+// NewRemoveChatVerification removes verification from a chat that is currently
+//  verified on behalf of the organization represented by the bot.
+func NewRemoveChatVerification(chat ChatConfig) RemoveChatVerificationConfig {
+	return RemoveChatVerificationConfig{
+		Chat:              chat,
+	}
+}
+
 // NewMessageToChannel creates a new Message that is sent to a channel
 // by username.
 //
@@ -342,6 +376,17 @@ func NewUserProfilePhotos(userID int64) UserProfilePhotosConfig {
 		UserID: userID,
 		Offset: 0,
 		Limit:  0,
+	}
+}
+
+// NewSetUserEmojiStatus changes the user's emoji status.
+//
+// userID is the ID of the user you wish to get profile photos from.
+func NewSetUserEmojiStatus(userID int64, emojiID string, statusExpDate int64) SetUserEmojiStatusConfig {
+	return SetUserEmojiStatusConfig{
+		UserID:                    userID,
+		EmojiStatusCustomEmojiID:  emojiID,
+		EmojiStatusExpirationDate: statusExpDate,
 	}
 }
 
@@ -1289,5 +1334,26 @@ func NewInputPaidMediaVideo(media *InputMediaVideo) InputPaidMedia {
 	return InputPaidMedia{
 		Type:  "video",
 		Media: media,
+	}
+}
+
+// NewCreateForumTopicConfig creates a topic in a forum supergroup chat.
+func NewCreateForumTopicConfig(chatID int64, topicName string) CreateForumTopicConfig {
+	return CreateForumTopicConfig{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
+		Name: topicName,
+	}
+}
+
+// NewEditForumTopicConfig edit name and icon of a topic in a forum supergroup chat.
+func NewEditForumTopicConfig(chatID, threadID int64, topicName string) EditForumTopicConfig {
+	return EditForumTopicConfig{
+		BaseForum: BaseForum{
+			ChatConfig:      ChatConfig{ChatID: chatID},
+			MessageThreadID: int(threadID),
+		},
+		Name: topicName,
 	}
 }
