@@ -2402,3 +2402,212 @@ func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
 	// verify spam logger was called
 	require.Equal(t, 1, len(mockLogger.SaveCalls()))
 }
+
+func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+	}
+	b := &mocks.BotMock{}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:              mockAPI,
+		Bot:                b,
+		SuperUsers:         SuperUsers{"admin"},
+		Group:              "gr",
+		Locator:            locator,
+		DeleteJoinMessages: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat:           tbapi.Chat{ID: 123},
+			From:           &tbapi.User{UserName: "admin", ID: 100},
+			NewChatMembers: []tbapi.User{{UserName: "new_user", ID: 321}},
+			MessageID:      42,
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+
+	// verify deleteSystemMessage was called
+	require.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1)
+	var found bool
+	for _, call := range mockAPI.RequestCalls() {
+		if deleteConfig, ok := call.C.(tbapi.DeleteMessageConfig); ok {
+			if deleteConfig.MessageID == 42 && deleteConfig.ChatID == 123 {
+				found = true
+				break
+			}
+		}
+	}
+	assert.True(t, found, "delete message request should be called for join message")
+}
+
+func TestTelegramListener_DeleteLeaveMessages(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+	}
+	b := &mocks.BotMock{}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:               mockAPI,
+		Bot:                 b,
+		SuperUsers:          SuperUsers{"admin"},
+		Group:               "gr",
+		Locator:             locator,
+		SuppressJoinMessage: true,
+		DeleteLeaveMessages: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat:           tbapi.Chat{ID: 123},
+			From:           &tbapi.User{UserName: "admin", ID: 100},
+			LeftChatMember: &tbapi.User{UserName: "leaving_user", ID: 321},
+			MessageID:      43,
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+
+	// verify deleteSystemMessage was called
+	require.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1)
+	var found bool
+	for _, call := range mockAPI.RequestCalls() {
+		if deleteConfig, ok := call.C.(tbapi.DeleteMessageConfig); ok {
+			if deleteConfig.MessageID == 43 && deleteConfig.ChatID == 123 {
+				found = true
+				break
+			}
+		}
+	}
+	assert.True(t, found, "delete message request should be called for leave message")
+}
+
+func TestTelegramListener_DeleteSystemMessage(t *testing.T) {
+	t.Run("successful deletion", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				deleteConfig, ok := c.(tbapi.DeleteMessageConfig)
+				require.True(t, ok)
+				assert.Equal(t, 123, deleteConfig.MessageID)
+				assert.Equal(t, int64(456), deleteConfig.ChatID)
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		l := TelegramListener{TbAPI: mockAPI}
+		l.deleteSystemMessage(123, 456, "join")
+
+		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+	})
+
+	t.Run("deletion failure", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return nil, assert.AnError
+			},
+		}
+
+		l := TelegramListener{TbAPI: mockAPI}
+		// should not panic on error, just log
+		l.deleteSystemMessage(123, 456, "leave")
+
+		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+	})
+}
+
+func TestTelegramListener_NoDeleteWhenFlagsDisabled(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+	}
+	b := &mocks.BotMock{}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:               mockAPI,
+		Bot:                 b,
+		SuperUsers:          SuperUsers{"admin"},
+		Group:               "gr",
+		Locator:             locator,
+		DeleteJoinMessages:  false,
+		DeleteLeaveMessages: false,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat:           tbapi.Chat{ID: 123},
+			From:           &tbapi.User{UserName: "admin", ID: 100},
+			NewChatMembers: []tbapi.User{{UserName: "new_user", ID: 321}},
+			MessageID:      44,
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	assert.EqualError(t, err, "telegram update chan closed")
+
+	// verify no delete message calls were made
+	for _, call := range mockAPI.RequestCalls() {
+		if deleteConfig, ok := call.C.(tbapi.DeleteMessageConfig); ok {
+			assert.NotEqual(t, 44, deleteConfig.MessageID, "should not delete join message when flag is false")
+		}
+	}
+}

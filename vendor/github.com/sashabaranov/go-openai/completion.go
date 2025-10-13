@@ -16,8 +16,12 @@ const (
 	O1Preview20240912       = "o1-preview-2024-09-12"
 	O1                      = "o1"
 	O120241217              = "o1-2024-12-17"
+	O3                      = "o3"
+	O320250416              = "o3-2025-04-16"
 	O3Mini                  = "o3-mini"
 	O3Mini20250131          = "o3-mini-2025-01-31"
+	O4Mini                  = "o4-mini"
+	O4Mini20250416          = "o4-mini-2025-04-16"
 	GPT432K0613             = "gpt-4-32k-0613"
 	GPT432K0314             = "gpt-4-32k-0314"
 	GPT432K                 = "gpt-4-32k"
@@ -37,8 +41,18 @@ const (
 	GPT4TurboPreview        = "gpt-4-turbo-preview"
 	GPT4VisionPreview       = "gpt-4-vision-preview"
 	GPT4                    = "gpt-4"
+	GPT4Dot1                = "gpt-4.1"
+	GPT4Dot120250414        = "gpt-4.1-2025-04-14"
+	GPT4Dot1Mini            = "gpt-4.1-mini"
+	GPT4Dot1Mini20250414    = "gpt-4.1-mini-2025-04-14"
+	GPT4Dot1Nano            = "gpt-4.1-nano"
+	GPT4Dot1Nano20250414    = "gpt-4.1-nano-2025-04-14"
 	GPT4Dot5Preview         = "gpt-4.5-preview"
 	GPT4Dot5Preview20250227 = "gpt-4.5-preview-2025-02-27"
+	GPT5                    = "gpt-5"
+	GPT5Mini                = "gpt-5-mini"
+	GPT5Nano                = "gpt-5-nano"
+	GPT5ChatLatest          = "gpt-5-chat-latest"
 	GPT3Dot5Turbo0125       = "gpt-3.5-turbo-0125"
 	GPT3Dot5Turbo1106       = "gpt-3.5-turbo-1106"
 	GPT3Dot5Turbo0613       = "gpt-3.5-turbo-0613"
@@ -93,6 +107,10 @@ var disabledModelsForEndpoints = map[string]map[string]bool{
 		O1Preview20240912:       true,
 		O3Mini:                  true,
 		O3Mini20250131:          true,
+		O4Mini:                  true,
+		O4Mini20250416:          true,
+		O3:                      true,
+		O320250416:              true,
 		GPT3Dot5Turbo:           true,
 		GPT3Dot5Turbo0301:       true,
 		GPT3Dot5Turbo0613:       true,
@@ -121,6 +139,17 @@ var disabledModelsForEndpoints = map[string]map[string]bool{
 		GPT432K:                 true,
 		GPT432K0314:             true,
 		GPT432K0613:             true,
+		O1:                      true,
+		GPT4Dot1:                true,
+		GPT4Dot120250414:        true,
+		GPT4Dot1Mini:            true,
+		GPT4Dot1Mini20250414:    true,
+		GPT4Dot1Nano:            true,
+		GPT4Dot1Nano20250414:    true,
+		GPT5:                    true,
+		GPT5Mini:                true,
+		GPT5Nano:                true,
+		GPT5ChatLatest:          true,
 	},
 	chatCompletionsSuffix: {
 		CodexCodeDavinci002:     true,
@@ -194,6 +223,8 @@ type CompletionRequest struct {
 	Temperature     float32           `json:"temperature,omitempty"`
 	TopP            float32           `json:"top_p,omitempty"`
 	User            string            `json:"user,omitempty"`
+	// Options for streaming response. Only set this when you set stream: true.
+	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
 }
 
 // CompletionChoice represents one of possible completions.
@@ -219,7 +250,7 @@ type CompletionResponse struct {
 	Created int64              `json:"created"`
 	Model   string             `json:"model"`
 	Choices []CompletionChoice `json:"choices"`
-	Usage   Usage              `json:"usage"`
+	Usage   *Usage             `json:"usage,omitempty"`
 
 	httpHeader
 }

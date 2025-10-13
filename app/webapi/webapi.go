@@ -204,7 +204,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	// auth api routes
-	router.Route(func(authApi *routegroup.Bundle) {
+	router.Group().Route(func(authApi *routegroup.Bundle) {
 		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
 		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
 		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
@@ -248,7 +248,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		authApi.HandleFunc("GET /settings", s.getSettingsHandler) // get application settings
 	})
 
-	router.Route(func(webUI *routegroup.Bundle) {
+	router.Group().Route(func(webUI *routegroup.Bundle) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
 		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
 		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page

@@ -38,6 +38,8 @@ type TelegramListener struct {
 	WarnMsg                 string        // message to send on warning
 	NoSpamReply             bool          // do not reply on spam messages in the primary chat
 	SuppressJoinMessage     bool          // delete join message when kick out user
+	DeleteJoinMessages      bool          // delete join messages immediately
+	DeleteLeaveMessages     bool          // delete leave messages immediately
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
@@ -186,11 +188,18 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-			// save join messages to locator even if SuppressJoinMessage is set to false
 			if update.Message.NewChatMembers != nil {
-				err := l.procNewChatMemberMessage(update)
-				if err != nil {
-					log.Printf("[WARN] failed to process new chat member: %v", err)
+				// handle join messages with mutually exclusive logic to prevent double-deletion:
+				// - if DeleteJoinMessages=true: delete immediately, don't store in locator
+				// - if DeleteJoinMessages=false: store in locator for potential later deletion via SuppressJoinMessage
+				// this prevents "message not found" errors when both flags are enabled
+				if l.DeleteJoinMessages {
+					l.deleteSystemMessage(update.Message.MessageID, update.Message.Chat.ID, "join")
+				} else {
+					err := l.procNewChatMemberMessage(update)
+					if err != nil {
+						log.Printf("[WARN] failed to process new chat member: %v", err)
+					}
 				}
 				continue
 			}
@@ -198,10 +207,15 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			// handle left member messages, i.e. "blah blah removed from the chat"
 			if update.Message.LeftChatMember != nil {
 				if l.SuppressJoinMessage {
+					// delete the stored join message when user leaves
 					err := l.procLeftChatMemberMessage(update)
 					if err != nil {
 						log.Printf("[WARN] failed to process left chat member: %v", err)
 					}
+				}
+				// immediately delete leave message if requested
+				if l.DeleteLeaveMessages {
+					l.deleteSystemMessage(update.Message.MessageID, update.Message.Chat.ID, "leave")
 				}
 				continue
 			}
@@ -416,6 +430,21 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 	}
 
 	return nil
+}
+
+// deleteSystemMessage deletes a system message immediately
+func (l *TelegramListener) deleteSystemMessage(msgID int, chatID int64, msgType string) {
+	deleteMsg := tbapi.DeleteMessageConfig{
+		BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  msgID,
+			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
+		},
+	}
+	if _, err := l.TbAPI.Request(deleteMsg); err != nil {
+		log.Printf("[WARN] failed to delete %s message %d: %v", msgType, msgID, err)
+	} else {
+		log.Printf("[DEBUG] %s message %d deleted", msgType, msgID)
+	}
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
