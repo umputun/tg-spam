@@ -248,7 +248,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		authApi.HandleFunc("GET /settings", s.getSettingsHandler) // get application settings
 	})
 
-	router.Route(func(webUI *routegroup.Bundle) {
+	router.Group().Route(func(webUI *routegroup.Bundle) {
 		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
 		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
 		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
