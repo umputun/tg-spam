@@ -204,7 +204,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	// auth api routes
-	router.Route(func(authApi *routegroup.Bundle) {
+	router.Group().Route(func(authApi *routegroup.Bundle) {
 		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
 		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
 		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
