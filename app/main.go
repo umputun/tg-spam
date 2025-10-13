@@ -344,6 +344,13 @@ func execute(ctx context.Context, opts options) error {
 		AggressiveCleanupLimit:  opts.AggressiveCleanupLimit,
 	}
 
+	if opts.Delete.JoinMessages {
+		log.Print("[INFO] delete join messages enabled")
+	}
+	if opts.Delete.LeaveMessages {
+		log.Print("[INFO] delete leave messages enabled")
+	}
+
 	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
 		" suppress: %v, dry: %v, training: %v}", tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
 		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
