@@ -226,7 +226,21 @@ func (b *Bundle) register(pattern string, handler http.HandlerFunc) {
 }
 
 // Route allows for configuring the Group inside the configureFn function.
-func (b *Bundle) Route(configureFn func(*Bundle)) { configureFn(b) }
+// When called on the root bundle, it automatically creates a new group to avoid
+// accidentally modifying the root bundle's middleware stack.
+func (b *Bundle) Route(configureFn func(*Bundle)) {
+	// if called on root bundle, auto-create a group for better UX
+	if b.root == nil {
+		child := b.Group()
+		configureFn(child)
+		// if child registered routes, lock root too to prevent Use() after routes
+		if child.routesLocked {
+			b.routesLocked = true
+		}
+		return
+	}
+	configureFn(b)
+}
 
 // HandleRoot adds a handler for the group's root path without trailing slash.
 // This avoids the 301 redirect that would occur with a "/" pattern.

@@ -262,7 +262,7 @@ github.com/go-pkgz/repeater/strategy
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
-# github.com/go-pkgz/routegroup v1.5.3
+# github.com/go-pkgz/routegroup v1.6.0
 ## explicit; go 1.23
 github.com/go-pkgz/routegroup
 # github.com/go-pkgz/testutils v0.4.2

@@ -101,8 +101,8 @@ github.com/go-pkgz/repeater v1.2.0 h1:oJFvjyKdTDd5RCzpzxlzYIZFFj6Zfl17rE1aUfu6Uj
 github.com/go-pkgz/repeater v1.2.0/go.mod h1:vypP6xamA53MFmafnGUucqOmALKk36xgKu2hSG73LHM=
 github.com/go-pkgz/rest v1.20.4 h1:8ufcP1IqoDhCvIFdXPtvyX4HSS16SM6THBe2a6L0/kg=
 github.com/go-pkgz/rest v1.20.4/go.mod h1:2/LEZGndSxpVvExsMn48AjUgiTn6kILqjpoaRnl62JU=
-github.com/go-pkgz/routegroup v1.5.3 h1:IvH1KLcQkMap9jucQGBlef3IBloxSAe8USUFvxShFqs=
-github.com/go-pkgz/routegroup v1.5.3/go.mod h1:Pmu04fhgWhRtBMIJ8HXppnnzOPjnL/IEPBIdO2zmeqg=
+github.com/go-pkgz/routegroup v1.6.0 h1:44XHZgF6JIIldRlv+zjg6SygULASmjifnfIQjwCT0e4=
+github.com/go-pkgz/routegroup v1.6.0/go.mod h1:Pmu04fhgWhRtBMIJ8HXppnnzOPjnL/IEPBIdO2zmeqg=
 github.com/go-pkgz/testutils v0.4.2 h1:FdebVpml2o4/ZsSZ4NUbEn8PZGC8UZAwUqRZnK9PWog=
 github.com/go-pkgz/testutils v0.4.2/go.mod h1:FPD03q1rA7OXLtVCFFMJQCd07mahJYiWou1I34uAAas=
 github.com/go-sql-driver/mysql v1.8.1/go.mod h1:wEBSXgmK//2ZFJyE+qWnIsVGmvmEKlqwuVSjsCm7DZg=

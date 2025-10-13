@@ -110,25 +110,24 @@ You can also use the `Route` method to add routes and middleware in a single fun
 
 ```go
 router := routegroup.New(http.NewServeMux())
-router.Group().Route(func(b *routegroup.Bundle) {
+router.Route(func(b *routegroup.Bundle) {
     b.Use(loggingMiddleware, corsMiddleware)
     b.Handle("GET /hello", helloHandler)
     b.Handle("GET /bye", byeHandler)
 })
-http.ListenAndServe(":8080", group)
+http.ListenAndServe(":8080", router)
 ```
 
-Important: The `Route` method does not create a new group by itself; it merely applies middleware and routes to the current group in a functional style. In the example provided, this is technically equivalent to sequentially calling the `Use` and `Handle` methods for the caller's group. While this may not seem intuitive, it is crucial to understand, as using the `Route` method might mistakenly appear to be a way to create a new (sub)group, which it is not. In 99% of cases, `Route` should be called after the creation of a sub-group, either by the `Mount` or `Group` methods.
+When called on the root bundle, `Route` automatically creates a new group to avoid accidentally modifying the root bundle's middleware stack. This means the middleware and routes defined inside the `Route` function are isolated from other routes on the root bundle.
 
-For example, using `Route` in this manner is likely a mistake, as it will apply middleware to the root group, not to the newly created sub-group.
+The `Route` method can also be chained after `Mount` or `Group` for a more functional style:
 
 ```go
-group := routegroup.New(http.NewServeMux())
-group.Route(func(b *routegroup.Bundle) {
+router := routegroup.New(http.NewServeMux())
+router.Group().Route(func(b *routegroup.Bundle) {
     b.Use(loggingMiddleware, corsMiddleware)
-    b.Route(func(sub *routegroup.Bundle) {
-        sub.Handle("GET /hello", helloHandler)
-    })
+    b.Handle("GET /hello", helloHandler)
+    b.Handle("GET /bye", byeHandler)
 })
 ```
 
