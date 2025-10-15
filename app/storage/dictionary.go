@@ -143,6 +143,12 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// DictionaryEntry represents a dictionary entry with its database ID
+type DictionaryEntry struct {
+	ID   int64  `db:"id" json:"id"`
+	Data string `db:"data" json:"data"`
+}
+
 // Read reads all entries from the dictionary by type
 func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, error) {
 	d.RLock()
@@ -158,6 +164,23 @@ func (d *Dictionary) Read(ctx context.Context, t DictionaryType) ([]string, erro
 		return nil, fmt.Errorf("failed to get data: %w", err)
 	}
 	return data, nil
+}
+
+// ReadWithIDs reads all entries from the dictionary by type with their database IDs
+func (d *Dictionary) ReadWithIDs(ctx context.Context, t DictionaryType) ([]DictionaryEntry, error) {
+	d.RLock()
+	defer d.RUnlock()
+
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+
+	var entries []DictionaryEntry
+	query := d.Adopt(`SELECT id, data FROM dictionary WHERE type = ? AND gid = ? ORDER BY timestamp DESC`)
+	if err := d.SelectContext(ctx, &entries, query, t, d.GID()); err != nil {
+		return nil, fmt.Errorf("failed to get data: %w", err)
+	}
+	return entries, nil
 }
 
 // Reader returns a reader for phrases by type

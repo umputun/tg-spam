@@ -481,6 +481,12 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		return fmt.Errorf("can't make detected spam store, %w", dsErr)
 	}
 
+	// make dictionary store for webapi
+	dictionaryStore, dictErr := storage.NewDictionary(ctx, db)
+	if dictErr != nil {
+		return fmt.Errorf("can't make dictionary store, %w", dictErr)
+	}
+
 	settings := webapi.Settings{
 		InstanceID:               opts.InstanceID,
 		PrimaryGroup:             opts.Telegram.Group,
@@ -537,6 +543,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		SpamFilter:    sf,
 		Locator:       loc,
 		DetectedSpam:  detectedSpamStore,
+		Dictionary:    dictionaryStore,
 		StorageEngine: db, // add database engine for backup functionality
 		AuthPasswd:    authPassswd,
 		AuthHash:      opts.Server.AuthHash,
