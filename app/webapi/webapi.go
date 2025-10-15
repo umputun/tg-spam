@@ -38,6 +38,7 @@ import (
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
 //go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
+//go:generate moq --out mocks/dictionary.go --pkg mocks --with-resets --skip-ensure . Dictionary
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -59,6 +60,7 @@ type Config struct {
 	SpamFilter    SpamFilter    // spam filter (bot)
 	DetectedSpam  DetectedSpam  // detected spam accessor
 	Locator       Locator       // locator for user info
+	Dictionary    Dictionary    // dictionary for stop phrases and ignored words
 	StorageEngine StorageEngine // database engine access for backups
 	AuthPasswd    string        // basic auth password for user "tg-spam"
 	AuthHash      string        // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
@@ -157,6 +159,15 @@ type StorageEngine interface {
 	BackupSqliteAsPostgres(ctx context.Context, w io.Writer) error
 }
 
+// Dictionary is a storage interface for managing stop phrases and ignored words
+type Dictionary interface {
+	Add(ctx context.Context, t storage.DictionaryType, data string) error
+	Delete(ctx context.Context, id int64) error
+	Read(ctx context.Context, t storage.DictionaryType) ([]string, error)
+	ReadWithIDs(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error)
+	Stats(ctx context.Context) (*storage.DictionaryStats, error)
+}
+
 // NewServer creates a new web API server.
 func NewServer(config Config) *Server {
 	return &Server{Config: config}
@@ -246,6 +257,15 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		})
 
 		authApi.HandleFunc("GET /settings", s.getSettingsHandler) // get application settings
+
+		authApi.Mount("/dictionary").Route(func(r *routegroup.Bundle) { // manage dictionary
+			// add stop phrase or ignored word
+			r.HandleFunc("POST /add", s.addDictionaryEntryHandler)
+			// delete entry by id
+			r.HandleFunc("POST /delete", s.deleteDictionaryEntryHandler)
+			// get all entries
+			r.HandleFunc("GET /", s.getDictionaryEntriesHandler)
+		})
 	})
 
 	router.Group().Route(func(webUI *routegroup.Bundle) {
@@ -253,6 +273,7 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
 		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
 		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
+		webUI.HandleFunc("GET /manage_dictionary", s.htmlManageDictionaryHandler) // serve manage dictionary page
 		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
@@ -555,6 +576,141 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	rest.RenderJSON(w, s.Settings)
 }
 
+// getDictionaryEntriesHandler handles GET /dictionary request. It returns stop phrases and ignored words.
+func (s *Server) getDictionaryEntriesHandler(w http.ResponseWriter, r *http.Request) {
+	stopPhrases, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't get stop phrases", "details": err.Error()})
+		return
+	}
+
+	ignoredWords, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't get ignored words", "details": err.Error()})
+		return
+	}
+
+	rest.RenderJSON(w, rest.JSON{"stop_phrases": stopPhrases, "ignored_words": ignoredWords})
+}
+
+// addDictionaryEntryHandler handles POST /dictionary/add request. It adds a stop phrase or ignored word.
+func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type string `json:"type"`
+		Data string `json:"data"`
+	}
+
+	isHtmxRequest := r.Header.Get("HX-Request") == "true"
+
+	if isHtmxRequest {
+		req.Type = r.FormValue("type")
+		req.Data = r.FormValue("data")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			return
+		}
+	}
+
+	if req.Data == "" {
+		if isHtmxRequest {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintln(w, "<div class='alert alert-danger'>Data cannot be empty.</div>")
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		rest.RenderJSON(w, rest.JSON{"error": "data cannot be empty"})
+		return
+	}
+
+	dictType := storage.DictionaryType(req.Type)
+	if err := dictType.Validate(); err != nil {
+		if isHtmxRequest {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintf(w, "<div class='alert alert-danger'>Invalid type: %v</div>", err)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		rest.RenderJSON(w, rest.JSON{"error": "invalid type", "details": err.Error()})
+		return
+	}
+
+	if err := s.Dictionary.Add(r.Context(), dictType, req.Data); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't add entry", "details": err.Error()})
+		return
+	}
+
+	// reload samples to apply dictionary changes immediately
+	if err := s.SpamFilter.ReloadSamples(); err != nil {
+		log.Printf("[WARN] failed to reload samples after dictionary add: %v", err)
+		if !isHtmxRequest {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
+			return
+		}
+		// for HTMX, log but continue rendering (entry was added successfully)
+	}
+
+	if isHtmxRequest {
+		s.renderDictionary(r.Context(), w, "dictionary_list")
+	} else {
+		rest.RenderJSON(w, rest.JSON{"added": true, "type": req.Type, "data": req.Data})
+	}
+}
+
+// deleteDictionaryEntryHandler handles POST /dictionary/delete request. It deletes an entry by data.
+func (s *Server) deleteDictionaryEntryHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID int64 `json:"id"`
+	}
+
+	isHtmxRequest := r.Header.Get("HX-Request") == "true"
+
+	if isHtmxRequest {
+		idStr := r.FormValue("id")
+		var err error
+		req.ID, err = strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintf(w, "<div class='alert alert-danger'>Invalid ID: %v</div>", err)
+			return
+		}
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			return
+		}
+	}
+
+	if err := s.Dictionary.Delete(r.Context(), req.ID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't delete entry", "details": err.Error()})
+		return
+	}
+
+	// reload samples to apply dictionary changes immediately
+	if err := s.SpamFilter.ReloadSamples(); err != nil {
+		log.Printf("[WARN] failed to reload samples after dictionary delete: %v", err)
+		if !isHtmxRequest {
+			w.WriteHeader(http.StatusInternalServerError)
+			rest.RenderJSON(w, rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
+			return
+		}
+		// for HTMX, log but continue rendering (entry was deleted successfully)
+	}
+
+	if isHtmxRequest {
+		s.renderDictionary(r.Context(), w, "dictionary_list")
+	} else {
+		rest.RenderJSON(w, rest.JSON{"deleted": true, "id": req.ID})
+	}
+}
+
 // htmlSpamCheckHandler handles GET / request.
 // It returns rendered spam_check.html template with all the components.
 func (s *Server) htmlSpamCheckHandler(w http.ResponseWriter, _ *http.Request) {
@@ -593,6 +749,10 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (s *Server) htmlManageDictionaryHandler(w http.ResponseWriter, r *http.Request) {
+	s.renderDictionary(r.Context(), w, "manage_dictionary.html")
 }
 
 func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
@@ -1042,6 +1202,41 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 		revHam[i] = ham[j]
 	}
 	return revSpam, revHam
+}
+
+// renderDictionary renders dictionary entries for HTMX or full page request
+func (s *Server) renderDictionary(ctx context.Context, w http.ResponseWriter, tmplName string) {
+	stopPhrases, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't fetch stop phrases", "details": err.Error()})
+		return
+	}
+
+	ignoredWords, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't fetch ignored words", "details": err.Error()})
+		return
+	}
+
+	tmplData := struct {
+		StopPhrases       []storage.DictionaryEntry
+		IgnoredWords      []storage.DictionaryEntry
+		TotalStopPhrases  int
+		TotalIgnoredWords int
+	}{
+		StopPhrases:       stopPhrases,
+		IgnoredWords:      ignoredWords,
+		TotalStopPhrases:  len(stopPhrases),
+		TotalIgnoredWords: len(ignoredWords),
+	}
+
+	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
+		return
+	}
 }
 
 // staticFS is a filtered filesystem that only exposes specific static files
