@@ -261,6 +261,12 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] incoming msg details: %+v", msg)
 	if err := l.Locator.AddMessage(ctx, msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
+		if isCriticalDBError(err) && l.adminChatID != 0 {
+			errMsg := fmt.Sprintf("**critical database error**\nfailed to add message to locator: %v", err)
+			if errResp := l.sendBotResponse(bot.Response{Send: true, Text: errMsg}, l.adminChatID, NotificationDefault); errResp != nil {
+				log.Printf("[WARN] failed to send critical db error to admin chat: %v", errResp)
+			}
+		}
 	}
 	resp := l.Bot.OnMessage(*msg, false)
 
@@ -283,6 +289,12 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		l.SpamLogger.Save(msg, &resp)
 		if err := l.Locator.AddSpam(ctx, msg.From.ID, resp.CheckResults); err != nil {
 			log.Printf("[WARN] failed to add spam to locator: %v", err)
+			if isCriticalDBError(err) && l.adminChatID != 0 {
+				errMsg := fmt.Sprintf("**critical database error**\nfailed to add spam to locator: %v", err)
+				if errResp := l.sendBotResponse(bot.Response{Send: true, Text: errMsg}, l.adminChatID, NotificationDefault); errResp != nil {
+					log.Printf("[WARN] failed to send critical db error to admin chat: %v", errResp)
+				}
+			}
 		}
 		banUserStr := l.getBanUsername(resp, update)
 
@@ -329,20 +341,62 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 		log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
 		if err := l.adminHandler.DirectSpamReport(update); err != nil {
 			log.Printf("[WARN] failed to process direct spam report: %v", err)
+			if l.adminChatID != 0 {
+				errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
+				if errResp != nil {
+					log.Printf("[WARN] failed to respond on error, %v", errResp)
+				}
+			}
 		}
 		return true
 	case strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban"):
 		log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
 		if err := l.adminHandler.DirectBanReport(update); err != nil {
 			log.Printf("[WARN] failed to process direct ban request: %v", err)
+			if l.adminChatID != 0 {
+				errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
+				if errResp != nil {
+					log.Printf("[WARN] failed to respond on error, %v", errResp)
+				}
+			}
 		}
 		return true
 	case strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn"):
 		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
 		if err := l.adminHandler.DirectWarnReport(update); err != nil {
 			log.Printf("[WARN] failed to process direct warning request: %v", err)
+			if l.adminChatID != 0 {
+				errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
+				if errResp != nil {
+					log.Printf("[WARN] failed to respond on error, %v", errResp)
+				}
+			}
 		}
 		return true
+	}
+	return false
+}
+
+// isCriticalDBError checks if an error is a critical database error that should be reported to admin chat
+func isCriticalDBError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	criticalPatterns := []string{
+		"readonly database",
+		"read-only database",
+		"permission denied",
+		"disk full",
+		"database is locked",
+		"unable to open database",
+		"no space left",
+		"database disk image is malformed",
+	}
+	for _, pattern := range criticalPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
 	}
 	return false
 }
