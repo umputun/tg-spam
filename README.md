@@ -269,6 +269,24 @@ Updating ham samples dynamically works differently. If any of privileged users u
 
 All samples are stored in the database, which can be specified using the `--db=, [$DB]` parameter.
 
+### User Spam Reporting
+
+Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report` or `report`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
+
+To enable user spam reporting, set `--report.enabled` to `true` and configure an admin chat using `--admin.group=`. When enabled:
+
+1. Users reply to suspicious messages with `/report` to flag them for review
+2. The bot tracks all reports for each message
+3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat
+4. Admins can review the reported message and take action using inline buttons:
+   - **Approve Ban**: Immediately ban the reported user and delete the reported message
+   - **Reject**: Reject this report without taking action
+   - **Ban Reporter**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+
+The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The `/report` command message is automatically deleted to keep the chat clean.
+
+All reports are stored in the database for audit purposes and can help identify patterns of spam or abuse over time.
+
 ### Lua Plugins Support
 
 TG-Spam supports custom spam detection through Lua plugins. This allows users to extend the spam detection capabilities without modifying the Go codebase.
@@ -483,6 +501,12 @@ duplicates:
       --duplicates.threshold=           duplicate messages to trigger spam (0=disabled) (default: 0) [$DUPLICATES_THRESHOLD]
       --duplicates.window=              time window for duplicate detection (default: 1h) [$DUPLICATES_WINDOW]
 
+report:
+      --report.enabled                  enable user spam reporting [$REPORT_ENABLED]
+      --report.threshold=               number of reports to trigger admin notification (default: 2) [$REPORT_THRESHOLD]
+      --report.rate-limit=              max reports per user per period (default: 10) [$REPORT_RATE_LIMIT]
+      --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
+
 files:
       --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
@@ -681,6 +705,10 @@ services:
       - FILES_DYNAMIC=/srv/var
       - NO_SPAM_REPLY=true
       - DEBUG=true
+      - REPORT_ENABLED=true # enable user spam reporting
+      - REPORT_THRESHOLD=2 # number of reports to trigger admin notification
+      - REPORT_RATE_LIMIT=10 # max reports per user per period
+      - REPORT_RATE_PERIOD=1h # rate limit time period
     volumes:
       - ./log/tg-spam:/srv/log
       - ./var/tg-spam:/srv/var

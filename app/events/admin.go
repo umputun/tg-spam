@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -492,7 +491,7 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 // callback data: +userID:msgID
 func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	// clear keyboard and update message text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_", query.From.UserName, a.sinceQuery(query))
+	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_", query.From.UserName, sinceQuery(query))
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
@@ -509,7 +508,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		log.Printf("[DEBUG] failed to get clean message: %v", err)
 	}
 
-	userID, msgID, parseErr := a.parseCallbackData(query.Data)
+	userID, msgID, parseErr := parseCallbackData(query.Data)
 	if parseErr != nil {
 		return fmt.Errorf("failed to parse callback's userID %q: %w", query.Data, parseErr)
 	}
@@ -552,7 +551,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to send callback response: %w", err)
 	}
 
-	userID, _, err := a.parseCallbackData(callbackData)
+	userID, _, err := parseCallbackData(callbackData)
 	if err != nil {
 		return fmt.Errorf("failed to parse callback msgsData %q: %w", callbackData, err)
 	}
@@ -586,7 +585,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// create the original forwarded message with new indication of "unbanned" and an empty keyboard
-	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, a.sinceQuery(query))
+	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, sinceQuery(query))
 
 	// add spam info to the message
 	if !strings.Contains(query.Message.Text, "spam detection results") && userID != 0 {
@@ -653,7 +652,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 	callbackData := query.Data
 	spamInfoText := "**can't get spam info**"
 	spamInfo := []string{}
-	userID, _, err := a.parseCallbackData(callbackData)
+	userID, _, err := parseCallbackData(callbackData)
 	if err != nil {
 		spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID from %q: %v**", callbackData[1:], err))
 	}
@@ -794,31 +793,6 @@ func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID in
 	return nil
 }
 
-// callbackData is a string with userID and msgID separated by ":"
-func (a *admin) parseCallbackData(data string) (userID int64, msgID int, err error) {
-	if len(data) < 3 {
-		return 0, 0, fmt.Errorf("unexpected callback data, too short %q", data)
-	}
-
-	// remove prefix if present from the parsed data
-	if data[:1] == confirmationPrefix || data[:1] == banPrefix || data[:1] == infoPrefix {
-		data = data[1:]
-	}
-
-	parts := strings.Split(data, ":")
-	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("unexpected callback data, should have both ids %q", data)
-	}
-	if userID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
-		return 0, 0, fmt.Errorf("failed to parse userID %q: %w", parts[0], err)
-	}
-	if msgID, err = strconv.Atoi(parts[1]); err != nil {
-		return 0, 0, fmt.Errorf("failed to parse msgID %q: %w", parts[1], err)
-	}
-
-	return userID, msgID, nil
-}
-
 // extractUsername tries to extract the username from a ban message
 func (a *admin) extractUsername(text string) (string, error) {
 	// regex for markdown format: [username](tg://user?id=123456)
@@ -836,13 +810,4 @@ func (a *admin) extractUsername(text string) (string, error) {
 	}
 
 	return "", errors.New("username not found")
-}
-
-// sinceQuery calculates the time elapsed since the message of the query was sent
-func (a *admin) sinceQuery(query *tbapi.CallbackQuery) time.Duration {
-	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
-	if res < 0 { // negative duration possible if clock is not in sync with tg times and a message is from the future
-		res = 0
-	}
-	return res
 }
