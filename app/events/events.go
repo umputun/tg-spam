@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -389,4 +390,44 @@ func transform(msg *tbapi.Message) *bot.Message {
 	}
 
 	return &message
+}
+
+// parseCallbackData parses callback data format: [prefix]userID:msgID
+// prefix can be: ?, +, !, or two-char report prefixes (R+, R-, R?, R!, RX)
+func parseCallbackData(data string) (userID int64, msgID int, err error) {
+	if len(data) < 3 {
+		return 0, 0, fmt.Errorf("unexpected callback data, too short %q", data)
+	}
+
+	// remove prefix if present from the parsed data
+	// check for two-char report prefixes first (R+, R-, R?, R!, RX)
+	if len(data) >= 3 && data[:1] == "R" {
+		// two-char report prefix
+		data = data[2:]
+	} else if data[:1] == "?" || data[:1] == "+" || data[:1] == "!" {
+		// single-char prefix
+		data = data[1:]
+	}
+
+	parts := strings.Split(data, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected callback data, should have both ids %q", data)
+	}
+	if userID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse userID %q: %w", parts[0], err)
+	}
+	if msgID, err = strconv.Atoi(parts[1]); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse msgID %q: %w", parts[1], err)
+	}
+
+	return userID, msgID, nil
+}
+
+// sinceQuery calculates time elapsed since callback query message was sent
+func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
+	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	if res < 0 { // negative duration possible if clock is not in sync with tg times and a message is from the future
+		res = 0
+	}
+	return res
 }

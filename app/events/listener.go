@@ -53,9 +53,10 @@ type TelegramListener struct {
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
 
-	adminHandler *admin
-	chatID       int64
-	adminChatID  int64
+	adminHandler   *admin
+	reportsHandler *userReports
+	chatID         int64
+	adminChatID    int64
 
 	msgs struct {
 		once sync.Once
@@ -111,10 +112,17 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.adminHandler = &admin{
-		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, reports: l.Reports, primChatID: l.chatID, adminChatID: l.adminChatID,
-		superUsers: l.SuperUsers, trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
-		reportThreshold: l.ReportThreshold, reportRateLimit: l.ReportRateLimit, reportRatePeriod: l.ReportRatePeriod,
+		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, superUsers: l.SuperUsers,
+		primChatID: l.chatID, adminChatID: l.adminChatID,
+		trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
+	}
+
+	l.reportsHandler = &userReports{
+		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, reports: l.Reports, superUsers: l.SuperUsers,
+		primChatID: l.chatID, adminChatID: l.adminChatID,
+		trainingMode: l.TrainingMode, dry: l.Dry,
+		reportThreshold: l.ReportThreshold, reportRateLimit: l.ReportRateLimit, reportRatePeriod: l.ReportRatePeriod,
 	}
 
 	adminForwardStatus := "enabled"
@@ -158,13 +166,27 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-			// handle admin chat inline buttons
+			// handle admin chat inline buttons - route based on callback prefix
 			if update.CallbackQuery != nil {
-				if err := l.adminHandler.InlineCallbackHandler(ctx, update.CallbackQuery); err != nil {
-					log.Printf("[WARN] failed to process callback: %v", err)
-					errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
-					if errResp != nil {
-						log.Printf("[WARN] failed to respond on error, %v", errResp)
+				callbackData := update.CallbackQuery.Data
+
+				// delegate report callbacks (prefixes R+, R-, R?, R!, RX) to reportsHandler
+				if len(callbackData) >= 3 && callbackData[:1] == "R" {
+					if err := l.reportsHandler.HandleReportCallback(ctx, update.CallbackQuery); err != nil {
+						log.Printf("[WARN] failed to process report callback: %v", err)
+						errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
+						if errResp != nil {
+							log.Printf("[WARN] failed to respond on error, %v", errResp)
+						}
+					}
+				} else {
+					// all other callbacks (?, +, !, or no prefix) go to admin handler
+					if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
+						log.Printf("[WARN] failed to process callback: %v", err)
+						errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
+						if errResp != nil {
+							log.Printf("[WARN] failed to respond on error, %v", errResp)
+						}
 					}
 				}
 				continue
@@ -371,7 +393,7 @@ func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Updat
 			return true // command is suppressed when feature is disabled
 		}
 		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)
-		if err := l.adminHandler.DirectUserReport(ctx, update); err != nil {
+		if err := l.reportsHandler.DirectUserReport(ctx, update); err != nil {
 			log.Printf("[WARN] failed to process user spam report: %v", err)
 		}
 		return true
