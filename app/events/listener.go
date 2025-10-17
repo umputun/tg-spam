@@ -43,11 +43,7 @@ type TelegramListener struct {
 	TrainingMode            bool          // do not ban users, just report and train spam detector
 	SoftBanMode             bool          // do not ban users, but restrict their actions
 	Locator                 Locator       // message locator to get info about messages
-	Reports                 Reports       // reports storage for user spam reports
-	ReportEnabled           bool          // enable user spam reporting
-	ReportThreshold         int           // number of reports to trigger admin notification
-	ReportRateLimit         int           // max reports per user per period
-	ReportRatePeriod        time.Duration // rate limit time period
+	ReportConfig            ReportConfig  // user spam reporting configuration
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
@@ -119,10 +115,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	}
 
 	l.reportsHandler = &userReports{
-		tbAPI: l.TbAPI, bot: l.Bot, locator: l.Locator, reports: l.Reports, superUsers: l.SuperUsers,
+		ReportConfig: l.ReportConfig,
+		tbAPI:        l.TbAPI, bot: l.Bot, locator: l.Locator, superUsers: l.SuperUsers,
 		primChatID: l.chatID, adminChatID: l.adminChatID,
 		trainingMode: l.TrainingMode, dry: l.Dry,
-		reportThreshold: l.ReportThreshold, reportRateLimit: l.ReportRateLimit, reportRatePeriod: l.ReportRatePeriod,
 	}
 
 	adminForwardStatus := "enabled"
@@ -388,7 +384,7 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
 	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
-		if !l.ReportEnabled {
+		if !l.ReportConfig.Enabled {
 			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
 		}

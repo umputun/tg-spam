@@ -2652,9 +2652,11 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			SuperUsers:    SuperUsers{"admin"},
 			Group:         "123",
 			AdminGroup:    "456",
-			Locator:       locator,
-			Reports:       reportsMock,
-			ReportEnabled: true,
+			Locator: locator,
+			ReportConfig: ReportConfig{
+				Storage: reportsMock,
+				Enabled: true,
+			},
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -2779,9 +2781,11 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			SuperUsers:    SuperUsers{"admin"},
 			Group:         "123",
 			AdminGroup:    "456",
-			Locator:       locator,
-			Reports:       reportsMock,
-			ReportEnabled: true,
+			Locator: locator,
+			ReportConfig: ReportConfig{
+				Storage: reportsMock,
+				Enabled: true,
+			},
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
