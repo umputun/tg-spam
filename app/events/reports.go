@@ -591,18 +591,16 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 		updText += fmt.Sprintf("\n\n_reporter %s banned by %s_", escapeMarkDownV1Text(reporterName), query.From.UserName)
 
 		// restore original buttons
-		keyboard := [][]tbapi.InlineKeyboardButton{
-			{
+		keyboard := tbapi.NewInlineKeyboardMarkup(
+			tbapi.NewInlineKeyboardRow(
 				tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 				tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-			},
-			{
 				tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
-			},
-		}
+			),
+		)
 
 		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
-		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: keyboard}
+		editMsg.ReplyMarkup = &keyboard
 		if err := send(editMsg, r.tbAPI); err != nil {
 			return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 				query.Message.Chat.ID, query.Message.MessageID, err)
@@ -623,21 +621,19 @@ func (r *userReports) callbackReportCancel(_ context.Context, query *tbapi.Callb
 	}
 
 	// restore original button layout
-	keyboard := [][]tbapi.InlineKeyboardButton{
-		{
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-		},
-		{
 			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
-		},
-	}
+		),
+	)
 
 	// update buttons only (don't change text)
 	editMsg := tbapi.NewEditMessageReplyMarkup(
 		query.Message.Chat.ID,
 		query.Message.MessageID,
-		tbapi.InlineKeyboardMarkup{InlineKeyboard: keyboard},
+		keyboard,
 	)
 	if _, err := r.tbAPI.Send(editMsg); err != nil {
 		return fmt.Errorf("failed to restore keyboard, chatID:%d, msgID:%d, %w",

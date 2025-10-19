@@ -146,10 +146,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:            mockAPI,
-			primChatID:       123,
-			adminChatID:      456,
-			superUsers:       SuperUsers{"superuser"},
+			tbAPI:       mockAPI,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{"superuser"},
 			ReportConfig: ReportConfig{
 				Storage:    mockReports,
 				RateLimit:  10,
@@ -184,10 +184,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			primChatID:  123,
-			adminChatID: 456,
-			superUsers:  SuperUsers{"superuser"},
+			tbAPI:        mockAPI,
+			primChatID:   123,
+			adminChatID:  456,
+			superUsers:   SuperUsers{"superuser"},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -217,10 +217,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			primChatID:  123,
-			adminChatID: 456,
-			superUsers:  SuperUsers{"superuser"},
+			tbAPI:        mockAPI,
+			primChatID:   123,
+			adminChatID:  456,
+			superUsers:   SuperUsers{"superuser"},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -361,10 +361,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:            mockAPI,
-			primChatID:       123,
-			adminChatID:      456,
-			superUsers:       SuperUsers{},
+			tbAPI:       mockAPI,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{},
 			ReportConfig: ReportConfig{
 				Storage:    mockReports,
 				RateLimit:  10,
@@ -399,10 +399,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			primChatID:  123,
-			adminChatID: 456,
-			superUsers:  SuperUsers{},
+			tbAPI:        mockAPI,
+			primChatID:   123,
+			adminChatID:  456,
+			superUsers:   SuperUsers{},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -508,8 +508,8 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 			ReportConfig: ReportConfig{
 				Storage:   mockReports,
 				Threshold: 2,
-		},
-	}
+			},
+		}
 
 		// should call sendReportNotification (stub for now), verify no error
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
@@ -533,8 +533,8 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 			ReportConfig: ReportConfig{
 				Storage:   mockReports,
 				Threshold: 2,
-		},
-	}
+			},
+		}
 
 		// should call updateReportNotification (stub for now), verify no error
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
@@ -557,8 +557,8 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 			ReportConfig: ReportConfig{
 				Storage:   mockReports,
 				Threshold: 3,
-		},
-	}
+			},
+		}
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
@@ -588,8 +588,8 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 			ReportConfig: ReportConfig{
 				Storage:   mockReports,
 				Threshold: 2,
-		},
-	}
+			},
+		}
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.Error(t, err)
@@ -619,8 +619,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -669,8 +669,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -705,8 +705,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -737,8 +737,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -756,8 +756,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 0, // not configured
+			tbAPI:        mockAPI,
+			adminChatID:  0, // not configured
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -775,8 +775,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -795,8 +795,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -824,8 +824,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -857,8 +857,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1128,11 +1128,11 @@ func TestUserReports_CallbackReportBan(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
-			bot:         mockBot,
+			bot:          mockBot,
 		}
 
 		query := &tbapi.CallbackQuery{
@@ -1161,8 +1161,8 @@ func TestUserReports_CallbackReportBan(t *testing.T) {
 		}
 
 		rep := &userReports{
-			adminChatID: 456,
-			primChatID:  200,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1199,9 +1199,9 @@ func TestUserReports_CallbackReportReject(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1230,8 +1230,8 @@ func TestUserReports_CallbackReportReject(t *testing.T) {
 		}
 
 		rep := &userReports{
-			adminChatID: 456,
-			primChatID:  200,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1277,8 +1277,8 @@ func TestUserReports_CallbackReportBanReporterAsk(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:      mockAPI,
-			primChatID: 200,
+			tbAPI:        mockAPI,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1340,8 +1340,8 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:      mockAPI,
-			primChatID: 200,
+			tbAPI:        mockAPI,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1387,8 +1387,8 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:      mockAPI,
-			primChatID: 200,
+			tbAPI:        mockAPI,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1413,13 +1413,14 @@ func TestUserReports_CallbackReportCancel(t *testing.T) {
 				if editMarkup, ok := c.(tbapi.EditMessageReplyMarkupConfig); ok {
 					assert.Equal(t, int64(456), editMarkup.ChatID)
 					assert.Equal(t, 999, editMarkup.MessageID)
-					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 2)
+					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 1, "should have 1 row of buttons")
+					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard[0], 3, "should have 3 buttons in single row")
 					assert.Equal(t, "✅ Approve Ban", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
 					assert.Equal(t, "R+666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 					assert.Equal(t, "❌ Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
 					assert.Equal(t, "R-666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
-					assert.Equal(t, "⛔️ Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[1][0].Text)
-					assert.Equal(t, "R?666:100", *editMarkup.ReplyMarkup.InlineKeyboard[1][0].CallbackData)
+					assert.Equal(t, "⛔️ Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[0][2].Text)
+					assert.Equal(t, "R?666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][2].CallbackData)
 				}
 				return tbapi.Message{}, nil
 			},
@@ -1459,9 +1460,9 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456, // admin chat ID
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			adminChatID:  456, // admin chat ID
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1503,9 +1504,9 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456, // admin chat ID
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			adminChatID:  456, // admin chat ID
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1555,10 +1556,10 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			bot:         mockBot,
-			adminChatID: 456,
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			bot:          mockBot,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1602,9 +1603,9 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		}
 
 		rep := &userReports{
-			tbAPI:       mockAPI,
-			adminChatID: 456,
-			primChatID:  200,
+			tbAPI:        mockAPI,
+			adminChatID:  456,
+			primChatID:   200,
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 

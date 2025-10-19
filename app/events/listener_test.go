@@ -2647,12 +2647,12 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		defer teardown()
 
 		l := TelegramListener{
-			TbAPI:         mockAPI,
-			Bot:           botMock,
-			SuperUsers:    SuperUsers{"admin"},
-			Group:         "123",
-			AdminGroup:    "456",
-			Locator: locator,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			SuperUsers: SuperUsers{"admin"},
+			Group:      "123",
+			AdminGroup: "456",
+			Locator:    locator,
 			ReportConfig: ReportConfig{
 				Storage: reportsMock,
 				Enabled: true,
@@ -2776,12 +2776,12 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		defer teardown()
 
 		l := TelegramListener{
-			TbAPI:         mockAPI,
-			Bot:           &mocks.BotMock{},
-			SuperUsers:    SuperUsers{"admin"},
-			Group:         "123",
-			AdminGroup:    "456",
-			Locator: locator,
+			TbAPI:      mockAPI,
+			Bot:        &mocks.BotMock{},
+			SuperUsers: SuperUsers{"admin"},
+			Group:      "123",
+			AdminGroup: "456",
+			Locator:    locator,
 			ReportConfig: ReportConfig{
 				Storage: reportsMock,
 				Enabled: true,
