@@ -38,6 +38,9 @@ type userReports struct {
 // DirectUserReport handles messages replied with "/report" by regular users
 func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update) error {
 	origMsg := update.Message.ReplyToMessage
+	if origMsg == nil {
+		return fmt.Errorf("must reply to a message to report it")
+	}
 
 	// validate reported message has a user (not from channel or anonymous admin)
 	if origMsg.From == nil {
