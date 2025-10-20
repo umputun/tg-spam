@@ -84,6 +84,27 @@ type ReportConfig struct {
    - If not sent → send new notification with buttons
 ```
 
+### Shared Ban Operations Helper
+
+New helper function `executeBanOperations` will be extracted to avoid duplication between `autoBanReportedUser` and `callbackReportBan`:
+
+```
+func (r *userReports) executeBanOperations(ctx context.Context, userID int64, userName string, msgID int, chatID int64, msgText string) error
+```
+
+This helper performs the common ban sequence:
+```
+1. Remove user from approved list (bot.RemoveApprovedUser)
+2. Update spam samples if !dry && msgText != "" (bot.UpdateSpam)
+3. Delete reported message from chat (tbAPI.Request DeleteMessageConfig)
+4. Ban user permanently (banUserOrChannel with full banRequest):
+   - duration: bot.PermanentBanDuration
+   - userID, chatID, userName, tbAPI, dry, training
+5. Delete all reports from database (Storage.DeleteByMessage)
+```
+
+This ensures both auto-ban and manual admin approval use identical ban logic.
+
 ### Auto-Ban Execution Flow
 
 New function `autoBanReportedUser(ctx, reports)` will:
@@ -97,27 +118,22 @@ New function `autoBanReportedUser(ctx, reports)` will:
    - Check if reports[0].AdminMsgID > 0
    - If yes, delete that message using tbAPI.Request(DeleteMessageConfig)
    - This removes the notification with action buttons from admin chat
-4. Remove user from approved list (bot.RemoveApprovedUser)
-5. Update spam samples if msgText not empty (bot.UpdateSpam)
-6. Delete reported message from chat (tbAPI.Request DeleteMessageConfig)
-7. Ban user permanently (banUserOrChannel with full banRequest structure):
-   - duration: bot.PermanentBanDuration
-   - userID, chatID, userName: from reports
-   - tbAPI: r.tbAPI
-   - dry: r.dry
-   - training: r.trainingMode
-8. Delete all reports from database (Storage.DeleteByMessage)
-9. Send info message to admin chat:
+4. Call executeBanOperations helper:
+   - Pass: reportedUserID, reportedUserName, msgID, chatID, msgText
+   - Helper handles: remove approved, update spam, delete message, ban, delete reports
+5. Send info message to admin chat using send helper:
    - Format: "User auto-banned after N reports"
    - Include: reported user, message preview, reporter list
    - No action buttons (just FYI notification)
+   - Use send(tbMsg, r.tbAPI) for consistent Markdown/HTML handling
    - Always send (whether or not prior notification existed)
 ```
 
-This mirrors callbackReportBan (reports.go:336-410) logic but:
+This approach:
 - Adds idempotency check (step 1)
 - Deletes stale admin notifications (step 3)
-- Always sends new info message (step 9)
+- Reuses shared ban logic via helper (step 4)
+- Uses send helper for consistency (step 5)
 - No callback query handling
 
 ### Example Scenarios
@@ -159,7 +175,20 @@ This mirrors callbackReportBan (reports.go:336-410) logic but:
 - [ ] Run tests to verify config loading: `go test ./app/...`
 
 ### Iteration 2: Core Auto-Ban Logic
-- [ ] Create `autoBanReportedUser` function in app/events/reports.go (after line 332)
+- [ ] Create `executeBanOperations` helper function in app/events/reports.go (after line 332)
+  - Signature: `func (r *userReports) executeBanOperations(ctx context.Context, userID int64, userName string, msgID int, chatID int64, msgText string) error`
+  - Extracts common ban logic used by both auto-ban and manual admin approval
+  - **Operations performed:**
+    1. Remove user from approved list: `r.bot.RemoveApprovedUser(userID)`
+    2. Update spam samples if `!r.dry && msgText != ""`: `r.bot.UpdateSpam(msgText)`
+    3. Delete reported message: `r.tbAPI.Request(tbapi.DeleteMessageConfig{...})`
+    4. Ban user permanently: `banUserOrChannel(banRequest{...})` with full structure:
+       - `duration: bot.PermanentBanDuration`
+       - `userID, chatID, userName, tbAPI: r.tbAPI, dry: r.dry, training: r.trainingMode`
+    5. Delete all reports from database: `r.Storage.DeleteByMessage(ctx, msgID, chatID)`
+  - Return error if critical operations fail
+  - Log each operation (non-critical failures logged as WARN, continue execution)
+- [ ] Create `autoBanReportedUser` function in app/events/reports.go
   - Signature: `func (r *userReports) autoBanReportedUser(ctx context.Context, reports []storage.Report) error`
   - **Step 1: Idempotency check** (handles race conditions from concurrent reports)
     - Re-query reports using `r.Storage.GetByMessage(ctx, msgID, chatID)`
@@ -171,34 +200,27 @@ This mirrors callbackReportBan (reports.go:336-410) logic but:
     - If yes, delete that message using `r.tbAPI.Request(tbapi.DeleteMessageConfig{...})`
     - Delete from admin chat (r.adminChatID) with AdminMsgID
     - Log deletion (may fail if message already deleted - non-critical)
-  - **Step 4: Remove user from approved list** using `r.bot.RemoveApprovedUser(reportedUserID)`
-  - **Step 5: Update spam samples** if `!r.dry && msgText != ""` using `r.bot.UpdateSpam(msgText)`
-  - **Step 6: Delete reported message** using `r.tbAPI.Request(tbapi.DeleteMessageConfig{...})`
-  - **Step 7: Ban user permanently** using `banUserOrChannel(banRequest{...})` with:
-    - `duration: bot.PermanentBanDuration`
-    - `userID: reportedUserID`
-    - `chatID: chatID`
-    - `tbAPI: r.tbAPI`
-    - `dry: r.dry`
-    - `training: r.trainingMode`
-    - `userName: reportedUserName`
-  - **Step 8: Delete all reports** using `r.Storage.DeleteByMessage(ctx, msgID, chatID)`
-  - Return error if critical operations fail
-- [ ] Implement auto-ban info notification (within autoBanReportedUser)
-  - Always send new info message (even if prior notification existed and was deleted)
-  - Format message: "**User auto-banned** (N reports)"
-  - Include reported user link: `[username](tg://user?id=userID)`
-  - Include message preview (escaped, truncated to 200 chars)
-  - Include reporter list (same format as regular notifications)
-  - Add padding for full-width display (U+2800 × 30)
-  - No inline keyboard buttons (info only)
-  - Send to r.adminChatID if configured
+  - **Step 4: Execute ban operations**
+    - Call `r.executeBanOperations(ctx, reportedUserID, reportedUserName, msgID, chatID, msgText)`
+    - Return error if ban operations fail
+  - **Step 5: Send info notification to admin chat**
+    - Format message: "**User auto-banned** (N reports)"
+    - Include reported user link: `[username](tg://user?id=userID)`
+    - Include message preview (escaped, truncated to 200 chars)
+    - Include reporter list (same format as regular notifications)
+    - Add padding for full-width display (U+2800 × 30)
+    - No inline keyboard buttons (info only)
+    - **Use send helper**: `send(tbMsg, r.tbAPI)` for consistent Markdown/HTML handling
+    - Skip if r.adminChatID not configured
+- [ ] Refactor `callbackReportBan` to use `executeBanOperations` helper (app/events/reports.go:336-410)
+  - Extract lines 356-398 (remove approved → delete reports) into call to executeBanOperations
+  - Keep query/notification handling, replace ban logic with helper call
+  - Verify tests still pass after refactoring
 - [ ] Add logging for auto-ban events
   - Log when auto-ban threshold reached (before idempotency check)
   - Log if idempotency check exits early (concurrent processing detected)
   - Log if stale notification deleted (or if deletion failed)
-  - Log ban execution result
-  - Log new info notification sent to admin
+  - Log notification sent to admin
 
 ### Iteration 3: Threshold Check Integration
 - [ ] Modify `checkReportThreshold` function in app/events/reports.go:153-186
@@ -218,6 +240,17 @@ This mirrors callbackReportBan (reports.go:336-410) logic but:
 - [ ] Run tests to verify threshold logic: `go test -v -run TestCheckReportThreshold ./app/events/`
 
 ### Iteration 4: Testing
+- [ ] Add test for executeBanOperations helper in app/events/reports_test.go
+  - Test name: `TestExecuteBanOperations`
+  - Verify all 5 operations execute in order:
+    - User removed from approved list
+    - Spam samples updated (if msgText provided)
+    - Message deleted from chat
+    - User banned permanently
+    - Reports deleted from database
+  - Test with dry mode (ban/delete skipped, notification still works)
+  - Test with empty msgText (spam update skipped)
+  - Verify non-critical failures logged but don't halt execution
 - [ ] Add test for auto-ban threshold reached in app/events/reports_test.go
   - Test name: `TestAutoBanThreshold_Reached`
   - Setup: AutoBanThreshold=3, Threshold=5
@@ -292,11 +325,16 @@ This mirrors callbackReportBan (reports.go:336-410) logic but:
 ## Testing Checklist
 
 ### Unit Tests
+- [ ] executeBanOperations helper performs all 5 operations correctly
+- [ ] executeBanOperations works with dry mode
+- [ ] executeBanOperations handles empty msgText (skips spam update)
+- [ ] executeBanOperations logs non-critical failures without halting
+- [ ] callbackReportBan refactored to use executeBanOperations helper
 - [ ] Auto-ban triggered at exact threshold
 - [ ] Auto-ban not triggered below threshold
 - [ ] Auto-ban disabled when AutoBanThreshold=0
-- [ ] Auto-ban performs full ban behavior (ban + delete + spam update)
-- [ ] Auto-ban sends info notification to admin chat
+- [ ] Auto-ban performs full ban behavior via executeBanOperations helper
+- [ ] Auto-ban sends info notification to admin chat using send helper
 - [ ] Auto-ban info notification has no buttons
 - [ ] Auto-ban works with dry mode (notification sent, ban/delete skipped)
 - [ ] Both thresholds can work together (notification then auto-ban)
