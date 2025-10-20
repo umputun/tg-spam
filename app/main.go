@@ -380,7 +380,7 @@ func execute(ctx context.Context, opts options) error {
 		tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
-	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // Do() runs infinite loop, always returns error on exit
+	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // do() runs infinite loop, always returns error on exit
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil

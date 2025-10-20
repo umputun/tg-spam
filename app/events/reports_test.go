@@ -643,7 +643,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		keyboard, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.True(t, ok, "should have inline keyboard")
 		require.Equal(t, 1, len(keyboard.InlineKeyboard), "should have 1 row")
-		require.Equal(t, 3, len(keyboard.InlineKeyboard[0]), "should have 3 buttons")
+		require.Equal(t, 3, len(keyboard.InlineKeyboard[0]), "row should have 3 buttons")
 		assert.Equal(t, "✅ Approve Ban", keyboard.InlineKeyboard[0][0].Text)
 		assert.Equal(t, "R+666:100", *keyboard.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", keyboard.InlineKeyboard[0][1].Text)
@@ -881,6 +881,41 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.NotContains(t, sentMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
 		assert.NotContains(t, sentMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
 	})
+
+	t.Run("notification should include padding for full-width buttons", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				msg := c.(tbapi.MessageConfig)
+				sentMsg = msg
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error {
+				return nil
+			},
+		}
+
+		rep := &userReports{
+			tbAPI:        mockAPI,
+			adminChatID:  456,
+			ReportConfig: ReportConfig{Storage: mockReports},
+		}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "short spam"},
+		}
+
+		err := rep.sendReportNotification(context.Background(), reports)
+		require.NoError(t, err)
+
+		// verify padding is present - U+2800 (braille pattern blank) for full-width buttons
+		assert.Contains(t, sentMsg.Text, "\u2800", "should contain U+2800 padding for full-width buttons")
+		// verify padding is at the end after double newline
+		assert.True(t, strings.HasSuffix(sentMsg.Text, "\n\n"+strings.Repeat("\u2800", 30)), "padding should be at the end")
+	})
 }
 
 func TestUserReports_UpdateReportNotification(t *testing.T) {
@@ -921,7 +956,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		// verify inline keyboard
 		require.NotNil(t, editedMsg.ReplyMarkup, "should have inline keyboard")
 		require.Equal(t, 1, len(editedMsg.ReplyMarkup.InlineKeyboard), "should have 1 row")
-		require.Equal(t, 3, len(editedMsg.ReplyMarkup.InlineKeyboard[0]), "should have 3 buttons")
+		require.Equal(t, 3, len(editedMsg.ReplyMarkup.InlineKeyboard[0]), "row should have 3 buttons")
 		assert.Equal(t, "✅ Approve Ban", editedMsg.ReplyMarkup.InlineKeyboard[0][0].Text)
 		assert.Equal(t, "R+666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", editedMsg.ReplyMarkup.InlineKeyboard[0][1].Text)
@@ -1414,7 +1449,7 @@ func TestUserReports_CallbackReportCancel(t *testing.T) {
 					assert.Equal(t, int64(456), editMarkup.ChatID)
 					assert.Equal(t, 999, editMarkup.MessageID)
 					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard, 1, "should have 1 row of buttons")
-					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard[0], 3, "should have 3 buttons in single row")
+					require.Len(t, editMarkup.ReplyMarkup.InlineKeyboard[0], 3, "row should have 3 buttons")
 					assert.Equal(t, "✅ Approve Ban", editMarkup.ReplyMarkup.InlineKeyboard[0][0].Text)
 					assert.Equal(t, "R+666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 					assert.Equal(t, "❌ Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
