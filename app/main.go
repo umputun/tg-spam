@@ -127,6 +127,13 @@ type options struct {
 		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
+	Report struct {
+		Enabled    bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
+		Threshold  int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
+		RateLimit  int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
+		RatePeriod time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
+	} `group:"report" namespace:"report" env-namespace:"REPORT"`
+
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
@@ -285,6 +292,15 @@ func execute(ctx context.Context, opts options) error {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
 
+	// make reports storage if feature is enabled
+	var reportsStore *storage.Reports
+	if opts.Report.Enabled {
+		reportsStore, err = storage.NewReports(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make reports store, %w", err)
+		}
+	}
+
 	// activate web server if enabled
 	if opts.Server.Enabled {
 		// server starts in background goroutine
@@ -321,21 +337,28 @@ func execute(ctx context.Context, opts options) error {
 
 	// make telegram listener
 	tgListener := events.TelegramListener{
-		TbAPI:                   tbAPI,
-		Group:                   opts.Telegram.Group,
-		IdleDuration:            opts.Telegram.IdleDuration,
-		SuperUsers:              opts.SuperUsers,
-		Bot:                     spamBot,
-		StartupMsg:              opts.Message.Startup,
-		WarnMsg:                 opts.Message.Warn,
-		NoSpamReply:             opts.NoSpamReply,
-		SuppressJoinMessage:     opts.SuppressJoinMessage,
-		DeleteJoinMessages:      opts.Delete.JoinMessages,
-		DeleteLeaveMessages:     opts.Delete.LeaveMessages,
-		SpamLogger:              spamLogger,
-		AdminGroup:              opts.AdminGroup,
-		TestingIDs:              opts.TestingIDs,
-		Locator:                 locator,
+		TbAPI:               tbAPI,
+		Group:               opts.Telegram.Group,
+		IdleDuration:        opts.Telegram.IdleDuration,
+		SuperUsers:          opts.SuperUsers,
+		Bot:                 spamBot,
+		StartupMsg:          opts.Message.Startup,
+		WarnMsg:             opts.Message.Warn,
+		NoSpamReply:         opts.NoSpamReply,
+		SuppressJoinMessage: opts.SuppressJoinMessage,
+		DeleteJoinMessages:  opts.Delete.JoinMessages,
+		DeleteLeaveMessages: opts.Delete.LeaveMessages,
+		SpamLogger:          spamLogger,
+		AdminGroup:          opts.AdminGroup,
+		TestingIDs:          opts.TestingIDs,
+		Locator:             locator,
+		ReportConfig: events.ReportConfig{
+			Storage:    reportsStore,
+			Enabled:    opts.Report.Enabled,
+			Threshold:  opts.Report.Threshold,
+			RateLimit:  opts.Report.RateLimit,
+			RatePeriod: opts.Report.RatePeriod,
+		},
 		TrainingMode:            opts.Training,
 		SoftBanMode:             opts.SoftBan,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
@@ -357,7 +380,7 @@ func execute(ctx context.Context, opts options) error {
 		tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
-	if err := tgListener.Do(ctx); err != nil {
+	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // do() runs infinite loop, always returns error on exit
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -52,6 +54,16 @@ type Locator interface {
 	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
 }
 
+// Reports is an interface for user spam reports storage
+type Reports interface {
+	Add(ctx context.Context, report storage.Report) error
+	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
+	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
+}
+
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
@@ -71,6 +83,16 @@ func escapeMarkDownV1Text(text string) string {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
+// this is safe for multi-byte UTF-8 characters (emoji, cyrillic, etc.)
+func truncateString(s string, maxRunes int, suffix string) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + suffix
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text
@@ -368,4 +390,44 @@ func transform(msg *tbapi.Message) *bot.Message {
 	}
 
 	return &message
+}
+
+// parseCallbackData parses callback data format: [prefix]userID:msgID
+// prefix can be: ?, +, !, or two-char report prefixes (R+, R-, R?, R!, RX)
+func parseCallbackData(data string) (userID int64, msgID int, err error) {
+	if len(data) < 3 {
+		return 0, 0, fmt.Errorf("unexpected callback data, too short %q", data)
+	}
+
+	// remove prefix if present from the parsed data
+	// check for two-char report prefixes first (R+, R-, R?, R!, RX)
+	if len(data) >= 3 && data[:1] == "R" {
+		// two-char report prefix
+		data = data[2:]
+	} else if data[:1] == "?" || data[:1] == "+" || data[:1] == "!" {
+		// single-char prefix
+		data = data[1:]
+	}
+
+	parts := strings.Split(data, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected callback data, should have both ids %q", data)
+	}
+	if userID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse userID %q: %w", parts[0], err)
+	}
+	if msgID, err = strconv.Atoi(parts[1]); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse msgID %q: %w", parts[1], err)
+	}
+
+	return userID, msgID, nil
+}
+
+// sinceQuery calculates time elapsed since callback query message was sent
+func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
+	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	if res < 0 { // negative duration possible if clock is not in sync with tg times and a message is from the future
+		res = 0
+	}
+	return res
 }
