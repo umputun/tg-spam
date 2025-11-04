@@ -296,6 +296,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	}
 
 	// skip spam check for anonymous admin posts from this group
+	// when admins post "as the group", SenderChat.ID equals the group's chat ID
 	if msg.SenderChat.ID != 0 && msg.SenderChat.ID == fromChat {
 		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself")
 		return nil
