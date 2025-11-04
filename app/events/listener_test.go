@@ -2944,3 +2944,231 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		assert.Equal(t, 1, len(botMock.AddApprovedUserCalls()))
 	})
 }
+
+func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: -1001688024850}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return []tbapi.ChatMember{}, nil
+		},
+	}
+
+	t.Run("anonymous admin post from group itself should skip spam check", func(t *testing.T) {
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Fatalf("bot.OnMessage should not be called for anonymous admin post from group itself")
+			return bot.Response{}
+		}}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "-1001688024850",
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// anonymous admin post where sender_chat.id equals group chat id
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: -1001688024850},
+				Text: "test for spam please ignore this message",
+				From: &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", FirstName: "Group"},
+				SenderChat: &tbapi.Chat{
+					ID:   -1001688024850, // same as group chat ID
+					Type: "supergroup",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage was NOT called
+		assert.Equal(t, 0, len(botMock.OnMessageCalls()))
+		// verify no spam was logged
+		assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+	})
+
+	t.Run("channel auto-forward should run spam check", func(t *testing.T) {
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{
+				Send:          true,
+				Text:          "this is spam",
+				BanInterval:   2 * time.Minute,
+				User:          bot.User{ID: 777000, Username: "Telegram"},
+				ChannelID:     0,
+				ReplyTo:       msg.ID,
+				DeleteReplyTo: true,
+			}
+		}}
+
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "-1001688024850",
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// channel auto-forward where sender_chat.id is different from group chat id
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: -1001688024850},
+				Text: "event announcement with lots of emojis",
+				From: &tbapi.User{ID: 777000, FirstName: "Telegram"},
+				SenderChat: &tbapi.Chat{
+					ID:       -1001261918100, // different channel ID
+					Type:     "channel",
+					UserName: "esnlausanne",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage WAS called
+		assert.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "event announcement with lots of emojis", botMock.OnMessageCalls()[0].Msg.Text)
+	})
+
+	t.Run("regular user message should run spam check", func(t *testing.T) {
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{
+				Send:          true,
+				Text:          "this is spam",
+				BanInterval:   2 * time.Minute,
+				User:          bot.User{ID: 12345, Username: "spammer"},
+				ReplyTo:       msg.ID,
+				DeleteReplyTo: true,
+			}
+		}}
+
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "-1001688024850",
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// regular user message with no sender_chat
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: -1001688024850},
+				Text: "buy cheap products here",
+				From: &tbapi.User{ID: 12345, UserName: "spammer"},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage WAS called
+		assert.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Equal(t, "buy cheap products here", botMock.OnMessageCalls()[0].Msg.Text)
+	})
+
+	t.Run("anonymous admin post in testing chat should skip spam check", func(t *testing.T) {
+		mockLogger.ResetCalls()
+
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Fatalf("bot.OnMessage should not be called for anonymous admin post from testing chat")
+			return bot.Response{}
+		}}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		testingChatID := int64(-1002345678901)
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "-1001688024850",
+			TestingIDs: []int64{testingChatID},
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// anonymous admin post in testing chat where sender_chat.id equals testing chat id
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: testingChatID},
+				Text: "test message in testing chat",
+				From: &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", FirstName: "Group"},
+				SenderChat: &tbapi.Chat{
+					ID:   testingChatID, // same as testing chat ID
+					Type: "supergroup",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		assert.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage was NOT called
+		assert.Equal(t, 0, len(botMock.OnMessageCalls()))
+		// verify no spam was logged
+		assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+	})
+}

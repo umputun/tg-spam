@@ -530,7 +530,7 @@ Help Options:
 
 ### Application Options in details
 
-- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default.
+- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default. Additionally, anonymous admin posts (when admins post "as the group" itself) are automatically excluded from spam checks, though linked channel auto-forwards are still checked for spam.
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
