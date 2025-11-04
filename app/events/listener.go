@@ -294,6 +294,13 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if err := l.Locator.AddMessage(ctx, msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
+
+	// skip spam check for anonymous admin posts from this group
+	if msg.SenderChat.ID != 0 && msg.SenderChat.ID == fromChat {
+		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself")
+		return nil
+	}
+
 	resp := l.Bot.OnMessage(*msg, false)
 
 	if !resp.Send { // not spam
