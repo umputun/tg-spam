@@ -432,3 +432,84 @@ func TestCustomPromptsInActualRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestIsReasoningModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected bool
+	}{
+		{name: "gpt-4o-mini", model: "gpt-4o-mini", expected: false},
+		{name: "gpt-4o", model: "gpt-4o", expected: false},
+		{name: "gpt-4-turbo", model: "gpt-4-turbo", expected: false},
+		{name: "gpt-3.5-turbo", model: "gpt-3.5-turbo", expected: false},
+		{name: "o1-mini", model: "o1-mini", expected: true},
+		{name: "o1-preview", model: "o1-preview", expected: true},
+		{name: "o3-mini", model: "o3-mini", expected: true},
+		{name: "o4", model: "o4", expected: true},
+		{name: "gpt-5", model: "gpt-5", expected: true},
+		{name: "gpt-5-mini", model: "gpt-5-mini", expected: true},
+		{name: "gpt-5-turbo", model: "gpt-5-turbo", expected: true},
+		{name: "GPT-5", model: "GPT-5", expected: true},
+		{name: "O1-MINI", model: "O1-MINI", expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := &openAIChecker{params: OpenAIConfig{Model: tt.model}}
+			result := checker.isReasoningModel()
+			assert.Equal(t, tt.expected, result, "model %s should return %v", tt.model, tt.expected)
+		})
+	}
+}
+
+func TestMaxTokensFieldBasedOnModel(t *testing.T) {
+	tests := []struct {
+		name                      string
+		model                     string
+		expectMaxTokens           bool
+		expectMaxCompletionTokens bool
+	}{
+		{name: "standard model uses MaxTokens", model: "gpt-4o-mini", expectMaxTokens: true, expectMaxCompletionTokens: false},
+		{name: "gpt-4 uses MaxTokens", model: "gpt-4", expectMaxTokens: true, expectMaxCompletionTokens: false},
+		{name: "o1-mini uses MaxCompletionTokens", model: "o1-mini", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "o1-preview uses MaxCompletionTokens", model: "o1-preview", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "gpt-5 uses MaxCompletionTokens", model: "gpt-5", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "gpt-5-mini uses MaxCompletionTokens", model: "gpt-5-mini", expectMaxTokens: false, expectMaxCompletionTokens: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedRequest openai.ChatCompletionRequest
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedRequest = req
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				Model:             tt.model,
+				MaxTokensResponse: 100,
+			})
+
+			// call the check method to trigger the client call
+			checker.check("test message", nil)
+
+			// verify the correct field is used
+			if tt.expectMaxTokens {
+				assert.Equal(t, 100, capturedRequest.MaxTokens, "MaxTokens should be set for model %s", tt.model)
+				assert.Equal(t, 0, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should not be set for model %s", tt.model)
+			}
+			if tt.expectMaxCompletionTokens {
+				assert.Equal(t, 0, capturedRequest.MaxTokens, "MaxTokens should not be set for model %s", tt.model)
+				assert.Equal(t, 100, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should be set for model %s", tt.model)
+			}
+		})
+	}
+}

@@ -126,6 +126,16 @@ func (o *openAIChecker) buildSystemPrompt() string {
 	return sb.String()
 }
 
+// isReasoningModel checks if the model requires MaxCompletionTokens instead of MaxTokens
+// this includes o1-series models and gpt-5 models
+func (o *openAIChecker) isReasoningModel() bool {
+	modelLower := strings.ToLower(o.params.Model)
+	return strings.HasPrefix(modelLower, "o1") ||
+		strings.HasPrefix(modelLower, "o3") ||
+		strings.HasPrefix(modelLower, "o4") ||
+		strings.Contains(modelLower, "gpt-5")
+}
+
 func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err error) {
 	// reduce the request size with tokenizer and fallback to default reducer if it fails.
 	// the API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
@@ -169,9 +179,15 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 
 	request := openai.ChatCompletionRequest{
 		Model:          o.params.Model,
-		MaxTokens:      o.params.MaxTokensResponse,
 		Messages:       data,
 		ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
+	}
+
+	// use MaxCompletionTokens for reasoning models (o1, o3, o4) and gpt-5, MaxTokens for others
+	if o.isReasoningModel() {
+		request.MaxCompletionTokens = o.params.MaxTokensResponse
+	} else {
+		request.MaxTokens = o.params.MaxTokensResponse
 	}
 
 	// add reasoning_effort parameter if set and not "none"
