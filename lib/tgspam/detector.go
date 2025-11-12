@@ -863,9 +863,10 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 // isStopWord checks if a given message or username contains any of the stop words.
 func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Response {
 	// check message text
-	cleanMsg := cleanEmoji(strings.ToLower(msg))
+	cleanMsg := normalizeSpaces(cleanEmoji(strings.ToLower(msg)))
 	for _, word := range d.stopWords { // stop words are already lowercased
-		if strings.Contains(cleanMsg, strings.ToLower(word)) {
+		normalizedWord := normalizeSpaces(strings.ToLower(word))
+		if strings.Contains(cleanMsg, normalizedWord) {
 			return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
 		}
 	}
@@ -879,8 +880,10 @@ func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Respo
 		names = append(names, req.UserID)
 	}
 	for _, name := range names {
+		normalizedName := normalizeSpaces(strings.ToLower(name))
 		for _, word := range d.stopWords {
-			if strings.Contains(strings.ToLower(name), strings.ToLower(word)) {
+			normalizedWord := normalizeSpaces(strings.ToLower(word))
+			if strings.Contains(normalizedName, normalizedWord) {
 				return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
 			}
 		}
@@ -1058,4 +1061,9 @@ func cleanEmoji(s string) string {
 
 func countEmoji(s string) int {
 	return len(gomoji.CollectAll(s))
+}
+
+// normalizeSpaces collapses multiple consecutive spaces into a single space
+func normalizeSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
