@@ -662,7 +662,14 @@ See also [examples](https://github.com/umputun/tg-spam/tree/master/_examples/) f
 
 ### WEB UI
 
-If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.
+If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. The UI provides several management interfaces:
+
+- **Message Checker**: Test messages for spam detection in real-time
+- **Manage Samples**: Add, view, and delete spam/ham training samples
+- **Dictionary Management**: Manage stop phrases (words that trigger spam detection) and ignored words (tokens excluded from analysis)
+- **Manage Users**: View and control the approved users list
+
+All pages are protected by basic auth the same way as webapi server.
 
 
 <details markdown>
