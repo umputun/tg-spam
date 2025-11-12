@@ -89,6 +89,37 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.Equal(t, "too short", cr[2].Details)
 	})
 
+	t.Run("stopword with extra spaces and different case", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 150})
+		lr, err := d.LoadStopWords(bytes.NewBufferString("дам денег"))
+		require.NoError(t, err)
+		assert.Equal(t, LoadResult{StopWords: 1}, lr)
+
+		// test with extra spaces between words
+		spam, cr := d.Check(spamcheck.Request{Msg: "Дам  денег"})
+		assert.True(t, spam, "should detect stopword with extra spaces")
+		require.Len(t, cr, 3, cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with extra space in 'Дам  денег'")
+		assert.Equal(t, "дам денег", cr[0].Details)
+
+		// test with different case
+		spam, cr = d.Check(spamcheck.Request{Msg: "ДАМ ДЕНЕГ"})
+		assert.True(t, spam, "should detect stopword with uppercase")
+		require.Len(t, cr, 3, cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with uppercase 'ДАМ ДЕНЕГ'")
+		assert.Equal(t, "дам денег", cr[0].Details)
+
+		// test with multiple extra spaces
+		spam, cr = d.Check(spamcheck.Request{Msg: "дам    денег"})
+		assert.True(t, spam, "should detect stopword with multiple spaces")
+		require.Len(t, cr, 3, cr)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with multiple spaces")
+		assert.Equal(t, "дам денег", cr[0].Details)
+	})
+
 	t.Run("short message skips classifier and similarity", func(t *testing.T) {
 		// load spam and ham samples to enable classifier and similarity checks
 		d := NewDetector(Config{MaxAllowedEmoji: -1, MinMsgLen: 50, SimilarityThreshold: 0.5})
