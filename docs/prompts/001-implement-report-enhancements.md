@@ -460,12 +460,21 @@ if opts.Report.AutoBanThreshold > 0 && opts.Report.AutoBanThreshold < opts.Repor
 
 ### 6. Test Requirements
 
-**New test file:** `app/events/reports_approved_test.go`
+**CRITICAL: Follow one-test-file-per-source-file rule**
+- ALL new tests must be added to existing `app/events/reports_test.go`
+- DO NOT create `reports_approved_test.go` or `reports_autoban_test.go`
+- Use table-driven tests with descriptive names following pattern: `TestUserReports_MethodName_Scenario`
+
+**Add to:** `app/events/reports_test.go`
+
+**Feature 1: Approved-Only Reporting Tests**
 - Test approved-only mode rejects non-approved users
 - Test approved users can still report when approved-only enabled
 - Test backward compatibility (approved-only=false allows any user)
+- Test super-users are not affected by approved-only mode
+- Test error handling when IsApprovedUser check fails
 
-**New test file:** `app/events/reports_autoban_test.go`
+**Feature 2: Auto-Ban Tests**
 - Test auto-ban triggers at correct threshold
 - Test auto-ban respects soft-ban mode (restrict vs ban)
 - Test auto-ban deletes message and removes from approved list
@@ -483,17 +492,29 @@ if opts.Report.AutoBanThreshold > 0 && opts.Report.AutoBanThreshold < opts.Repor
   - Verify auto-ban still executed (user banned, message deleted)
   - Verify error returned indicating notification failure
   - Verify admin callbacks still work (reports still in DB)
+- Test dry mode behavior (no actual bans)
+- Test training mode behavior (logs but no action)
 
-**Existing test file update:** `app/events/reports_test.go`
-- Add test for callbackReportBan respecting soft-ban mode (bug fix verification)
+**Soft-Ban Fix Test**
+- Test callbackReportBan respects soft-ban mode (verify bug fix)
+- Test both restrict and ban modes produce correct Telegram API calls
 
-**Existing test file update:** `app/storage/reports_test.go`
-- **Test cleanup deletes ALL old reports (CRITICAL for memory leak prevention)**:
+**Add to:** `app/storage/reports_test.go`
+
+**Cleanup Fix Tests (CRITICAL for memory leak prevention)**
+- **IMPORTANT**: Existing test `"do not cleanup old reports with notification"` (lines ~374-399) must be REMOVED or UPDATED
+  - This test expects notification_sent=true reports to be kept (old behavior)
+  - New behavior: ALL reports >7 days deleted regardless of notification_sent
+  - Document this as an intentional behavior change
+
+- **New cleanup tests**:
   - Create reports with `notification_sent = false` and age > 7 days → verify deleted
   - Create reports with `notification_sent = true` and age > 7 days → verify deleted
   - Create reports with `notification_sent = true` and age < 7 days → verify NOT deleted
+  - Test boundary condition: reports exactly 7 days old
   - Verify cleanup doesn't depend on notification status, only age
   - Verify cleanup is called from Add() after inserting report
+  - Test cleanup with database errors (connection lost)
 
 ### 7. Documentation Updates
 
