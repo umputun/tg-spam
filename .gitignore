@@ -36,3 +36,4 @@ _examples/simplechat/messages.db
 var/
 tg-spam
 tg-spam-*
+_examples/lua_plugins/example
