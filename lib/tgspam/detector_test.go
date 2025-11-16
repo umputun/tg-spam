@@ -1554,6 +1554,129 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		assert.True(t, hasOpenAI, "should have openai check when enabled for short messages")
 		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
 	})
+
+	t.Run("short message with CheckShortMessagesWithOpenAI ignores veto mode", func(t *testing.T) {
+		// test that when CheckShortMessagesWithOpenAI=true and OpenAIVeto=true,
+		// short messages are still checked by OpenAI (veto mode should be ignored for short messages)
+		d := NewDetector(Config{
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+			MinMsgLen:        50,
+			OpenAIVeto:       true, // veto mode enabled
+		})
+
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"suspicious short message", "confidence":95}`},
+					}},
+				}, nil
+			},
+		}
+
+		// explicitly set CheckShortMessagesWithOpenAI to true
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
+			Model:                        "gpt4",
+			CheckShortMessagesWithOpenAI: true,
+		})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+
+		// should detect as spam because OpenAI says it's spam
+		assert.Equal(t, true, spam)
+		require.Len(t, cr, 2)
+
+		// verify we have message length check
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, false, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+
+		// verify we have openai check
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.Equal(t, true, cr[1].Spam)
+		assert.Equal(t, "suspicious short message, confidence: 95%", cr[1].Details)
+
+		// verify openai WAS called even with veto mode enabled
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("short message with CheckShortMessagesWithOpenAI and OpenAIVeto=false", func(t *testing.T) {
+		// test that short messages work correctly with veto mode disabled
+		d := NewDetector(Config{
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+			MinMsgLen:        50,
+			OpenAIVeto:       false, // veto mode disabled
+		})
+
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks fine", "confidence":90}`},
+					}},
+				}, nil
+			},
+		}
+
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
+			Model:                        "gpt4",
+			CheckShortMessagesWithOpenAI: true,
+		})
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
+
+		// should not detect spam because OpenAI says it's clean
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 2)
+
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+
+		// verify openai WAS called
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
+
+	t.Run("short message with veto mode - OpenAI returns ham", func(t *testing.T) {
+		// test that when OpenAI returns ham for a short message, result is ham
+		d := NewDetector(Config{
+			MaxAllowedEmoji:  -1,
+			FirstMessageOnly: true,
+			MinMsgLen:        50,
+			OpenAIVeto:       true,
+		})
+
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks clean", "confidence":85}`},
+					}},
+				}, nil
+			},
+		}
+
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
+			Model:                        "gpt4",
+			CheckShortMessagesWithOpenAI: true,
+		})
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "hello"})
+
+		// should not detect spam
+		assert.Equal(t, false, spam)
+		require.Len(t, cr, 2)
+
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.Equal(t, false, cr[1].Spam)
+		assert.Equal(t, "looks clean, confidence: 85%", cr[1].Details)
+
+		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+	})
 }
 
 func TestDetector_CheckWithMeta(t *testing.T) {

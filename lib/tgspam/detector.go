@@ -258,12 +258,20 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	spamDetected := isSpamDetected(cr)
 
-	// we hit openai in two cases:
+	// we hit openai in three cases:
+	//  - short message with CheckShortMessagesWithOpenAI enabled (ignores veto mode since there's no decision to veto)
 	//  - all other checks passed (ham result) and OpenAIVeto is false. In this case, openai primary used to improve false negative rate
 	//  - one of the checks failed (spam result) and OpenAIVeto is true. In this case, openai primary used to improve false positive rate
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
-		if !spamDetected && !d.OpenAIVeto || spamDetected && d.OpenAIVeto {
+		// determine if we should check with openai:
+		// - short messages with CheckShortMessagesWithOpenAI (ignores veto mode)
+		// - normal veto mode logic for non-short messages
+		shouldCheck := (isShortMessage && d.openaiChecker.params.CheckShortMessagesWithOpenAI) ||
+			(!spamDetected && !d.OpenAIVeto) ||
+			(spamDetected && d.OpenAIVeto)
+
+		if shouldCheck {
 			var hist []spamcheck.Request // by default, openai doesn't use history
 			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
 				// if history size is set, we use the last N messages for openai
