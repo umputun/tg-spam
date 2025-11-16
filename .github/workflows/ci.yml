@@ -55,12 +55,12 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v7
       with:
-        version: v2.0.2
+        version: v2.6.2
 
     - name: golangci-lint on example directory
       uses: golangci/golangci-lint-action@v7
       with:
-        version: v2.0.2
+        version: v2.6.2
         args: --config ../../.golangci.yml
         working-directory: _examples/simplechat
 
