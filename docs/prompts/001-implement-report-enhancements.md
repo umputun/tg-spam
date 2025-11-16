@@ -425,138 +425,6 @@ func (r *Reports) cleanupOldReports(ctx context.Context) error {
 - New cleanup removes ALL reports older than 7 days regardless of notification status
 - Prevents database memory leak while maintaining 7-day grace period for admin action
 
-**CRITICAL FIX #2:** Add periodic background cleanup (cleanup only runs on new reports currently)
-
-**Problem**: `cleanupOldReports()` is only called from `Reports.Add()`. If auto-ban fails and group goes quiet (no new reports), cleanup never runs despite 7-day promise.
-
-**File:** `app/storage/reports.go`
-
-Add background cleanup goroutine to `Reports` struct and initialization:
-
-```go
-// Reports is a storage for user spam reports
-type Reports struct {
-    *engine.SQL
-    engine.RWLocker
-    cancelCleanup context.CancelFunc // new field for cleanup shutdown
-}
-```
-
-Update `NewReports()` to start periodic cleanup (around line 99-115):
-
-```go
-func NewReports(ctx context.Context, db *engine.SQL) (*Reports, error) {
-    if db == nil {
-        return nil, fmt.Errorf("db connection is nil")
-    }
-    res := &Reports{SQL: db, RWLocker: db.MakeLock()}
-    cfg := engine.TableConfig{
-        Name:          "reports",
-        CreateTable:   CmdCreateReportsTable,
-        CreateIndexes: CmdCreateReportsIndexes,
-        MigrateFunc:   res.migrate,
-        QueriesMap:    reportsQueries,
-    }
-    if err := engine.InitTable(ctx, db, cfg); err != nil {
-        return nil, fmt.Errorf("failed to init reports storage: %w", err)
-    }
-
-    // start periodic cleanup goroutine
-    // IMPORTANT: use provided ctx as parent so goroutine stops when app shuts down
-    // this prevents goroutine leaks and use-after-close bugs if Close() is forgotten
-    cleanupCtx, cancel := context.WithCancel(ctx)
-    res.cancelCleanup = cancel
-    go res.periodicCleanup(cleanupCtx)
-
-    return res, nil
-}
-```
-
-Add `periodicCleanup()` method:
-
-```go
-// periodicCleanup runs cleanup every 6 hours to remove old reports
-// this ensures cleanup happens even when no new reports are added (e.g., quiet groups)
-func (r *Reports) periodicCleanup(ctx context.Context) {
-    const cleanupInterval = 6 * time.Hour
-    ticker := time.NewTicker(cleanupInterval)
-    defer ticker.Stop()
-
-    log.Printf("[DEBUG] started periodic reports cleanup (interval: %v)", cleanupInterval)
-
-    for {
-        select {
-        case <-ctx.Done():
-            log.Printf("[DEBUG] stopping periodic reports cleanup")
-            return
-        case <-ticker.C:
-            if err := r.cleanupOldReports(ctx); err != nil {
-                log.Printf("[WARN] periodic cleanup failed: %v", err)
-            }
-        }
-    }
-}
-```
-
-Add `Close()` method for graceful shutdown:
-
-```go
-// Close stops the periodic cleanup goroutine
-func (r *Reports) Close() error {
-    if r.cancelCleanup != nil {
-        r.cancelCleanup()
-    }
-    return nil
-}
-```
-
-**File:** `app/main.go`
-
-Ensure cleanup goroutine is stopped on shutdown (add to cleanup/shutdown logic):
-
-```go
-// in main() shutdown handling (where other resources are closed)
-if reportsStore != nil {
-    if err := reportsStore.Close(); err != nil {
-        log.Printf("[WARN] failed to close reports storage: %v", err)
-    }
-}
-```
-
-**Also remove cleanup call from Add()** (now redundant):
-
-**File:** `app/storage/reports.go`
-
-In `Add()` method (around line 150-155), remove the cleanup call:
-
-```go
-func (r *Reports) Add(ctx context.Context, report Report) error {
-    // ... add report logic ...
-
-    log.Printf("[INFO] report added: msgID:%d, reporter:%s (%d), reported:%s (%d)",
-        report.MsgID, report.ReporterUserName, report.ReporterUserID, report.ReportedUserName, report.ReportedUserID)
-
-    // REMOVE THESE LINES - cleanup now handled by periodic goroutine
-    // if err := r.cleanupOldReports(ctx); err != nil {
-    //     log.Printf("[WARN] failed to cleanup old reports: %v", err)
-    // }
-
-    return nil
-}
-```
-
-**Why this fix is necessary:**
-- Current cleanup only runs when `Reports.Add()` is called (on new report)
-- If auto-ban fails and group goes quiet, no new reports = no cleanup trigger
-- Orphaned reports sit forever despite "7-day grace period" promise
-- Periodic cleanup ensures cleanup runs every 6 hours regardless of activity
-- Handles quiet groups, inactive chats, and low-spam scenarios
-- **Removing from Add()**: Cleaner separation of concerns, periodic cleanup is sufficient
-- **CRITICAL context handling**: Use provided `ctx` as parent (not `context.Background()`)
-  - Prevents goroutine leak if Close() forgotten (tests, error paths, panics)
-  - Prevents use-after-close bugs (goroutine accessing closed DB after app exit)
-  - Goroutine auto-stops when app context cancelled
-
 **BONUS BUG FIX:** Fix existing `callbackReportBan` to respect soft-ban mode (currently broken)
 
 **File:** `app/events/reports.go`
@@ -625,14 +493,7 @@ if opts.Report.AutoBanThreshold > 0 && opts.Report.AutoBanThreshold < opts.Repor
   - Create reports with `notification_sent = true` and age > 7 days → verify deleted
   - Create reports with `notification_sent = true` and age < 7 days → verify NOT deleted
   - Verify cleanup doesn't depend on notification status, only age
-- **Test periodic cleanup goroutine (CRITICAL)**:
-  - Create Reports instance → verify periodicCleanup goroutine started
-  - Mock time.Ticker to trigger cleanup without waiting 6 hours
-  - Create old reports → wait for tick → verify deleted
-  - **Test auto-stop on context cancel**: cancel app context → verify goroutine stops (no leak)
-  - **Test explicit stop**: call Close() → verify goroutine stops
-  - **Test prevents use-after-close**: cancel context, wait for goroutine stop, verify no DB access errors
-  - Verify cleanup errors are logged but don't crash goroutine
+  - Verify cleanup is called from Add() after inserting report
 
 ### 7. Documentation Updates
 
@@ -660,35 +521,22 @@ tg-spam --soft-ban --report.auto-ban-threshold=3
 
 1. Add CLI flags and config propagation (steps 1-2)
 2. Add validation logic (step 5)
-3. **CRITICAL FIX #1**: Fix `cleanupOldReports()` to prevent memory leak (remove notification_sent filter)
-4. **CRITICAL FIX #2**: Add periodic cleanup goroutine (cleanup runs every 6 hours)
-5. Write tests for both cleanup fixes:
-   - Verify ALL old reports deleted regardless of notification status
-   - Verify periodic cleanup runs independently of new reports
-   - Test goroutine lifecycle (start, stop, error handling)
-6. Implement Feature 1: approved-only check (step 3)
-7. Write tests for Feature 1
-8. Implement Feature 2: auto-ban logic with notification error handling (step 4)
-9. Write tests for Feature 2, including critical notification failure test
-10. Fix existing callbackReportBan soft-ban bug
-11. Update documentation (step 7)
-12. Run full test suite: `go test -race ./...`
-13. Run linter: `golangci-lint run`
-14. Manual testing with different threshold combinations
-15. **Manual testing of notification failure scenario**:
+3. **CRITICAL**: Fix `cleanupOldReports()` to prevent memory leak (remove notification_sent filter)
+4. Write tests for cleanup fix (verify ALL old reports deleted regardless of notification status)
+5. Implement Feature 1: approved-only check (step 3)
+6. Write tests for Feature 1
+7. Implement Feature 2: auto-ban logic with notification error handling (step 4)
+8. Write tests for Feature 2, including critical notification failure test
+9. Fix existing callbackReportBan soft-ban bug
+10. Update documentation (step 7)
+11. Run full test suite: `go test -race ./...`
+12. Run linter: `golangci-lint run`
+13. Manual testing with different threshold combinations
+14. **Manual testing of notification failure scenario**:
     - Temporarily break Telegram API connection
     - Trigger auto-ban
     - Verify reports NOT deleted
     - Verify admin callbacks still work
-16. **Manual testing of periodic cleanup and goroutine lifecycle**:
-    - Verify cleanup goroutine starts on Reports init
-    - Create old reports and wait (or manipulate time)
-    - Verify cleanup runs every 6 hours
-    - Verify ALL old reports deleted
-    - **Test auto-stop**: Cancel app context → verify goroutine stops (no leak)
-    - **Test explicit stop**: Call Close() → verify goroutine stops
-    - **Test prevents use-after-close**: Ensure no DB access after context cancel
-    - Verify goroutine doesn't leak in tests (run with -race flag)
 
 ## Expected Output
 
@@ -713,21 +561,16 @@ The plan should result in:
 - **Error handling for notification failures**:
   - If admin chat configured and notification update/send fails: keep reports in DB
   - This ensures admin callbacks still work if buttons remain active
-  - Reports will be cleaned up by periodic background goroutine after 7 days
+  - Reports will be cleaned up when next report arrives (cleanup runs in Add())
   - **CRITICAL**: cleanup must delete ALL reports older than 7 days, not just unsent ones
-  - **CRITICAL**: cleanup must run periodically (every 6h), not just on report insertion
-  - Without periodic cleanup, orphaned reports in quiet groups never get cleaned (memory leak)
+  - Without this, reports with `notification_sent = true` accumulate (memory leak)
   - Auto-ban execution continues (user banned, message deleted) even if notification fails
   - Error returned to signal notification failure but ban succeeded
 - **Cleanup mechanism**:
-  - Periodic goroutine runs `cleanupOldReports()` every 6 hours
+  - `cleanupOldReports()` called from `Reports.Add()` (existing pattern)
   - Deletes ALL reports older than 7 days (regardless of notification_sent status)
-  - Runs independently of report activity (handles quiet groups)
-  - Original cleanup call from `Add()` removed (redundant with periodic cleanup)
-  - **Context handling**: Goroutine must use provided context as parent (not Background())
-    - Prevents goroutine leak in tests and error paths
-    - Auto-stops when app context cancelled
-    - Prevents use-after-close bugs (accessing closed DB)
-  - Graceful shutdown via `Close()` method (explicit early stop, optional)
+  - Simple, no background goroutines or lifecycle management
+  - Works for most scenarios (groups with some activity)
+  - Very quiet groups (no reports for 7+ days) may accumulate a few orphaned rows - acceptable tradeoff for simplicity
 - Consider logging carefully to distinguish auto-ban from admin-approved ban
 - Bonus bug fix: existing `callbackReportBan` also doesn't respect soft-ban mode, fix it
