@@ -403,7 +403,15 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 // isReportCommand checks if message text is a /report command variant
 func isReportCommand(text string) bool {
 	lower := strings.ToLower(text)
-	return strings.HasPrefix(lower, "/report") || strings.HasPrefix(lower, "report")
+	// exact match for "report" or "/report"
+	if lower == "report" || lower == "/report" {
+		return true
+	}
+	// match "/report@botname" syntax (command with @ must have something after @)
+	if strings.HasPrefix(lower, "/report@") && len(lower) > 8 {
+		return true
+	}
+	return false
 }
 
 // procUserReply processes regular user commands (reply) /report.

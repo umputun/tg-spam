@@ -3342,6 +3342,74 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		assert.True(t, deleteCalled, "/report@botname should be deleted")
 	})
 
+	t.Run("does NOT delete messages that start with 'report' but are not commands", func(t *testing.T) {
+		testCases := []string{
+			"reporter arrived",
+			"report on the meeting",
+			"reporting the issue",
+			"reports are ready",
+			"/report_spam",
+		}
+
+		for _, text := range testCases {
+			t.Run(text, func(t *testing.T) {
+				mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+				deleteCalled := false
+				mockAPI := &mocks.TbAPIMock{
+					GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+						return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+					},
+					RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+						if _, ok := c.(tbapi.DeleteMessageConfig); ok {
+							deleteCalled = true
+						}
+						return &tbapi.APIResponse{Ok: true}, nil
+					},
+					GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+						return []tbapi.ChatMember{}, nil
+					},
+				}
+				botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{}
+				}}
+
+				locator, teardown := prepTestLocator(t)
+				defer teardown()
+
+				l := TelegramListener{
+					SpamLogger: mockLogger,
+					TbAPI:      mockAPI,
+					Bot:        botMock,
+					SuperUsers: SuperUsers{"super"},
+					Locator:    locator,
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				defer cancel()
+
+				updMsg := tbapi.Update{
+					Message: &tbapi.Message{
+						MessageID: 100,
+						Chat:      tbapi.Chat{ID: 123},
+						Text:      text,
+						From:      &tbapi.User{UserName: "regular_user", ID: 999},
+						Date:      int(time.Now().Unix()),
+					},
+				}
+
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- updMsg
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				err := l.Do(ctx)
+				assert.EqualError(t, err, "telegram update chan closed")
+				assert.False(t, deleteCalled, "message starting with 'report' but not a command should NOT be deleted")
+				assert.Equal(t, 1, len(botMock.OnMessageCalls()), "bot.OnMessage should be called for non-command messages")
+			})
+		}
+	})
+
 	t.Run("does NOT delete orphaned /report from superuser", func(t *testing.T) {
 		mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 		deleteCalled := false
