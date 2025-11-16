@@ -1,4 +1,4 @@
-FROM ghcr.io/umputun/baseimage/buildgo:v1.15.0 AS build
+FROM ghcr.io/umputun/baseimage/buildgo:v1.17.0 AS build
 
 ARG GIT_BRANCH
 ARG GITHUB_SHA
@@ -17,7 +17,7 @@ RUN \
  cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
 
 
-FROM alpine:3.21
+FROM alpine:3.22
 # enables automatic changelog generation by tools like Dependabot
 LABEL org.opencontainers.image.source="https://github.com/umputun/tg-spam"
 ENV TGSPAM_IN_DOCKER=1
