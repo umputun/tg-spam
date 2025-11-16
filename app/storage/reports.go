@@ -251,22 +251,25 @@ func (r *Reports) DeleteByMessage(ctx context.Context, msgID int, chatID int64) 
 	return nil
 }
 
-// cleanupOldReports removes reports older than 7 days that never reached threshold (notification_sent = false).
-// retention period: 7 days - reports that reached threshold are deleted immediately after ban/reject,
-// this cleanup handles reports that never reached threshold (e.g., single report with threshold=2).
+// cleanupOldReports removes ALL reports older than 7 days.
+// retention period: 7 days - includes reports that:
+//   - never reached threshold (notification_sent = false)
+//   - reached threshold but notification update failed (notification_sent = true but orphaned)
+//   - admin hasn't acted on within retention period
 func (r *Reports) cleanupOldReports(ctx context.Context) error {
 	// no lock - called from Add which already has lock
 	const retentionDays = 7
-	query := r.Adopt("DELETE FROM reports WHERE gid = ? AND report_time < ? AND notification_sent = ?")
+	// removed notification_sent filter - delete ALL old reports to prevent memory leak
+	query := r.Adopt("DELETE FROM reports WHERE gid = ? AND report_time < ?")
 	cutoffTime := time.Now().Add(-retentionDays * 24 * time.Hour)
 
-	result, err := r.ExecContext(ctx, query, r.GID(), cutoffTime, false)
+	result, err := r.ExecContext(ctx, query, r.GID(), cutoffTime)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old reports: %w", err)
 	}
 
 	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
-		log.Printf("[DEBUG] cleaned up %d old reports", rowsAffected)
+		log.Printf("[DEBUG] cleaned up %d old reports (retention: %d days)", rowsAffected, retentionDays)
 	}
 
 	return nil

@@ -119,7 +119,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		ReportConfig: l.ReportConfig,
 		tbAPI:        l.TbAPI, bot: l.Bot, locator: l.Locator, superUsers: l.SuperUsers,
 		primChatID: l.chatID, adminChatID: l.adminChatID,
-		trainingMode: l.TrainingMode, dry: l.Dry,
+		trainingMode: l.TrainingMode, softBanMode: l.SoftBanMode, dry: l.Dry,
 	}
 
 	adminForwardStatus := "enabled"

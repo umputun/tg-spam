@@ -15,11 +15,13 @@ import (
 
 // ReportConfig is user spam reporting configuration
 type ReportConfig struct {
-	Storage    Reports       // reports storage for user spam reports
-	Enabled    bool          // enable user spam reporting
-	Threshold  int           // number of reports to trigger admin notification
-	RateLimit  int           // max reports per user per period
-	RatePeriod time.Duration // rate limit time period
+	Storage          Reports       // reports storage for user spam reports
+	Enabled          bool          // enable user spam reporting
+	Threshold        int           // number of reports to trigger admin notification
+	ApprovedOnly     bool          // restrict reporting to approved users only
+	AutoBanThreshold int           // auto-ban after N reports (0=disabled)
+	RateLimit        int           // max reports per user per period
+	RatePeriod       time.Duration // rate limit time period
 }
 
 // userReports handles user spam reporting functionality
@@ -32,6 +34,7 @@ type userReports struct {
 	primChatID   int64
 	adminChatID  int64
 	trainingMode bool
+	softBanMode  bool
 	dry          bool
 }
 
@@ -61,6 +64,18 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	// validate reported user is not super user (check both username and ID)
 	if r.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
+	}
+
+	// validate reporter is approved user if approved-only mode enabled
+	if r.ApprovedOnly && !r.bot.IsApprovedUser(update.Message.From.ID) {
+		log.Printf("[INFO] report rejected: reporter %d (%s) not in approved list",
+			update.Message.From.ID, update.Message.From.UserName)
+		// still delete the /report command to keep chat clean
+		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  update.Message.MessageID,
+			ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
+		}})
+		return fmt.Errorf("reporter %d not in approved list", update.Message.From.ID)
 	}
 
 	// check rate limit for reporter
@@ -162,15 +177,24 @@ func (r *userReports) checkReportThreshold(ctx context.Context, msgID int, chatI
 		return fmt.Errorf("failed to get reports: %w", err)
 	}
 
-	// check if threshold reached
-	if len(reports) < r.Threshold {
+	reportCount := len(reports)
+
+	// check if auto-ban threshold reached
+	if r.AutoBanThreshold > 0 && reportCount >= r.AutoBanThreshold {
+		log.Printf("[INFO] auto-ban threshold reached for msgID:%d, chatID:%d: %d reports (threshold: %d)",
+			msgID, chatID, reportCount, r.AutoBanThreshold)
+		return r.executeAutoBan(ctx, reports)
+	}
+
+	// check if manual approval threshold reached
+	if reportCount < r.Threshold {
 		log.Printf("[DEBUG] report threshold not reached for msgID:%d, chatID:%d: %d < %d",
-			msgID, chatID, len(reports), r.Threshold)
+			msgID, chatID, reportCount, r.Threshold)
 		return nil
 	}
 
 	log.Printf("[INFO] report threshold reached for msgID:%d, chatID:%d: %d reports",
-		msgID, chatID, len(reports))
+		msgID, chatID, reportCount)
 
 	// check if admin notification already sent
 	if len(reports) > 0 && reports[0].NotificationSent {
@@ -183,6 +207,204 @@ func (r *userReports) checkReportThreshold(ctx context.Context, msgID int, chatI
 	// no notification sent yet, send new one
 	log.Printf("[DEBUG] sending new notification for msgID:%d", msgID)
 	return r.sendReportNotification(ctx, reports)
+}
+
+// executeAutoBan executes automatic ban when auto-ban threshold is reached
+func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Report) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("no reports provided")
+	}
+
+	// extract info from first report
+	firstReport := reports[0]
+	msgID := firstReport.MsgID
+	chatID := firstReport.ChatID
+	reportedUserID := firstReport.ReportedUserID
+	reportedUserName := firstReport.ReportedUserName
+	msgText := firstReport.MsgText
+
+	log.Printf("[INFO] executing auto-ban for user %d (%s) based on %d reports",
+		reportedUserID, reportedUserName, len(reports))
+
+	// remove user from approved list
+	if remErr := r.bot.RemoveApprovedUser(reportedUserID); remErr != nil {
+		log.Printf("[DEBUG] can't remove user %d from approved list: %v", reportedUserID, remErr)
+	}
+
+	// update spam samples with message text (if not empty)
+	if !r.dry && msgText != "" {
+		if spamErr := r.bot.UpdateSpam(msgText); spamErr != nil {
+			log.Printf("[WARN] failed to update spam samples: %v", spamErr)
+		}
+	}
+
+	// delete reported message from primary chat
+	if !r.dry {
+		_, err := r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  msgID,
+			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
+		}})
+		if err != nil {
+			log.Printf("[WARN] failed to delete reported message %d: %v", msgID, err)
+		} else {
+			log.Printf("[INFO] reported message %d auto-deleted", msgID)
+		}
+	}
+
+	// ban reported user - CRITICAL: respect soft-ban mode
+	banReq := banRequest{
+		duration: bot.PermanentBanDuration,
+		userID:   reportedUserID,
+		chatID:   chatID,
+		tbAPI:    r.tbAPI,
+		dry:      r.dry,
+		training: r.trainingMode,
+		userName: reportedUserName,
+		restrict: r.softBanMode, // IMPORTANT: use soft-ban if enabled
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		log.Printf("[WARN] failed to auto-ban user %d: %v", reportedUserID, err)
+	}
+
+	// handle admin notification - update existing or send new
+	// CRITICAL: only delete reports if notification succeeds, otherwise admin callbacks will fail
+	var notificationErr error
+	if r.adminChatID != 0 {
+		if len(reports) > 0 && reports[0].NotificationSent {
+			// notification already sent (manual threshold reached earlier), update it
+			notificationErr = r.updateNotificationForAutoBan(reports)
+		} else {
+			// no previous notification, send new one
+			notificationErr = r.sendAutoBanNotification(reports)
+		}
+
+		if notificationErr != nil {
+			log.Printf("[WARN] failed to send/update auto-ban notification: %v", notificationErr)
+			// don't delete reports - keep them so admin callbacks still work if buttons remain
+			// reports will be cleaned up by cleanupOldReports() after 7 days if never resolved
+			return fmt.Errorf("auto-ban executed for user %d but notification failed: %w", reportedUserID, notificationErr)
+		}
+	}
+
+	// delete all reports for this message ONLY if notification succeeded (or no admin chat configured)
+	if err := r.Storage.DeleteByMessage(ctx, msgID, chatID); err != nil {
+		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
+	}
+
+	log.Printf("[INFO] auto-ban executed for user %d by %d reports", reportedUserID, len(reports))
+	return nil
+}
+
+// sendAutoBanNotification sends notification to admin chat about automatic ban
+func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("no reports provided")
+	}
+
+	firstReport := reports[0]
+	reportedUserID := firstReport.ReportedUserID
+	reportedUserName := firstReport.ReportedUserName
+
+	// escape message text for markdown
+	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
+	msgText = truncateString(msgText, 200, "...")
+
+	// format reporter list
+	reporterList := make([]string, 0, len(reports))
+	for _, report := range reports {
+		reporterName := report.ReporterUserName
+		if reporterName == "" {
+			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
+		}
+		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
+			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
+	}
+
+	actionType := "banned"
+	if r.softBanMode {
+		actionType = "restricted"
+	}
+
+	notificationText := fmt.Sprintf("**Auto-%s user after %d reports**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s",
+		actionType,
+		len(reports),
+		escapeMarkDownV1Text(reportedUserName),
+		reportedUserID,
+		msgText,
+		strings.Join(reporterList, "\n"))
+
+	// send to admin chat (no buttons - action already taken)
+	tbMsg := tbapi.NewMessage(r.adminChatID, notificationText)
+	tbMsg.ParseMode = tbapi.ModeMarkdown
+	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+
+	if _, err := r.tbAPI.Send(tbMsg); err != nil {
+		return fmt.Errorf("failed to send auto-ban notification: %w", err)
+	}
+
+	log.Printf("[INFO] auto-ban notification sent to admin chat for user %d", reportedUserID)
+	return nil
+}
+
+// updateNotificationForAutoBan updates existing admin notification when auto-ban is executed
+// this prevents leaving orphaned notifications with live buttons that would fail on click
+func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("reports list is empty")
+	}
+
+	firstReport := reports[0]
+	adminMsgID := firstReport.AdminMsgID
+	if adminMsgID == 0 {
+		return fmt.Errorf("admin message ID is 0, cannot update")
+	}
+
+	reportedUserID := firstReport.ReportedUserID
+	reportedUserName := firstReport.ReportedUserName
+
+	// escape message text for markdown
+	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
+	msgText = truncateString(msgText, 200, "...")
+
+	// format reporter list
+	reporterList := make([]string, 0, len(reports))
+	for _, report := range reports {
+		reporterName := report.ReporterUserName
+		if reporterName == "" {
+			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
+		}
+		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
+			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
+	}
+
+	actionType := "banned"
+	if r.softBanMode {
+		actionType = "restricted"
+	}
+
+	// create updated notification text with auto-ban confirmation
+	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s\n\n_auto-%s after reaching %d reports_",
+		len(reports),
+		escapeMarkDownV1Text(reportedUserName),
+		reportedUserID,
+		msgText,
+		strings.Join(reporterList, "\n"),
+		actionType,
+		len(reports))
+
+	// edit existing admin message, remove buttons
+	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, updatedText)
+	editMsg.ParseMode = "Markdown"
+	editMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}} // remove buttons
+
+	if _, err := r.tbAPI.Send(editMsg); err != nil {
+		return fmt.Errorf("failed to update notification for auto-ban (msgID:%d, adminMsgID:%d): %w",
+			firstReport.MsgID, adminMsgID, err)
+	}
+
+	log.Printf("[INFO] updated admin notification %d for auto-ban of user %d", adminMsgID, reportedUserID)
+	return nil
 }
 
 // sendReportNotification sends a new admin notification for user reports
@@ -378,7 +600,7 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 		}
 	}
 
-	// ban reported user permanently
+	// ban reported user permanently (or restrict if soft-ban enabled)
 	banReq := banRequest{
 		duration: bot.PermanentBanDuration,
 		userID:   reportedUserID,
@@ -387,6 +609,7 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 		dry:      r.dry,
 		training: r.trainingMode,
 		userName: reportedUserName,
+		restrict: r.softBanMode, // respect soft-ban mode
 	}
 	if err := banUserOrChannel(banReq); err != nil {
 		log.Printf("[WARN] failed to ban user %d: %v", reportedUserID, err)

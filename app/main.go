@@ -128,10 +128,12 @@ type options struct {
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
 	Report struct {
-		Enabled    bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
-		Threshold  int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
-		RateLimit  int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
-		RatePeriod time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
+		Enabled          bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
+		Threshold        int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
+		ApprovedOnly     bool          `long:"approved-only" env:"APPROVED_ONLY" description:"restrict reporting to approved users only"`
+		AutoBanThreshold int           `long:"auto-ban-threshold" env:"AUTO_BAN_THRESHOLD" default:"0" description:"auto-ban after N reports (0=disabled, must be >= threshold)"`
+		RateLimit        int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
+		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
 	} `group:"report" namespace:"report" env-namespace:"REPORT"`
 
 	Files struct {
@@ -217,6 +219,12 @@ func main() {
 	setupLog(opts.Dbg, masked...)
 
 	log.Printf("[DEBUG] options: %+v", opts)
+
+	// validate auto-ban threshold
+	if opts.Report.AutoBanThreshold > 0 && opts.Report.AutoBanThreshold < opts.Report.Threshold {
+		log.Fatalf("[ERROR] auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
+			opts.Report.AutoBanThreshold, opts.Report.Threshold)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -354,11 +362,13 @@ func execute(ctx context.Context, opts options) error {
 		TestingIDs:          opts.TestingIDs,
 		Locator:             locator,
 		ReportConfig: events.ReportConfig{
-			Storage:    reportsStore,
-			Enabled:    opts.Report.Enabled,
-			Threshold:  opts.Report.Threshold,
-			RateLimit:  opts.Report.RateLimit,
-			RatePeriod: opts.Report.RatePeriod,
+			Storage:          reportsStore,
+			Enabled:          opts.Report.Enabled,
+			Threshold:        opts.Report.Threshold,
+			ApprovedOnly:     opts.Report.ApprovedOnly,
+			AutoBanThreshold: opts.Report.AutoBanThreshold,
+			RateLimit:        opts.Report.RateLimit,
+			RatePeriod:       opts.Report.RatePeriod,
 		},
 		TrainingMode:            opts.Training,
 		SoftBanMode:             opts.SoftBan,

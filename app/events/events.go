@@ -87,6 +87,8 @@ func escapeMarkDownV1Text(text string) string {
 
 // truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
 // this is safe for multi-byte UTF-8 characters (emoji, cyrillic, etc.)
+//
+//nolint:unparam // maxRunes may vary in future uses
 func truncateString(s string, maxRunes int, suffix string) string {
 	runes := []rune(s)
 	if len(runes) <= maxRunes {
