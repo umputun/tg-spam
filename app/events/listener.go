@@ -29,6 +29,7 @@ type TelegramListener struct {
 	TbAPI                   TbAPI         // telegram bot API
 	SpamLogger              SpamLogger    // logger to save spam to files and db
 	Bot                     Bot           // bot to handle messages
+	BotUsername             string        // telegram bot username (without "@" prefix)
 	Group                   string        // can be int64 or public group username (without "@" prefix)
 	AdminGroup              string        // can be int64 or public group username (without "@" prefix)
 	IdleDuration            time.Duration // idle timeout to send "idle" message to bots
@@ -248,7 +249,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			// delete orphaned /report commands (sent without replying to a message)
-			if !fromSuper && isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
+			if !fromSuper && l.isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
 				log.Printf("[DEBUG] deleting orphaned /report command from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
 				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 					MessageID:  update.Message.MessageID,
@@ -401,16 +402,38 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 }
 
 // isReportCommand checks if message text is a /report command variant
-func isReportCommand(text string) bool {
-	lower := strings.ToLower(text)
+func (l *TelegramListener) isReportCommand(text string) bool {
+	text = strings.TrimSpace(strings.ToLower(text))
+
 	// exact match for "report" or "/report"
-	if lower == "report" || lower == "/report" {
+	if text == "report" || text == "/report" {
 		return true
 	}
-	// match "/report@botname" syntax (command with @ must have something after @)
-	if strings.HasPrefix(lower, "/report@") && len(lower) > 8 {
-		return true
+
+	// handle "/report@botname" syntax
+	if strings.HasPrefix(text, "/report@") {
+		// extract everything after "@"
+		afterAt := text[8:] // skip "/report@"
+
+		// reject empty username or whitespace-only
+		fields := strings.Fields(afterAt)
+		if len(fields) == 0 {
+			return false
+		}
+
+		// extract just the username (up to space or end of string)
+		// handles cases like "/report@bot" and "/report@bot some text"
+		username := fields[0]
+
+		// if bot username not configured, reject @ commands for security
+		if l.BotUsername == "" {
+			return false
+		}
+
+		// case-insensitive comparison (telegram usernames are case-insensitive)
+		return strings.EqualFold(username, l.BotUsername)
 	}
+
 	return false
 }
 
@@ -418,7 +441,7 @@ func isReportCommand(text string) bool {
 // feature check is intentionally inside this function to keep command detection logic centralized.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
-	case isReportCommand(update.Message.Text):
+	case l.isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
 			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled

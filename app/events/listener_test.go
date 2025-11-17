@@ -3312,11 +3312,12 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		defer teardown()
 
 		l := TelegramListener{
-			SpamLogger: mockLogger,
-			TbAPI:      mockAPI,
-			Bot:        botMock,
-			SuperUsers: SuperUsers{"super"},
-			Locator:    locator,
+			SpamLogger:  mockLogger,
+			TbAPI:       mockAPI,
+			Bot:         botMock,
+			BotUsername: "some_bot",
+			SuperUsers:  SuperUsers{"super"},
+			Locator:     locator,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -3464,4 +3465,69 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		assert.EqualError(t, err, "telegram update chan closed")
 		assert.False(t, deleteCalled, "superuser orphaned /report should NOT be auto-deleted")
 	})
+}
+
+func TestTelegramListener_isReportCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		botUsername string
+		text        string
+		want        bool
+	}{
+		// plain commands (always accepted)
+		{name: "plain report", botUsername: "mybot", text: "report", want: true},
+		{name: "plain /report", botUsername: "mybot", text: "/report", want: true},
+		{name: "plain REPORT uppercase", botUsername: "mybot", text: "REPORT", want: true},
+		{name: "plain /REPORT uppercase", botUsername: "mybot", text: "/REPORT", want: true},
+		{name: "plain report with trailing space", botUsername: "mybot", text: "report ", want: true},
+		{name: "plain /report with leading space", botUsername: "mybot", text: " /report", want: true},
+		{name: "plain /report with both spaces", botUsername: "mybot", text: " /report ", want: true},
+
+		// backward compatibility - plain commands work even with empty botUsername
+		{name: "plain /report with empty botUsername", botUsername: "", text: "/report", want: true},
+		{name: "plain report with empty botUsername", botUsername: "", text: "report", want: true},
+
+		// @mention with matching bot username
+		{name: "exact match /report@mybot", botUsername: "mybot", text: "/report@mybot", want: true},
+		{name: "case insensitive /report@MyBot", botUsername: "mybot", text: "/report@MyBot", want: true},
+		{name: "case insensitive /report@MYBOT", botUsername: "mybot", text: "/report@MYBOT", want: true},
+		{name: "mixed case bot /report@mybot", botUsername: "MyBot", text: "/report@mybot", want: true},
+
+		// @mention with extra text after command
+		{name: "with extra text /report@mybot spam", botUsername: "mybot", text: "/report@mybot this is spam", want: true},
+		{name: "with extra text case insensitive", botUsername: "mybot", text: "/report@MyBot extra text here", want: true},
+
+		// @mention with NON-matching bot username
+		{name: "wrong bot /report@wrongbot", botUsername: "mybot", text: "/report@wrongbot", want: false},
+		{name: "wrong bot /report@anotherbot", botUsername: "mybot", text: "/report@anotherbot", want: false},
+		{name: "wrong bot with extra text", botUsername: "mybot", text: "/report@wrongbot spam", want: false},
+
+		// malformed @mention commands
+		{name: "empty username /report@", botUsername: "mybot", text: "/report@", want: false},
+		{name: "space after @ /report@ ", botUsername: "mybot", text: "/report@ ", want: false},
+		{name: "tab after @ /report@\\t", botUsername: "mybot", text: "/report@\t", want: false},
+		{name: "newline after @ /report@\\n", botUsername: "mybot", text: "/report@\n", want: false},
+		{name: "space after @ with text /report@ text", botUsername: "mybot", text: "/report@ text", want: false},
+		{name: "double @@ /report@@mybot", botUsername: "mybot", text: "/report@@mybot", want: false},
+
+		// security: @mention with empty botUsername (should reject for security)
+		{name: "@ command with empty botUsername", botUsername: "", text: "/report@somebot", want: false},
+		{name: "@ command exact match but empty botUsername", botUsername: "", text: "/report@", want: false},
+
+		// non-report commands
+		{name: "not a report command /spam", botUsername: "mybot", text: "/spam", want: false},
+		{name: "report substring reportthis", botUsername: "mybot", text: "reportthis", want: false},
+		{name: "empty string", botUsername: "mybot", text: "", want: false},
+		{name: "just spaces", botUsername: "mybot", text: "   ", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{
+				BotUsername: tt.botUsername,
+			}
+			got := l.isReportCommand(tt.text)
+			assert.Equal(t, tt.want, got, "isReportCommand(%q) with botUsername=%q", tt.text, tt.botUsername)
+		})
+	}
 }
