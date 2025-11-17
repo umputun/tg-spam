@@ -247,6 +247,19 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
+			// delete orphaned /report commands (sent without replying to a message)
+			if !fromSuper && isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
+				log.Printf("[DEBUG] deleting orphaned /report command from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+					MessageID:  update.Message.MessageID,
+					ChatConfig: tbapi.ChatConfig{ChatID: update.Message.Chat.ID},
+				}})
+				if err != nil {
+					log.Printf("[WARN] failed to delete orphaned /report message %d: %v", update.Message.MessageID, err)
+				}
+				continue
+			}
+
 			// handle spam reports from regular users
 			if update.Message.ReplyToMessage != nil && !fromSuper {
 				if l.procUserReply(ctx, update) {
@@ -387,11 +400,25 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 	return false
 }
 
+// isReportCommand checks if message text is a /report command variant
+func isReportCommand(text string) bool {
+	lower := strings.ToLower(text)
+	// exact match for "report" or "/report"
+	if lower == "report" || lower == "/report" {
+		return true
+	}
+	// match "/report@botname" syntax (command with @ must have something after @)
+	if strings.HasPrefix(lower, "/report@") && len(lower) > 8 {
+		return true
+	}
+	return false
+}
+
 // procUserReply processes regular user commands (reply) /report.
 // feature check is intentionally inside this function to keep command detection logic centralized.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
-	case strings.EqualFold(update.Message.Text, "/report") || strings.EqualFold(update.Message.Text, "report"):
+	case isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
 			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
