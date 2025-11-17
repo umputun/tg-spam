@@ -338,6 +338,7 @@ func execute(ctx context.Context, opts options) error {
 	// make telegram listener
 	tgListener := events.TelegramListener{
 		TbAPI:               tbAPI,
+		BotUsername:         tbAPI.Self.UserName,
 		Group:               opts.Telegram.Group,
 		IdleDuration:        opts.Telegram.IdleDuration,
 		SuperUsers:          opts.SuperUsers,
