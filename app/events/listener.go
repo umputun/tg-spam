@@ -415,14 +415,15 @@ func (l *TelegramListener) isReportCommand(text string) bool {
 		// extract everything after "@"
 		afterAt := text[8:] // skip "/report@"
 
-		// reject empty username like "/report@" or "/report@ "
-		if afterAt == "" || strings.HasPrefix(afterAt, " ") {
+		// reject empty username or whitespace-only
+		fields := strings.Fields(afterAt)
+		if len(fields) == 0 {
 			return false
 		}
 
 		// extract just the username (up to space or end of string)
 		// handles cases like "/report@bot" and "/report@bot some text"
-		username := strings.Fields(afterAt)[0]
+		username := fields[0]
 
 		// if bot username not configured, reject @ commands for security
 		if l.BotUsername == "" {

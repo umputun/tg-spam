@@ -3505,6 +3505,8 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		// malformed @mention commands
 		{name: "empty username /report@", botUsername: "mybot", text: "/report@", want: false},
 		{name: "space after @ /report@ ", botUsername: "mybot", text: "/report@ ", want: false},
+		{name: "tab after @ /report@\\t", botUsername: "mybot", text: "/report@\t", want: false},
+		{name: "newline after @ /report@\\n", botUsername: "mybot", text: "/report@\n", want: false},
 		{name: "space after @ with text /report@ text", botUsername: "mybot", text: "/report@ text", want: false},
 		{name: "double @@ /report@@mybot", botUsername: "mybot", text: "/report@@mybot", want: false},
 
