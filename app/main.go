@@ -130,7 +130,6 @@ type options struct {
 	Report struct {
 		Enabled          bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
 		Threshold        int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
-		ApprovedOnly     bool          `long:"approved-only" env:"APPROVED_ONLY" description:"restrict reporting to approved users only"`
 		AutoBanThreshold int           `long:"auto-ban-threshold" env:"AUTO_BAN_THRESHOLD" default:"0" description:"auto-ban after N reports (0=disabled, must be >= threshold)"`
 		RateLimit        int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
 		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
@@ -365,7 +364,6 @@ func execute(ctx context.Context, opts options) error {
 			Storage:          reportsStore,
 			Enabled:          opts.Report.Enabled,
 			Threshold:        opts.Report.Threshold,
-			ApprovedOnly:     opts.Report.ApprovedOnly,
 			AutoBanThreshold: opts.Report.AutoBanThreshold,
 			RateLimit:        opts.Report.RateLimit,
 			RatePeriod:       opts.Report.RatePeriod,

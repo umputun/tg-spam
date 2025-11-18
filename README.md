@@ -285,7 +285,7 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
 
 #### Advanced Reporting Features
 
-- **Approved-Only Reporting**: Restrict reporting to approved users only with `--report.approved-only`. When enabled, only users who have been approved by moderators can submit reports. This prevents malicious actors from abusing the report system.
+- **Approved Users Only**: Only users who have been automatically approved can submit reports. This is always enabled to prevent malicious actors from abusing the report system. Users are automatically approved after successfully sending a few non-spam messages (the threshold is configured via `--first-messages-count`, which defaults to 1 if `--first-messages` is enabled).
 
 - **Auto-Ban Threshold**: Automatically ban reported users when a higher threshold is reached using `--report.auto-ban-threshold=`. When configured, the bot will automatically delete the message and ban the user once this many reports are received, without requiring admin approval. This threshold must be greater than or equal to the manual approval threshold (`--report.threshold`) or set to 0 to disable. The bot respects soft-ban mode when configured.
 
@@ -512,7 +512,6 @@ duplicates:
 report:
       --report.enabled                  enable user spam reporting [$REPORT_ENABLED]
       --report.threshold=               number of reports to trigger admin notification (default: 2) [$REPORT_THRESHOLD]
-      --report.approved-only            restrict reporting to approved users only [$REPORT_APPROVED_ONLY]
       --report.auto-ban-threshold=      auto-ban after N reports (0=disabled, must be >= threshold) [$REPORT_AUTO_BAN_THRESHOLD]
       --report.rate-limit=              max reports per user per period (default: 10) [$REPORT_RATE_LIMIT]
       --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]

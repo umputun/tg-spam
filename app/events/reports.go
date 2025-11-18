@@ -18,7 +18,6 @@ type ReportConfig struct {
 	Storage          Reports       // reports storage for user spam reports
 	Enabled          bool          // enable user spam reporting
 	Threshold        int           // number of reports to trigger admin notification
-	ApprovedOnly     bool          // restrict reporting to approved users only
 	AutoBanThreshold int           // auto-ban after N reports (0=disabled)
 	RateLimit        int           // max reports per user per period
 	RatePeriod       time.Duration // rate limit time period
@@ -66,8 +65,8 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
-	// validate reporter is approved user if approved-only mode enabled
-	if r.ApprovedOnly && !r.bot.IsApprovedUser(update.Message.From.ID) {
+	// validate reporter is approved user
+	if !r.bot.IsApprovedUser(update.Message.From.ID) {
 		log.Printf("[INFO] report rejected: reporter %d (%s) not in approved list",
 			update.Message.From.ID, update.Message.From.UserName)
 		// still delete the /report command to keep chat clean

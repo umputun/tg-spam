@@ -145,8 +145,15 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true // reporter is approved
+			},
+		}
+
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{"superuser"},
@@ -252,6 +259,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true // reporter is approved
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 10, nil
@@ -260,6 +273,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -298,6 +312,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 5, nil
@@ -309,6 +329,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -347,6 +368,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 5, nil
@@ -362,6 +389,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -438,8 +466,15 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -470,7 +505,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
 	})
 
-	t.Run("approved-only mode rejects non-approved users", func(t *testing.T) {
+	t.Run("rejects non-approved users", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 				return &tbapi.APIResponse{Ok: true}, nil
@@ -492,8 +527,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
 			ReportConfig: ReportConfig{
-				Storage:      mockReports,
-				ApprovedOnly: true,
+				Storage: mockReports,
 			},
 		}
 
@@ -519,7 +553,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
 	})
 
-	t.Run("approved-only mode allows approved users", func(t *testing.T) {
+	t.Run("allows approved users", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 				return &tbapi.APIResponse{Ok: true}, nil
@@ -551,11 +585,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
 			ReportConfig: ReportConfig{
-				Storage:      mockReports,
-				ApprovedOnly: true,
-				RateLimit:    10,
-				RatePeriod:   1 * time.Hour,
-				Threshold:    2,
+				Storage:    mockReports,
+				RateLimit:  10,
+				RatePeriod: 1 * time.Hour,
+				Threshold:  2,
 			},
 		}
 
@@ -580,68 +613,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
 	})
 
-	t.Run("approved-only disabled allows any user", func(t *testing.T) {
-		mockAPI := &mocks.TbAPIMock{
-			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
-				return &tbapi.APIResponse{Ok: true}, nil
-			},
-		}
-
-		mockBot := &mocks.BotMock{
-			IsApprovedUserFunc: func(id int64) bool {
-				return false // no users approved
-			},
-		}
-
-		mockReports := &mocks.ReportsMock{
-			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
-				return 5, nil
-			},
-			AddFunc: func(ctx context.Context, report storage.Report) error {
-				return nil
-			},
-			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
-				return []storage.Report{}, nil
-			},
-		}
-
-		rep := &userReports{
-			tbAPI:       mockAPI,
-			bot:         mockBot,
-			primChatID:  123,
-			adminChatID: 456,
-			superUsers:  SuperUsers{},
-			ReportConfig: ReportConfig{
-				Storage:      mockReports,
-				ApprovedOnly: false, // disabled
-				RateLimit:    10,
-				RatePeriod:   1 * time.Hour,
-				Threshold:    2,
-			},
-		}
-
-		update := tbapi.Update{
-			Message: &tbapi.Message{
-				MessageID: 789,
-				Chat:      tbapi.Chat{ID: 123},
-				Text:      "/report",
-				From:      &tbapi.User{UserName: "any_user", ID: 111},
-				ReplyToMessage: &tbapi.Message{
-					MessageID: 999,
-					From:      &tbapi.User{ID: 666, UserName: "spammer"},
-					Text:      "spam message",
-				},
-			},
-		}
-
-		err := rep.DirectUserReport(context.Background(), update)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
-		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report")
-		assert.Equal(t, 0, len(mockBot.IsApprovedUserCalls()), "should not check approved status when disabled")
-	})
-
-	t.Run("super-user bypass approved-only check", func(t *testing.T) {
+	t.Run("super-user should use /spam instead of /report", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		mockBot := &mocks.BotMock{}
 		mockReports := &mocks.ReportsMock{}
@@ -653,8 +625,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			adminChatID: 456,
 			superUsers:  SuperUsers{"superuser"},
 			ReportConfig: ReportConfig{
-				Storage:      mockReports,
-				ApprovedOnly: true,
+				Storage: mockReports,
 			},
 		}
 
@@ -674,7 +645,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "use /spam instead") // should get super-user error, not approved-only error
+		assert.Contains(t, err.Error(), "use /spam instead")
 		assert.Equal(t, 0, len(mockBot.IsApprovedUserCalls()), "should not check approved status for super-user")
 	})
 }
