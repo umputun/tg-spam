@@ -441,3 +441,55 @@ func TestDuplicateDetector_LRUEviction(t *testing.T) {
 	_, found := d.cache.Get(4)
 	assert.True(t, found, "most recent user should be in cache")
 }
+
+func TestDuplicateDetector_EditedMessagesShouldNotTriggerSpam(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour) // threshold of 3
+
+	// user posts original message
+	resp := d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "original message should not be spam")
+
+	// user edits message (same messageID, same or similar content)
+	// this simulates how telegram sends edited messages - same messageID but processed as new check
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "first edit should not be spam")
+
+	// user edits again
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "second edit should not be spam")
+
+	// user edits again
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "third edit should not be spam - edits of same message should not count as duplicates")
+
+	// verify that actual duplicate (different messageID) still works
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "second message not spam yet")
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1003},
+	})
+	assert.True(t, resp.Spam, "third DIFFERENT message should trigger spam (real duplicates)")
+}

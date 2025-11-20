@@ -158,27 +158,42 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 		}
 	}
 
-	// add new entry
-	filtered = append(filtered, hashEntry{hash: msgHash, time: now})
+	// check if this messageID already exists for this hash (indicates an edit)
 	tracker := newTrackers[msgHash]
-	tracker.count++
-	// only append valid message IDs
+	isEdit := false
 	if messageID > 0 {
-		tracker.messageIDs = append(tracker.messageIDs, messageID)
-		// limit the number of message IDs after adding the new one
-		maxMessageIDs := d.threshold
-		if maxMessageIDs > 100 {
-			maxMessageIDs = 100 // cap at 100 to prevent excessive memory usage
-		}
-		if len(tracker.messageIDs) > maxMessageIDs {
-			// keep only the most recent IDs
-			tracker.messageIDs = tracker.messageIDs[len(tracker.messageIDs)-maxMessageIDs:]
+		for _, existingID := range tracker.messageIDs {
+			if existingID == messageID {
+				isEdit = true
+				break
+			}
 		}
 	}
-	// update timestamps
-	if tracker.firstSeen.IsZero() {
-		tracker.firstSeen = now
+
+	// only count as duplicate if it's not an edit
+	if !isEdit {
+		// add new entry
+		filtered = append(filtered, hashEntry{hash: msgHash, time: now})
+		tracker.count++
+		// only append valid message IDs
+		if messageID > 0 {
+			tracker.messageIDs = append(tracker.messageIDs, messageID)
+			// limit the number of message IDs after adding the new one
+			maxMessageIDs := d.threshold
+			if maxMessageIDs > 100 {
+				maxMessageIDs = 100 // cap at 100 to prevent excessive memory usage
+			}
+			if len(tracker.messageIDs) > maxMessageIDs {
+				// keep only the most recent IDs
+				tracker.messageIDs = tracker.messageIDs[len(tracker.messageIDs)-maxMessageIDs:]
+			}
+		}
+		// update timestamps
+		if tracker.firstSeen.IsZero() {
+			tracker.firstSeen = now
+		}
 	}
+	// always update lastSeen, even for edits
 	tracker.lastSeen = now
 	newTrackers[msgHash] = tracker
 
