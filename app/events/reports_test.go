@@ -145,8 +145,15 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true // reporter is approved
+			},
+		}
+
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{"superuser"},
@@ -252,6 +259,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true // reporter is approved
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 10, nil
@@ -260,6 +273,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -298,6 +312,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 5, nil
@@ -309,6 +329,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -347,6 +368,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		mockReports := &mocks.ReportsMock{
 			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
 				return 5, nil
@@ -362,6 +389,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -438,8 +466,15 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 			},
 		}
 
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return true
+			},
+		}
+
 		rep := &userReports{
 			tbAPI:       mockAPI,
+			bot:         mockBot,
 			primChatID:  123,
 			adminChatID: 456,
 			superUsers:  SuperUsers{},
@@ -468,6 +503,150 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reports storage not initialized")
 		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+	})
+
+	t.Run("rejects non-approved users", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return id == 222 // only user 222 is approved
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage: mockReports,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111}, // not approved
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not in approved list")
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
+	})
+
+	t.Run("allows approved users", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool {
+				return id == 222 // user 222 is approved
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 5, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage:    mockReports,
+				RateLimit:  10,
+				RatePeriod: 1 * time.Hour,
+				Threshold:  2,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "approved_user", ID: 222}, // approved user
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
+		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report")
+		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
+	})
+
+	t.Run("super-user should use /spam instead of /report", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockBot := &mocks.BotMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  123,
+			adminChatID: 456,
+			superUsers:  SuperUsers{"superuser"},
+			ReportConfig: ReportConfig{
+				Storage: mockReports,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "superuser", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "use /spam instead")
+		assert.Equal(t, 0, len(mockBot.IsApprovedUserCalls()), "should not check approved status for super-user")
 	})
 }
 
@@ -595,6 +774,316 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get reports")
 		assert.Contains(t, err.Error(), "database error")
+	})
+}
+
+func TestUserReports_AutoBan(t *testing.T) {
+	t.Run("auto-ban triggers at correct threshold", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{MessageID: 123}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error {
+				return nil
+			},
+			UpdateSpamFunc: func(msg string) error {
+				return nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				// return 5 reports (auto-ban threshold)
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 444, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 555, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error {
+				return nil
+			},
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			adminChatID: 456,
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 5,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockBot.RemoveApprovedUserCalls()), "should remove from approved list")
+		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()), "should update spam samples")
+		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()), "should delete reports")
+		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should delete message")
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send auto-ban notification")
+	})
+
+	t.Run("auto-ban respects soft-ban mode", func(t *testing.T) {
+		var banReqReceived banRequest
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				// capture ban request by checking if it's a RestrictChatMemberConfig or BanChatMemberConfig
+				switch req := c.(type) {
+				case tbapi.RestrictChatMemberConfig:
+					banReqReceived.restrict = true
+					banReqReceived.userID = req.UserID
+				case tbapi.BanChatMemberConfig:
+					banReqReceived.restrict = false
+					banReqReceived.userID = req.UserID
+				}
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{MessageID: 123}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			adminChatID: 456,
+			softBanMode: true, // soft-ban enabled
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 3,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.True(t, banReqReceived.restrict, "should use restrict mode in soft-ban")
+		assert.Equal(t, int64(666), banReqReceived.userID, "should ban correct user")
+	})
+
+	t.Run("auto-ban updates existing notification when manual threshold was reached first", func(t *testing.T) {
+		var editedMsgID int
+		var buttonsRemoved bool
+
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				// check if it's an edit (update existing notification)
+				if editMsg, ok := c.(tbapi.EditMessageTextConfig); ok {
+					editedMsgID = editMsg.MessageID
+					if editMsg.ReplyMarkup != nil && len(editMsg.ReplyMarkup.InlineKeyboard) == 0 {
+						buttonsRemoved = true
+					}
+					assert.Contains(t, editMsg.Text, "auto-banned", "should mention auto-ban in updated text")
+					assert.Contains(t, editMsg.Text, "5 reports", "should show report count")
+				}
+				return tbapi.Message{MessageID: 123}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				// notification already sent (NotificationSent=true, AdminMsgID set)
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam", NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam", NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam", NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 444, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam", NotificationSent: true, AdminMsgID: 999},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 555, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam", NotificationSent: true, AdminMsgID: 999},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			adminChatID: 456,
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 5,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 999, editedMsgID, "should edit existing notification")
+		assert.True(t, buttonsRemoved, "should remove buttons from notification")
+	})
+
+	t.Run("manual approval still works when count < auto-ban threshold", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				// check that it's a new notification with buttons (manual approval)
+				if msg, ok := c.(tbapi.MessageConfig); ok {
+					assert.NotNil(t, msg.ReplyMarkup, "should have buttons for manual approval")
+				}
+				return tbapi.Message{MessageID: 123}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				// 3 reports: reached manual threshold (2) but not auto-ban threshold (5)
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			primChatID:  200,
+			adminChatID: 456,
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 5,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send manual approval notification")
+	})
+
+	t.Run("dry mode - no actual bans or deletions", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				t.Error("should not make any Request calls in dry mode")
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{MessageID: 123}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc: func(msg string) error {
+				t.Error("should not update spam samples in dry mode")
+				return nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			adminChatID: 456,
+			dry:         true, // dry mode enabled
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 3,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not make API requests in dry mode")
+		assert.Equal(t, 0, len(mockBot.UpdateSpamCalls()), "should not update spam in dry mode")
+	})
+
+	t.Run("notification failure handling - reports not deleted", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, fmt.Errorf("telegram API error")
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 111, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 222, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+					{MsgID: msgID, ChatID: chatID, ReporterUserID: 333, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error {
+				t.Error("should not delete reports when notification fails")
+				return nil
+			},
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			adminChatID: 456,
+			ReportConfig: ReportConfig{
+				Storage:          mockReports,
+				Threshold:        2,
+				AutoBanThreshold: 3,
+			},
+		}
+
+		err := rep.checkReportThreshold(context.Background(), 100, 200)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "notification failed", "should indicate notification failure")
+		assert.Equal(t, 0, len(mockReports.DeleteByMessageCalls()), "should not delete reports when notification fails")
+		// verify ban still executed
+		assert.Equal(t, 1, len(mockBot.RemoveApprovedUserCalls()), "should still ban user")
+		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()), "should still update spam")
 	})
 }
 
@@ -1211,6 +1700,126 @@ func TestUserReports_CallbackReportBan(t *testing.T) {
 		err := rep.callbackReportBan(context.Background(), query)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no reports found")
+	})
+
+	t.Run("soft-ban mode uses restrict instead of ban", func(t *testing.T) {
+		var banReqReceived banRequest
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				// capture ban request type
+				switch req := c.(type) {
+				case tbapi.RestrictChatMemberConfig:
+					banReqReceived.restrict = true
+					banReqReceived.userID = req.UserID
+				case tbapi.BanChatMemberConfig:
+					banReqReceived.restrict = false
+					banReqReceived.userID = req.UserID
+				}
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			softBanMode: true, // soft-ban enabled
+			ReportConfig: ReportConfig{
+				Storage: mockReports,
+			},
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R+666:100",
+			From: &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{
+				Chat:      tbapi.Chat{ID: 456},
+				MessageID: 999,
+				Text:      "User spam reported",
+			},
+		}
+
+		err := rep.callbackReportBan(context.Background(), query)
+		require.NoError(t, err)
+		assert.True(t, banReqReceived.restrict, "should use restrict mode in soft-ban")
+		assert.Equal(t, int64(666), banReqReceived.userID, "should ban correct user")
+	})
+
+	t.Run("normal mode uses permanent ban", func(t *testing.T) {
+		var banReqReceived banRequest
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				// capture ban request type
+				switch req := c.(type) {
+				case tbapi.RestrictChatMemberConfig:
+					banReqReceived.restrict = true
+					banReqReceived.userID = req.UserID
+				case tbapi.BanChatMemberConfig:
+					banReqReceived.restrict = false
+					banReqReceived.userID = req.UserID
+				}
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			UpdateSpamFunc:         func(msg string) error { return nil },
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{
+					{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam"},
+				}, nil
+			},
+			DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+		}
+
+		rep := &userReports{
+			tbAPI:       mockAPI,
+			bot:         mockBot,
+			primChatID:  200,
+			softBanMode: false, // normal ban mode
+			ReportConfig: ReportConfig{
+				Storage: mockReports,
+			},
+		}
+
+		query := &tbapi.CallbackQuery{
+			Data: "R+666:100",
+			From: &tbapi.User{UserName: "admin"},
+			Message: &tbapi.Message{
+				Chat:      tbapi.Chat{ID: 456},
+				MessageID: 999,
+				Text:      "User spam reported",
+			},
+		}
+
+		err := rep.callbackReportBan(context.Background(), query)
+		require.NoError(t, err)
+		assert.False(t, banReqReceived.restrict, "should use ban mode when soft-ban disabled")
+		assert.Equal(t, int64(666), banReqReceived.userID, "should ban correct user")
 	})
 }
 

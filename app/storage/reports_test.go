@@ -371,7 +371,7 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				s.Equal(1, len(allReports200)) // recent report should remain
 			})
 
-			s.Run("do not cleanup old reports with notification", func() {
+			s.Run("cleanup old reports regardless of notification status", func() {
 				// add report (will be recent when added)
 				oldReport := Report{MsgID: 300, ChatID: 200, ReporterUserID: 1, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "old"}
 				err := reports.Add(ctx, oldReport)
@@ -392,10 +392,67 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				err = reports.Add(ctx, triggerReport)
 				s.Require().NoError(err)
 
-				// verify old notified report still exists (not cleaned up because notification was sent)
+				// verify old notified report was cleaned up (new behavior: all old reports deleted regardless of notification status)
 				allReports, err := reports.GetByMessage(ctx, 300, 200)
 				s.Require().NoError(err)
-				s.Equal(1, len(allReports)) // should not be cleaned up because notification was sent
+				s.Equal(0, len(allReports)) // should be cleaned up even though notification was sent
+			})
+
+			s.Run("keep recent reports with notification", func() {
+				// add recent report with notification
+				recentReport := Report{MsgID: 500, ChatID: 200, ReporterUserID: 1, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "recent"}
+				err := reports.Add(ctx, recentReport)
+				s.Require().NoError(err)
+
+				// mark as notified
+				err = reports.UpdateAdminMsgID(ctx, 500, 200, 54321)
+				s.Require().NoError(err)
+
+				// add trigger report to run cleanup
+				triggerReport := Report{MsgID: 600, ChatID: 200, ReporterUserID: 2, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "trigger"}
+				err = reports.Add(ctx, triggerReport)
+				s.Require().NoError(err)
+
+				// verify recent notified report still exists (not old enough to clean)
+				allReports, err := reports.GetByMessage(ctx, 500, 200)
+				s.Require().NoError(err)
+				s.Equal(1, len(allReports)) // should not be cleaned up because it's recent
+			})
+
+			s.Run("boundary condition: exactly 7 days old", func() {
+				// add report that will be exactly 7 days old
+				boundaryReport := Report{MsgID: 700, ChatID: 200, ReporterUserID: 1, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "boundary"}
+				err := reports.Add(ctx, boundaryReport)
+				s.Require().NoError(err)
+
+				// manually update the report_time to be exactly 7 days old (just at the edge)
+				query := reports.Adopt("UPDATE reports SET report_time = ? WHERE msg_id = ? AND chat_id = ? AND gid = ?")
+				exactlySevenDays := time.Now().Add(-7 * 24 * time.Hour)
+				_, err = reports.ExecContext(ctx, query, exactlySevenDays, 700, 200, reports.GID())
+				s.Require().NoError(err)
+
+				// add trigger report to run cleanup
+				triggerReport := Report{MsgID: 800, ChatID: 200, ReporterUserID: 2, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "trigger"}
+				err = reports.Add(ctx, triggerReport)
+				s.Require().NoError(err)
+
+				// verify boundary report was cleaned up (>= 7 days means it should be deleted)
+				allReports, err := reports.GetByMessage(ctx, 700, 200)
+				s.Require().NoError(err)
+				s.Equal(0, len(allReports)) // should be cleaned up at exactly 7 days
+			})
+
+			s.Run("cleanup called from Add method", func() {
+				// this test verifies cleanup happens automatically when Add is called
+				// add old report
+				oldReport := Report{MsgID: 900, ChatID: 200, ReporterUserID: 1, ReporterUserName: "user", ReportedUserID: 999, ReportedUserName: "spam", MsgText: "old", ReportTime: time.Now().Add(-8 * 24 * time.Hour)}
+				err := reports.Add(ctx, oldReport)
+				s.Require().NoError(err)
+
+				// old report should already be cleaned by the Add call itself
+				allReports, err := reports.GetByMessage(ctx, 900, 200)
+				s.Require().NoError(err)
+				s.Equal(0, len(allReports)) // cleanup happens in Add, so old report already gone
 			})
 		})
 	}
