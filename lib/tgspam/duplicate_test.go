@@ -163,10 +163,11 @@ func TestDuplicateDetector_ExtraDeleteIDs(t *testing.T) {
 	assert.True(t, resp.Spam)
 	assert.Equal(t, []int{1001, 1002}, resp.ExtraDeleteIDs, "should return first two message IDs")
 
-	// send fourth message - should still trigger but IDs were cleared
+	// send fourth message - should still trigger with all previous IDs
+	// note: IDs are NOT cleared to allow edit detection, listener handles duplicate deletions gracefully
 	resp = d.check(spamcheck.Request{Msg: "spam", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1004}})
 	assert.True(t, resp.Spam)
-	assert.Nil(t, resp.ExtraDeleteIDs, "IDs should be cleared after first spam detection")
+	assert.Equal(t, []int{1001, 1002, 1003}, resp.ExtraDeleteIDs, "should return all previous message IDs for deletion")
 }
 
 func TestDuplicateDetector_ExtraDeleteIDs_DifferentMessages(t *testing.T) {
@@ -440,4 +441,220 @@ func TestDuplicateDetector_LRUEviction(t *testing.T) {
 	// recent users should be in cache (2, 3, 4)
 	_, found := d.cache.Get(4)
 	assert.True(t, found, "most recent user should be in cache")
+}
+
+func TestDuplicateDetector_EditedMessagesShouldNotTriggerSpam(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour) // threshold of 3
+
+	// user posts original message
+	resp := d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "original message should not be spam")
+
+	// user edits message (same messageID, same or similar content)
+	// this simulates how telegram sends edited messages - same messageID but processed as new check
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "first edit should not be spam")
+
+	// user edits again
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "second edit should not be spam")
+
+	// user edits again
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "third edit should not be spam - edits of same message should not count as duplicates")
+
+	// verify that actual duplicate (different messageID) still works
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "second message not spam yet")
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1003},
+	})
+	assert.True(t, resp.Spam, "third DIFFERENT message should trigger spam (real duplicates)")
+}
+
+func TestDuplicateDetector_EditWithDifferentContent(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// original message "hello"
+	resp := d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam)
+
+	// edit to completely different content "world"
+	// messageID 1001 should be moved from hash("hello") to hash("world")
+	resp = d.check(spamcheck.Request{
+		Msg:    "world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam, "editing to different content should not be spam")
+
+	// send more "hello" messages to reach threshold
+	// since the edit decremented the count, we need 3 NEW "hello" messages
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "first 'hello' after edit")
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1003},
+	})
+	assert.False(t, resp.Spam, "second 'hello' after edit")
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1004},
+	})
+	assert.True(t, resp.Spam, "third 'hello' after edit should trigger spam")
+
+	// messageID 1001 should NOT be deleted because it now displays "world", not "hello"
+	// the fix removes messageID from old hash when content changes
+	t.Logf("ExtraDeleteIDs: %v", resp.ExtraDeleteIDs)
+	assert.NotContains(t, resp.ExtraDeleteIDs, 1001,
+		"messageID 1001 should not be deleted - it now displays 'world', not 'hello'")
+
+	// only actual "hello" duplicates should be deleted (1002, 1003)
+	assert.Equal(t, []int{1002, 1003}, resp.ExtraDeleteIDs,
+		"should only delete actual 'hello' duplicates")
+}
+
+func TestDuplicateDetector_EditChangingContentDoesNotIncrementOldCount(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// original message "hello"
+	resp := d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam)
+
+	// edit to "world" - should decrement "hello" count
+	resp = d.check(spamcheck.Request{
+		Msg:    "world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1001},
+	})
+	assert.False(t, resp.Spam)
+
+	// send two more "hello" messages
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "first 'hello' after edit")
+
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1003},
+	})
+	assert.False(t, resp.Spam, "second 'hello' after edit should NOT trigger spam - only 2 visible 'hello' messages")
+
+	// third "hello" should trigger
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1004},
+	})
+	assert.True(t, resp.Spam, "third 'hello' after edit should trigger spam")
+}
+
+func TestDuplicateDetector_EditOldMessageWithinTimeWindow(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// post 5 "hello" messages - spam triggers at 3rd message (threshold=3)
+	for i := 1001; i <= 1005; i++ {
+		resp := d.check(spamcheck.Request{
+			Msg:    "hello",
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: i},
+		})
+		if i >= 1003 {
+			assert.True(t, resp.Spam, "should be spam starting from 3rd message")
+		}
+	}
+
+	// edit message 1002 to "world" - should decrement "hello" count from 5 to 4
+	// and increment "world" count to 1
+	resp := d.check(spamcheck.Request{
+		Msg:    "world",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "single 'world' message should not be spam")
+
+	// post another "hello" - count goes back to 5, still >= threshold
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1006},
+	})
+	assert.True(t, resp.Spam, "5 'hello' messages (1001,1003-1006) should be spam")
+
+	// edit 1002 back to "hello" - treated as new occurrence (1002 was removed from "hello" when moved to "world")
+	resp = d.check(spamcheck.Request{
+		Msg:    "hello",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.True(t, resp.Spam, "moving message back to 'hello' increases count from 5 to 6")
+}
+
+func TestDuplicateDetector_SameContentEditDoesNotRetriggerSpam(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// post 3 duplicate messages to trigger spam
+	for i := 1001; i <= 1003; i++ {
+		resp := d.check(spamcheck.Request{
+			Msg:    "spam",
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: i},
+		})
+		if i >= 1003 {
+			assert.True(t, resp.Spam, "should trigger spam at 3rd message")
+		}
+	}
+
+	// edit message 1002 with same content - should NOT re-trigger spam
+	resp := d.check(spamcheck.Request{
+		Msg:    "spam",
+		UserID: "123",
+		Meta:   spamcheck.MetaData{MessageID: 1002},
+	})
+	assert.False(t, resp.Spam, "same-content edit should not re-trigger spam")
+	assert.Empty(t, resp.ExtraDeleteIDs, "same-content edit should not return deletion IDs")
+	assert.Equal(t, "message edit", resp.Details, "should indicate this is an edit")
 }
