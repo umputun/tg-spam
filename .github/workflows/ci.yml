@@ -19,15 +19,14 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
+    - name: checkout
+      uses: actions/checkout@v4
 
-    - name: set up go 1.25
+    - name: set up go
       uses: actions/setup-go@v5
       with:
         go-version: "1.25"
       id: go
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v4
 
     - name: free disk space
       run: |
