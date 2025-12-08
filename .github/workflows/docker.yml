@@ -1,0 +1,183 @@
+name: docker
+
+on:
+  workflow_run:
+    workflows: [build-app]
+    types: [completed]
+
+jobs:
+  build:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.head_branch == 'master' ||
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.PKG_TOKEN }}
+
+      - name: login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: build and push to ghcr.io
+        id: build-ghcr
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            CI=github
+            GITHUB_SHA=${{ github.event.workflow_run.head_sha }}
+            GIT_BRANCH=${{ github.event.workflow_run.head_branch }}
+          outputs: type=image,name=ghcr.io/${{ github.actor }}/tg-spam,push-by-digest=true,name-canonical=true,push=true
+
+      - name: build and push to DockerHub
+        id: build-dockerhub
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            CI=github
+            GITHUB_SHA=${{ github.event.workflow_run.head_sha }}
+            GIT_BRANCH=${{ github.event.workflow_run.head_branch }}
+          outputs: type=image,name=docker.io/${{ github.actor }}/tg-spam,push-by-digest=true,name-canonical=true,push=true
+
+      - name: export digests
+        run: |
+          mkdir -p /tmp/digests/ghcr /tmp/digests/dockerhub
+          digest_ghcr="${{ steps.build-ghcr.outputs.digest }}"
+          digest_dockerhub="${{ steps.build-dockerhub.outputs.digest }}"
+          touch "/tmp/digests/ghcr/${digest_ghcr#sha256:}"
+          touch "/tmp/digests/dockerhub/${digest_dockerhub#sha256:}"
+
+      - name: upload ghcr digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-ghcr-${{ matrix.artifact }}
+          path: /tmp/digests/ghcr/*
+          retention-days: 1
+
+      - name: upload dockerhub digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-dockerhub-${{ matrix.artifact }}
+          path: /tmp/digests/dockerhub/*
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: download ghcr digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests/ghcr
+          pattern: digests-ghcr-*
+          merge-multiple: true
+
+      - name: download dockerhub digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests/dockerhub
+          pattern: digests-dockerhub-*
+          merge-multiple: true
+
+      - name: verify all digests present
+        run: |
+          expected=2
+          for registry in ghcr dockerhub; do
+            actual=$(find /tmp/digests/$registry -maxdepth 1 -type f | wc -l)
+            if [ "$actual" -ne "$expected" ]; then
+              echo "Expected $expected digests for $registry, found $actual"
+              ls -la /tmp/digests/$registry
+              exit 1
+            fi
+          done
+          echo "All $expected digests present for both registries"
+
+      - name: set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.PKG_TOKEN }}
+
+      - name: login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: set docker tags
+        id: tags
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [[ "$HEAD_BRANCH" == v* ]]; then
+            echo "tag=${HEAD_BRANCH}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${HEAD_BRANCH}" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: create ghcr manifest and push
+        working-directory: /tmp/digests/ghcr
+        run: |
+          tags="-t ghcr.io/${{ github.actor }}/tg-spam:${{ steps.tags.outputs.tag }}"
+          if [[ "${{ steps.tags.outputs.is_release }}" == "true" ]]; then
+            tags="$tags -t ghcr.io/${{ github.actor }}/tg-spam:latest"
+          fi
+          docker buildx imagetools create $tags \
+            $(printf 'ghcr.io/${{ github.actor }}/tg-spam@sha256:%s ' *)
+
+      - name: create dockerhub manifest and push
+        working-directory: /tmp/digests/dockerhub
+        run: |
+          tags="-t docker.io/${{ github.actor }}/tg-spam:${{ steps.tags.outputs.tag }}"
+          if [[ "${{ steps.tags.outputs.is_release }}" == "true" ]]; then
+            tags="$tags -t docker.io/${{ github.actor }}/tg-spam:latest"
+          fi
+          docker buildx imagetools create $tags \
+            $(printf 'docker.io/${{ github.actor }}/tg-spam@sha256:%s ' *)
+
+      - name: trigger remote deployment
+        if: ${{ steps.tags.outputs.is_release == 'true' }}
+        env:
+          UPDATER_KEY: ${{ secrets.UPDATER_KEY }}
+        run: curl https://radio-t.com/updater/update/tg-spam/${UPDATER_KEY}
