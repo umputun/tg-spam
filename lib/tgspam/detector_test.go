@@ -260,6 +260,136 @@ func TestDetector_CheckStopWords(t *testing.T) {
 	}
 }
 
+func TestDetector_CheckStopWordsExactMatch(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	// "=buy now" requires exact match, "hello" uses substring match
+	lr, err := d.LoadStopWords(bytes.NewBufferString("=buy now\nhello\n=spammer123"))
+	require.NoError(t, err)
+	assert.Equal(t, LoadResult{StopWords: 3}, lr)
+
+	tests := []struct {
+		name     string
+		message  string
+		username string
+		userID   string
+		expected bool
+		details  string
+	}{
+		{
+			name:     "exact match - message equals stop word",
+			message:  "buy now",
+			expected: true,
+			details:  "buy now",
+		},
+		{
+			name:     "exact match - message equals stop word case insensitive",
+			message:  "BUY NOW",
+			expected: true,
+			details:  "buy now",
+		},
+		{
+			name:     "exact match - message contains stop word but not exact",
+			message:  "please buy now today",
+			expected: false,
+			details:  "not found",
+		},
+		{
+			name:     "exact match - message with extra spaces normalized",
+			message:  "buy  now",
+			expected: true,
+			details:  "buy now",
+		},
+		{
+			name:     "substring match - message contains stop word",
+			message:  "hello world",
+			expected: true,
+			details:  "hello",
+		},
+		{
+			name:     "substring match - stop word anywhere in message",
+			message:  "say hello to everyone",
+			expected: true,
+			details:  "hello",
+		},
+		{
+			name:     "exact match username - exact match",
+			message:  "normal message",
+			username: "spammer123",
+			expected: true,
+			details:  "spammer123",
+		},
+		{
+			name:     "exact match username - not exact",
+			message:  "normal message",
+			username: "spammer123_bot",
+			expected: false,
+			details:  "not found",
+		},
+		{
+			name:     "exact match user id - exact match",
+			message:  "normal message",
+			userID:   "spammer123",
+			expected: true,
+			details:  "spammer123",
+		},
+		{
+			name:     "no match",
+			message:  "regular text",
+			expected: false,
+			details:  "not found",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			spam, cr := d.Check(spamcheck.Request{Msg: test.message, UserName: test.username, UserID: test.userID})
+			assert.Equal(t, test.expected, spam, "spam detection mismatch")
+			require.Len(t, cr, 1)
+			assert.Equal(t, "stopword", cr[0].Name)
+			assert.Equal(t, test.details, cr[0].Details)
+		})
+	}
+}
+
+func TestDetector_CheckStopWordsEdgeCases(t *testing.T) {
+	t.Run("equals-only stop word should not match anything", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		_, err := d.LoadStopWords(bytes.NewBufferString("=\nhello"))
+		require.NoError(t, err)
+
+		// empty message should not match "=" stop word
+		spam, cr := d.Check(spamcheck.Request{Msg: ""})
+		assert.False(t, spam)
+		assert.Equal(t, "not found", cr[0].Details)
+
+		// whitespace-only message should not match "=" stop word
+		spam, cr = d.Check(spamcheck.Request{Msg: "   "})
+		assert.False(t, spam)
+		assert.Equal(t, "not found", cr[0].Details)
+
+		// but "hello" substring still works
+		spam, cr = d.Check(spamcheck.Request{Msg: "say hello"})
+		assert.True(t, spam)
+		assert.Equal(t, "hello", cr[0].Details)
+	})
+
+	t.Run("double equals prefix matches literal equals", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		_, err := d.LoadStopWords(bytes.NewBufferString("==test"))
+		require.NoError(t, err)
+
+		// "==test" means exact match for "=test" (first = is prefix, second is literal)
+		spam, cr := d.Check(spamcheck.Request{Msg: "=test"})
+		assert.True(t, spam)
+		assert.Equal(t, "=test", cr[0].Details)
+
+		// should not match "test" without the leading equals
+		spam, cr = d.Check(spamcheck.Request{Msg: "test"})
+		assert.False(t, spam)
+		assert.Equal(t, "not found", cr[0].Details)
+	})
+}
+
 //nolint:stylecheck // it has unicode symbols purposely
 func TestDetector_CheckEmojis(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: 2})
