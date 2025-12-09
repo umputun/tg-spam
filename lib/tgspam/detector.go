@@ -869,13 +869,14 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 }
 
 // isStopWord checks if a given message or username contains any of the stop words.
+// stop words prefixed with "=" require exact match (whole text equals the word),
+// otherwise substring match is used.
 func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Response {
 	// check message text
 	cleanMsg := normalizeSpaces(cleanEmoji(strings.ToLower(msg)))
 	for _, word := range d.stopWords { // stop words are already lowercased
-		normalizedWord := normalizeSpaces(strings.ToLower(word))
-		if strings.Contains(cleanMsg, normalizedWord) {
-			return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
+		if matchStopWord(cleanMsg, word) {
+			return spamcheck.Response{Name: "stopword", Spam: true, Details: strings.TrimPrefix(word, "=")}
 		}
 	}
 
@@ -890,14 +891,31 @@ func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Respo
 	for _, name := range names {
 		normalizedName := normalizeSpaces(strings.ToLower(name))
 		for _, word := range d.stopWords {
-			normalizedWord := normalizeSpaces(strings.ToLower(word))
-			if strings.Contains(normalizedName, normalizedWord) {
-				return spamcheck.Response{Name: "stopword", Spam: true, Details: word}
+			if matchStopWord(normalizedName, word) {
+				return spamcheck.Response{Name: "stopword", Spam: true, Details: strings.TrimPrefix(word, "=")}
 			}
 		}
 	}
 
 	return spamcheck.Response{Name: "stopword", Spam: false, Details: "not found"}
+}
+
+// matchStopWord checks if text matches a stop word.
+// if word starts with "=", exact match is required (text must equal word).
+// otherwise, substring match is used (text must contain word).
+func matchStopWord(text, word string) bool {
+	if strings.HasPrefix(word, "=") {
+		// exact match: text must equal the word (without prefix)
+		checkWord := strings.TrimPrefix(word, "=")
+		if checkWord == "" {
+			return false // skip invalid "=" only pattern
+		}
+		normalizedWord := normalizeSpaces(checkWord) // word already lowercased at load time
+		return text == normalizedWord
+	}
+	// substring match
+	normalizedWord := normalizeSpaces(word) // word already lowercased at load time
+	return strings.Contains(text, normalizedWord)
 }
 
 // isManyEmojis checks if a given message contains more than MaxAllowedEmoji emojis.

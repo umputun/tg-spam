@@ -82,6 +82,13 @@ This check uses the provided samples and is active by default. The bot compares 
 
 The bot will check the message for the presence of phrases in the stop words list. This feature is enabled by default with preset stop words, but can be customized through database management.
 
+By default, stop words use substring matching - if a message contains the stop word anywhere, it's flagged as spam. For exact matching (where the entire message must equal the stop word), prefix the word with `=`:
+
+- `buy now` - matches any message containing "buy now" (e.g., "please buy now today")
+- `=buy now` - matches only if the entire message is exactly "buy now"
+
+Both matching modes are case-insensitive and normalize multiple spaces to single spaces.
+
 **Combot Anti-Spam System (CAS) integration**
 
 Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
