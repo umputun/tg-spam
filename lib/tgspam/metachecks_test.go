@@ -342,6 +342,37 @@ func TestAudioCheck(t *testing.T) {
 	}
 }
 
+func TestContactCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name:     "no contact and text",
+			req:      spamcheck.Request{Msg: "This is a message with text.", Meta: spamcheck.MetaData{HasContact: false}},
+			expected: spamcheck.Response{Name: "contact", Spam: false, Details: "no contact without text"},
+		},
+		{
+			name:     "contact with text",
+			req:      spamcheck.Request{Msg: "This is a message with text and a contact.", Meta: spamcheck.MetaData{HasContact: true}},
+			expected: spamcheck.Response{Name: "contact", Spam: false, Details: "no contact without text"},
+		},
+		{
+			name:     "contact without text",
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasContact: true}},
+			expected: spamcheck.Response{Name: "contact", Spam: true, Details: "contact without text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := ContactCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestKeyboardCheck(t *testing.T) {
 	tests := []struct {
 		name     string

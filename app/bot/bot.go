@@ -60,6 +60,7 @@ type Message struct {
 	WithForward   bool `json:",omitempty"`
 	WithAudio     bool `json:",omitempty"`
 	WithKeyboard  bool `json:",omitempty"`
+	WithContact   bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.

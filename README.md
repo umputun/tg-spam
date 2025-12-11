@@ -145,6 +145,10 @@ This option is disabled by default. If `--meta.video-only` set or `env:META_VIDE
 
 This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
 
+**Contact only check**
+
+This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text, it will be marked as spam.
+
 **Forward check**
 
 This option is disabled by default. If `--meta.forward` set or `env:META_FORWARD` is `true`, the bot will check if the message forwarded. If the message is a forward, it will be marked as spam.
@@ -480,6 +484,7 @@ meta:
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
+      --meta.contact-only               enable contact only check [$META_CONTACT_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]
       --meta.keyboard                   enable keyboard check [$META_KEYBOARD]
       --meta.username-symbols=          prohibited symbols in username, disabled by default [$META_USERNAME_SYMBOLS]

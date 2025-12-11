@@ -95,6 +95,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithKeyboard {
 		spamReq.Meta.HasKeyboard = true
 	}
+	if msg.WithContact {
+		spamReq.Meta.HasContact = true
+	}
 	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
 	spamReq.Meta.MessageID = msg.ID
 

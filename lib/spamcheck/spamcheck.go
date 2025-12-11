@@ -23,12 +23,13 @@ type MetaData struct {
 	HasAudio    bool `json:"has_audio"`    // true if the message has an audio
 	HasForward  bool `json:"has_forward"`  // true if the message has a forward
 	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
+	HasContact  bool `json:"has_contact"`  // true if the message has a shared contact
 	MessageID   int  `json:"message_id"`   // telegram message ID
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard)
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v",
+		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact)
 }
 
 // Response is a result of spam check.
