@@ -102,6 +102,21 @@ func AudioCheck() MetaCheck {
 	}
 }
 
+// ContactCheck is a function that returns a MetaCheck function.
+// It checks if the message has a shared contact and the message is empty (i.e. it contains only contact).
+func ContactCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasContact && req.Msg == "" {
+			return spamcheck.Response{
+				Name:    "contact",
+				Spam:    true,
+				Details: "contact without text",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "contact", Details: "no contact without text"}
+	}
+}
+
 // ForwardedCheck is a function that returns a MetaCheck function.
 // It checks if the message is a forwarded message.
 func ForwardedCheck() MetaCheck {

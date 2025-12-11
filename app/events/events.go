@@ -360,6 +360,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
 		message.WithKeyboard = true
 	}
+	if msg.Contact != nil {
+		message.WithContact = true
+	}
 
 	// handle reply-to message if present
 	if msg.ReplyToMessage != nil {

@@ -86,6 +86,7 @@ type options struct {
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 		AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
+		ContactOnly     bool   `long:"contact-only" env:"CONTACT_ONLY" description:"enable contact only check"`
 		Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
 		Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 		UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
@@ -508,7 +509,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		StorageTimeout:           opts.StorageTimeout,
 		NoSpamReply:              opts.NoSpamReply,
 		CasEnabled:               opts.CAS.API != "",
-		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "",
+		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "",
 		MetaLinksLimit:           opts.Meta.LinksLimit,
 		MetaMentionsLimit:        opts.Meta.MentionsLimit,
 		MetaLinksOnly:            opts.Meta.LinksOnly,
@@ -517,6 +518,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaAudioOnly:            opts.Meta.AudiosOnly,
 		MetaForwarded:            opts.Meta.Forward,
 		MetaKeyboard:             opts.Meta.Keyboard,
+		MetaContactOnly:          opts.Meta.ContactOnly,
 		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
 		MultiLangLimit:           opts.MultiLangWords,
 		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
@@ -672,6 +674,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Meta.Keyboard {
 		log.Printf("[INFO] keyboard check enabled")
 		metaChecks = append(metaChecks, tgspam.KeyboardCheck())
+	}
+	if opts.Meta.ContactOnly {
+		log.Printf("[INFO] contact only check enabled")
+		metaChecks = append(metaChecks, tgspam.ContactCheck())
 	}
 	if opts.Meta.UsernameSymbols != "" {
 		log.Printf("[INFO] username symbols check enabled, prohibited symbols: %q", opts.Meta.UsernameSymbols)
