@@ -2750,3 +2750,109 @@ func TestServer_deleteDictionaryEntryHandler(t *testing.T) {
 		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
 	})
 }
+
+func TestServer_ErrorResponseContentType(t *testing.T) {
+	// tests verify that error responses return correct Content-Type header (application/json)
+	// this was broken when using WriteHeader() + RenderJSON() pattern
+
+	t.Run("check handler bad request", func(t *testing.T) {
+		server := NewServer(Config{})
+		req := httptest.NewRequest("POST", "/check", bytes.NewBuffer([]byte("invalid json")))
+		rr := httptest.NewRecorder()
+
+		server.checkMsgHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("check id handler bad request", func(t *testing.T) {
+		server := NewServer(Config{})
+		req := httptest.NewRequest("GET", "/check/invalid", nil)
+		req.SetPathValue("user_id", "invalid")
+		rr := httptest.NewRecorder()
+
+		server.checkIDHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("check id handler internal error", func(t *testing.T) {
+		mockDetectedSpam := &mocks.DetectedSpamMock{
+			FindByUserIDFunc: func(_ context.Context, _ int64) (*storage.DetectedSpamInfo, error) {
+				return nil, assert.AnError
+			},
+		}
+		server := NewServer(Config{DetectedSpam: mockDetectedSpam})
+		req := httptest.NewRequest("GET", "/check/123", nil)
+		req.SetPathValue("user_id", "123")
+		rr := httptest.NewRecorder()
+
+		server.checkIDHandler(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("update sample handler bad request", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(_ string) error { return nil },
+		}
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		req := httptest.NewRequest("POST", "/update/spam", bytes.NewBuffer([]byte("invalid json")))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateSampleHandler(mockSpamFilter.UpdateSpam)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("update sample handler internal error", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(_ string) error { return assert.AnError },
+		}
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		reqBody, _ := json.Marshal(map[string]string{"msg": "test"})
+		req := httptest.NewRequest("POST", "/update/spam", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateSampleHandler(mockSpamFilter.UpdateSpam)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("add dictionary entry bad request empty data", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		server := NewServer(Config{Dictionary: mockDict})
+		reqBody, _ := json.Marshal(map[string]string{"type": "stop_phrase", "data": ""})
+		req := httptest.NewRequest("POST", "/dictionary/add", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		server.addDictionaryEntryHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("add approved user bad request no id", func(t *testing.T) {
+		mockDetector := &mocks.DetectorMock{}
+		mockLocator := &mocks.LocatorMock{
+			UserIDByNameFunc: func(_ context.Context, _ string) int64 { return 0 },
+		}
+		server := NewServer(Config{Detector: mockDetector, Locator: mockLocator})
+		reqBody, _ := json.Marshal(map[string]string{"user_name": ""})
+		req := httptest.NewRequest("POST", "/users/add", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateApprovedUsersHandler(mockDetector.AddApprovedUser)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+}

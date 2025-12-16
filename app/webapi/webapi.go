@@ -312,8 +312,7 @@ func (s *Server) checkMsgHandler(w http.ResponseWriter, r *http.Request) {
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 			log.Printf("[WARN] can't decode request: %v", err)
 			return
 		}
@@ -369,15 +368,13 @@ func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := strconv.ParseInt(r.PathValue("user_id"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "can't parse user id", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't parse user id", "details": err.Error()})
 		return
 	}
 
 	si, err := s.DetectedSpam.FindByUserID(r.Context(), userID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get user info", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get user info", "details": err.Error()})
 		return
 	}
 	if si != nil {
@@ -396,8 +393,7 @@ func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
 		return
 	}
 	rest.RenderJSON(w, rest.JSON{"spam": spam, "ham": ham})
@@ -408,8 +404,7 @@ func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string
 	return func(w http.ResponseWriter, _ *http.Request) {
 		spam, ham, err := s.SpamFilter.DynamicSamples()
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
 			return
 		}
 		samples, name := pickFn(spam, ham)
@@ -435,16 +430,14 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 			req.Msg = r.FormValue("msg")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
 
 		err := updFn(req.Msg)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't update samples", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't update samples", "details": err.Error()})
 			return
 		}
 
@@ -467,15 +460,13 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.R
 			req.Msg = r.FormValue("msg")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
 
 		if err := delFn(req.Msg); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't delete sample", "details": err.Error()})
 			return
 		}
 
@@ -490,8 +481,7 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.R
 // reloadDynamicSamplesHandler handles PUT /samples request. It reloads dynamic samples from db storage.
 func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't reload samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't reload samples", "details": err.Error()})
 		return
 	}
 	rest.RenderJSON(w, rest.JSON{"reloaded": true})
@@ -507,8 +497,7 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 			req.UserName = r.FormValue("user_name")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
@@ -524,15 +513,13 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 				fmt.Fprintln(w, "<div class='alert alert-danger'>Either userid or valid username required.</div>")
 				return
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "user ID is required"})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "user ID is required"})
 			return
 		}
 
 		// add or remove user from the approved list of detector
 		if err := updFn(req); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't update approved users", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't update approved users", "details": err.Error()})
 			return
 		}
 
@@ -581,15 +568,13 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) getDictionaryEntriesHandler(w http.ResponseWriter, r *http.Request) {
 	stopPhrases, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeStopPhrase)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get stop phrases", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get stop phrases", "details": err.Error()})
 		return
 	}
 
 	ignoredWords, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeIgnoredWord)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get ignored words", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get ignored words", "details": err.Error()})
 		return
 	}
 
@@ -610,8 +595,7 @@ func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Reques
 		req.Data = r.FormValue("data")
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 			return
 		}
 	}
@@ -622,8 +606,7 @@ func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Reques
 			fmt.Fprintln(w, "<div class='alert alert-danger'>Data cannot be empty.</div>")
 			return
 		}
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "data cannot be empty"})
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "data cannot be empty"})
 		return
 	}
 
@@ -634,14 +617,12 @@ func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Reques
 			fmt.Fprintf(w, "<div class='alert alert-danger'>Invalid type: %v</div>", err)
 			return
 		}
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "invalid type", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "invalid type", "details": err.Error()})
 		return
 	}
 
 	if err := s.Dictionary.Add(r.Context(), dictType, req.Data); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't add entry", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't add entry", "details": err.Error()})
 		return
 	}
 
@@ -649,8 +630,7 @@ func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Reques
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
 		log.Printf("[WARN] failed to reload samples after dictionary add: %v", err)
 		if !isHtmxRequest {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
 			return
 		}
 		// for HTMX, log but continue rendering (entry was added successfully)
@@ -682,15 +662,13 @@ func (s *Server) deleteDictionaryEntryHandler(w http.ResponseWriter, r *http.Req
 		}
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 			return
 		}
 	}
 
 	if err := s.Dictionary.Delete(r.Context(), req.ID); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't delete entry", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't delete entry", "details": err.Error()})
 		return
 	}
 
@@ -698,8 +676,7 @@ func (s *Server) deleteDictionaryEntryHandler(w http.ResponseWriter, r *http.Req
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
 		log.Printf("[WARN] failed to reload samples after dictionary delete: %v", err)
 		if !isHtmxRequest {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
 			return
 		}
 		// for HTMX, log but continue rendering (entry was deleted successfully)
@@ -993,8 +970,7 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 	ctx := r.Context()
 	spam, err := s.DetectedSpam.Read(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get detected spam", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get detected spam", "details": err.Error()})
 		return
 	}
 
@@ -1023,8 +999,7 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 			Checks:    entry.Checks,
 		})
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't marshal entry", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't marshal entry", "details": err.Error()})
 			return
 		}
 		lines = append(lines, string(data))
@@ -1042,8 +1017,7 @@ func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Requ
 // Files are always compressed and always have .gz extension to ensure consistency
 func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.StorageEngine == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "storage engine not available"})
 		return
 	}
 
@@ -1090,15 +1064,13 @@ func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 // downloadExportToPostgresHandler streams a PostgreSQL-compatible export from a SQLite database
 func (s *Server) downloadExportToPostgresHandler(w http.ResponseWriter, r *http.Request) {
 	if s.StorageEngine == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "storage engine not available"})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "storage engine not available"})
 		return
 	}
 
 	// check if the database is SQLite
 	if s.StorageEngine.Type() != engine.Sqlite {
-		w.WriteHeader(http.StatusBadRequest)
-		rest.RenderJSON(w, rest.JSON{"error": "source database must be SQLite"})
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "source database must be SQLite"})
 		return
 	}
 
@@ -1137,8 +1109,7 @@ func (s *Server) downloadExportToPostgresHandler(w http.ResponseWriter, r *http.
 func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
 		return
 	}
 
@@ -1174,8 +1145,7 @@ func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	}
 
 	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
 	}
 }
@@ -1209,15 +1179,13 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 func (s *Server) renderDictionary(ctx context.Context, w http.ResponseWriter, tmplName string) {
 	stopPhrases, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeStopPhrase)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't fetch stop phrases", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch stop phrases", "details": err.Error()})
 		return
 	}
 
 	ignoredWords, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeIgnoredWord)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't fetch ignored words", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch ignored words", "details": err.Error()})
 		return
 	}
 
@@ -1234,8 +1202,7 @@ func (s *Server) renderDictionary(ctx context.Context, w http.ResponseWriter, tm
 	}
 
 	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
 	}
 }
