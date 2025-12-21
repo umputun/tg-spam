@@ -625,12 +625,12 @@ func TestGiveawayCheck(t *testing.T) {
 		expected spamcheck.Response
 	}{
 		{
-			name:     "no giveaway ",
+			name:     "no giveaway",
 			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasGiveaway: false}},
 			expected: spamcheck.Response{Name: "giveaway", Spam: false, Details: "no giveaway"},
 		},
 		{
-			name:     "giveaway with text",
+			name:     "giveaway",
 			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasGiveaway: true}},
 			expected: spamcheck.Response{Name: "giveaway", Spam: true, Details: "giveaway message"},
 		},
