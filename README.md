@@ -161,6 +161,10 @@ This option is disabled by default. If `--meta.keyboard` set or `env:META_KEYBOA
 
 This option is disabled by default. If `--meta.username-symbols` set or `env:META_USERNAME_SYMBOLS` is set to a string of prohibited symbols (e.g., "@#$"), the bot will check if the username contains any of these symbols. If the username contains any of the prohibited symbols, the message will be marked as spam.
 
+**Giveaway check**
+
+This option is disabled by default. If `--meta.giveaway` is set or `env:META_GIVEAWAY` is true, the bot will check the message is a giveaway. If it is a giveaway, it will be marked as spam. 
+
 **Multi-language words**
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
@@ -488,6 +492,7 @@ meta:
       --meta.forward                    enable forward check [$META_FORWARD]
       --meta.keyboard                   enable keyboard check [$META_KEYBOARD]
       --meta.username-symbols=          prohibited symbols in username, disabled by default [$META_USERNAME_SYMBOLS]
+      --meta.giveaway                   enable giveaway check [$META_GIVEAWAY]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]

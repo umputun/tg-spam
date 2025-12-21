@@ -89,6 +89,7 @@ type Settings struct {
 	MetaKeyboard             bool          `json:"meta_keyboard"`
 	MetaContactOnly          bool          `json:"meta_contact_only"`
 	MetaUsernameSymbols      string        `json:"meta_username_symbols"`
+	MetaGiveaway             bool          `json:"meta_giveaway"`
 	MultiLangLimit           int           `json:"multi_lang_limit"`
 	OpenAIEnabled            bool          `json:"openai_enabled"`
 	OpenAIVeto               bool          `json:"openai_veto"`

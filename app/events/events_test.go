@@ -412,6 +412,32 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 				WithAudio: true,
 			},
 		},
+		{
+			name: "Message with giveaway",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Giveaway:  &tbapi.Giveaway{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+				},
+				Sent:         time.Unix(1578627415, 0),
+				ChatID:       123456,
+				WithGiveaway: true,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

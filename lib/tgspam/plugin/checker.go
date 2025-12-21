@@ -155,6 +155,7 @@ func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 		metaTable.RawSetString("has_audio", lua.LBool(req.Meta.HasAudio))
 		metaTable.RawSetString("has_forward", lua.LBool(req.Meta.HasForward))
 		metaTable.RawSetString("has_keyboard", lua.LBool(req.Meta.HasKeyboard))
+		metaTable.RawSetString("has_giveaway", lua.LBool(req.Meta.HasGiveaway))
 		reqTable.RawSetString("meta", metaTable)
 
 		// call the Lua function
