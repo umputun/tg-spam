@@ -617,3 +617,29 @@ func TestUsernameSymbolsCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestGiveawayCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name:     "no giveaway ",
+			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasGiveaway: false}},
+			expected: spamcheck.Response{Name: "giveaway", Spam: false, Details: "no giveaway"},
+		},
+		{
+			name:     "giveaway with text",
+			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasGiveaway: true}},
+			expected: spamcheck.Response{Name: "giveaway", Spam: true, Details: "giveaway message"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := GiveawayCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}

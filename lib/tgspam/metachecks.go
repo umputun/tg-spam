@@ -220,3 +220,18 @@ func UsernameSymbolsCheck(symbols string) MetaCheck {
 		}
 	}
 }
+
+// GiveawayCheck is a function that returns a MetaCheck function.
+// It checks if the message has a giveaway.
+func GiveawayCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasGiveaway {
+			return spamcheck.Response{
+				Name:    "giveaway",
+				Spam:    true,
+				Details: "giveaway message",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "giveaway", Details: "no giveaway"}
+	}
+}

@@ -98,6 +98,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithContact {
 		spamReq.Meta.HasContact = true
 	}
+	if msg.WithGiveaway {
+		spamReq.Meta.HasGiveaway = true
+	}
 	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
 	spamReq.Meta.MessageID = msg.ID
 

@@ -363,6 +363,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.Contact != nil {
 		message.WithContact = true
 	}
+	if msg.Giveaway != nil || msg.GiveawayCreated != nil || msg.GiveawayWinners != nil || msg.GiveawayCompleted != nil {
+		message.WithGiveaway = true
+	}
 
 	// handle reply-to message if present
 	if msg.ReplyToMessage != nil {

@@ -90,6 +90,7 @@ type options struct {
 		Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
 		Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 		UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
+		Giveaway        bool   `long:"giveaway" env:"GIVEAWAY" description:"enable giveaway check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -509,7 +510,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		StorageTimeout:           opts.StorageTimeout,
 		NoSpamReply:              opts.NoSpamReply,
 		CasEnabled:               opts.CAS.API != "",
-		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "",
+		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "" || opts.Meta.Giveaway,
 		MetaLinksLimit:           opts.Meta.LinksLimit,
 		MetaMentionsLimit:        opts.Meta.MentionsLimit,
 		MetaLinksOnly:            opts.Meta.LinksOnly,
@@ -520,6 +521,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaKeyboard:             opts.Meta.Keyboard,
 		MetaContactOnly:          opts.Meta.ContactOnly,
 		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
+		MetaGiveaway:             opts.Meta.Giveaway,
 		MultiLangLimit:           opts.MultiLangWords,
 		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		OpenAIVeto:               opts.OpenAI.Veto,
@@ -682,6 +684,10 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Meta.UsernameSymbols != "" {
 		log.Printf("[INFO] username symbols check enabled, prohibited symbols: %q", opts.Meta.UsernameSymbols)
 		metaChecks = append(metaChecks, tgspam.UsernameSymbolsCheck(opts.Meta.UsernameSymbols))
+	}
+	if opts.Meta.Giveaway {
+		log.Printf("[INFO] giveaway check enabled")
+		metaChecks = append(metaChecks, tgspam.GiveawayCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 
