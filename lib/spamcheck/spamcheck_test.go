@@ -52,7 +52,7 @@ func TestRequestString(t *testing.T) {
 				Msg: "Hello, world!", UserID: "123", UserName: "Alice", Meta: MetaData{
 					Images: 2, Links: 1, Mentions: 0, HasVideo: false, HasAudio: false, HasForward: false, HasKeyboard: false,
 				}, CheckOnly: false},
-			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false`,
+			expected: `msg:"Hello, world!", user:"Alice", id:123, images:2, links:1, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
 		},
 		{
 			name: "Spam message",
@@ -60,12 +60,12 @@ func TestRequestString(t *testing.T) {
 				Msg: "Spam message", UserID: "456", UserName: "Bob", Meta: MetaData{
 					Images: 0, Links: 3, Mentions: 2, HasVideo: true, HasAudio: false, HasForward: false, HasKeyboard: false,
 				}, CheckOnly: true},
-			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3, mentions:2, has_video:true, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false`,
+			expected: `msg:"Spam message", user:"Bob", id:456, images:0, links:3, mentions:2, has_video:true, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
 		},
 		{
 			name:     "Empty fields",
 			request:  Request{Msg: "", UserID: "", UserName: "", Meta: MetaData{}, CheckOnly: false},
-			expected: `msg:"", user:"", id:, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false`,
+			expected: `msg:"", user:"", id:, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
 		},
 	}
 
