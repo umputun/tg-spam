@@ -124,63 +124,66 @@ func TestLinkOnlyCheck(t *testing.T) {
 
 func TestImagesCheck(t *testing.T) {
 	tests := []struct {
-		name     string
-		req      spamcheck.Request
-		expected spamcheck.Response
+		name       string
+		minTextLen int
+		req        spamcheck.Request
+		expected   spamcheck.Response
 	}{
 		{
-			name: "No images and text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text.",
-				Meta: spamcheck.MetaData{
-					Images: 0,
-				},
-			},
-			expected: spamcheck.Response{Name: "images", Spam: false, Details: "no images without text"},
+			name: "no images and text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text.", Meta: spamcheck.MetaData{Images: 0}},
+			expected: spamcheck.Response{Name: "images", Spam: false, Details: "text or no images"},
 		},
 		{
-			name: "Images with text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text and an image.",
-				Meta: spamcheck.MetaData{
-					Images: 1,
-				},
-			},
-			expected: spamcheck.Response{Name: "images", Spam: false, Details: "no images without text"},
+			name: "images with long text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text and an image.", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: false, Details: "text or no images"},
 		},
 		{
-			name: "Images without text",
-			req: spamcheck.Request{
-				Msg: "",
-				Meta: spamcheck.MetaData{
-					Images: 1,
-				},
-			},
-			expected: spamcheck.Response{
-				Name:    "images",
-				Spam:    true,
-				Details: "images without text",
-			},
+			name: "images without text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: true, Details: "image without text"},
 		},
 		{
-			name: "Multiple images without text",
-			req: spamcheck.Request{
-				Msg: "",
-				Meta: spamcheck.MetaData{
-					Images: 3,
-				},
-			},
-			expected: spamcheck.Response{
-				Name:    "images",
-				Spam:    true,
-				Details: "images without text",
-			},
+			name: "multiple images without text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{Images: 3}},
+			expected: spamcheck.Response{Name: "images", Spam: true, Details: "image without text"},
+		},
+		{
+			name: "image with short text below threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "@Angelina_crypto717", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: true, Details: "image with short text (19 chars)"},
+		},
+		{
+			name: "image with text exactly at threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is exactly fifty characters long, I promise!!", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: false, Details: "text or no images"},
+		},
+		{
+			name: "image with text above threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is a longer message that exceeds the minimum text length threshold", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: false, Details: "text or no images"},
+		},
+		{
+			name: "no images with short text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "short", Meta: spamcheck.MetaData{Images: 0}},
+			expected: spamcheck.Response{Name: "images", Spam: false, Details: "text or no images"},
+		},
+		{
+			name: "image with cyrillic short text", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "Менеджер - @test123", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: true, Details: "image with short text (19 chars)"},
+		},
+		{
+			name: "image with empty text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{Images: 1}},
+			expected: spamcheck.Response{Name: "images", Spam: true, Details: "image without text"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			check := ImagesCheck()
+			check := ImagesCheck(tt.minTextLen)
 			assert.Equal(t, tt.expected, check(tt.req))
 		})
 	}
@@ -188,63 +191,56 @@ func TestImagesCheck(t *testing.T) {
 
 func TestVideosCheck(t *testing.T) {
 	tests := []struct {
-		name     string
-		req      spamcheck.Request
-		expected spamcheck.Response
+		name       string
+		minTextLen int
+		req        spamcheck.Request
+		expected   spamcheck.Response
 	}{
 		{
-			name: "No videos and text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text.",
-				Meta: spamcheck.MetaData{
-					HasVideo: false,
-				},
-			},
-			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "no videos without text"},
+			name: "no video and text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text.", Meta: spamcheck.MetaData{HasVideo: false}},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "text or no video"},
 		},
 		{
-			name: "Videos with text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text and a video.",
-				Meta: spamcheck.MetaData{
-					HasVideo: true,
-				},
-			},
-			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "no videos without text"},
+			name: "video with long text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text and a video.", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "text or no video"},
 		},
 		{
-			name: "Videos without text",
-			req: spamcheck.Request{
-				Msg: "",
-				Meta: spamcheck.MetaData{
-					HasVideo: true,
-				},
-			},
-			expected: spamcheck.Response{
-				Name:    "videos",
-				Spam:    true,
-				Details: "videos without text",
-			},
+			name: "video without text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: true, Details: "video without text"},
 		},
 		{
-			name: "Video note without text",
-			req: spamcheck.Request{
-				Msg: "",
-				Meta: spamcheck.MetaData{
-					HasVideo: true,
-				},
-			},
-			expected: spamcheck.Response{
-				Name:    "videos",
-				Spam:    true,
-				Details: "videos without text",
-			},
+			name: "video with short text below threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "@spam_channel", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: true, Details: "video with short text (13 chars)"},
+		},
+		{
+			name: "video with text at threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is exactly fifty characters long, I promise!!", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "text or no video"},
+		},
+		{
+			name: "video with text above threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is a longer message that exceeds the minimum text length threshold", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "text or no video"},
+		},
+		{
+			name: "no video with short text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "short", Meta: spamcheck.MetaData{HasVideo: false}},
+			expected: spamcheck.Response{Name: "videos", Spam: false, Details: "text or no video"},
+		},
+		{
+			name: "video with empty text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasVideo: true}},
+			expected: spamcheck.Response{Name: "videos", Spam: true, Details: "video without text"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			check := VideosCheck()
+			check := VideosCheck(tt.minTextLen)
 			assert.Equal(t, tt.expected, check(tt.req))
 		})
 	}
@@ -294,49 +290,56 @@ func TestForwardedCheck(t *testing.T) {
 
 func TestAudioCheck(t *testing.T) {
 	tests := []struct {
-		name     string
-		req      spamcheck.Request
-		expected spamcheck.Response
+		name       string
+		minTextLen int
+		req        spamcheck.Request
+		expected   spamcheck.Response
 	}{
 		{
-			name: "No audio and text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text.",
-				Meta: spamcheck.MetaData{
-					HasAudio: false,
-				},
-			},
-			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "no audio without text"},
+			name: "no audio and text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text.", Meta: spamcheck.MetaData{HasAudio: false}},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "text or no audio"},
 		},
 		{
-			name: "Audio with text",
-			req: spamcheck.Request{
-				Msg: "This is a message with text and an audio.",
-				Meta: spamcheck.MetaData{
-					HasAudio: true,
-				},
-			},
-			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "no audio without text"},
+			name: "audio with long text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text and an audio.", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "text or no audio"},
 		},
 		{
-			name: "Audio without text",
-			req: spamcheck.Request{
-				Msg: "",
-				Meta: spamcheck.MetaData{
-					HasAudio: true,
-				},
-			},
-			expected: spamcheck.Response{
-				Name:    "audio",
-				Spam:    true,
-				Details: "audio without text",
-			},
+			name: "audio without text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: true, Details: "audio without text"},
+		},
+		{
+			name: "audio with short text below threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "@spam_channel", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: true, Details: "audio with short text (13 chars)"},
+		},
+		{
+			name: "audio with text at threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is exactly fifty characters long, I promise!!", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "text or no audio"},
+		},
+		{
+			name: "audio with text above threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is a longer message that exceeds the minimum text length threshold", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "text or no audio"},
+		},
+		{
+			name: "no audio with short text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "short", Meta: spamcheck.MetaData{HasAudio: false}},
+			expected: spamcheck.Response{Name: "audio", Spam: false, Details: "text or no audio"},
+		},
+		{
+			name: "audio with empty text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasAudio: true}},
+			expected: spamcheck.Response{Name: "audio", Spam: true, Details: "audio without text"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			check := AudioCheck()
+			check := AudioCheck(tt.minTextLen)
 			assert.Equal(t, tt.expected, check(tt.req))
 		})
 	}

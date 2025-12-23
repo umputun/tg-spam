@@ -135,15 +135,15 @@ This option is disabled by default. If `--meta.links-only` set or `env:META_LINK
 
 **Image only check**
 
-This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. This catches common spam patterns like promotional images with just "@username" as caption.
 
 **Video only check**
 
-This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
 **Audio only check**
 
-This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
 **Contact only check**
 

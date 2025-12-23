@@ -58,47 +58,71 @@ func LinkOnlyCheck() MetaCheck {
 }
 
 // ImagesCheck is a function that returns a MetaCheck function.
-// It checks if the number of images in the message is greater than zero and the message is empty (i.e. it contains only images).
-func ImagesCheck() MetaCheck {
+// It checks if the message has images with insufficient text. When minTextLen > 0, images with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only images without any text are flagged.
+func ImagesCheck(minTextLen int) MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		if req.Meta.Images > 0 && req.Msg == "" {
+		if req.Meta.Images == 0 {
+			return spamcheck.Response{Spam: false, Name: "images", Details: "text or no images"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "images", Spam: true, Details: "image without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
 			return spamcheck.Response{
 				Name:    "images",
 				Spam:    true,
-				Details: "images without text",
+				Details: fmt.Sprintf("image with short text (%d chars)", textLen),
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "images", Details: "no images without text"}
+		return spamcheck.Response{Spam: false, Name: "images", Details: "text or no images"}
 	}
 }
 
 // VideosCheck is a function that returns a MetaCheck function.
-// It checks if the message has a video or video note and the message is empty (i.e. it contains only videos).
-func VideosCheck() MetaCheck {
+// It checks if the message has a video with insufficient text. When minTextLen > 0, videos with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only videos without any text are flagged.
+func VideosCheck(minTextLen int) MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		if req.Meta.HasVideo && req.Msg == "" {
+		if !req.Meta.HasVideo {
+			return spamcheck.Response{Spam: false, Name: "videos", Details: "text or no video"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "videos", Spam: true, Details: "video without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
 			return spamcheck.Response{
 				Name:    "videos",
 				Spam:    true,
-				Details: "videos without text",
+				Details: fmt.Sprintf("video with short text (%d chars)", textLen),
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "videos", Details: "no videos without text"}
+		return spamcheck.Response{Spam: false, Name: "videos", Details: "text or no video"}
 	}
 }
 
 // AudioCheck is a function that returns a MetaCheck function.
-// It checks if the message has an audio and the message is empty (i.e. it contains only audio).
-func AudioCheck() MetaCheck {
+// It checks if the message has audio with insufficient text. When minTextLen > 0, audio with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only audio without any text are flagged.
+func AudioCheck(minTextLen int) MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		if req.Meta.HasAudio && req.Msg == "" {
+		if !req.Meta.HasAudio {
+			return spamcheck.Response{Spam: false, Name: "audio", Details: "text or no audio"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "audio", Spam: true, Details: "audio without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
 			return spamcheck.Response{
 				Name:    "audio",
 				Spam:    true,
-				Details: "audio without text",
+				Details: fmt.Sprintf("audio with short text (%d chars)", textLen),
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "audio", Details: "no audio without text"}
+		return spamcheck.Response{Spam: false, Name: "audio", Details: "text or no audio"}
 	}
 }
 
