@@ -105,7 +105,7 @@ func VideosCheck(minTextLen int) MetaCheck {
 
 // AudioCheck is a function that returns a MetaCheck function.
 // It checks if the message has audio with insufficient text. When minTextLen > 0, audio with text
-// shorter than minTextLen are flagged as spam. When minTextLen == 0, only audio without any text are flagged.
+// shorter than minTextLen is flagged as spam. When minTextLen == 0, only audio without any text is flagged.
 func AudioCheck(minTextLen int) MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
 		if !req.Meta.HasAudio {
