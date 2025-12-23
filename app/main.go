@@ -650,12 +650,16 @@ func makeDetector(opts options) *tgspam.Detector {
 
 	metaChecks := []tgspam.MetaCheck{}
 	if opts.Meta.ImageOnly {
-		log.Printf("[INFO] image only check enabled")
-		metaChecks = append(metaChecks, tgspam.ImagesCheck())
+		log.Printf("[INFO] image only check enabled, min text len: %d", opts.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.ImagesCheck(opts.MinMsgLen))
 	}
 	if opts.Meta.VideosOnly {
-		log.Printf("[INFO] videos only check enabled")
-		metaChecks = append(metaChecks, tgspam.VideosCheck())
+		log.Printf("[INFO] videos only check enabled, min text len: %d", opts.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.VideosCheck(opts.MinMsgLen))
+	}
+	if opts.Meta.AudiosOnly {
+		log.Printf("[INFO] audio only check enabled, min text len: %d", opts.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.AudioCheck(opts.MinMsgLen))
 	}
 	if opts.Meta.LinksLimit >= 0 {
 		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
