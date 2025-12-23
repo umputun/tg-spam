@@ -1,0 +1,52 @@
+name: e2e-ui
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "e2e-ui/**"
+      - ".github/workflows/e2e-ui.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "e2e-ui/**"
+      - ".github/workflows/e2e-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: cache playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+      - name: install playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: go run github.com/playwright-community/playwright-go/cmd/playwright@latest install --with-deps chromium
+
+      - name: install playwright deps only
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: go run github.com/playwright-community/playwright-go/cmd/playwright@latest install-deps chromium
+
+      - name: run e2e ui tests
+        run: go test -v -count=1 -timeout=5m -tags=e2e ./e2e-ui/...
