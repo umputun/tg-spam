@@ -179,6 +179,89 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				UserName: "user1",
 			},
 		},
+		{
+			name: "with text mention entities",
+			message: Message{
+				Text: "spam message @someone",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "mention", Offset: 13, Length: 8},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message @someone",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Mentions: 1},
+			},
+		},
+		{
+			name: "with image caption mention entities",
+			message: Message{
+				Text: "Пишите - @zhanna_live23",
+				From: User{ID: 1, Username: "user1"},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "Пишите - @zhanna_live23",
+					Entities: &[]Entity{
+						{Type: "mention", Offset: 9, Length: 14},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Пишите - @zhanna_live23",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Mentions: 1},
+			},
+		},
+		{
+			name: "with both text and image caption mentions",
+			message: Message{
+				Text: "@user1 check this",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "mention", Offset: 0, Length: 6},
+				},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "contact @someone",
+					Entities: &[]Entity{
+						{Type: "mention", Offset: 8, Length: 8},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "@user1 check this",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Mentions: 2},
+			},
+		},
 	}
 
 	for _, tc := range tests {
