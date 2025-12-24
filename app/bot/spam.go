@@ -101,21 +101,27 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithGiveaway {
 		spamReq.Meta.HasGiveaway = true
 	}
-	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
 	spamReq.Meta.MessageID = msg.ID
 
-	// count mentions from entities (both regular and caption entities)
+	// count mentions and links from entities (both regular and caption entities)
+	// links are counted from entities only - telegram provides url/text_link entities for all links
 	if msg.Entities != nil {
 		for _, entity := range *msg.Entities {
-			if entity.Type == "mention" || entity.Type == "text_mention" {
+			switch entity.Type {
+			case "mention", "text_mention":
 				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
 			}
 		}
 	}
 	if msg.Image != nil && msg.Image.Entities != nil {
 		for _, entity := range *msg.Image.Entities {
-			if entity.Type == "mention" || entity.Type == "text_mention" {
+			switch entity.Type {
+			case "mention", "text_mention":
 				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
 			}
 		}
 	}

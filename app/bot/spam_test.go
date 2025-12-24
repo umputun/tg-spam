@@ -143,6 +143,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			message: Message{
 				Text: "message https://example.com/path?param=1 http://test.com http://test.com/another",
 				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 8, Length: 32},
+					{Type: "url", Offset: 41, Length: 15},
+					{Type: "url", Offset: 57, Length: 23},
+				},
 			},
 			wantResponse: Response{
 				Text:          `detected: "user1" (1)`,
@@ -260,6 +265,83 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				UserID:   "1",
 				UserName: "user1",
 				Meta:     spamcheck.MetaData{Images: 1, Mentions: 2},
+			},
+		},
+		{
+			name: "with url entity in text",
+			message: Message{
+				Text: "check example.com for details",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 6, Length: 11},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "check example.com for details",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Links: 1},
+			},
+		},
+		{
+			name: "with text_link entity in image caption",
+			message: Message{
+				Text: "Click here for details",
+				From: User{ID: 1, Username: "user1"},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "Click here for details",
+					Entities: &[]Entity{
+						{Type: "text_link", Offset: 0, Length: 10, URL: "https://example.com"},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Click here for details",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Links: 1},
+			},
+		},
+		{
+			name: "with multiple link types",
+			message: Message{
+				Text: "visit https://site.com or click here",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 6, Length: 16},
+					{Type: "text_link", Offset: 26, Length: 10, URL: "https://other.com"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "visit https://site.com or click here",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Links: 2}, // 2 from entities (url + text_link)
 			},
 		},
 	}
