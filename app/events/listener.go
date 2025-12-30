@@ -647,7 +647,7 @@ func (l *TelegramListener) updateSupers() error {
 	}
 
 	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
-	
+
 	return nil
 }
 

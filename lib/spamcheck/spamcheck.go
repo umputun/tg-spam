@@ -7,11 +7,12 @@ import (
 
 // Request is a request to check a message for spam.
 type Request struct {
-	Msg       string   `json:"msg"`        // message to check
-	UserID    string   `json:"user_id"`    // user id
-	UserName  string   `json:"user_name"`  // user name
-	Meta      MetaData `json:"meta"`       // meta-info, provided by the client
-	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not write newly approved user to the database
+	Msg                 string   `json:"msg"`                              // message to check
+	UserID              string   `json:"user_id"`                          // user id
+	UserName            string   `json:"user_name"`                        // user name
+	Meta                MetaData `json:"meta"`                             // meta-info, provided by the client
+	CheckOnly           bool     `json:"check_only"`                       // if true, only check the message, do not write newly approved user to the database
+	ImageTelegramFileID string   `json:"image_telegram_file_id,omitempty"` // telegram file ID of the image to analyze (optional)
 }
 
 // MetaData is a meta-info about the message, provided by the client.

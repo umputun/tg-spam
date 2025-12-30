@@ -78,10 +78,15 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	displayUsername := DisplayName(msg)
 
-	spamReq := spamcheck.Request{Msg: msg.Text, CheckOnly: checkOnly,
-		UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+	spamReq := spamcheck.Request{
+		Msg:       msg.Text,
+		CheckOnly: checkOnly,
+		UserID:    strconv.FormatInt(msg.From.ID, 10),
+		UserName:  msg.From.Username,
+	}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
+		spamReq.ImageTelegramFileID = msg.Image.FileID
 	}
 	if msg.WithVideo || msg.WithVideoNote {
 		spamReq.Meta.HasVideo = true
