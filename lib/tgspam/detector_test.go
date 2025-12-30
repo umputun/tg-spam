@@ -1356,7 +1356,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
 		assert.Equal(t, true, spam)
 		require.Len(t, cr, 1)
@@ -1377,7 +1377,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
 		assert.Equal(t, false, spam)
 		require.Len(t, cr, 0)
@@ -1402,7 +1402,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
 		assert.NoError(t, err)
 
@@ -1426,7 +1426,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
 		assert.NoError(t, err)
 
@@ -1455,7 +1455,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
 		assert.NoError(t, err)
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
@@ -1483,7 +1483,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, errors.New("openai error")
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
 		assert.NoError(t, err)
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
@@ -1512,7 +1512,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
 		assert.NoError(t, err)
 
@@ -1541,7 +1541,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		// checkShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"}, noOpImageChecker{})
 
 		// test with short message (less than MinMsgLen)
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
@@ -1576,7 +1576,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		// explicitly set CheckShortMessagesWithOpenAI to true
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true}, noOpImageChecker{})
 
 		// test with short message (less than MinMsgLen)
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
@@ -1614,7 +1614,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			},
 		}
 		// enable checking short messages with openai
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true}, noOpImageChecker{})
 
 		// load stop words
 		_, err := d.LoadStopWords(strings.NewReader("viagra"))
@@ -1655,7 +1655,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true}, noOpImageChecker{})
 
 		// test short message
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
@@ -1709,7 +1709,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
 			Model:                        "gpt4",
 			CheckShortMessagesWithOpenAI: true,
-		})
+		}, noOpImageChecker{})
 
 		// test with short message (less than MinMsgLen)
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
@@ -1754,7 +1754,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
 			Model:                        "gpt4",
 			CheckShortMessagesWithOpenAI: true,
-		})
+		}, noOpImageChecker{})
 
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
 
@@ -1792,7 +1792,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{
 			Model:                        "gpt4",
 			CheckShortMessagesWithOpenAI: true,
-		})
+		}, noOpImageChecker{})
 
 		spam, cr := d.Check(spamcheck.Request{Msg: "hello"})
 
@@ -2554,8 +2554,6 @@ func TestDetector_readerIteratorMultipleReaders(t *testing.T) {
 }
 
 func TestCleanText(t *testing.T) {
-	d := Detector{}
-
 	tests := []struct {
 		name     string
 		input    string
@@ -2606,7 +2604,7 @@ func TestCleanText(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// test regex-based implementation
-			result := d.cleanText(tt.input)
+			result := cleanText(tt.input)
 			assert.Equal(t, tt.expected, result, "failed for case: %s", tt.name)
 		})
 	}
@@ -2833,7 +2831,7 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 				}, nil
 			},
 		}
-		d.WithOpenAIChecker(mockClient, OpenAIConfig{CheckShortMessagesWithOpenAI: true})
+		d.WithOpenAIChecker(mockClient, OpenAIConfig{CheckShortMessagesWithOpenAI: true}, noOpImageChecker{})
 
 		// send a short message that's checked by openai
 		isSpam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "1", UserName: "user1"})
@@ -3215,4 +3213,10 @@ func findResponseByName(responses []spamcheck.Response, name string) *spamcheck.
 		}
 	}
 	return nil
+}
+
+type noOpImageChecker struct{}
+
+func (noOpImageChecker) RecognizeImage(ctx context.Context, request RecognizeImageRequest) (*RecognizeImageResponse, error) {
+	return &RecognizeImageResponse{}, nil
 }

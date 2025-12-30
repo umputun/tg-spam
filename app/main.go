@@ -30,6 +30,7 @@ import (
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events"
+	"github.com/umputun/tg-spam/app/internal/imagerecognizer"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi"
@@ -94,19 +95,21 @@ type options struct {
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
-		Token              string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
-		APIBase            string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
-		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
-		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
-		Model              string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
-		MaxTokensResponse  int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
-		MaxTokensRequest   int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
-		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
-		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
-		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
-		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
+		Token                 string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		APIBase               string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
+		Veto                  bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt                string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
+		CustomPrompts         []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
+		Model                 string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
+		MaxTokensResponse     int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
+		MaxTokensRequest      int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
+		MaxSymbolsRequest     int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
+		RetryCount            int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
+		HistorySize           int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort       string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		CheckShortMessages    bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
+		RecognizeImages       bool     `long:"recognize-images" env:"RECOGNIZE_IMAGES" description:"enable image recognition with OpenAI"`
+		ImageRecognitionModel string   `long:"image-recognition-model" env:"IMAGE_RECOGNITION_MODEL" default:"gpt-4.1-mini" description:"OpenAI model for image recognition"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
 	LuaPlugins struct {
@@ -271,7 +274,10 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	// make detector with all sample files loaded
-	detector := makeDetector(opts)
+	detector, err := makeDetector(opts)
+	if err != nil {
+		return fmt.Errorf("can't make detector, %w", err)
+	}
 
 	// make spam bot
 	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
@@ -577,7 +583,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
-func makeDetector(opts options) *tgspam.Detector {
+func makeDetector(opts options) (*tgspam.Detector, error) {
 	detectorConfig := tgspam.Config{
 		MaxAllowedEmoji:     opts.MaxEmoji,
 		MinMsgLen:           opts.MinMsgLen,
@@ -628,6 +634,7 @@ func makeDetector(opts options) *tgspam.Detector {
 			RetryCount:                   opts.OpenAI.RetryCount,
 			ReasoningEffort:              opts.OpenAI.ReasoningEffort,
 			CheckShortMessagesWithOpenAI: opts.OpenAI.CheckShortMessages,
+			RecognizeImagesWithOpenAI:    opts.OpenAI.RecognizeImages,
 		}
 
 		config := openai.DefaultConfig(opts.OpenAI.Token)
@@ -636,7 +643,25 @@ func makeDetector(opts options) *tgspam.Detector {
 		}
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
-		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
+		imageRecognizer := imagerecognizer.NewNoOpImageRecognizer()
+
+		if opts.OpenAI.RecognizeImages {
+			var openAiImageRecognizerSettings imagerecognizer.OpenAiImageRecognizerSettings
+			openAiImageRecognizerSettings.TelegramBotToken = opts.Telegram.Token
+			openAiImageRecognizerSettings.OpenAiApiKey = opts.OpenAI.Token
+			openAiImageRecognizerSettings.OpenAiImageRecognitionModel = opts.OpenAI.ImageRecognitionModel
+
+			log.Printf("[DEBUG] openai image recognition is enabled: %s", openAiImageRecognizerSettings.Print())
+
+			openAiImageRecognizer, err := imagerecognizer.NewOpenAiImageRecognizer(openAiImageRecognizerSettings)
+			if err != nil {
+				return nil, fmt.Errorf("creating OpenAI image recognizer, %w", err)
+			}
+
+			imageRecognizer = openAiImageRecognizer
+		}
+
+		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig, imageRecognizer)
 	}
 
 	if opts.AbnormalSpacing.Enabled {
@@ -723,7 +748,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		}
 	}
 
-	return detector
+	return detector, nil
 }
 
 func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {

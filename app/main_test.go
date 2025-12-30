@@ -144,7 +144,8 @@ func TestMakeSpamLogWriter(t *testing.T) {
 func Test_makeDetector(t *testing.T) {
 	t.Run("no options", func(t *testing.T) {
 		var opts options
-		res := makeDetector(opts)
+		res, err := makeDetector(opts)
+		require.NoError(t, err, "making detector")
 		assert.NotNil(t, res)
 	})
 
@@ -154,7 +155,8 @@ func Test_makeDetector(t *testing.T) {
 		opts.Files.SamplesDataPath = "/tmp"
 		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
-		res := makeDetector(opts)
+		res, err := makeDetector(opts)
+		require.NoError(t, err, "making detector")
 		assert.NotNil(t, res)
 		assert.Equal(t, 10, res.FirstMessagesCount)
 		assert.Equal(t, true, res.FirstMessageOnly)
@@ -167,7 +169,8 @@ func Test_makeDetector(t *testing.T) {
 		opts.Files.DynamicDataPath = "/tmp"
 		opts.FirstMessagesCount = 10
 		opts.ParanoidMode = true
-		res := makeDetector(opts)
+		res, err := makeDetector(opts)
+		require.NoError(t, err, "making detector")
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
 		assert.Equal(t, false, res.FirstMessageOnly)
@@ -191,7 +194,8 @@ func Test_makeSpamBot(t *testing.T) {
 		opts.Files.SamplesDataPath = tmpDir
 		opts.Files.DynamicDataPath = tmpDir
 		opts.InstanceID = "gr1"
-		detector := makeDetector(opts)
+		detector, err := makeDetector(opts)
+		require.NoError(t, err, "making detector")
 		db, err := engine.NewSqlite(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
 		defer db.Close()

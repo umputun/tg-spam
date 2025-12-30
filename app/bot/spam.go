@@ -78,10 +78,15 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	displayUsername := DisplayName(msg)
 
-	spamReq := spamcheck.Request{Msg: msg.Text, CheckOnly: checkOnly,
-		UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+	spamReq := spamcheck.Request{
+		Msg:       msg.Text,
+		CheckOnly: checkOnly,
+		UserID:    strconv.FormatInt(msg.From.ID, 10),
+		UserName:  msg.From.Username,
+	}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
+		spamReq.ImageTelegramFileID = msg.Image.FileID
 	}
 	if msg.WithVideo || msg.WithVideoNote {
 		spamReq.Meta.HasVideo = true
@@ -204,7 +209,7 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 		return fmt.Errorf("failed to get samples store stats: %w", err)
 	}
 	if st.PresetSpam == 0 || st.PresetHam == 0 {
-		return fmt.Errorf("no pesistent spam or ham samples found in the store")
+		return fmt.Errorf("no persistent spam or ham samples found in the store")
 	}
 
 	if spamReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset); err != nil {
