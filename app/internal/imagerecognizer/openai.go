@@ -160,6 +160,10 @@ func (o *openAiImageRecognizer) RecognizeImage(ctx context.Context, request tgsp
 
 	log.Printf("[DEBUG] OpenAI image recognition response body: %s", openAiRecognizeImageResBody)
 
+	if openAiRecognizeImageRes.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenAI image recognition request failed with status %d: %s", openAiRecognizeImageRes.StatusCode, string(openAiRecognizeImageResBody))
+	}
+
 	type openAiRecognizeImageResponseDataModel struct {
 		Output []struct {
 			Content []struct {
@@ -216,6 +220,10 @@ func (o *openAiImageRecognizer) getImageTelegramFileContent(ctx context.Context,
 
 	log.Printf("[DEBUG] telegram file metadata response body: %s", fileMetaResBody)
 
+	if fileMetaRes.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("telegram file metadata request failed with status %d: %s", fileMetaRes.StatusCode, string(fileMetaResBody))
+	}
+
 	type fileMetaResModel struct {
 		Result struct {
 			FilePath string `json:"file_path"`
@@ -239,10 +247,14 @@ func (o *openAiImageRecognizer) getImageTelegramFileContent(ctx context.Context,
 	}
 	defer fileContentRes.Body.Close()
 
-	fileContent, err := io.ReadAll(fileContentRes.Body)
+	fileContentResBody, err := io.ReadAll(fileContentRes.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading telegram file content response body: %w", err)
 	}
 
-	return fileContent, nil
+	if fileContentRes.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("telegram file content request failed with status %d: %s", fileContentRes.StatusCode, string(fileContentResBody))
+	}
+
+	return fileContentResBody, nil
 }
