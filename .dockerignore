@@ -1,7 +1,56 @@
+# version control
+.git/
+.github/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI/Claude
+.claude/
+CLAUDE.md
+
+# local binaries and build artifacts
+.bin/
+tg-spam
+tg-spam-*
+*.exe
+*.test
+*.out
+
+# macOS
+.DS_Store
+
+# dynamic data (mounted at runtime)
 data/ham-dynamic.txt
 data/spam-dynamic.txt
+data/approved-users.txt
 data/tg-spam.db*
-docker-compose*.yml
+*.db
+*.db-shm
+*.db-wal
+*.loaded
+
+# runtime directories
 var/
 logs/
-data/tg-spam.db
+
+# docker compose files
+docker-compose*.yml
+
+# documentation and examples
+docs/
+site/
+_examples/
+updater/
+e2e-ui/
+INSTALL.md
+
+# config files not needed in image
+.goreleaser.yml
+.golangci.yml
+Makefile
+webapp.rest
+cas-export.sh
