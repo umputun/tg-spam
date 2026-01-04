@@ -21,6 +21,7 @@ linters:
     - unused
     - testifylint
     - wrapcheck
+    - modernize
   settings:
     goconst:
       min-len: 2

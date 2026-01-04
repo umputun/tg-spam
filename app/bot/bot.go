@@ -41,7 +41,7 @@ type SenderChat struct {
 type Message struct {
 	ID         int
 	From       User
-	SenderChat SenderChat `json:"sender_chat,omitempty"`
+	SenderChat SenderChat `json:"sender_chat,omitzero"`
 	ChatID     int64
 	Sent       time.Time
 	HTML       string    `json:",omitempty"`
@@ -52,8 +52,8 @@ type Message struct {
 		From       User
 		Text       string `json:",omitempty"`
 		Sent       time.Time
-		SenderChat SenderChat `json:"sender_chat,omitempty"`
-	} `json:",omitempty"`
+		SenderChat SenderChat `json:"sender_chat,omitzero"`
+	} `json:",omitzero"`
 
 	WithVideo     bool `json:",omitempty"`
 	WithVideoNote bool `json:",omitempty"`

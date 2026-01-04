@@ -263,8 +263,8 @@ func httpRequest(l *lua.LState) int {
 // Lua usage: json_string = json_encode(table)
 func jsonEncode(l *lua.LState) int {
 	// function to convert Lua value to Go value
-	var convertValue func(lv lua.LValue) interface{}
-	convertValue = func(lv lua.LValue) interface{} {
+	var convertValue func(lv lua.LValue) any
+	convertValue = func(lv lua.LValue) any {
 		switch lv.Type() {
 		case lua.LTNil:
 			return nil
@@ -281,7 +281,7 @@ func jsonEncode(l *lua.LState) int {
 			maxn := table.MaxN()
 			if maxn > 0 {
 				// it's an array
-				array := make([]interface{}, 0, maxn)
+				array := make([]any, 0, maxn)
 				for i := 1; i <= maxn; i++ {
 					val := table.RawGetInt(i)
 					if val != lua.LNil {
@@ -292,7 +292,7 @@ func jsonEncode(l *lua.LState) int {
 			}
 
 			// it's a map/object
-			obj := make(map[string]interface{})
+			obj := make(map[string]any)
 			table.ForEach(func(key, value lua.LValue) {
 				if key.Type() == lua.LTString {
 					obj[key.String()] = convertValue(value)
@@ -333,8 +333,8 @@ func jsonDecode(l *lua.LState) int {
 	jsonStr := l.CheckString(1)
 
 	// function to convert Go value to Lua value
-	var convertValue func(val interface{}) lua.LValue
-	convertValue = func(val interface{}) lua.LValue {
+	var convertValue func(val any) lua.LValue
+	convertValue = func(val any) lua.LValue {
 		if val == nil {
 			return lua.LNil
 		}
@@ -346,14 +346,14 @@ func jsonDecode(l *lua.LState) int {
 			return lua.LNumber(v)
 		case string:
 			return lua.LString(v)
-		case []interface{}:
+		case []any:
 			// array
 			table := l.NewTable()
 			for i, item := range v {
 				table.RawSetInt(i+1, convertValue(item))
 			}
 			return table
-		case map[string]interface{}:
+		case map[string]any:
 			// object
 			table := l.NewTable()
 			for key, value := range v {
@@ -366,7 +366,7 @@ func jsonDecode(l *lua.LState) int {
 	}
 
 	// unmarshal JSON
-	var data interface{}
+	var data any
 	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 		l.Push(lua.LNil)
 		l.Push(lua.LString(err.Error()))

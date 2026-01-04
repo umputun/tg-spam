@@ -701,8 +701,7 @@ func (d *Detector) tokenize(inp string) map[string]int {
 	}
 
 	tokenFrequency := make(map[string]int)
-	tokens := strings.Fields(inp)
-	for _, token := range tokens {
+	for token := range strings.FieldsSeq(inp) {
 		if isExcludedToken(token) {
 			continue
 		}
@@ -904,9 +903,8 @@ func (d *Detector) isStopWord(msg string, req spamcheck.Request) spamcheck.Respo
 // if word starts with "=", exact match is required (text must equal word).
 // otherwise, substring match is used (text must contain word).
 func matchStopWord(text, word string) bool {
-	if strings.HasPrefix(word, "=") {
+	if checkWord, found := strings.CutPrefix(word, "="); found {
 		// exact match: text must equal the word (without prefix)
-		checkWord := strings.TrimPrefix(word, "=")
 		if checkWord == "" {
 			return false // skip invalid "=" only pattern
 		}

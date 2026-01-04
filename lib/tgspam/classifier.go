@@ -2,6 +2,7 @@ package tgspam
 
 import (
 	"fmt"
+	"maps"
 	"math"
 )
 
@@ -135,11 +136,8 @@ func (c *classifier) reset() {
 // classify executes the classifying process for tokens
 func (c *classifier) classify(tokens ...string) (spamClass, float64, bool) {
 	nVocabulary := len(c.learningResults)
-	posteriorProbabilities := make(map[spamClass]float64)
-
-	for class, priorProb := range c.priorProbabilities {
-		posteriorProbabilities[class] = priorProb
-	}
+	posteriorProbabilities := make(map[spamClass]float64, len(c.priorProbabilities))
+	maps.Copy(posteriorProbabilities, c.priorProbabilities)
 	tokens = c.removeDuplicate(tokens...)
 
 	for class, freqByClass := range c.nFrequencyByClass {

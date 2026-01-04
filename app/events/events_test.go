@@ -346,7 +346,7 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 					From       bot.User
 					Text       string `json:",omitempty"`
 					Sent       time.Time
-					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
 				}{
 					Sent: time.Unix(1578627400, 0),
 					Text: "Original message",
@@ -646,7 +646,7 @@ func TestTelegramListener_transformReplyTo(t *testing.T) {
 					From       bot.User
 					Text       string `json:",omitempty"`
 					Sent       time.Time
-					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
 				}{
 					Text: "original message",
 					From: bot.User{
@@ -683,7 +683,7 @@ func TestTelegramListener_transformReplyTo(t *testing.T) {
 					From       bot.User
 					Text       string `json:",omitempty"`
 					Sent       time.Time
-					SenderChat bot.SenderChat `json:"sender_chat,omitempty"`
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
 				}{
 					Text: "original message",
 					From: bot.User{

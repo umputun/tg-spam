@@ -54,7 +54,7 @@ func (h *LastRequests) Last(n int) []Request {
 	}
 
 	result := make([]Request, 0, n)
-	h.requests.Do(func(v interface{}) {
+	h.requests.Do(func(v any) {
 		if v != nil {
 			if req, ok := v.(Request); ok {
 				result = append(result, req)

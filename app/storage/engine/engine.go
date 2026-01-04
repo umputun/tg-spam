@@ -172,27 +172,28 @@ func (e *SQL) Adopt(q string) string {
 	}
 
 	placeholderCount := 1
-	result := ""
+	var result strings.Builder
+	result.Grow(len(q))
 	inQuotes := false
 
 	for _, r := range q {
 		switch r {
 		case '\'':
 			inQuotes = !inQuotes
-			result += string(r)
+			result.WriteRune(r)
 		case '?':
 			if inQuotes {
-				result += string(r)
+				result.WriteRune(r)
 			} else {
-				result += fmt.Sprintf("$%d", placeholderCount)
+				result.WriteString(fmt.Sprintf("$%d", placeholderCount))
 				placeholderCount++
 			}
 		default:
-			result += string(r)
+			result.WriteRune(r)
 		}
 	}
 
-	return result
+	return result.String()
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
@@ -376,7 +377,7 @@ func (e *SQL) writeSqliteTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer
 
 // writeSqliteRow writes a single row as an INSERT statement
 func (e *SQL) writeSqliteRow(w io.Writer, rows *sqlx.Rows, table string, columns []string) error {
-	row := make(map[string]interface{})
+	row := make(map[string]any)
 	if err := rows.MapScan(row); err != nil {
 		return fmt.Errorf("failed to scan row: %w", err)
 	}
@@ -408,7 +409,7 @@ func (e *SQL) writeSqliteRow(w io.Writer, rows *sqlx.Rows, table string, columns
 }
 
 // formatSqliteValue formats a value for SQLite INSERT statement
-func (e *SQL) formatSqliteValue(value interface{}) string {
+func (e *SQL) formatSqliteValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "NULL"
@@ -674,7 +675,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 
 // writePostgresRow formats and writes a single row in PostgreSQL COPY format
 func (e *SQL) writePostgresRow(w io.Writer, rows *sqlx.Rows, columns []string) error {
-	row := make(map[string]interface{})
+	row := make(map[string]any)
 	if err := rows.MapScan(row); err != nil {
 		return fmt.Errorf("failed to scan row: %w", err)
 	}
@@ -698,7 +699,7 @@ func (e *SQL) writePostgresRow(w io.Writer, rows *sqlx.Rows, columns []string) e
 }
 
 // formatPostgresValue formats a value for PostgreSQL COPY format
-func (e *SQL) formatPostgresValue(value interface{}) string {
+func (e *SQL) formatPostgresValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "\\N"

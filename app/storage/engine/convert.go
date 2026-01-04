@@ -247,7 +247,7 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 
 	// write each row in PostgreSQL COPY format (tab-separated values)
 	for rows.Next() {
-		row := make(map[string]interface{})
+		row := make(map[string]any)
 		if err := rows.MapScan(row); err != nil {
 			return fmt.Errorf("failed to scan row: %w", err)
 		}
@@ -360,7 +360,7 @@ func (c *Converter) convertIndexDefinition(tableName, sqliteStmt string) string 
 
 // formatPostgresValue formats a value for PostgreSQL COPY format.
 // PostgreSQL COPY format requires special handling for NULL values and character escaping.
-func (c *Converter) formatPostgresValue(value interface{}) string {
+func (c *Converter) formatPostgresValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "\\N" // postgreSQL COPY format for NULL

@@ -256,7 +256,7 @@ func (l *Locator) AddSpam(ctx context.Context, userID int64, checks []spamcheck.
 	}
 
 	_, err = l.NamedExecContext(ctx, query,
-		map[string]interface{}{
+		map[string]any{
 			"user_id": userID,
 			"gid":     l.GID(),
 			"time":    time.Now(),

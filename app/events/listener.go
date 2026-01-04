@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -527,12 +528,7 @@ func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
 	if fromChat == l.chatID {
 		return true
 	}
-	for _, id := range l.TestingIDs {
-		if id == fromChat {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(l.TestingIDs, fromChat)
 }
 
 func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64) bool {

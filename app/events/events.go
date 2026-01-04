@@ -434,8 +434,6 @@ func parseCallbackData(data string) (userID int64, msgID int, err error) {
 // sinceQuery calculates time elapsed since callback query message was sent
 func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
 	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
-	if res < 0 { // negative duration possible if clock is not in sync with tg times and a message is from the future
-		res = 0
-	}
-	return res
+	// negative duration possible if clock is not in sync with tg times and a message is from the future
+	return max(res, 0)
 }

@@ -464,7 +464,7 @@ func checkVolumeMount(opts options) (ok bool) {
 		return true
 	}
 	// check if the output contains the specified directory
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.Contains(line, opts.Files.DynamicDataPath) {
 			return true
 		}

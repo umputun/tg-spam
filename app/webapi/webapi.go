@@ -357,7 +357,7 @@ func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
 	type info struct {
 		UserName  string               `json:"user_name,omitempty"`
 		Message   string               `json:"message,omitempty"`
-		Timestamp time.Time            `json:"timestamp,omitempty"`
+		Timestamp time.Time            `json:"timestamp,omitzero"`
 		Checks    []spamcheck.Response `json:"checks,omitempty"`
 	}
 	resp := struct {
@@ -1253,7 +1253,7 @@ func GenerateRandomPassword(length int) (string, error) {
 	const charsetLen = int64(len(charset))
 
 	result := make([]byte, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		n, err := rand.Int(rand.Reader, big.NewInt(charsetLen))
 		if err != nil {
 			return "", fmt.Errorf("failed to generate random number: %w", err)

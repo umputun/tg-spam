@@ -172,10 +172,7 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 		if messageID > 0 {
 			tracker.messageIDs = append(tracker.messageIDs, messageID)
 			// cap at min(maxEntriesPerUser, 100) to prevent excessive memory
-			maxIDs := d.maxEntriesPerUser
-			if maxIDs > 100 {
-				maxIDs = 100
-			}
+			maxIDs := min(d.maxEntriesPerUser, 100)
 			if len(tracker.messageIDs) > maxIDs {
 				tracker.messageIDs = tracker.messageIDs[len(tracker.messageIDs)-maxIDs:]
 			}
@@ -265,7 +262,7 @@ func (d *duplicateDetector) limitEntriesPerUser(entries []hashEntry, trackers ma
 	// remove oldest entries, keeping only the most recent ones
 	startIdx := len(entries) - d.maxEntriesPerUser
 	// update trackers for removed entries and remove their messageIDs
-	for i := 0; i < startIdx; i++ {
+	for i := range startIdx {
 		if t, exists := trackers[entries[i].hash]; exists {
 			t.count--
 			// remove messageID from tracker to keep it aligned with entries
