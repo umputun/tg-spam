@@ -75,15 +75,16 @@ func NewVerifyChat(chat ChatConfig, customDescription string) VerifyChatConfig {
 // verified on behalf of the organization represented by the bot.
 func NewRemoveUserVerification(userID int64) RemoveUserVerificationConfig {
 	return RemoveUserVerificationConfig{
-		UserID:            userID,
+		UserID: userID,
 	}
 }
 
 // NewRemoveChatVerification removes verification from a chat that is currently
-//  verified on behalf of the organization represented by the bot.
+//
+//	verified on behalf of the organization represented by the bot.
 func NewRemoveChatVerification(chat ChatConfig) RemoveChatVerificationConfig {
 	return RemoveChatVerificationConfig{
-		Chat:              chat,
+		Chat: chat,
 	}
 }
 
@@ -1225,6 +1226,29 @@ func NewSetMyName(languageCode, name string) SetMyNameConfig {
 func NewGetBusinessConnection(id string) GetBusinessConnectionConfig {
 	return GetBusinessConnectionConfig{
 		BusinessConnectionID: BusinessConnectionID(id),
+	}
+}
+
+// NewReadBusinessMessage gets business connection request struct
+func NewReadBusinessMessage(chatID int64, messageID int, businessConnectionID string) ReadBusinessMessageConfig {
+	return ReadBusinessMessageConfig{
+		BaseChatMessage: BaseChatMessage{
+			ChatConfig: ChatConfig{
+				ChatID: chatID,
+			},
+			MessageID:            messageID,
+			BusinessConnectionID: BusinessConnectionID(businessConnectionID),
+		},
+	}
+}
+
+// NewDeleteBusinessMessages gets business connection request struct
+func NewDeleteBusinessMessages(messageIDs []int, businessConnectionID string) DeleteBusinessMessagesConfig {
+	return DeleteBusinessMessagesConfig{
+		BaseChatMessages: BaseChatMessages{
+			MessageIDs:           messageIDs,
+			BusinessConnectionID: BusinessConnectionID(businessConnectionID),
+		},
 	}
 }
 

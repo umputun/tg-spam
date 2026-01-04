@@ -58,7 +58,7 @@
 //   - 2025-10-10 v1.39.1: Upgrade to SQLite 3.50.4.
 //
 //   - 2025-06-09 v1.38.0: Upgrade to SQLite 3.50.1.
-// 
+//
 //   - 2025-02-26 v1.36.0: Upgrade to SQLite 3.49.0.
 //
 //   - 2024-11-16 v1.34.0: Implement ResetSession and IsValid methods in connection

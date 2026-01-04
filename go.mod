@@ -3,16 +3,16 @@ module github.com/umputun/tg-spam
 go 1.25
 
 require (
-	github.com/OvyFlash/telegram-bot-api v0.0.0-20250903213241-2ddbaeebe9a5
+	github.com/OvyFlash/telegram-bot-api v0.0.0-20251112155921-e82db5fd534b
 	github.com/didip/tollbooth/v8 v8.0.1
 	github.com/fatih/color v1.18.0
-	github.com/forPelevin/gomoji v1.4.0
+	github.com/forPelevin/gomoji v1.4.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-pkgz/expirable-cache/v3 v3.1.0
 	github.com/go-pkgz/fileutils v0.4.0
 	github.com/go-pkgz/lgr v0.12.1
 	github.com/go-pkgz/repeater v1.2.0
-	github.com/go-pkgz/rest v1.20.4
+	github.com/go-pkgz/rest v1.20.6
 	github.com/go-pkgz/routegroup v1.6.0
 	github.com/go-pkgz/testutils v0.4.2
 	github.com/hashicorp/go-multierror v1.1.1
@@ -25,7 +25,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/yuin/gopher-lua v1.1.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.39.1
+	modernc.org/sqlite v1.42.2
 )
 
 require (
@@ -116,14 +116,14 @@ require (
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.66.10 // indirect
+	modernc.org/libc v1.67.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )

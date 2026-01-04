@@ -79,6 +79,11 @@ func (bot *BotAPI) SetAPIEndpoint(apiEndpoint string) {
 	bot.apiEndpoint = apiEndpoint
 }
 
+// SetAPIEndpoint changes the Telegram Bot API update chan buffer used by the instance.
+func (bot *BotAPI) SetUpdatesBuffer(capacity int) {
+	bot.Buffer = capacity
+}
+
 func buildParams(in Params) url.Values {
 	if in == nil {
 		return url.Values{}
@@ -811,7 +816,6 @@ func SavePreparedInlineMessage[T InlineQueryResults](bot *BotAPI, config SavePre
 
 	return preparedInlineMessage, err
 }
-
 
 // EscapeText takes an input text and escape Telegram markup symbols.
 // In this way we can send a text without being afraid of having to escape the characters manually.

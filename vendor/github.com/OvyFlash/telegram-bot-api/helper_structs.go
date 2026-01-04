@@ -129,7 +129,8 @@ func (base BaseChatMessage) params() (Params, error) {
 // BaseChatMessages is a base type for all messages in chats.
 type BaseChatMessages struct {
 	ChatConfig
-	MessageIDs []int
+	MessageIDs           []int
+	BusinessConnectionID BusinessConnectionID
 }
 
 func (base BaseChatMessages) params() (Params, error) {
@@ -137,6 +138,11 @@ func (base BaseChatMessages) params() (Params, error) {
 	if err != nil {
 		return params, err
 	}
+	p1, err := base.BusinessConnectionID.params()
+	if err != nil {
+		return params, err
+	}
+	params.Merge(p1)
 	err = params.AddInterface("message_ids", base.MessageIDs)
 
 	return params, err
