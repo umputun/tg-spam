@@ -29,8 +29,10 @@ type MetaData struct {
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions, r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway)
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, "+
+		"has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v",
+		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions,
+		r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway)
 }
 
 // Response is a result of spam check.

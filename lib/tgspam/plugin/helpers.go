@@ -181,8 +181,8 @@ func endsWith(l *lua.LState) int {
 }
 
 // httpRequest makes an HTTP request to the given URL and returns the response
-// Lua usage: response, status_code, err = http_request(url, [method="GET"], [headers={...}], [body=""], [timeout=5])
-// Example: response, status, err = http_request("https://example.com/api", "POST", {["Content-Type"]="application/json"}, '{"key":"value"}', 10)
+// Lua usage: response, status_code, err = http_request(url, [method], [headers], [body], [timeout])
+// Example: http_request("https://example.com/api", "POST", {["Content-Type"]="application/json"}, "{}", 10)
 func httpRequest(l *lua.LState) int {
 	urlStr := l.CheckString(1)
 

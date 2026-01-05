@@ -132,7 +132,8 @@ type SpamData struct {
 	Checks []spamcheck.Response
 }
 
-// NewLocator creates new Locator. ttl defines how long to keep messages in db, minSize defines the minimum number of messages to keep
+// NewLocator creates new Locator.
+// ttl defines how long to keep messages in db, minSize defines minimum messages to keep
 func NewLocator(ctx context.Context, ttl time.Duration, minSize int, db *engine.SQL) (*Locator, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db connection is nil")

@@ -382,7 +382,8 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) err
 	}
 
 	// create updated notification text with auto-ban confirmation
-	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s\n\n_auto-%s after reaching %d reports_",
+	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n"+
+		"**Reporters:**\n%s\n\n_auto-%s after reaching %d reports_",
 		len(reports),
 		escapeMarkDownV1Text(reportedUserName),
 		reportedUserID,

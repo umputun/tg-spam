@@ -171,7 +171,8 @@ func (c *Converter) convertTableSchema(tableName, sqliteStmt string) string {
 			// 1. Add a generated column that computes a SHA256 hash of the message text
 			// 2. Change the unique constraint to use the hash instead of the full message text
 			pgStmt = strings.Replace(pgStmt, "UNIQUE(gid, message)",
-				"message_hash TEXT GENERATED ALWAYS AS (encode(sha256(message::bytea), 'hex')) STORED,\n            UNIQUE(gid, message_hash)", 1)
+				"message_hash TEXT GENERATED ALWAYS AS (encode(sha256(message::bytea), 'hex')) STORED,\n"+
+					"            UNIQUE(gid, message_hash)", 1)
 		}
 
 	case "dictionary":

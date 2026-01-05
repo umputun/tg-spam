@@ -1604,9 +1604,9 @@ func Test_downloadSampleHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+		handler := server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
 			return spam, "spam.txt"
-		}))
+		})
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
@@ -1619,9 +1619,9 @@ func Test_downloadSampleHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+		handler := server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
 			return spam, "ham.txt"
-		}))
+		})
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
@@ -1638,9 +1638,9 @@ func Test_downloadSampleHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
+		handler := server.downloadSampleHandler(func(spam, ham []string) ([]string, string) {
 			return spam, "ham.txt"
-		}))
+		})
 
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)

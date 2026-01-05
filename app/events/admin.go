@@ -195,7 +195,8 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported warn message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
+	log.Printf("[DEBUG] reported warn message from superuser %q (%d): %q",
+		update.Message.From.UserName, update.Message.From.ID, msgTxt)
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
@@ -311,7 +312,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
-	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q", update.Message.From.UserName, update.Message.From.ID, msgTxt)
+	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q",
+		update.Message.From.UserName, update.Message.From.ID, msgTxt)
 
 	// check if the reply message will ban a super-user and ignore it
 	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
@@ -337,7 +339,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	if len(spamInfo) > 0 {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*the user banned by %q and message deleted*",
+	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n"+
+		"*the user banned by %q and message deleted*",
 		escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID, msgTxt, escapeMarkDownV1Text(spamInfoText),
 		escapeMarkDownV1Text(update.Message.From.UserName))
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
@@ -400,7 +403,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 			}
 			if deleted > 0 {
 				log.Printf("[INFO] aggressive cleanup: deleted %d messages from user %d", deleted, origMsg.From.ID)
-				notifyMsg := fmt.Sprintf("_deleted %d messages from spammer %q (%d)_", deleted, escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID)
+				notifyMsg := fmt.Sprintf("_deleted %d messages from spammer %q (%d)_",
+					deleted, escapeMarkDownV1Text(origMsg.From.UserName), origMsg.From.ID)
 				if err := send(tbapi.NewMessage(a.adminChatID, notifyMsg), a.tbAPI); err != nil {
 					log.Printf("[WARN] failed to send deletion notification: %v", err)
 				}
@@ -636,8 +640,11 @@ func (a *admin) unban(userID int64) error {
 	}
 
 	// hard ban, unban the user for real
-	_, err := a.tbAPI.Request(tbapi.UnbanChatMemberConfig{
-		ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID}}, OnlyIfBanned: true})
+	cfg := tbapi.UnbanChatMemberConfig{
+		ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID}},
+		OnlyIfBanned:     true,
+	}
+	_, err := a.tbAPI.Request(cfg)
 	// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
 	// https://core.telegram.org/bots/api#unbanchatmember
 	if err != nil {
@@ -770,10 +777,12 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 }
 
 // sendWithUnbanMarkup sends a message to admin chat and adds buttons to ui.
-// text is message with details and action it for the button label to unban, which is user id prefixed with "?" for confirmation;
+// text is message with details and action is the button label to unban,
+// which is user id prefixed with "?" for confirmation.
 // the second button is to show info about the spam analysis.
 func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID int, chatID int64) error {
-	log.Printf("[DEBUG] action response %q: user %+v, msgID:%d, text: %q", action, user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
+	log.Printf("[DEBUG] action response %q: user %+v, msgID:%d, text: %q",
+		action, user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
 	tbMsg := tbapi.NewMessage(chatID, text)
 	tbMsg.ParseMode = tbapi.ModeMarkdown
 	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}

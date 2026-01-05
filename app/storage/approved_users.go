@@ -64,8 +64,9 @@ var approvedUsersQueries = engine.NewQueryMap().
         CREATE INDEX IF NOT EXISTS idx_approved_users_timestamp ON approved_users(timestamp)
     `).
 	Add(CmdAddApprovedUser, engine.Query{
-		Sqlite:   "INSERT OR REPLACE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)",
-		Postgres: "INSERT INTO approved_users (uid, gid, name, timestamp) VALUES ($1, $2, $3, $4) ON CONFLICT (gid, uid) DO UPDATE SET name=EXCLUDED.name, timestamp=EXCLUDED.timestamp",
+		Sqlite: "INSERT OR REPLACE INTO approved_users (uid, gid, name, timestamp) VALUES (?, ?, ?, ?)",
+		Postgres: "INSERT INTO approved_users (uid, gid, name, timestamp) VALUES ($1, $2, $3, $4) " +
+			"ON CONFLICT (gid, uid) DO UPDATE SET name=EXCLUDED.name, timestamp=EXCLUDED.timestamp",
 	}).
 	Add(CmdAddUIDColumn, engine.Query{
 		Sqlite:   "ALTER TABLE approved_users ADD COLUMN uid TEXT",

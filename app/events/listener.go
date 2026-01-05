@@ -130,7 +130,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	log.Printf("[DEBUG] admin handler created, spam forwarding %s, %+v", adminForwardStatus, l.adminHandler)
 
 	if l.AggressiveCleanup {
-		log.Printf("[INFO] aggressive cleanup enabled, all messages from user will be deleted on ban, limit %d", l.AggressiveCleanupLimit)
+		log.Printf("[INFO] aggressive cleanup enabled, messages from user will be deleted on ban, limit %d",
+			l.AggressiveCleanupLimit)
 	}
 
 	u := tbapi.NewUpdate(0)
@@ -362,7 +363,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
 
 	// delete message if requested by bot
-	if resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry && !l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode {
+	canDelete := resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry &&
+		!l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode
+	if canDelete {
 		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  resp.ReplyTo,
 			ChatConfig: tbapi.ChatConfig{ChatID: l.chatID},
@@ -444,7 +447,8 @@ func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Updat
 	switch {
 	case l.isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
-			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)",
+				update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
 		}
 		log.Printf("[DEBUG] user %s (%d) reported spam", update.Message.From.UserName, update.Message.From.ID)

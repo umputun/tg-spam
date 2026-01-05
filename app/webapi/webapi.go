@@ -400,8 +400,9 @@ func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request
 	rest.RenderJSON(w, rest.JSON{"spam": spam, "ham": ham})
 }
 
-// downloadSampleHandler handles GET /download/spam|ham request. It returns dynamic samples both for spam and ham.
-func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) func(w http.ResponseWriter, r *http.Request) {
+// downloadSampleHandler handles GET /download/spam|ham request.
+// It returns dynamic samples both for spam and ham.
+func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		spam, ham, err := s.SpamFilter.DynamicSamples()
 		if err != nil {
@@ -520,7 +521,8 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 
 		// add or remove user from the approved list of detector
 		if err := updFn(req); err != nil {
-			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't update approved users", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "can't update approved users", "details": err.Error()})
 			return
 		}
 
@@ -631,7 +633,8 @@ func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Reques
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
 		log.Printf("[WARN] failed to reload samples after dictionary add: %v", err)
 		if !isHtmxRequest {
-			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
 			return
 		}
 		// for HTMX, log but continue rendering (entry was added successfully)
@@ -677,7 +680,8 @@ func (s *Server) deleteDictionaryEntryHandler(w http.ResponseWriter, r *http.Req
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
 		log.Printf("[WARN] failed to reload samples after dictionary delete: %v", err)
 		if !isHtmxRequest {
-			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
 			return
 		}
 		// for HTMX, log but continue rendering (entry was deleted successfully)

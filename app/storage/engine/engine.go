@@ -517,7 +517,7 @@ func (e *SQL) backupPostgresTable(ctx context.Context, tx *sqlx.Tx, w io.Writer,
 	}
 
 	// write table data
-	if err := e.writePostgresTableData(ctx, tx, w, table, columns, hasGID); err != nil {
+	if err := e.writePgTableData(ctx, tx, w, table, columns, hasGID); err != nil {
 		// skip table data if there are no rows
 		if !strings.Contains(err.Error(), "no rows in result set") {
 			return err
@@ -598,12 +598,12 @@ func (e *SQL) getPostgresTableInfo(ctx context.Context, tx *sqlx.Tx, table strin
 	return hasGID, columns, nil
 }
 
-// writePostgresTableData writes the data rows for a PostgreSQL table
-func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer, table string, columns []string, hasGID bool) error {
+// writePgTableData writes the data rows for a PostgreSQL table
+func (e *SQL) writePgTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer, tbl string, cols []string, hasGID bool) error {
 	// build query to get data
-	dataQuery := fmt.Sprintf("SELECT * FROM %s", table)
+	dataQuery := fmt.Sprintf("SELECT * FROM %s", tbl)
 	if hasGID {
-		dataQuery = fmt.Sprintf("SELECT * FROM %s WHERE gid = $1", table)
+		dataQuery = fmt.Sprintf("SELECT * FROM %s WHERE gid = $1", tbl)
 	}
 
 	// check if there are any rows first
@@ -616,7 +616,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 		err = tx.GetContext(ctx, &count, countQuery)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to check row count for table %s: %w", table, err)
+		return fmt.Errorf("failed to check row count for table %s: %w", tbl, err)
 	}
 
 	if count == 0 {
@@ -625,13 +625,12 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 	}
 
 	// write data comment
-	if _, commentErr := fmt.Fprintf(w, "-- Data for table %s\n", table); commentErr != nil {
+	if _, commentErr := fmt.Fprintf(w, "-- Data for table %s\n", tbl); commentErr != nil {
 		return fmt.Errorf("failed to write comment: %w", commentErr)
 	}
 
 	// start COPY statement
-	if _, copyErr := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n",
-		table, strings.Join(columns, ", ")); copyErr != nil {
+	if _, copyErr := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n", tbl, strings.Join(cols, ", ")); copyErr != nil {
 		return fmt.Errorf("failed to write COPY statement: %w", copyErr)
 	}
 
@@ -643,7 +642,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 		rows, err = tx.QueryxContext(ctx, dataQuery)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to query data from table %s: %w", table, err)
+		return fmt.Errorf("failed to query data from table %s: %w", tbl, err)
 	}
 
 	// important: use a function to properly close rows at the end
@@ -656,7 +655,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 
 	// process rows
 	for rows.Next() {
-		if writeErr := e.writePostgresRow(w, rows, columns); writeErr != nil {
+		if writeErr := e.writePostgresRow(w, rows, cols); writeErr != nil {
 			return writeErr
 		}
 	}

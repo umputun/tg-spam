@@ -343,8 +343,8 @@ func (s *Samples) Iterator(ctx context.Context, t SampleType, o SampleOrigin) (i
 
 // Import reads samples from the reader and imports them into the storage.
 // Returns statistics about imported samples.
-// If withCleanup is true removes all samples with the same type and origin before import.
-func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, withCleanup bool) (*SamplesStats, error) {
+// If clr is true removes all samples with the same type and origin before import.
+func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io.Reader, clr bool) (*SamplesStats, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
@@ -370,7 +370,7 @@ func (s *Samples) Import(ctx context.Context, t SampleType, o SampleOrigin, r io
 	defer tx.Rollback()
 
 	// remove all samples with the same type and origin if requested
-	if withCleanup {
+	if clr {
 		query := s.Adopt(`DELETE FROM samples WHERE gid = ? AND type = ? AND origin = ?`)
 		result, errDel := tx.ExecContext(ctx, query, gid, t, o)
 		if errDel != nil {

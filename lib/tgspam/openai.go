@@ -32,7 +32,7 @@ type OpenAIConfig struct {
 	SystemPrompt                 string
 	CustomPrompts                []string // additional prompts for specific spam patterns
 	RetryCount                   int
-	ReasoningEffort              string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
+	ReasoningEffort              string // effort on reasoning for reasoning models: "low", "medium", "high", or "none"
 	CheckShortMessagesWithOpenAI bool   // if true, check messages shorter than MinMsgLen with OpenAI
 }
 

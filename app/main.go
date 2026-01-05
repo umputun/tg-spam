@@ -385,10 +385,11 @@ func execute(ctx context.Context, opts options) error {
 		log.Print("[INFO] delete leave messages enabled")
 	}
 
-	log.Printf("[DEBUG] telegram listener config: {bot: %s, group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" suppress: %v, dry: %v, training: %v}", tgListener.BotUsername, tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
-		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
-		tgListener.TrainingMode)
+	log.Printf("[DEBUG] telegram listener config: {bot: %s, group: %s, idle: %v, super: %v, admin: %s, "+
+		"testing: %v, no-reply: %v, suppress: %v, dry: %v, training: %v}",
+		tgListener.BotUsername, tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
+		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage,
+		tgListener.Dry, tgListener.TrainingMode)
 
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // do() runs infinite loop, always returns error on exit
@@ -442,7 +443,8 @@ func checkVolumeMount(opts options) (ok bool) {
 		return true
 	}
 	log.Printf("[DEBUG] running in docker")
-	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart", opts.Files.DynamicDataPath)
+	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart",
+		opts.Files.DynamicDataPath)
 
 	// check if dynamic files dir not present. This means it is not mounted
 	_, err := os.Stat(opts.Files.DynamicDataPath)
@@ -501,16 +503,18 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	settings := webapi.Settings{
-		InstanceID:               opts.InstanceID,
-		PrimaryGroup:             opts.Telegram.Group,
-		AdminGroup:               opts.AdminGroup,
-		DisableAdminSpamForward:  opts.DisableAdminSpamForward,
-		LoggerEnabled:            opts.Logger.Enabled,
-		SuperUsers:               opts.SuperUsers,
-		StorageTimeout:           opts.StorageTimeout,
-		NoSpamReply:              opts.NoSpamReply,
-		CasEnabled:               opts.CAS.API != "",
-		MetaEnabled:              opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 || opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly || opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "" || opts.Meta.Giveaway,
+		InstanceID:              opts.InstanceID,
+		PrimaryGroup:            opts.Telegram.Group,
+		AdminGroup:              opts.AdminGroup,
+		DisableAdminSpamForward: opts.DisableAdminSpamForward,
+		LoggerEnabled:           opts.Logger.Enabled,
+		SuperUsers:              opts.SuperUsers,
+		StorageTimeout:          opts.StorageTimeout,
+		NoSpamReply:             opts.NoSpamReply,
+		CasEnabled:              opts.CAS.API != "",
+		MetaEnabled: opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 ||
+			opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly ||
+			opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "" || opts.Meta.Giveaway,
 		MetaLinksLimit:           opts.Meta.LinksLimit,
 		MetaMentionsLimit:        opts.Meta.MentionsLimit,
 		MetaLinksOnly:            opts.Meta.LinksOnly,
@@ -611,7 +615,8 @@ func makeDetector(opts options) *tgspam.Detector {
 	detectorConfig.DuplicateDetection.Threshold = opts.Duplicates.Threshold
 	detectorConfig.DuplicateDetection.Window = opts.Duplicates.Window
 	if opts.Duplicates.Threshold > 0 {
-		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v", opts.Duplicates.Threshold, opts.Duplicates.Window)
+		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v",
+			opts.Duplicates.Threshold, opts.Duplicates.Window)
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)

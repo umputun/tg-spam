@@ -25,6 +25,7 @@ linters:
     - testifylint
     - wrapcheck
     - modernize
+    - lll
   settings:
     goconst:
       min-len: 2
@@ -44,7 +45,7 @@ linters:
       enable:
         - shadow
     lll:
-      line-length: 140
+      line-length: 130
     misspell:
       locale: US
   exclusions:
@@ -67,6 +68,12 @@ linters:
           - gosec
           - unparam
           - wrapcheck
+        path: _test\.go$
+      - linters:
+          - lll
+        source: "`.*`"
+      - linters:
+          - lll
         path: _test\.go$
     paths:
       - vendor

@@ -86,12 +86,20 @@ var reportsQueries = engine.NewQueryMap().
         CREATE INDEX IF NOT EXISTS idx_reports_gid_time ON reports(gid, report_time DESC);
     `).
 	Add(CmdAddReport, engine.Query{
-		Sqlite:   "INSERT OR IGNORE INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name, reported_user_id, reported_user_name, msg_text, report_time, notification_sent, admin_msg_id) VALUES (:msg_id, :chat_id, :gid, :reporter_user_id, :reporter_user_name, :reported_user_id, :reported_user_name, :msg_text, :report_time, :notification_sent, :admin_msg_id)",
-		Postgres: "INSERT INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name, reported_user_id, reported_user_name, msg_text, report_time, notification_sent, admin_msg_id) VALUES (:msg_id, :chat_id, :gid, :reporter_user_id, :reporter_user_name, :reported_user_id, :reported_user_name, :msg_text, :report_time, :notification_sent, :admin_msg_id) ON CONFLICT (gid, msg_id, chat_id, reporter_user_id) DO NOTHING",
+		Sqlite: "INSERT OR IGNORE INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name, " +
+			"reported_user_id, reported_user_name, msg_text, report_time, notification_sent, admin_msg_id) " +
+			"VALUES (:msg_id, :chat_id, :gid, :reporter_user_id, :reporter_user_name, :reported_user_id, " +
+			":reported_user_name, :msg_text, :report_time, :notification_sent, :admin_msg_id)",
+		Postgres: "INSERT INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name, " +
+			"reported_user_id, reported_user_name, msg_text, report_time, notification_sent, admin_msg_id) " +
+			"VALUES (:msg_id, :chat_id, :gid, :reporter_user_id, :reporter_user_name, :reported_user_id, " +
+			":reported_user_name, :msg_text, :report_time, :notification_sent, :admin_msg_id) " +
+			"ON CONFLICT (gid, msg_id, chat_id, reporter_user_id) DO NOTHING",
 	}).
 	AddSame(CmdGetReportsByMessage, "SELECT * FROM reports WHERE gid = ? AND msg_id = ? AND chat_id = ? ORDER BY report_time ASC").
 	AddSame(CmdGetReporterCountSince, "SELECT COUNT(*) FROM reports WHERE gid = ? AND reporter_user_id = ? AND report_time > ?").
-	AddSame(CmdUpdateReportsAdminMsgID, "UPDATE reports SET notification_sent = true, admin_msg_id = ? WHERE gid = ? AND msg_id = ? AND chat_id = ?").
+	AddSame(CmdUpdateReportsAdminMsgID,
+		"UPDATE reports SET notification_sent = true, admin_msg_id = ? WHERE gid = ? AND msg_id = ? AND chat_id = ?").
 	AddSame(CmdDeleteReporter, "DELETE FROM reports WHERE gid = ? AND reporter_user_id = ? AND msg_id = ? AND chat_id = ?").
 	AddSame(CmdDeleteReportsByMessage, "DELETE FROM reports WHERE gid = ? AND msg_id = ? AND chat_id = ?")
 

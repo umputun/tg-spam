@@ -188,7 +188,7 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 	newTrackers[msgHash] = tracker
 
 	// limit entries per user to prevent memory exhaustion
-	filtered, newTrackers = d.limitEntriesPerUser(filtered, newTrackers)
+	filtered, newTrackers = d.limitEntries(filtered, newTrackers)
 
 	tracker = newTrackers[msgHash]
 	count = tracker.count
@@ -215,31 +215,31 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 }
 
 // filterExpiredEntries removes entries older than window and rebuilds trackers from entries
-func (d *duplicateDetector) filterExpiredEntries(entries []hashEntry, now time.Time) (filtered []hashEntry, trackers map[string]hashTracker) {
+func (d *duplicateDetector) filterExpiredEntries(in []hashEntry, now time.Time) (res []hashEntry, trk map[string]hashTracker) {
 	cutoff := now.Add(-d.window)
-	filtered = make([]hashEntry, 0, len(entries)+1)
-	trackers = make(map[string]hashTracker)
+	res = make([]hashEntry, 0, len(in)+1)
+	trk = make(map[string]hashTracker)
 
-	for _, entry := range entries {
+	for _, entry := range in {
 		if !entry.time.After(cutoff) {
 			continue
 		}
-		filtered = append(filtered, entry)
-		tracker := trackers[entry.hash]
-		tracker.count++
+		res = append(res, entry)
+		t := trk[entry.hash]
+		t.count++
 		// build messageIDs from entries
 		if entry.messageID > 0 {
-			tracker.messageIDs = append(tracker.messageIDs, entry.messageID)
+			t.messageIDs = append(t.messageIDs, entry.messageID)
 		}
 		// preserve first seen timestamp
-		if tracker.firstSeen.IsZero() {
-			tracker.firstSeen = entry.time
+		if t.firstSeen.IsZero() {
+			t.firstSeen = entry.time
 		}
-		tracker.lastSeen = entry.time
-		trackers[entry.hash] = tracker
+		t.lastSeen = entry.time
+		trk[entry.hash] = t
 	}
 
-	return filtered, trackers
+	return res, trk
 }
 
 // removeMessageID removes messageID from slice if present
@@ -253,45 +253,45 @@ func (d *duplicateDetector) removeMessageID(messageIDs []int, messageID int) []i
 	return messageIDs
 }
 
-// limitEntriesPerUser enforces maxEntriesPerUser limit by removing oldest entries
-func (d *duplicateDetector) limitEntriesPerUser(entries []hashEntry, trackers map[string]hashTracker) (filtered []hashEntry, updated map[string]hashTracker) {
-	if len(entries) <= d.maxEntriesPerUser {
-		return entries, trackers
+// limitEntries enforces maxEntriesPerUser limit by removing oldest entries
+func (d *duplicateDetector) limitEntries(in []hashEntry, m map[string]hashTracker) (res []hashEntry, out map[string]hashTracker) {
+	if len(in) <= d.maxEntriesPerUser {
+		return in, m
 	}
 
 	// remove oldest entries, keeping only the most recent ones
-	startIdx := len(entries) - d.maxEntriesPerUser
+	startIdx := len(in) - d.maxEntriesPerUser
 	// update trackers for removed entries and remove their messageIDs
 	for i := range startIdx {
-		if t, exists := trackers[entries[i].hash]; exists {
+		if t, exists := m[in[i].hash]; exists {
 			t.count--
 			// remove messageID from tracker to keep it aligned with entries
-			if entries[i].messageID > 0 {
-				t.messageIDs = d.removeMessageID(t.messageIDs, entries[i].messageID)
+			if in[i].messageID > 0 {
+				t.messageIDs = d.removeMessageID(t.messageIDs, in[i].messageID)
 			}
 			if t.count == 0 {
-				delete(trackers, entries[i].hash)
+				delete(m, in[i].hash)
 			} else {
-				trackers[entries[i].hash] = t
+				m[in[i].hash] = t
 			}
 		}
 	}
-	entries = entries[startIdx:]
+	in = in[startIdx:]
 
 	// recalculate firstSeen for remaining entries
 	seenHashes := make(map[string]bool)
-	for _, entry := range entries {
-		if t, exists := trackers[entry.hash]; exists {
+	for _, entry := range in {
+		if t, exists := m[entry.hash]; exists {
 			if !seenHashes[entry.hash] {
 				// this is the first occurrence of this hash in the trimmed entries
 				t.firstSeen = entry.time
-				trackers[entry.hash] = t
+				m[entry.hash] = t
 				seenHashes[entry.hash] = true
 			}
 		}
 	}
 
-	return entries, trackers
+	return in, m
 }
 
 // hash calculates sha256 hash of a message

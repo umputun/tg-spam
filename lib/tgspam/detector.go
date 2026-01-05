@@ -70,7 +70,7 @@ type Config struct {
 	FirstMessagesCount  int           // number of first messages to check for spam
 	HTTPClient          HTTPClient    // http client to use for requests
 	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
-	OpenAIVeto          bool          // if true, openai will be used to veto spam messages, otherwise it will be used to veto ham messages
+	OpenAIVeto          bool          // if true, openai vetos spam, otherwise vetos ham
 	OpenAIHistorySize   int           // history size for openai
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
@@ -252,7 +252,9 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for spam with classifier if classifier is loaded
 	// skip for short messages as classifier doesn't work well on short text
-	if !isShortMessage && d.classifier.nAllDocument > 0 && d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0 {
+	classifierReady := d.classifier.nAllDocument > 0 &&
+		d.classifier.nDocumentByClass["ham"] > 0 && d.classifier.nDocumentByClass["spam"] > 0
+	if !isShortMessage && classifierReady {
 		cr = append(cr, d.isSpamClassified(cleanMsg))
 	}
 
@@ -260,8 +262,8 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// we hit openai in three cases:
 	//  - short message with CheckShortMessagesWithOpenAI enabled (ignores veto mode since there's no decision to veto)
-	//  - all other checks passed (ham result) and OpenAIVeto is false. In this case, openai primary used to improve false negative rate
-	//  - one of the checks failed (spam result) and OpenAIVeto is true. In this case, openai primary used to improve false positive rate
+	//  - all checks passed (ham) and OpenAIVeto is false - improves false negative rate
+	//  - checks failed (spam) and OpenAIVeto is true - improves false positive rate
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
 	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		// determine if we should check with openai:
@@ -731,7 +733,8 @@ func (d *Detector) isSpamSimilarityHigh(msg string) spamcheck.Response {
 				Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
 		}
 	}
-	return spamcheck.Response{Spam: false, Name: "similarity", Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
+	return spamcheck.Response{Spam: false, Name: "similarity",
+		Details: fmt.Sprintf("%0.2f/%0.2f", maxSimilarity, d.SimilarityThreshold)}
 }
 
 // cosineSimilarity calculates the cosine similarity between two token frequency maps.
@@ -919,7 +922,8 @@ func matchStopWord(text, word string) bool {
 // isManyEmojis checks if a given message contains more than MaxAllowedEmoji emojis.
 func (d *Detector) isManyEmojis(msg string) spamcheck.Response {
 	count := countEmoji(msg)
-	return spamcheck.Response{Name: "emoji", Spam: count > d.MaxAllowedEmoji, Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
+	return spamcheck.Response{Name: "emoji", Spam: count > d.MaxAllowedEmoji,
+		Details: fmt.Sprintf("%d/%d", count, d.MaxAllowedEmoji)}
 }
 
 // isMultiLang checks if a given message contains more than MultiLangWords multi-lingual words.
