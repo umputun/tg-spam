@@ -1,3 +1,4 @@
+// Package engine provides database engine abstraction for different SQL databases.
 package engine
 
 import (
@@ -492,9 +493,9 @@ func (e *SQL) writePostgresHeader(ctx context.Context, tx *sqlx.Tx, w io.Writer)
 func (e *SQL) getPostgresTables(ctx context.Context, tx *sqlx.Tx) ([]string, error) {
 	var tables []string
 	query := `
-		SELECT tablename 
-		FROM pg_catalog.pg_tables 
-		WHERE schemaname != 'pg_catalog' 
+		SELECT tablename
+		FROM pg_catalog.pg_tables
+		WHERE schemaname != 'pg_catalog'
 		AND schemaname != 'information_schema'
 	`
 	if err := tx.SelectContext(ctx, &tables, query); err != nil {
@@ -536,17 +537,17 @@ func (e *SQL) backupPostgresTable(ctx context.Context, tx *sqlx.Tx, w io.Writer,
 func (e *SQL) writePostgresTableSchema(ctx context.Context, tx *sqlx.Tx, w io.Writer, table string) error {
 	var createStmt string
 	query := fmt.Sprintf(`
-		SELECT 
+		SELECT
 			'CREATE TABLE ' || table_name || ' (' ||
 			array_to_string(
 				array_agg(
-					column_name || ' ' || 
-					data_type || 
-					CASE 
+					column_name || ' ' ||
+					data_type ||
+					CASE
 						WHEN character_maximum_length IS NOT NULL THEN '(' || character_maximum_length || ')'
 						ELSE ''
 					END ||
-					CASE 
+					CASE
 						WHEN is_nullable = 'NO' THEN ' NOT NULL'
 						ELSE ''
 					END
