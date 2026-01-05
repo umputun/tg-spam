@@ -643,9 +643,7 @@ func (l *TelegramListener) updateSupers() error {
 	}
 
 	log.Printf("[INFO] added admins, full list of supers: {%s}", strings.Join(l.SuperUsers, ", "))
-	if err != nil {
-		return fmt.Errorf("error getting chat administrators: %w", err)
-	}
+
 	return nil
 }
 

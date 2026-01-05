@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
+	"time"
 
 	tokenizer "github.com/sandwich-go/gpt3-encoder"
 	"github.com/sashabaranov/go-openai"
@@ -17,8 +19,9 @@ import (
 
 // openAIChecker is a wrapper for OpenAI API to check if a text is spam
 type openAIChecker struct {
-	client openAIClient
-	params OpenAIConfig
+	client          openAIClient
+	params          OpenAIConfig
+	imageRecognizer ImageRecognizer
 }
 
 // OpenAIConfig contains parameters for openAIChecker
@@ -34,6 +37,19 @@ type OpenAIConfig struct {
 	RetryCount                   int
 	ReasoningEffort              string // controls effort on reasoning for reasoning models. It can be set to "low", "medium", "high", or "none"
 	CheckShortMessagesWithOpenAI bool   // if true, check messages shorter than MinMsgLen with OpenAI
+	RecognizeImagesWithOpenAI    bool   // if true, recognize images with OpenAI
+}
+
+type RecognizeImageRequest struct {
+	ImageTelegramFileID string
+}
+
+type RecognizeImageResponse struct {
+	RecognizedText string
+}
+
+type ImageRecognizer interface {
+	RecognizeImage(context.Context, RecognizeImageRequest) (*RecognizeImageResponse, error)
 }
 
 type openAIClient interface {
@@ -49,7 +65,7 @@ type openAIResponse struct {
 }
 
 // newOpenAIChecker makes a bot for ChatGPT
-func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
+func newOpenAIChecker(client openAIClient, params OpenAIConfig, imageRecognizer ImageRecognizer) *openAIChecker {
 	if params.SystemPrompt == "" {
 		params.SystemPrompt = defaultPrompt
 	}
@@ -68,11 +84,19 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 	if params.RetryCount <= 0 {
 		params.RetryCount = 1
 	}
-	return &openAIChecker{client: client, params: params}
+	return &openAIChecker{
+		client:          client,
+		params:          params,
+		imageRecognizer: imageRecognizer,
+	}
 }
 
 // check checks if a text is spam using OpenAI API
-func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
+func (o *openAIChecker) check(
+	msg string,
+	history []spamcheck.Request,
+	imageTelegramFileID string,
+) (spam bool, cr spamcheck.Response) {
 	if o.client == nil {
 		return false, spamcheck.Response{}
 	}
@@ -87,6 +111,26 @@ func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam boo
 		msg = msgWithHist
 	}
 
+	if imageTelegramFileID != "" {
+		recognizeImageCtx, recognizeImageCtxCancel := context.WithTimeout(context.TODO(), 30*time.Second)
+		defer recognizeImageCtxCancel()
+
+		recognizeImageResponse, err := o.imageRecognizer.RecognizeImage(
+			recognizeImageCtx,
+			RecognizeImageRequest{
+				ImageTelegramFileID: imageTelegramFileID,
+			},
+		)
+		if err != nil {
+			log.Printf("[ERROR] recognizing image with OpenAI: %v", err)
+		} else {
+			imageText := cleanText(recognizeImageResponse.RecognizedText)
+			if imageText != "" {
+				msg += " " + imageText
+			}
+		}
+	}
+
 	// try to send a request several times if it fails
 	var resp openAIResponse
 	var err error
@@ -97,11 +141,18 @@ func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam boo
 	}
 	if err != nil {
 		return false, spamcheck.Response{
-			Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err), Error: err}
+			Spam:    false,
+			Name:    "openai",
+			Details: fmt.Sprintf("OpenAI error: %v", err),
+			Error:   err,
+		}
 	}
 
-	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "openai",
-		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
+	return resp.IsSpam, spamcheck.Response{
+		Spam:    resp.IsSpam,
+		Name:    "openai",
+		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence),
+	}
 }
 
 // buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts

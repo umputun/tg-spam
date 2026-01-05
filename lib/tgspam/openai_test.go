@@ -30,7 +30,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 		MaxTokensRequest:  3000,
 		MaxSymbolsRequest: 12000,
 		Model:             "gpt-4o-mini",
-	})
+	}, noOpImageChecker{})
 
 	t.Run("spam response", func(t *testing.T) {
 		clientMock.CreateChatCompletionFunc = func(
@@ -41,7 +41,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check("some text", nil, "")
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.True(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -58,7 +58,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check("some text", nil, "")
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -71,7 +71,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, assert.AnError
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check("some text", nil, "")
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -88,7 +88,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check("some text", nil, "")
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -103,7 +103,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check("some text", nil, "")
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -128,14 +128,14 @@ func TestOpenAIChecker_CheckWithHistory(t *testing.T) {
 		},
 	}
 
-	checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"})
+	checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"}, noOpImageChecker{})
 	history := []spamcheck.Request{
 		{Msg: "first message", UserName: "user1"},
 		{Msg: "second message", UserName: "user2"},
 		{Msg: "third message", UserName: "user1"},
 	}
 
-	spam, details := checker.check("current message", history)
+	spam, details := checker.check("current message", history, "")
 	t.Logf("spam: %v, details: %+v", spam, details)
 	assert.True(t, spam)
 	assert.Equal(t, "openai", details.Name)
@@ -204,8 +204,8 @@ History:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientMock.ResetCalls() // reset mock before each test case
-			checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"})
-			checker.check(tt.currentMsg, tt.history)
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"}, noOpImageChecker{})
+			checker.check(tt.currentMsg, tt.history, "")
 			assert.Equal(t, tt.expectedMessage, capturedMsg, "message formatting mismatch")
 			assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 		})
@@ -308,10 +308,10 @@ func TestReasoningEffortInRequest(t *testing.T) {
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{
 				Model:           "gpt-4o-mini",
 				ReasoningEffort: tt.reasoningEffort,
-			})
+			}, noOpImageChecker{})
 
 			// call the check method to trigger the client call
-			checker.check("test message", nil)
+			checker.check("test message", nil, "")
 
 			// verify the reasoning_effort parameter in the request
 			if tt.expectInRequest {
@@ -371,7 +371,7 @@ func TestBuildSystemPromptWithCustomPrompts(t *testing.T) {
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{
 				SystemPrompt:  tt.systemPrompt,
 				CustomPrompts: tt.customPrompts,
-			})
+			}, noOpImageChecker{})
 
 			// test the buildSystemPrompt function
 			result := checker.buildSystemPrompt()
@@ -416,10 +416,10 @@ func TestCustomPromptsInActualRequest(t *testing.T) {
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{
 				SystemPrompt:  tt.systemPrompt,
 				CustomPrompts: tt.customPrompts,
-			})
+			}, noOpImageChecker{})
 
 			// call the check method to trigger the request
-			checker.check("test message", nil)
+			checker.check("test message", nil, "")
 
 			// verify the system message in the request contains what we expect
 			expectedContent := checker.buildSystemPrompt()
@@ -496,10 +496,10 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{
 				Model:             tt.model,
 				MaxTokensResponse: 100,
-			})
+			}, noOpImageChecker{})
 
 			// call the check method to trigger the client call
-			checker.check("test message", nil)
+			checker.check("test message", nil, "")
 
 			// verify the correct field is used
 			if tt.expectMaxTokens {

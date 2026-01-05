@@ -43,10 +43,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
 			},
 			wantRequest: spamcheck.Request{
-				Msg:      "spam message",
-				UserID:   "1",
-				UserName: "user1",
-				Meta:     spamcheck.MetaData{Images: 1},
+				Msg:                 "spam message",
+				UserID:              "1",
+				UserName:            "user1",
+				Meta:                spamcheck.MetaData{Images: 1},
+				ImageTelegramFileID: "123",
 			},
 		},
 		{
@@ -230,10 +231,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
 			},
 			wantRequest: spamcheck.Request{
-				Msg:      "Пишите - @zhanna_live23",
-				UserID:   "1",
-				UserName: "user1",
-				Meta:     spamcheck.MetaData{Images: 1, Mentions: 1},
+				Msg:                 "Пишите - @zhanna_live23",
+				UserID:              "1",
+				UserName:            "user1",
+				Meta:                spamcheck.MetaData{Images: 1, Mentions: 1},
+				ImageTelegramFileID: "123",
 			},
 		},
 		{
@@ -261,10 +263,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
 			},
 			wantRequest: spamcheck.Request{
-				Msg:      "@user1 check this",
-				UserID:   "1",
-				UserName: "user1",
-				Meta:     spamcheck.MetaData{Images: 1, Mentions: 2},
+				Msg:                 "@user1 check this",
+				UserID:              "1",
+				UserName:            "user1",
+				Meta:                spamcheck.MetaData{Images: 1, Mentions: 2},
+				ImageTelegramFileID: "123",
 			},
 		},
 		{
@@ -313,10 +316,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
 			},
 			wantRequest: spamcheck.Request{
-				Msg:      "Click here for details",
-				UserID:   "1",
-				UserName: "user1",
-				Meta:     spamcheck.MetaData{Images: 1, Links: 1},
+				Msg:                 "Click here for details",
+				UserID:              "1",
+				UserName:            "user1",
+				Meta:                spamcheck.MetaData{Images: 1, Links: 1},
+				ImageTelegramFileID: "123",
 			},
 		},
 		{

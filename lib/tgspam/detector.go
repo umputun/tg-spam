@@ -173,7 +173,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		return false
 	}
 
-	cleanMsg := d.cleanText(req.Msg)
+	cleanMsg := cleanText(req.Msg)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
@@ -231,9 +231,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		// only return early if:
 		// 1. we already detected spam from simple checks above, OR
-		// 2. openai checker is not configured, OR
-		// 3. openai is configured but should skip short messages
-		if isSpamDetected(cr) || d.openaiChecker == nil || !d.openaiChecker.params.CheckShortMessagesWithOpenAI {
+		if isSpamDetected(cr) ||
+			// 2. openai checker is not configured, OR
+			d.openaiChecker == nil ||
+			// 3. openai is configured but should skip short messages and image recognition is not required
+			!d.openaiChecker.params.CheckShortMessagesWithOpenAI && (req.ImageTelegramFileID == "" || !d.openaiChecker.params.RecognizeImagesWithOpenAI) {
+
 			if isSpamDetected(cr) {
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
@@ -277,7 +280,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				// if history size is set, we use the last N messages for openai
 				hist = d.hamHistory.Last(d.OpenAIHistorySize)
 			}
-			spam, details := d.openaiChecker.check(cleanMsg, hist)
+			spam, details := d.openaiChecker.check(cleanMsg, hist, req.ImageTelegramFileID)
 			cr = append(cr, details)
 			if spamDetected && details.Error != nil {
 				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
@@ -340,8 +343,8 @@ func (d *Detector) Reset() {
 }
 
 // WithOpenAIChecker sets an openAIChecker for spam checking.
-func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
-	d.openaiChecker = newOpenAIChecker(client, config)
+func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig, imageRecognizer ImageRecognizer) {
+	d.openaiChecker = newOpenAIChecker(client, config, imageRecognizer)
 }
 
 // WithLuaEngine sets a Lua plugin engine and loads plugins
@@ -1054,24 +1057,6 @@ func (d *Detector) isAbnormalSpacing(msg string) spamcheck.Response {
 	}
 }
 
-// cleanText removes control and format characters from a given text
-func (d *Detector) cleanText(text string) string {
-	var result strings.Builder
-	result.Grow(len(text))
-	for _, r := range text {
-		// skip control and format characters
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
-			continue
-		}
-		// skip specific ranges of invisible characters
-		if (r >= 0x200B && r <= 0x200F) || (r >= 0x2060 && r <= 0x206F) {
-			continue
-		}
-		result.WriteRune(r)
-	}
-	return result.String()
-}
-
 func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
 	if d.StorageTimeout == 0 {
 		return context.Background(), func() {}
@@ -1090,4 +1075,22 @@ func countEmoji(s string) int {
 // normalizeSpaces collapses multiple consecutive spaces into a single space
 func normalizeSpaces(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// cleanText removes control and format characters from a given text
+func cleanText(text string) string {
+	var result strings.Builder
+	result.Grow(len(text))
+	for _, r := range text {
+		// skip control and format characters
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		// skip specific ranges of invisible characters
+		if (r >= 0x200B && r <= 0x200F) || (r >= 0x2060 && r <= 0x206F) {
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }
