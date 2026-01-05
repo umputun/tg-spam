@@ -80,16 +80,16 @@ func TestTelegramListener_Do(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 	assert.Equal(t, SuperUsers{"super", "1"}, l.SuperUsers)
 
-	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
-	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	assert.Empty(t, mockLogger.SaveCalls())
+	require.Len(t, mockAPI.SendCalls(), 2)
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
-	assert.Equal(t, 1, len(mockAPI.GetChatAdministratorsCalls()))
+	assert.Len(t, mockAPI.GetChatAdministratorsCalls(), 1)
 
-	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
 	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -161,16 +161,16 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
-		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Len(t, mockLogger.SaveCalls(), 1)
 		assert.Equal(t, "text 123", mockLogger.SaveCalls()[0].Msg.Text)
 		assert.Equal(t, "user", mockLogger.SaveCalls()[0].Msg.From.Username)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, "bot's answer", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+		assert.Len(t, mockAPI.RequestCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID)
 
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -199,19 +199,19 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
-		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Len(t, mockLogger.SaveCalls(), 1)
 		assert.Equal(t, "text 321", mockLogger.SaveCalls()[0].Msg.Text)
 		assert.Equal(t, "ChannelBot", mockLogger.SaveCalls()[0].Msg.From.Username)
 		assert.Equal(t, "user", mockLogger.SaveCalls()[0].Response.User.Username)
 		assert.Equal(t, "bot's answer for channel", mockLogger.SaveCalls()[0].Response.Text)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, "bot's answer for channel", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+		assert.Len(t, mockAPI.RequestCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatSenderChatConfig).ChatID)
 		assert.Equal(t, int64(12345), mockAPI.RequestCalls()[0].C.(tbapi.BanChatSenderChatConfig).SenderChatID)
 
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "text 321", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.Equal(t, "ChannelBot", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -248,11 +248,11 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, "text 543", mockLogger.SaveCalls()[0].Msg.Text)
 		assert.Equal(t, "admin", mockLogger.SaveCalls()[0].Msg.From.Username)
 		assert.Equal(t, "bot's answer for admin", mockLogger.SaveCalls()[0].Response.Text)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, "bot's answer for admin", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		require.Equal(t, 0, len(mockAPI.RequestCalls()))
 
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "text 543", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.Equal(t, "admin", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -277,11 +277,11 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
-		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Len(t, mockLogger.SaveCalls(), 1)
 		assert.Equal(t, "text 123", mockLogger.SaveCalls()[0].Msg.Text)
 		assert.True(t, mockLogger.SaveCalls()[0].Msg.WithForward)
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.True(t, botMock.OnMessageCalls()[0].Msg.WithForward)
 	})
@@ -315,13 +315,13 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		}
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
-		assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Len(t, mockLogger.SaveCalls(), 1)
 		assert.Equal(t, "edited spam message", mockLogger.SaveCalls()[0].Msg.Text)
 		assert.Equal(t, "edited_user", mockLogger.SaveCalls()[0].Msg.From.Username)
 		assert.Equal(t, "edited message is spam", mockLogger.SaveCalls()[0].Response.Text)
 
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "edited spam message", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.Equal(t, "edited_user", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -391,18 +391,18 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	assert.Len(t, mockLogger.SaveCalls(), 1)
 	assert.Equal(t, "text 123", mockLogger.SaveCalls()[0].Msg.Text)
 	assert.Equal(t, "user", mockLogger.SaveCalls()[0].Msg.From.Username)
-	assert.Equal(t, 1, len(mockAPI.SendCalls()))
+	assert.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-	assert.Equal(t, 1, len(mockAPI.RequestCalls()))
+	assert.Len(t, mockAPI.RequestCalls(), 1)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).ChatID)
 	assert.Equal(t, int64(1), mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).UserID)
 	assert.Equal(t, &tbapi.ChatPermissions{}, mockAPI.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig).Permissions)
 
-	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
 	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -464,14 +464,14 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, 1, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	assert.Len(t, mockLogger.SaveCalls(), 1)
 	assert.Equal(t, "text 321", mockLogger.SaveCalls()[0].Msg.Text)
 	assert.Equal(t, "user", mockLogger.SaveCalls()[0].Msg.From.Username)
-	assert.Equal(t, 0, len(mockAPI.SendCalls()), "no messages should be sent in training mode")
-	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+	assert.Empty(t, mockAPI.SendCalls(), "no messages should be sent in training mode")
+	assert.Empty(t, mockAPI.RequestCalls())
 
-	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "text 321", botMock.OnMessageCalls()[0].Msg.Text)
 	assert.Equal(t, "user", botMock.OnMessageCalls()[0].Msg.From.Username)
 	assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -538,12 +538,12 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockLogger.SaveCalls(), 1)
 	assert.Equal(t, "text 123", mockLogger.SaveCalls()[0].Msg.Text)
 	assert.Equal(t, "user", mockLogger.SaveCalls()[0].Msg.From.Username)
 	// asking to delete the message produces DeleteMessageConfig call with the same message and channel IDs
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, 321, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
 }
@@ -625,14 +625,14 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	// verify that extra messages were deleted
 	assert.Contains(t, deletedMessages, 100, "should delete first duplicate")
 	assert.Contains(t, deletedMessages, 101, "should delete second duplicate")
 
 	// verify ban was called + 2 delete requests for extra messages
-	assert.Equal(t, 3, len(mockAPI.RequestCalls()), "should have 1 ban + 2 delete requests")
+	assert.Len(t, mockAPI.RequestCalls(), 3, "should have 1 ban + 2 delete requests")
 }
 
 func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
@@ -712,13 +712,13 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	// verify that no extra messages were deleted for superuser
-	assert.Len(t, deletedMessages, 0, "superuser extra deletions should be skipped")
+	assert.Empty(t, deletedMessages, "superuser extra deletions should be skipped")
 
 	// verify no ban/delete requests were issued for superuser
-	assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not call Request for superuser")
+	assert.Empty(t, mockAPI.RequestCalls(), "should not call Request for superuser")
 }
 
 func TestTelegramListener_DoWithForwarded(t *testing.T) {
@@ -774,7 +774,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	defer cancel()
 
 	err := l.Locator.AddMessage(ctx, "text 123", 123, 88, "user", 999999) // add message to locator
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	updMsg := tbapi.Update{
 		Message: &tbapi.Message{
@@ -793,24 +793,24 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err = l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	assert.Empty(t, mockLogger.SaveCalls())
 
-	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	require.Len(t, mockAPI.SendCalls(), 2)
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "detection results")
 	assert.Equal(t, int64(123), mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ChatID)
 
-	require.Equal(t, 1, len(b.UpdateSpamCalls()))
+	require.Len(t, b.UpdateSpamCalls(), 1)
 	assert.Equal(t, "text 123", b.UpdateSpamCalls()[0].Msg)
 
-	assert.Equal(t, 2, len(mockAPI.RequestCalls()))
+	assert.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.BanChatMemberConfig).ChatID)
 	assert.Equal(t, int64(88), mockAPI.RequestCalls()[1].C.(tbapi.BanChatMemberConfig).UserID)
 
-	assert.Equal(t, 1, len(b.RemoveApprovedUserCalls()))
+	assert.Len(t, b.RemoveApprovedUserCalls(), 1)
 	assert.Equal(t, int64(88), b.RemoveApprovedUserCalls()[0].ID)
 }
 
@@ -880,25 +880,25 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	assert.Empty(t, mockLogger.SaveCalls())
 
-	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	require.Len(t, mockAPI.SendCalls(), 2)
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "detection results")
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, `the user banned by "superuser1"`)
 
-	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 	assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
 
-	require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
+	require.Len(t, botMock.UpdateSpamCalls(), 1)
 	assert.Equal(t, "text 123", botMock.UpdateSpamCalls()[0].Msg)
 
-	require.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()))
+	require.Len(t, botMock.RemoveApprovedUserCalls(), 1)
 	assert.Equal(t, int64(666), botMock.RemoveApprovedUserCalls()[0].ID)
 
-	require.Equal(t, 3, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 3)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
@@ -974,12 +974,12 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	assert.Empty(t, mockLogger.SaveCalls())
 
-	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	require.Len(t, mockAPI.SendCalls(), 2)
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-	assert.Equal(t, true, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).DisableNotification)
+	assert.True(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).DisableNotification)
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, "warning from superuser1")
 	assert.Contains(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text, `@user You've violated our rules`)
 
@@ -987,7 +987,7 @@ func TestTelegramListener_DoWithDirectWarnReport(t *testing.T) {
 	require.Empty(t, b.UpdateSpamCalls())
 	require.Empty(t, b.RemoveApprovedUserCalls())
 
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 	assert.Equal(t, 999999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
@@ -1053,17 +1053,17 @@ func TestTelegramListener_DoWithAdminUnBan(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.UnbanChatMemberConfig).UserID)
-	require.Equal(t, 1, len(b.UpdateHamCalls()))
+	require.Len(t, b.UpdateHamCalls(), 1)
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
-	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	require.Len(t, b.AddApprovedUserCalls(), 1)
 	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
@@ -1127,19 +1127,19 @@ func TestTelegramListener_DoWithAdminSoftUnBan(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
 	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendAudios: true, CanSendDocuments: true, CanSendPhotos: true, CanSendVideos: true, CanSendVideoNotes: true, CanSendVoiceNotes: true, CanSendOtherMessages: true, CanChangeInfo: true, CanInviteUsers: true, CanPinMessages: true},
 		mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).Permissions)
-	require.Equal(t, 1, len(b.UpdateHamCalls()))
+	require.Len(t, b.UpdateHamCalls(), 1)
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
-	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	require.Len(t, b.AddApprovedUserCalls(), 1)
 	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
@@ -1203,18 +1203,18 @@ func TestTelegramListener_DoWithAdminSoftUnBanEmptyText(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
 
 	assert.Equal(t, int64(777), mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).UserID)
 	assert.Equal(t, &tbapi.ChatPermissions{CanSendMessages: true, CanSendAudios: true, CanSendDocuments: true, CanSendPhotos: true, CanSendVideos: true, CanSendVideoNotes: true, CanSendVoiceNotes: true, CanSendOtherMessages: true, CanChangeInfo: true, CanInviteUsers: true, CanPinMessages: true},
 		mockAPI.RequestCalls()[1].C.(tbapi.RestrictChatMemberConfig).Permissions)
-	require.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	require.Empty(t, b.UpdateHamCalls())
+	require.Len(t, b.AddApprovedUserCalls(), 1)
 	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
@@ -1278,15 +1278,15 @@ func TestTelegramListener_DoWithAdminUnBan_Training(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).MessageID)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "by admin in ")
-	require.Equal(t, 1, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 1)
 	assert.Equal(t, "accepted", mockAPI.RequestCalls()[0].C.(tbapi.CallbackConfig).Text)
-	require.Equal(t, 1, len(b.UpdateHamCalls()))
+	require.Len(t, b.UpdateHamCalls(), 1)
 	assert.Equal(t, "this was the ham, not spam", b.UpdateHamCalls()[0].Msg)
-	require.Equal(t, 1, len(b.AddApprovedUserCalls()))
+	require.Len(t, b.AddApprovedUserCalls(), 1)
 	assert.Equal(t, int64(777), b.AddApprovedUserCalls()[0].ID)
 }
 
@@ -1349,14 +1349,14 @@ func TestTelegramListener_DoWithAdminUnBanConfirmation(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Equal(t, 987654, mockAPI.SendCalls()[0].C.(tbapi.EditMessageReplyMarkupConfig).MessageID)
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageReplyMarkupConfig).ReplyMarkup.InlineKeyboard
-	assert.Equal(t, 2, len(kb[0]), " tow yes/no buttons")
-	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
+	assert.Len(t, kb[0], 2, " tow yes/no buttons")
+	assert.Empty(t, mockAPI.RequestCalls())
+	assert.Empty(t, b.UpdateHamCalls())
+	require.Empty(t, b.AddApprovedUserCalls())
 }
 
 func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
@@ -1418,16 +1418,16 @@ func TestTelegramListener_DoWithAdminUnbanDecline(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
-	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Empty(t, kb, "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
-	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
-	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
+	assert.Empty(t, mockAPI.RequestCalls())
+	assert.Len(t, b.UpdateSpamCalls(), 1)
+	assert.Empty(t, b.UpdateHamCalls())
+	require.Empty(t, b.AddApprovedUserCalls())
 }
 
 func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
@@ -1490,20 +1490,20 @@ func TestTelegramListener_DoWithAdminBanConfirmedTraining(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 2, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 2)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
-	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Empty(t, kb, "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "confirmed by admin in ")
-	require.Equal(t, 2, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, int64(999), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID, "user banned")
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID, "chat id")
 	assert.Equal(t, 987654, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID, "message deleted")
 
-	assert.Equal(t, 1, len(b.UpdateSpamCalls()))
-	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
+	assert.Len(t, b.UpdateSpamCalls(), 1)
+	assert.Empty(t, b.UpdateHamCalls())
+	require.Empty(t, b.AddApprovedUserCalls())
 }
 
 func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
@@ -1561,19 +1561,19 @@ func TestTelegramListener_DoWithAdminShowInfo(t *testing.T) {
 
 	err := l.Locator.AddSpam(ctx, 999, []spamcheck.Response{{Name: "rule1", Spam: true, Details: "details1"},
 		{Name: "rule2", Spam: true, Details: "details2"}})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
-	require.Equal(t, 1, len(mockAPI.SendCalls()))
+	require.EqualError(t, err, "telegram update chan closed")
+	require.Len(t, mockAPI.SendCalls(), 1)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "unban user blah")
 	kb := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).ReplyMarkup.InlineKeyboard
-	assert.Equal(t, 0, len(kb), "buttons cleared")
+	assert.Empty(t, kb, "buttons cleared")
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig).Text, "results**\n- rule1: spam, details1\n- rule2: spam, details2")
-	assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-	assert.Equal(t, 0, len(b.UpdateSpamCalls()))
-	assert.Equal(t, 0, len(b.UpdateHamCalls()))
-	require.Equal(t, 0, len(b.AddApprovedUserCalls()))
+	assert.Empty(t, mockAPI.RequestCalls())
+	assert.Empty(t, b.UpdateSpamCalls())
+	assert.Empty(t, b.UpdateHamCalls())
+	require.Empty(t, b.AddApprovedUserCalls())
 }
 
 func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
@@ -1619,13 +1619,13 @@ func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	meta, found := l.Locator.Message(ctx, "new_123_321")
 	assert.True(t, found)
 	assert.Equal(t, int64(321), meta.UserID)
 	assert.Equal(t, 22, meta.MsgID)
-	assert.Equal(t, "", meta.UserName)
+	assert.Empty(t, meta.UserName)
 	assert.Equal(t, int64(123), meta.ChatID)
 
 }
@@ -2032,9 +2032,9 @@ func TestUpdateSupers(t *testing.T) {
 
 			err := l.updateSupers()
 			if tt.expectedErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.ElementsMatch(t, tt.expectedResult, l.SuperUsers, "Expected: %v, got: %v", tt.expectedResult, l.SuperUsers)
 			}
 		})
@@ -2157,9 +2157,9 @@ func TestProcNewChatMemberMessage(t *testing.T) {
 
 			err := l.procNewChatMemberMessage(tt.update)
 			if tt.expectedError {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for _, args := range tt.expectedAddMessageArgs {
@@ -2299,12 +2299,12 @@ func TestProcLeftChatMemberMessage(t *testing.T) {
 
 			err := l.procLeftChatMemberMessage(tt.update)
 			if tt.expectedError {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
-			require.Equal(t, tt.expectedDeleteMessageCalls, len(mockAPI.RequestCalls()))
+			require.Len(t, mockAPI.RequestCalls(), tt.expectedDeleteMessageCalls)
 			if tt.expectedDeleteMessageCalls == 1 {
 				assert.Equal(t, tt.expectedDeleteMessageArgs.ChatID, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).ChatID)
 				assert.Equal(t, tt.expectedDeleteMessageArgs.MsgID, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
@@ -2390,17 +2390,17 @@ func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
 	require.NoError(t, err)
 
 	// verify bot.OnMessage was called with the message
-	require.Equal(t, 1, len(botMock.OnMessageCalls()))
+	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.True(t, botMock.OnMessageCalls()[0].Msg.WithForward)
-	assert.Equal(t, "", botMock.OnMessageCalls()[0].Msg.Text)
+	assert.Empty(t, botMock.OnMessageCalls()[0].Msg.Text)
 	assert.Equal(t, int64(456), botMock.OnMessageCalls()[0].Msg.From.ID)
 
 	// verify ban was requested
-	require.Equal(t, 1, len(mockAPI.RequestCalls()))
+	require.Len(t, mockAPI.RequestCalls(), 1)
 	assert.Equal(t, int64(456), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
 
 	// verify spam logger was called
-	require.Equal(t, 1, len(mockLogger.SaveCalls()))
+	require.Len(t, mockLogger.SaveCalls(), 1)
 }
 
 func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
@@ -2447,7 +2447,7 @@ func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	// verify deleteSystemMessage was called
 	require.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1)
@@ -2508,7 +2508,7 @@ func TestTelegramListener_DeleteLeaveMessages(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	// verify deleteSystemMessage was called
 	require.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1)
@@ -2539,7 +2539,7 @@ func TestTelegramListener_DeleteSystemMessage(t *testing.T) {
 		l := TelegramListener{TbAPI: mockAPI}
 		l.deleteSystemMessage(123, 456, "join")
 
-		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+		require.Len(t, mockAPI.RequestCalls(), 1)
 	})
 
 	t.Run("deletion failure", func(t *testing.T) {
@@ -2553,7 +2553,7 @@ func TestTelegramListener_DeleteSystemMessage(t *testing.T) {
 		// should not panic on error, just log
 		l.deleteSystemMessage(123, 456, "leave")
 
-		require.Equal(t, 1, len(mockAPI.RequestCalls()))
+		require.Len(t, mockAPI.RequestCalls(), 1)
 	})
 }
 
@@ -2602,7 +2602,7 @@ func TestTelegramListener_NoDeleteWhenFlagsDisabled(t *testing.T) {
 	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 	err := l.Do(ctx)
-	assert.EqualError(t, err, "telegram update chan closed")
+	require.EqualError(t, err, "telegram update chan closed")
 
 	// verify no delete message calls were made
 	for _, call := range mockAPI.RequestCalls() {
@@ -2681,10 +2681,10 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify reportsHandler was called (reports.GetByMessage should be called)
-		assert.Equal(t, 1, len(reportsMock.GetByMessageCalls()))
+		assert.Len(t, reportsMock.GetByMessageCalls(), 1)
 		assert.Equal(t, 42, reportsMock.GetByMessageCalls()[0].MsgID)
 	})
 
@@ -2736,7 +2736,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify adminHandler was called (it should edit the message to show confirmation buttons)
 		sendCalls := mockAPI.SendCalls()
@@ -2810,11 +2810,11 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify reportsHandler was called
-		assert.Equal(t, 1, len(reportsMock.GetByMessageCalls()))
-		assert.Equal(t, 1, len(reportsMock.DeleteByMessageCalls()))
+		assert.Len(t, reportsMock.GetByMessageCalls(), 1)
+		assert.Len(t, reportsMock.DeleteByMessageCalls(), 1)
 	})
 
 	t.Run("+ callback routes to adminHandler", func(t *testing.T) {
@@ -2867,7 +2867,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify adminHandler was called (should edit message with confirmation text)
 		sendCalls := mockAPI.SendCalls()
@@ -2937,11 +2937,11 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify adminHandler was called (should call UpdateHam and AddApprovedUser)
-		assert.Equal(t, 1, len(botMock.UpdateHamCalls()))
-		assert.Equal(t, 1, len(botMock.AddApprovedUserCalls()))
+		assert.Len(t, botMock.UpdateHamCalls(), 1)
+		assert.Len(t, botMock.AddApprovedUserCalls(), 1)
 	})
 }
 
@@ -2999,12 +2999,12 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify bot.OnMessage was NOT called
-		assert.Equal(t, 0, len(botMock.OnMessageCalls()))
+		assert.Empty(t, botMock.OnMessageCalls())
 		// verify no spam was logged
-		assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+		assert.Empty(t, mockLogger.SaveCalls())
 	})
 
 	t.Run("channel auto-forward should run spam check", func(t *testing.T) {
@@ -3059,10 +3059,10 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify bot.OnMessage WAS called
-		assert.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "event announcement with lots of emojis", botMock.OnMessageCalls()[0].Msg.Text)
 	})
 
@@ -3112,10 +3112,10 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify bot.OnMessage WAS called
-		assert.Equal(t, 1, len(botMock.OnMessageCalls()))
+		assert.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "buy cheap products here", botMock.OnMessageCalls()[0].Msg.Text)
 	})
 
@@ -3164,12 +3164,12 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 
 		// verify bot.OnMessage was NOT called
-		assert.Equal(t, 0, len(botMock.OnMessageCalls()))
+		assert.Empty(t, botMock.OnMessageCalls())
 		// verify no spam was logged
-		assert.Equal(t, 0, len(mockLogger.SaveCalls()))
+		assert.Empty(t, mockLogger.SaveCalls())
 	})
 }
 
@@ -3227,9 +3227,9 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 		assert.True(t, deleteCalled, "orphaned /report should be deleted")
-		assert.Equal(t, 0, len(botMock.OnMessageCalls()), "bot.OnMessage should not be called for orphaned /report")
+		assert.Empty(t, botMock.OnMessageCalls(), "bot.OnMessage should not be called for orphaned /report")
 	})
 
 	t.Run("deletes orphaned report (without slash)", func(t *testing.T) {
@@ -3283,7 +3283,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 		assert.True(t, deleteCalled, "orphaned report should be deleted")
 	})
 
@@ -3339,7 +3339,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 		assert.True(t, deleteCalled, "/report@botname should be deleted")
 	})
 
@@ -3404,9 +3404,9 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 				err := l.Do(ctx)
-				assert.EqualError(t, err, "telegram update chan closed")
+				require.EqualError(t, err, "telegram update chan closed")
 				assert.False(t, deleteCalled, "message starting with 'report' but not a command should NOT be deleted")
-				assert.Equal(t, 1, len(botMock.OnMessageCalls()), "bot.OnMessage should be called for non-command messages")
+				assert.Len(t, botMock.OnMessageCalls(), 1, "bot.OnMessage should be called for non-command messages")
 			})
 		}
 	})
@@ -3462,7 +3462,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
 		err := l.Do(ctx)
-		assert.EqualError(t, err, "telegram update chan closed")
+		require.EqualError(t, err, "telegram update chan closed")
 		assert.False(t, deleteCalled, "superuser orphaned /report should NOT be auto-deleted")
 	})
 }

@@ -29,7 +29,7 @@ func (s *StorageTestSuite) TestReports_NewReports() {
 				s.Contains(err.Error(), "db connection is nil")
 			})
 
-			s.Run("context cancelled", func() {
+			s.Run("context canceled", func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
@@ -67,7 +67,7 @@ func (s *StorageTestSuite) TestReports_Add() {
 				// verify report was added
 				allReports, err := reports.GetByMessage(ctx, 123, 456)
 				s.Require().NoError(err)
-				s.Equal(1, len(allReports))
+				s.Len(allReports, 1)
 				s.Equal(int64(789), allReports[0].ReporterUserID)
 				s.Equal("reporter1", allReports[0].ReporterUserName)
 				s.Equal(int64(999), allReports[0].ReportedUserID)
@@ -91,7 +91,7 @@ func (s *StorageTestSuite) TestReports_Add() {
 
 				allReports, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Equal(3, len(allReports))
+				s.Len(allReports, 3)
 			})
 
 			s.Run("duplicate report ignored", func() {
@@ -106,7 +106,7 @@ func (s *StorageTestSuite) TestReports_Add() {
 
 				allReports, err := reports.GetByMessage(ctx, 111, 222)
 				s.Require().NoError(err)
-				s.Equal(1, len(allReports)) // still only one report
+				s.Len(allReports, 1) // still only one report
 			})
 		})
 	}
@@ -124,7 +124,7 @@ func (s *StorageTestSuite) TestReports_GetByMessage() {
 			s.Run("get reports for non-existent message", func() {
 				allReports, err := reports.GetByMessage(ctx, 999, 888)
 				s.Require().NoError(err)
-				s.Equal(0, len(allReports))
+				s.Empty(allReports)
 			})
 
 			s.Run("get reports ordered by time", func() {
@@ -143,7 +143,7 @@ func (s *StorageTestSuite) TestReports_GetByMessage() {
 
 				allReports, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Require().Equal(3, len(allReports))
+				s.Require().Len(allReports, 3)
 
 				// verify ordering (ascending by time)
 				s.Equal(int64(1), allReports[0].ReporterUserID)
@@ -231,7 +231,7 @@ func (s *StorageTestSuite) TestReports_UpdateAdminMsgID() {
 				// verify all reports for this message have admin_msg_id set
 				allReports, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Require().Equal(2, len(allReports))
+				s.Require().Len(allReports, 2)
 				for _, r := range allReports {
 					s.Equal(12345, r.AdminMsgID)
 					s.True(r.NotificationSent)
@@ -294,7 +294,7 @@ func (s *StorageTestSuite) TestReports_DeleteReporter() {
 				// verify only 2 reports remain
 				allReports, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Equal(2, len(allReports))
+				s.Len(allReports, 2)
 				s.Equal(int64(1), allReports[0].ReporterUserID)
 				s.Equal(int64(3), allReports[1].ReporterUserID)
 			})
@@ -330,12 +330,12 @@ func (s *StorageTestSuite) TestReports_DeleteByMessage() {
 				// verify message 100 has no reports
 				msg100Reports, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Equal(0, len(msg100Reports))
+				s.Empty(msg100Reports)
 
 				// verify message 200 still has report
 				msg200Reports, err := reports.GetByMessage(ctx, 200, 200)
 				s.Require().NoError(err)
-				s.Equal(1, len(msg200Reports))
+				s.Len(msg200Reports, 1)
 			})
 		})
 	}
@@ -364,11 +364,11 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				// trigger cleanup (happens automatically in Add, but let's verify)
 				allReports100, err := reports.GetByMessage(ctx, 100, 200)
 				s.Require().NoError(err)
-				s.Equal(0, len(allReports100)) // old report should be cleaned up
+				s.Empty(allReports100) // old report should be cleaned up
 
 				allReports200, err := reports.GetByMessage(ctx, 200, 200)
 				s.Require().NoError(err)
-				s.Equal(1, len(allReports200)) // recent report should remain
+				s.Len(allReports200, 1) // recent report should remain
 			})
 
 			s.Run("cleanup old reports regardless of notification status", func() {
@@ -395,7 +395,7 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				// verify old notified report was cleaned up (new behavior: all old reports deleted regardless of notification status)
 				allReports, err := reports.GetByMessage(ctx, 300, 200)
 				s.Require().NoError(err)
-				s.Equal(0, len(allReports)) // should be cleaned up even though notification was sent
+				s.Empty(allReports) // should be cleaned up even though notification was sent
 			})
 
 			s.Run("keep recent reports with notification", func() {
@@ -416,7 +416,7 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				// verify recent notified report still exists (not old enough to clean)
 				allReports, err := reports.GetByMessage(ctx, 500, 200)
 				s.Require().NoError(err)
-				s.Equal(1, len(allReports)) // should not be cleaned up because it's recent
+				s.Len(allReports, 1) // should not be cleaned up because it's recent
 			})
 
 			s.Run("boundary condition: exactly 7 days old", func() {
@@ -439,7 +439,7 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				// verify boundary report was cleaned up (>= 7 days means it should be deleted)
 				allReports, err := reports.GetByMessage(ctx, 700, 200)
 				s.Require().NoError(err)
-				s.Equal(0, len(allReports)) // should be cleaned up at exactly 7 days
+				s.Empty(allReports) // should be cleaned up at exactly 7 days
 			})
 
 			s.Run("cleanup called from Add method", func() {
@@ -452,7 +452,7 @@ func (s *StorageTestSuite) TestReports_CleanupOldReports() {
 				// old report should already be cleaned by the Add call itself
 				allReports, err := reports.GetByMessage(ctx, 900, 200)
 				s.Require().NoError(err)
-				s.Equal(0, len(allReports)) // cleanup happens in Add, so old report already gone
+				s.Empty(allReports) // cleanup happens in Add, so old report already gone
 			})
 		})
 	}

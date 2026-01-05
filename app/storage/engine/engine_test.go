@@ -108,14 +108,14 @@ func TestEngine(t *testing.T) {
 
 	t.Run("invalid file", func(t *testing.T) {
 		db, err := NewSqlite("/invalid/path", "gr1")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, &SQL{}, db)
 	})
 
 	t.Run("default type", func(t *testing.T) {
 		e := &SQL{}
 		assert.Equal(t, Unknown, e.Type())
-		assert.Equal(t, "", e.GID())
+		assert.Empty(t, e.GID())
 	})
 }
 
@@ -205,15 +205,15 @@ func TestConcurrentDBAccess(t *testing.T) {
 	errChan := make(chan error, 10)
 	locker := db.MakeLock()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			locker.Lock()
-			_, err := db.Exec("INSERT INTO test (value) VALUES (?)", i)
+			_, execErr := db.Exec("INSERT INTO test (value) VALUES (?)", i)
 			locker.Unlock()
-			if err != nil {
-				errChan <- err
+			if execErr != nil {
+				errChan <- execErr
 			}
 		}(i)
 	}
@@ -338,7 +338,7 @@ func TestInitTable(t *testing.T) {
 		}
 
 		err := InitTable(context.Background(), nil, cfg)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "db connection is nil")
 	})
 
@@ -357,8 +357,8 @@ func TestInitTable(t *testing.T) {
 		}
 
 		err = InitTable(context.Background(), db, cfg)
-		assert.Error(t, err)
-		assert.ErrorIs(t, err, migrationErr)
+		require.Error(t, err)
+		require.ErrorIs(t, err, migrationErr)
 
 		// verify table doesn't exist after rollback
 		var exists bool
@@ -381,7 +381,7 @@ func TestInitTable(t *testing.T) {
 		}
 
 		err = InitTable(context.Background(), db, cfg)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get create table query")
 	})
 }
@@ -519,7 +519,7 @@ func TestNewPostgres(t *testing.T) {
 			// verify we can execute queries
 			var result int
 			err = db.Get(&result, "SELECT 1")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, 1, result)
 		})
 	}

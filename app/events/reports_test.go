@@ -36,7 +36,7 @@ func TestUserReports_checkReportRateLimit(t *testing.T) {
 		exceeded, err := rep.checkReportRateLimit(ctx, 123)
 		require.NoError(t, err)
 		assert.True(t, exceeded, "rate limit should be exceeded")
-		require.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()))
+		require.Len(t, mockReports.GetReporterCountSinceCalls(), 1)
 	})
 
 	t.Run("rate limit not exceeded", func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestUserReports_checkReportRateLimit(t *testing.T) {
 		exceeded, err := rep.checkReportRateLimit(ctx, 123)
 		require.NoError(t, err)
 		assert.False(t, exceeded, "rate limit should not be exceeded")
-		require.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()))
+		require.Len(t, mockReports.GetReporterCountSinceCalls(), 1)
 	})
 
 	t.Run("rate limiting disabled", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestUserReports_checkReportRateLimit(t *testing.T) {
 		exceeded, err := rep.checkReportRateLimit(ctx, 123)
 		require.NoError(t, err)
 		assert.False(t, exceeded, "rate limit should be disabled")
-		require.Equal(t, 0, len(mockReports.GetReporterCountSinceCalls()), "should not call GetReporterCountSince when disabled")
+		require.Empty(t, mockReports.GetReporterCountSinceCalls(), "should not call GetReporterCountSince when disabled")
 	})
 
 	t.Run("reports storage not initialized", func(t *testing.T) {
@@ -181,9 +181,9 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
-		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report to storage")
-		assert.Equal(t, 1, len(mockReports.GetReporterCountSinceCalls()), "should check rate limit")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should delete /report message")
+		assert.Len(t, mockReports.AddCalls(), 1, "should add report to storage")
+		assert.Len(t, mockReports.GetReporterCountSinceCalls(), 1, "should check rate limit")
 	})
 
 	t.Run("reporter is superuser - should return error", func(t *testing.T) {
@@ -215,8 +215,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "use /spam instead")
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
 	t.Run("reported user is superuser - should return error", func(t *testing.T) {
@@ -248,8 +248,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "from super-user")
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
 	t.Run("rate limit exceeded - should delete command and return error", func(t *testing.T) {
@@ -301,8 +301,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "rate limit exceeded")
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report when rate limited")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report when rate limited")
 	})
 
 	t.Run("reports storage add error", func(t *testing.T) {
@@ -357,8 +357,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to add report")
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
-		assert.Equal(t, 1, len(mockReports.AddCalls()), "should attempt to add report")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should delete /report message")
+		assert.Len(t, mockReports.AddCalls(), 1, "should attempt to add report")
 	})
 
 	t.Run("empty message text - should use transformed message", func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report with transformed text")
+		assert.Len(t, mockReports.AddCalls(), 1, "should add report with transformed text")
 	})
 
 	t.Run("reported message from channel - should return error", func(t *testing.T) {
@@ -455,8 +455,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
 	t.Run("reports storage not initialized - should return error", func(t *testing.T) {
@@ -502,7 +502,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reports storage not initialized")
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report message")
 	})
 
 	t.Run("rejects non-approved users", func(t *testing.T) {
@@ -548,9 +548,9 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not in approved list")
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should still delete /report message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
-		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
+		assert.Len(t, mockBot.IsApprovedUserCalls(), 1, "should check approved status")
 	})
 
 	t.Run("allows approved users", func(t *testing.T) {
@@ -608,9 +608,9 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.RequestCalls()), "should delete /report message")
-		assert.Equal(t, 1, len(mockReports.AddCalls()), "should add report")
-		assert.Equal(t, 1, len(mockBot.IsApprovedUserCalls()), "should check approved status")
+		assert.Len(t, mockAPI.RequestCalls(), 1, "should delete /report message")
+		assert.Len(t, mockReports.AddCalls(), 1, "should add report")
+		assert.Len(t, mockBot.IsApprovedUserCalls(), 1, "should check approved status")
 	})
 
 	t.Run("super-user should use /spam instead of /report", func(t *testing.T) {
@@ -646,7 +646,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "use /spam instead")
-		assert.Equal(t, 0, len(mockBot.IsApprovedUserCalls()), "should not check approved status for super-user")
+		assert.Empty(t, mockBot.IsApprovedUserCalls(), "should not check approved status for super-user")
 	})
 }
 
@@ -669,7 +669,7 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+		assert.Len(t, mockReports.GetByMessageCalls(), 1, "should query reports")
 	})
 
 	t.Run("threshold reached for new notification - should return without error", func(t *testing.T) {
@@ -693,7 +693,7 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 		// should call sendReportNotification (stub for now), verify no error
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+		assert.Len(t, mockReports.GetByMessageCalls(), 1, "should query reports")
 	})
 
 	t.Run("threshold reached for existing notification - should return without error", func(t *testing.T) {
@@ -718,7 +718,7 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 		// should call updateReportNotification (stub for now), verify no error
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()), "should query reports")
+		assert.Len(t, mockReports.GetByMessageCalls(), 1, "should query reports")
 	})
 
 	t.Run("exactly at threshold - should trigger notification", func(t *testing.T) {
@@ -827,11 +827,11 @@ func TestUserReports_AutoBan(t *testing.T) {
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockBot.RemoveApprovedUserCalls()), "should remove from approved list")
-		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()), "should update spam samples")
-		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()), "should delete reports")
+		assert.Len(t, mockBot.RemoveApprovedUserCalls(), 1, "should remove from approved list")
+		assert.Len(t, mockBot.UpdateSpamCalls(), 1, "should update spam samples")
+		assert.Len(t, mockReports.DeleteByMessageCalls(), 1, "should delete reports")
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should delete message")
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send auto-ban notification")
+		assert.Len(t, mockAPI.SendCalls(), 1, "should send auto-ban notification")
 	})
 
 	t.Run("auto-ban respects soft-ban mode", func(t *testing.T) {
@@ -984,7 +984,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send manual approval notification")
+		assert.Len(t, mockAPI.SendCalls(), 1, "should send manual approval notification")
 	})
 
 	t.Run("dry mode - no actual bans or deletions", func(t *testing.T) {
@@ -1032,8 +1032,8 @@ func TestUserReports_AutoBan(t *testing.T) {
 
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.NoError(t, err)
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not make API requests in dry mode")
-		assert.Equal(t, 0, len(mockBot.UpdateSpamCalls()), "should not update spam in dry mode")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not make API requests in dry mode")
+		assert.Empty(t, mockBot.UpdateSpamCalls(), "should not update spam in dry mode")
 	})
 
 	t.Run("notification failure handling - reports not deleted", func(t *testing.T) {
@@ -1080,10 +1080,10 @@ func TestUserReports_AutoBan(t *testing.T) {
 		err := rep.checkReportThreshold(context.Background(), 100, 200)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "notification failed", "should indicate notification failure")
-		assert.Equal(t, 0, len(mockReports.DeleteByMessageCalls()), "should not delete reports when notification fails")
+		assert.Empty(t, mockReports.DeleteByMessageCalls(), "should not delete reports when notification fails")
 		// verify ban still executed
-		assert.Equal(t, 1, len(mockBot.RemoveApprovedUserCalls()), "should still ban user")
-		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()), "should still update spam")
+		assert.Len(t, mockBot.RemoveApprovedUserCalls(), 1, "should still ban user")
+		assert.Len(t, mockBot.UpdateSpamCalls(), 1, "should still update spam")
 	})
 }
 
@@ -1119,8 +1119,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should send message")
-		assert.Equal(t, 1, len(mockReports.UpdateAdminMsgIDCalls()), "should update admin msg ID")
+		assert.Len(t, mockAPI.SendCalls(), 1, "should send message")
+		assert.Len(t, mockReports.UpdateAdminMsgIDCalls(), 1, "should update admin msg ID")
 		assert.Equal(t, int64(456), sentMsg.ChatID, "should send to admin chat")
 		assert.Equal(t, tbapi.ModeMarkdown, sentMsg.ParseMode, "should use markdown")
 		assert.Contains(t, sentMsg.Text, "User spam reported (1 reports)", "should contain report count")
@@ -1131,8 +1131,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		// verify inline keyboard
 		keyboard, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.True(t, ok, "should have inline keyboard")
-		require.Equal(t, 1, len(keyboard.InlineKeyboard), "should have 1 row")
-		require.Equal(t, 3, len(keyboard.InlineKeyboard[0]), "row should have 3 buttons")
+		require.Len(t, keyboard.InlineKeyboard, 1, "should have 1 row")
+		require.Len(t, keyboard.InlineKeyboard[0], 3, "row should have 3 buttons")
 		assert.Equal(t, "✅ Approve Ban", keyboard.InlineKeyboard[0][0].Text)
 		assert.Equal(t, "R+666:100", *keyboard.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", keyboard.InlineKeyboard[0][1].Text)
@@ -1256,7 +1256,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.Equal(t, 0, len(mockAPI.SendCalls()), "should not send message")
+		assert.Empty(t, mockAPI.SendCalls(), "should not send message")
 	})
 
 	t.Run("empty reports list - should return error", func(t *testing.T) {
@@ -1325,8 +1325,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		// should not fail even if UpdateAdminMsgID fails
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should still send message")
-		assert.Equal(t, 1, len(mockReports.UpdateAdminMsgIDCalls()), "should attempt to update admin msg ID")
+		assert.Len(t, mockAPI.SendCalls(), 1, "should still send message")
+		assert.Len(t, mockReports.UpdateAdminMsgIDCalls(), 1, "should attempt to update admin msg ID")
 	})
 
 	t.Run("names with markdown special characters should be escaped", func(t *testing.T) {
@@ -1431,7 +1431,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "should edit message")
+		assert.Len(t, mockAPI.SendCalls(), 1, "should edit message")
 		assert.Equal(t, int64(456), editedMsg.ChatID, "should edit in admin chat")
 		assert.Equal(t, 888, editedMsg.MessageID, "should edit correct message")
 		assert.Equal(t, tbapi.ModeMarkdown, editedMsg.ParseMode, "should use markdown")
@@ -1444,8 +1444,8 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 
 		// verify inline keyboard
 		require.NotNil(t, editedMsg.ReplyMarkup, "should have inline keyboard")
-		require.Equal(t, 1, len(editedMsg.ReplyMarkup.InlineKeyboard), "should have 1 row")
-		require.Equal(t, 3, len(editedMsg.ReplyMarkup.InlineKeyboard[0]), "row should have 3 buttons")
+		require.Len(t, editedMsg.ReplyMarkup.InlineKeyboard, 1, "should have 1 row")
+		require.Len(t, editedMsg.ReplyMarkup.InlineKeyboard[0], 3, "row should have 3 buttons")
 		assert.Equal(t, "✅ Approve Ban", editedMsg.ReplyMarkup.InlineKeyboard[0][0].Text)
 		assert.Equal(t, "R+666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", editedMsg.ReplyMarkup.InlineKeyboard[0][1].Text)
@@ -1504,11 +1504,11 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.True(t, strings.Contains(editedMsg.Text, "..."), "should truncate long message")
+		assert.Contains(t, editedMsg.Text, "...", "should truncate long message")
 		msgStart := strings.Index(editedMsg.Text, "spam")
 		msgEnd := strings.Index(editedMsg.Text[msgStart:], "**Reporters:**")
 		msgTextInNotif := editedMsg.Text[msgStart : msgStart+msgEnd]
-		assert.True(t, len(msgTextInNotif) < len(longMsg), "message should be shorter than original")
+		assert.Less(t, len(msgTextInNotif), len(longMsg), "message should be shorter than original")
 	})
 
 	t.Run("reporter without username should use fallback", func(t *testing.T) {
@@ -1554,7 +1554,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
-		assert.Equal(t, 0, len(mockAPI.SendCalls()), "should not send message")
+		assert.Empty(t, mockAPI.SendCalls(), "should not send message")
 	})
 
 	t.Run("empty reports list should return error", func(t *testing.T) {
@@ -1672,9 +1672,9 @@ func TestUserReports_CallbackReportBan(t *testing.T) {
 
 		err := rep.callbackReportBan(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
-		assert.Equal(t, 1, len(mockBot.UpdateSpamCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 1)
+		assert.Len(t, mockReports.DeleteByMessageCalls(), 1)
+		assert.Len(t, mockBot.UpdateSpamCalls(), 1)
 	})
 
 	t.Run("no reports found", func(t *testing.T) {
@@ -1862,8 +1862,8 @@ func TestUserReports_CallbackReportReject(t *testing.T) {
 
 		err := rep.callbackReportReject(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 1)
+		assert.Len(t, mockReports.DeleteByMessageCalls(), 1)
 	})
 
 	t.Run("no reports found", func(t *testing.T) {
@@ -1933,8 +1933,8 @@ func TestUserReports_CallbackReportBanReporterAsk(t *testing.T) {
 
 		err := rep.callbackReportBanReporterAsk(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 1)
+		assert.Len(t, mockAPI.SendCalls(), 1)
 	})
 
 	t.Run("no reports found", func(t *testing.T) {
@@ -1997,8 +1997,8 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 
 		err := rep.callbackReportBanReporterConfirm(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 2)
+		assert.Len(t, mockReports.DeleteReporterCalls(), 1)
 	})
 
 	t.Run("ban last reporter", func(t *testing.T) {
@@ -2044,9 +2044,9 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 
 		err := rep.callbackReportBanReporterConfirm(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 2, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteReporterCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 2)
+		assert.Len(t, mockReports.DeleteReporterCalls(), 1)
+		assert.Len(t, mockReports.DeleteByMessageCalls(), 1)
 	})
 }
 
@@ -2080,7 +2080,7 @@ func TestUserReports_CallbackReportCancel(t *testing.T) {
 
 		err := rep.callbackReportCancel(context.Background(), query)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 1)
 	})
 }
 
@@ -2124,8 +2124,8 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		err := rep.HandleReportCallback(context.Background(), query)
 		require.NoError(t, err)
 		// verify callback was processed (reports deleted)
-		assert.Equal(t, 1, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 1, len(mockReports.DeleteByMessageCalls()))
+		assert.Len(t, mockReports.GetByMessageCalls(), 1)
+		assert.Len(t, mockReports.DeleteByMessageCalls(), 1)
 	})
 
 	t.Run("callback from non-admin chat should be rejected", func(t *testing.T) {
@@ -2168,9 +2168,9 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		err := rep.HandleReportCallback(context.Background(), query)
 		require.NoError(t, err) // returns nil (silently ignores)
 		// verify no reports functions were called
-		assert.Equal(t, 0, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 0, len(mockReports.DeleteByMessageCalls()))
-		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		assert.Empty(t, mockReports.GetByMessageCalls())
+		assert.Empty(t, mockReports.DeleteByMessageCalls())
+		assert.Empty(t, mockAPI.SendCalls())
 	})
 
 	t.Run("R+ callback from non-admin chat should be rejected", func(t *testing.T) {
@@ -2221,10 +2221,10 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		err := rep.HandleReportCallback(context.Background(), query)
 		require.NoError(t, err) // returns nil (silently ignores)
 		// verify no ban or spam update was performed
-		assert.Equal(t, 0, len(mockBot.RemoveApprovedUserCalls()))
-		assert.Equal(t, 0, len(mockBot.UpdateSpamCalls()))
-		assert.Equal(t, 0, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+		assert.Empty(t, mockBot.RemoveApprovedUserCalls())
+		assert.Empty(t, mockBot.UpdateSpamCalls())
+		assert.Empty(t, mockReports.GetByMessageCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
 	})
 
 	t.Run("R! callback from non-admin chat should be rejected", func(t *testing.T) {
@@ -2267,9 +2267,9 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		err := rep.HandleReportCallback(context.Background(), query)
 		require.NoError(t, err) // returns nil (silently ignores)
 		// verify no reporter ban was performed
-		assert.Equal(t, 0, len(mockReports.GetByMessageCalls()))
-		assert.Equal(t, 0, len(mockReports.DeleteReporterCalls()))
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
+		assert.Empty(t, mockReports.GetByMessageCalls())
+		assert.Empty(t, mockReports.DeleteReporterCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
 	})
 
 	t.Run("callback with invalid data format should return error", func(t *testing.T) {

@@ -43,12 +43,12 @@ func TestServer_Run(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	resp, err := http.Get("http://localhost:9876/ping")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	t.Log(resp)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "pong", string(body))
 
 	assert.Contains(t, resp.Header.Get("App-Name"), "tg-spam")
@@ -70,7 +70,7 @@ func TestServer_RunAuth(t *testing.T) {
 
 	hashedPassword, err := rest.GenerateBcryptHash("test")
 	require.NoError(t, err)
-	t.Logf("hashed password: %s", string(hashedPassword))
+	t.Logf("hashed password: %s", hashedPassword)
 
 	tests := []struct {
 		name      string
@@ -100,7 +100,7 @@ func TestServer_RunAuth(t *testing.T) {
 				Version:    "dev",
 				Detector:   mockDetector,
 				SpamFilter: mockSpamFilter,
-				AuthHash:   string(hashedPassword),
+				AuthHash:   hashedPassword,
 			}),
 			port:      "9878",
 			authType:  "hash",
@@ -109,7 +109,7 @@ func TestServer_RunAuth(t *testing.T) {
 		},
 	}
 
-	var doneChannels []chan struct{}
+	doneChannels := make([]chan struct{}, 0, len(tests))
 	for _, tc := range tests {
 		done := make(chan struct{})
 		doneChannels = append(doneChannels, done)
@@ -132,7 +132,7 @@ func TestServer_RunAuth(t *testing.T) {
 
 			t.Run("ping", func(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/ping", tc.port))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				t.Log(resp)
 				defer resp.Body.Close()
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -140,7 +140,7 @@ func TestServer_RunAuth(t *testing.T) {
 
 			t.Run("check unauthorized, no basic auth", func(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%s/check", tc.port))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				t.Log(resp)
 				defer resp.Body.Close()
 				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -156,10 +156,10 @@ func TestServer_RunAuth(t *testing.T) {
 				})
 				require.NoError(t, err)
 				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				req.SetBasicAuth("tg-spam", tc.password)
 				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				t.Log(resp)
 				defer resp.Body.Close()
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -172,10 +172,10 @@ func TestServer_RunAuth(t *testing.T) {
 				})
 				require.NoError(t, err)
 				req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/check", tc.port), bytes.NewBuffer(reqBody))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				req.SetBasicAuth("tg-spam", "bad")
 				resp, err := http.DefaultClient.Do(req)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				t.Log(resp)
 				defer resp.Body.Close()
 				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -259,10 +259,10 @@ func TestServer_routes(t *testing.T) {
 		})
 		require.NoError(t, err)
 		resp, err := http.Post(ts.URL+"/check", "application/json", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.CheckCalls()))
+		assert.Len(t, detectorMock.CheckCalls(), 1)
 		assert.Equal(t, "spam example", detectorMock.CheckCalls()[0].Req.Msg)
 		assert.Equal(t, "user123", detectorMock.CheckCalls()[0].Req.UserID)
 	})
@@ -270,7 +270,7 @@ func TestServer_routes(t *testing.T) {
 	t.Run("check by id found", func(t *testing.T) {
 		detectedSpamMock.ResetCalls()
 		resp, err := http.Get(ts.URL + "/check/123")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
@@ -278,9 +278,9 @@ func TestServer_routes(t *testing.T) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectedSpamMock.FindByUserIDCalls()))
+		assert.Len(t, detectedSpamMock.FindByUserIDCalls(), 1)
 		assert.Equal(t, int64(123), detectedSpamMock.FindByUserIDCalls()[0].UserID)
-		assert.Equal(t, `{"status":"spam","info":{"user_name":"user","message":"spam example","timestamp":"2025-01-25T10:00:00Z","checks":[{"name":"test","spam":true,"details":"this was spam"}]}}`+"\n", string(body))
+		assert.JSONEq(t, `{"status":"spam","info":{"user_name":"user","message":"spam example","timestamp":"2025-01-25T10:00:00Z","checks":[{"name":"test","spam":true,"details":"this was spam"}]}}`, strings.TrimSpace(string(body)))
 	})
 
 	t.Run("check by id not found", func(t *testing.T) {
@@ -294,9 +294,9 @@ func TestServer_routes(t *testing.T) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectedSpamMock.FindByUserIDCalls()))
+		assert.Len(t, detectedSpamMock.FindByUserIDCalls(), 1)
 		assert.Equal(t, int64(456), detectedSpamMock.FindByUserIDCalls()[0].UserID)
-		assert.Equal(t, `{"status":"ham"}`+"\n", string(body))
+		assert.JSONEq(t, `{"status":"ham"}`, strings.TrimSpace(string(body)))
 	})
 
 	t.Run("update spam", func(t *testing.T) {
@@ -306,10 +306,10 @@ func TestServer_routes(t *testing.T) {
 		})
 		require.NoError(t, err)
 		resp, err := http.Post(ts.URL+"/update/spam", "application/json", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(spamFilterMock.UpdateSpamCalls()))
+		assert.Len(t, spamFilterMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.UpdateSpamCalls()[0].Msg)
 	})
 
@@ -320,10 +320,10 @@ func TestServer_routes(t *testing.T) {
 		})
 		require.NoError(t, err)
 		resp, err := http.Post(ts.URL+"/update/ham", "application/json", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Len(t, spamFilterMock.UpdateHamCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
@@ -337,10 +337,10 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		assert.Len(t, spamFilterMock.RemoveDynamicHamSampleCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
 	})
 
@@ -354,10 +354,10 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(spamFilterMock.RemoveDynamicSpamSampleCalls()))
+		assert.Len(t, spamFilterMock.RemoveDynamicSpamSampleCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicSpamSampleCalls()[0].Sample)
 	})
 
@@ -369,10 +369,10 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.AddApprovedUserCalls()))
+		assert.Len(t, detectorMock.AddApprovedUserCalls(), 1)
 		assert.Equal(t, "123", detectorMock.AddApprovedUserCalls()[0].User.UserID)
 	})
 
@@ -383,12 +383,12 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.AddApprovedUserCalls()))
+		assert.Len(t, detectorMock.AddApprovedUserCalls(), 1)
 		assert.Equal(t, "12345", detectorMock.AddApprovedUserCalls()[0].User.UserID)
-		assert.Equal(t, 1, len(locatorMock.UserIDByNameCalls()))
+		assert.Len(t, locatorMock.UserIDByNameCalls(), 1)
 		assert.Equal(t, "user1", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
@@ -399,9 +399,9 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-		assert.Equal(t, 1, len(locatorMock.UserIDByNameCalls()))
+		assert.Len(t, locatorMock.UserIDByNameCalls(), 1)
 		assert.Equal(t, "user2", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
@@ -413,12 +413,12 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.RemoveApprovedUserCalls()))
+		assert.Len(t, detectorMock.RemoveApprovedUserCalls(), 1)
 		assert.Equal(t, "123", detectorMock.RemoveApprovedUserCalls()[0].ID)
-		assert.Equal(t, 0, len(locatorMock.UserIDByNameCalls()))
+		assert.Empty(t, locatorMock.UserIDByNameCalls())
 	})
 
 	t.Run("remove user by name", func(t *testing.T) {
@@ -428,37 +428,37 @@ func TestServer_routes(t *testing.T) {
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.RemoveApprovedUserCalls()))
+		assert.Len(t, detectorMock.RemoveApprovedUserCalls(), 1)
 		assert.Equal(t, "12345", detectorMock.RemoveApprovedUserCalls()[0].ID)
-		assert.Equal(t, 1, len(locatorMock.UserIDByNameCalls()))
+		assert.Len(t, locatorMock.UserIDByNameCalls(), 1)
 		assert.Equal(t, "user1", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
 	t.Run("get approved users", func(t *testing.T) {
 		detectorMock.ResetCalls()
 		resp, err := http.Get(ts.URL + "/users")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Equal(t, 1, len(detectorMock.ApprovedUsersCalls()))
+		assert.Len(t, detectorMock.ApprovedUsersCalls(), 1)
 		respBody, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
-		assert.Equal(t, `{"user_ids":[{"user_id":"user1","user_name":"name1","timestamp":"0001-01-01T00:00:00Z"},{"user_id":"user2","user_name":"name2","timestamp":"0001-01-01T00:00:00Z"}]}`+"\n", string(respBody))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"user_ids":[{"user_id":"user1","user_name":"name1","timestamp":"0001-01-01T00:00:00Z"},{"user_id":"user2","user_name":"name2","timestamp":"0001-01-01T00:00:00Z"}]}`, strings.TrimSpace(string(respBody)))
 	})
 
 	t.Run("get settings", func(t *testing.T) {
 		server.Settings.MinMsgLen = 10
 		resp, err := http.Get(ts.URL + "/settings")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
 		res := Settings{}
 		err = json.NewDecoder(resp.Body).Decode(&res)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, server.Settings, res)
 	})
 }
@@ -492,7 +492,7 @@ func TestServer_checkHandler(t *testing.T) {
 		})
 		require.NoError(t, err)
 		req, err := http.NewRequest("POST", "/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.checkMsgHandler)
@@ -505,7 +505,7 @@ func TestServer_checkHandler(t *testing.T) {
 			Checks []spamcheck.Response `json:"checks"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err, "error unmarshalling response")
+		require.NoError(t, err, "error unmarshalling response")
 		assert.True(t, response.Spam, "expected spam")
 		assert.Equal(t, "test", response.Checks[0].Name, "unexpected check name")
 		assert.Equal(t, "this was spam", response.Checks[0].Details, "unexpected check result")
@@ -518,7 +518,7 @@ func TestServer_checkHandler(t *testing.T) {
 		})
 		require.NoError(t, err)
 		req, err := http.NewRequest("POST", "/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.checkMsgHandler)
@@ -531,7 +531,7 @@ func TestServer_checkHandler(t *testing.T) {
 			Checks []spamcheck.Response `json:"checks"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err, "error unmarshalling response")
+		require.NoError(t, err, "error unmarshalling response")
 		assert.False(t, response.Spam, "expected not spam")
 		assert.Equal(t, "not spam", response.Checks[0].Details, "unexpected check result")
 	})
@@ -543,7 +543,7 @@ func TestServer_checkHandler(t *testing.T) {
 		})
 		require.NoError(t, err)
 		req, err := http.NewRequest("POST", "/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		handler := http.HandlerFunc(server.checkMsgHandler)
@@ -556,7 +556,7 @@ func TestServer_checkHandler(t *testing.T) {
 			Checks []spamcheck.Response `json:"checks"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err, "error unmarshalling response")
+		require.NoError(t, err, "error unmarshalling response")
 
 		// verify that the CAS check shows "check disabled"
 		var casCheck *spamcheck.Response
@@ -575,7 +575,7 @@ func TestServer_checkHandler(t *testing.T) {
 	t.Run("bad request", func(t *testing.T) {
 		reqBody := []byte("bad request")
 		req, err := http.NewRequest("POST", "/check", bytes.NewBuffer(reqBody))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		req.Body.Close()
 
 		rr := httptest.NewRecorder()
@@ -624,10 +624,10 @@ func TestServer_updateSampleHandler(t *testing.T) {
 			Msg     string `json:"msg"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, response.Updated)
 		assert.Equal(t, "test message", response.Msg)
-		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Len(t, spamFilterMock.UpdateHamCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
@@ -650,10 +650,10 @@ func TestServer_updateSampleHandler(t *testing.T) {
 			Details string `json:"details"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "can't update samples", response.Err)
 		assert.Equal(t, "assert.AnError general error for testing", response.Details)
-		assert.Equal(t, 1, len(spamFilterMock.UpdateHamCalls()))
+		assert.Len(t, spamFilterMock.UpdateHamCalls(), 1)
 		assert.Equal(t, "error", spamFilterMock.UpdateHamCalls()[0].Msg)
 	})
 
@@ -699,10 +699,10 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 			Msg     string `json:"msg"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, response.Deleted)
 		assert.Equal(t, "test message", response.Msg)
-		require.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		require.Len(t, spamFilterMock.RemoveDynamicHamSampleCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
 	})
 
@@ -725,7 +725,7 @@ func TestServer_deleteSampleHandler(t *testing.T) {
 		t.Log(body)
 		assert.Contains(t, body, "Spam Samples (2)", "response should contain spam samples")
 		assert.Contains(t, body, "Ham Samples (2)", "response should contain ham samples")
-		require.Equal(t, 1, len(spamFilterMock.RemoveDynamicHamSampleCalls()))
+		require.Len(t, spamFilterMock.RemoveDynamicHamSampleCalls(), 1)
 		assert.Equal(t, "test message", spamFilterMock.RemoveDynamicHamSampleCalls()[0].Sample)
 	})
 
@@ -788,13 +788,13 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 			UserName string `json:"user_name"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, response.Updated)
 		assert.Equal(t, "12345", response.UserID)
 		assert.Equal(t, "user1", response.UserName)
-		assert.Equal(t, 1, len(mockDetector.AddApprovedUserCalls()))
+		assert.Len(t, mockDetector.AddApprovedUserCalls(), 1)
 		assert.Equal(t, "12345", mockDetector.AddApprovedUserCalls()[0].User.UserID)
-		assert.Equal(t, 1, len(locatorMock.UserIDByNameCalls()))
+		assert.Len(t, locatorMock.UserIDByNameCalls(), 1)
 		assert.Equal(t, "user1", locatorMock.UserIDByNameCalls()[0].UserName)
 	})
 
@@ -821,9 +821,9 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 		assert.Contains(t, body, "user1")
 		assert.Contains(t, body, "user2")
 
-		assert.Equal(t, 1, len(mockDetector.AddApprovedUserCalls()))
+		assert.Len(t, mockDetector.AddApprovedUserCalls(), 1)
 		assert.Equal(t, "123", mockDetector.AddApprovedUserCalls()[0].User.UserID)
-		assert.Equal(t, 0, len(locatorMock.UserIDByNameCalls()))
+		assert.Empty(t, locatorMock.UserIDByNameCalls())
 	})
 
 	t.Run("successful update by id", func(t *testing.T) {
@@ -843,13 +843,13 @@ func TestServer_updateApprovedUsersHandler(t *testing.T) {
 			UserName string `json:"user_name"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, response.Updated)
 		assert.Equal(t, "123", response.UserID)
-		assert.Equal(t, "", response.UserName)
-		assert.Equal(t, 1, len(mockDetector.AddApprovedUserCalls()))
+		assert.Empty(t, response.UserName)
+		assert.Len(t, mockDetector.AddApprovedUserCalls(), 1)
 		assert.Equal(t, "123", mockDetector.AddApprovedUserCalls()[0].User.UserID)
-		assert.Equal(t, 0, len(locatorMock.UserIDByNameCalls()))
+		assert.Empty(t, locatorMock.UserIDByNameCalls())
 	})
 	t.Run("bad request", func(t *testing.T) {
 		mockDetector.ResetCalls()
@@ -953,9 +953,9 @@ func TestServer_htmlAddDetectedSpamHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Equal(t, 1, len(ds.SetAddedToSamplesFlagCalls()))
+		assert.Len(t, ds.SetAddedToSamplesFlagCalls(), 1)
 		assert.Equal(t, int64(123), ds.SetAddedToSamplesFlagCalls()[0].ID)
-		assert.Equal(t, 1, len(sf.UpdateSpamCalls()))
+		assert.Len(t, sf.UpdateSpamCalls(), 1)
 		assert.Equal(t, "blah", sf.UpdateSpamCalls()[0].Msg)
 	})
 
@@ -1084,7 +1084,7 @@ func TestServer_checkHandler_HTMX(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "strong>Result:</strong> Spam detected", "response should contain spam result")
 		assert.Contains(t, rr.Body.String(), "result details")
 
-		assert.Equal(t, 1, len(mockDetector.CheckCalls()))
+		assert.Len(t, mockDetector.CheckCalls(), 1)
 		assert.Equal(t, "spam example", mockDetector.CheckCalls()[0].Req.Msg)
 		assert.Equal(t, "user123", mockDetector.CheckCalls()[0].Req.UserID)
 	})
@@ -1289,7 +1289,7 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		assert.Equal(t, settings.LuaPluginsDir, respSettings.LuaPluginsDir)
 		assert.Equal(t, settings.LuaEnabledPlugins, respSettings.LuaEnabledPlugins)
 		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, respSettings.LuaAvailablePlugins)
-		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
+		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1)
 	})
 
 	t.Run("with lua plugins disabled", func(t *testing.T) {
@@ -1320,7 +1320,7 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		assert.Equal(t, settings.InstanceID, respSettings.InstanceID)
 		assert.Equal(t, settings.LuaPluginsEnabled, respSettings.LuaPluginsEnabled)
 		assert.Empty(t, respSettings.LuaAvailablePlugins)
-		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()))
+		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1)
 	})
 }
 
@@ -1381,7 +1381,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		body := rr.Body.String()
 		assert.Contains(t, body, "<title>Settings - TG-Spam</title>", "template should contain the correct title")
 		assert.Contains(t, body, "Connected", "Should show database is connected")
-		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
+		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1, "GetLuaPluginNames should be called")
 	})
 
 	// test with non-SQL StorageEngine
@@ -1410,7 +1410,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		body := rr.Body.String()
 		assert.Contains(t, body, "Connected (unknown type)", "Should show connected with unknown type")
 		assert.Contains(t, body, "Unknown", "Should show unknown database type")
-		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
+		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1, "GetLuaPluginNames should be called")
 	})
 
 	// test execution error
@@ -1443,7 +1443,7 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code, "should return internal server error")
-		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
+		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1, "GetLuaPluginNames should be called")
 	})
 }
 
@@ -1830,7 +1830,7 @@ func TestServer_renderSamples(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
 
-		var response map[string]interface{}
+		var response map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		assert.Equal(t, "can't fetch samples", response["error"])
@@ -1858,7 +1858,7 @@ func TestServer_renderSamples(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
 
-		var response map[string]interface{}
+		var response map[string]any
 		err = json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		assert.Equal(t, "can't execute template", response["error"])
@@ -1992,7 +1992,7 @@ func TestServer_downloadDetectedSpamHandler(t *testing.T) {
 func TestServer_downloadBackupHandler(t *testing.T) {
 	t.Run("successful backup with gzip", func(t *testing.T) {
 		mockStorageEngine := &mocks.StorageEngineMock{
-			BackupFunc: func(ctx context.Context, w io.Writer) error {
+			BackupFunc: func(_ context.Context, w io.Writer) error {
 				_, err := w.Write([]byte("-- SQL backup test content"))
 				return err
 			},
@@ -2002,7 +2002,7 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 			StorageEngine: mockStorageEngine,
 		})
 
-		req := httptest.NewRequest("GET", "/download/backup", nil)
+		req := httptest.NewRequest("GET", "/download/backup", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.downloadBackupHandler(w, req)
 
@@ -2035,7 +2035,7 @@ func TestServer_downloadBackupHandler(t *testing.T) {
 			StorageEngine: nil,
 		})
 
-		req := httptest.NewRequest("GET", "/download/backup", nil)
+		req := httptest.NewRequest("GET", "/download/backup", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.downloadBackupHandler(w, req)
 
@@ -2055,7 +2055,7 @@ func TestServer_downloadExportToPostgresHandler(t *testing.T) {
 			TypeFunc: func() engine.Type {
 				return engine.Sqlite // return the string representation of Sqlite type
 			},
-			BackupSqliteAsPostgresFunc: func(ctx context.Context, w io.Writer) error {
+			BackupSqliteAsPostgresFunc: func(_ context.Context, w io.Writer) error {
 				_, err := w.Write([]byte("-- SQLite to PostgreSQL export test content"))
 				return err
 			},
@@ -2065,7 +2065,7 @@ func TestServer_downloadExportToPostgresHandler(t *testing.T) {
 			StorageEngine: mockStorage,
 		})
 
-		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", http.NoBody)
 		w := httptest.NewRecorder()
 
 		srv.downloadExportToPostgresHandler(w, req)
@@ -2106,7 +2106,7 @@ func TestServer_downloadExportToPostgresHandler(t *testing.T) {
 			StorageEngine: mockStorage,
 		})
 
-		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.downloadExportToPostgresHandler(w, req)
 
@@ -2124,7 +2124,7 @@ func TestServer_downloadExportToPostgresHandler(t *testing.T) {
 			StorageEngine: nil,
 		})
 
-		req := httptest.NewRequest("GET", "/download/export-to-postgres", nil)
+		req := httptest.NewRequest("GET", "/download/export-to-postgres", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.downloadExportToPostgresHandler(w, req)
 
@@ -2143,13 +2143,13 @@ func TestServer_downloadExportToPostgresHandler(t *testing.T) {
 
 func TestServer_logoutHandler(t *testing.T) {
 	// create a function that matches our logout handler implementation in routes
-	logoutHandler := func(w http.ResponseWriter, r *http.Request) {
+	logoutHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintln(w, "Logged out successfully")
 	}
 
-	req := httptest.NewRequest("GET", "/logout", nil)
+	req := httptest.NewRequest("GET", "/logout", http.NoBody)
 	w := httptest.NewRecorder()
 
 	logoutHandler(w, req)
@@ -2177,7 +2177,7 @@ func TestServer_getDictionaryEntriesHandler(t *testing.T) {
 		}
 
 		srv := NewServer(Config{Dictionary: mockDict})
-		req := httptest.NewRequest("GET", "/dictionary", nil)
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
 		w := httptest.NewRecorder()
 
 		srv.getDictionaryEntriesHandler(w, req)
@@ -2203,7 +2203,7 @@ func TestServer_getDictionaryEntriesHandler(t *testing.T) {
 		}
 
 		srv := NewServer(Config{Dictionary: mockDict})
-		req := httptest.NewRequest("GET", "/dictionary", nil)
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
 		w := httptest.NewRecorder()
 
 		srv.getDictionaryEntriesHandler(w, req)
@@ -2228,7 +2228,7 @@ func TestServer_getDictionaryEntriesHandler(t *testing.T) {
 		}
 
 		srv := NewServer(Config{Dictionary: mockDict})
-		req := httptest.NewRequest("GET", "/dictionary", nil)
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
 		w := httptest.NewRecorder()
 
 		srv.getDictionaryEntriesHandler(w, req)
@@ -2294,7 +2294,7 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		assert.Contains(t, string(body), "data cannot be empty")
-		assert.Len(t, mockDict.AddCalls(), 0)
+		assert.Empty(t, mockDict.AddCalls())
 	})
 
 	t.Run("invalid type", func(t *testing.T) {
@@ -2314,7 +2314,7 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		assert.Contains(t, string(body), "invalid type")
-		assert.Len(t, mockDict.AddCalls(), 0)
+		assert.Empty(t, mockDict.AddCalls())
 	})
 
 	t.Run("json decode error", func(t *testing.T) {
@@ -2340,8 +2340,8 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		assert.Contains(t, string(body), "can't decode request")
-		assert.Len(t, mockDict.AddCalls(), 0)
-		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 0)
+		assert.Empty(t, mockDict.AddCalls())
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls())
 	})
 
 	t.Run("error adding entry", func(t *testing.T) {
@@ -2372,7 +2372,7 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		assert.Contains(t, string(body), "can't add entry")
 		assert.Len(t, mockDict.AddCalls(), 1)
-		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 0) // reload should NOT be called when add fails
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls()) // reload should NOT be called when add fails
 	})
 
 	t.Run("success htmx", func(t *testing.T) {
@@ -2435,7 +2435,7 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Contains(t, string(body), "Data cannot be empty")
 		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
-		assert.Len(t, mockDict.AddCalls(), 0)
+		assert.Empty(t, mockDict.AddCalls())
 	})
 
 	t.Run("invalid type htmx", func(t *testing.T) {
@@ -2459,7 +2459,7 @@ func TestServer_addDictionaryEntryHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Contains(t, string(body), "Invalid type")
 		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
-		assert.Len(t, mockDict.AddCalls(), 0)
+		assert.Empty(t, mockDict.AddCalls())
 	})
 
 	t.Run("reload error json", func(t *testing.T) {
@@ -2592,7 +2592,7 @@ func TestServer_deleteDictionaryEntryHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		assert.Contains(t, string(body), "can't delete entry")
-		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 0) // reload should NOT be called when delete fails
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls()) // reload should NOT be called when delete fails
 	})
 
 	t.Run("json decode error", func(t *testing.T) {
@@ -2618,8 +2618,8 @@ func TestServer_deleteDictionaryEntryHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		assert.Contains(t, string(body), "can't decode request")
-		assert.Len(t, mockDict.DeleteCalls(), 0)
-		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 0)
+		assert.Empty(t, mockDict.DeleteCalls())
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls())
 	})
 
 	t.Run("success htmx", func(t *testing.T) {
@@ -2679,7 +2679,7 @@ func TestServer_deleteDictionaryEntryHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Contains(t, string(body), "Invalid ID")
 		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
-		assert.Len(t, mockDict.DeleteCalls(), 0)
+		assert.Empty(t, mockDict.DeleteCalls())
 	})
 
 	t.Run("reload error json", func(t *testing.T) {
@@ -2768,7 +2768,7 @@ func TestServer_ErrorResponseContentType(t *testing.T) {
 
 	t.Run("check id handler bad request", func(t *testing.T) {
 		server := NewServer(Config{})
-		req := httptest.NewRequest("GET", "/check/invalid", nil)
+		req := httptest.NewRequest("GET", "/check/invalid", http.NoBody)
 		req.SetPathValue("user_id", "invalid")
 		rr := httptest.NewRecorder()
 
@@ -2785,7 +2785,7 @@ func TestServer_ErrorResponseContentType(t *testing.T) {
 			},
 		}
 		server := NewServer(Config{DetectedSpam: mockDetectedSpam})
-		req := httptest.NewRequest("GET", "/check/123", nil)
+		req := httptest.NewRequest("GET", "/check/123", http.NoBody)
 		req.SetPathValue("user_id", "123")
 		rr := httptest.NewRecorder()
 

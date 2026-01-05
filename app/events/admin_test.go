@@ -40,7 +40,7 @@ func TestAdmin_reportBan(t *testing.T) {
 		mockAPI.ResetCalls()
 		adm.ReportBan("testUser", msg)
 
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
@@ -54,7 +54,7 @@ func TestAdmin_reportBan(t *testing.T) {
 		mockAPI.ResetCalls()
 		adm.ReportBan("test_User", msg)
 
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [test\\_User](tg://user?id=456)")
@@ -116,9 +116,9 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := a.getCleanMessage(tt.input)
 			if tt.err {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -141,7 +141,7 @@ _unbanned by umputun in 1m5s_`
 
 	a := &admin{}
 	result, err := a.getCleanMessage(msg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "и да, этим надо заниматься каждый день по несколько часов. За месяц увидишь ощутимый результат", result)
 }
 
@@ -176,9 +176,9 @@ func TestAdmin_extractUsername(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			username, err := a.extractUsername(test.banMessage)
 			if test.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, test.expectedResult, username)
 			}
 		})
@@ -274,18 +274,18 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Equal(t, 789, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 
 		// check that the admin was notified
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(456), adminMsg.ChatID) // should be sent to admin chat
 		assert.Contains(t, adminMsg.Text, "original detection results for spammer (222)")
 		assert.Contains(t, adminMsg.Text, "the user banned by")
 
 		// check that appropriate bot methods were called
-		require.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()))
+		require.Len(t, botMock.RemoveApprovedUserCalls(), 1)
 		assert.Equal(t, int64(222), botMock.RemoveApprovedUserCalls()[0].ID)
 
 		// check OnMessage was called to get spam detection results
-		require.Equal(t, 1, len(botMock.OnMessageCalls()))
+		require.Len(t, botMock.OnMessageCalls(), 1)
 		assert.Equal(t, "spam message text", botMock.OnMessageCalls()[0].Msg.Text)
 		assert.Equal(t, int64(222), botMock.OnMessageCalls()[0].Msg.From.ID)
 		assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
@@ -320,7 +320,7 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		verifyDirectReportResults(t, mockAPI, botMock)
 
 		// UpdateSpam should NOT be called for ban (only for spam)
-		assert.Equal(t, 0, len(botMock.UpdateSpamCalls()))
+		assert.Empty(t, botMock.UpdateSpamCalls())
 	})
 
 	t.Run("DirectSpamReport", func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		verifyDirectReportResults(t, mockAPI, botMock)
 
 		// UpdateSpam should be called for DirectSpamReport
-		require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "spam message text", botMock.UpdateSpamCalls()[0].Msg)
 	})
 
@@ -352,14 +352,14 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		require.NoError(t, err)
 
 		// check that admin was notified
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(456), adminMsg.ChatID)
 		assert.Contains(t, adminMsg.Text, "original detection results for spammer (222)")
 
 		// in dry mode, no message deletions or bans should occur
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-		assert.Equal(t, 0, len(botMock.UpdateSpamCalls()))
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
 	})
 
 	t.Run("DirectWarnReport", func(t *testing.T) {
@@ -374,14 +374,14 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		require.NoError(t, err)
 
 		// check that the API was called to delete messages
-		require.Equal(t, 2, len(mockAPI.RequestCalls()))
+		require.Len(t, mockAPI.RequestCalls(), 2)
 		// first delete should be the original message
 		assert.Equal(t, 999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 		// second delete should be the admin's command message
 		assert.Equal(t, 789, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 
 		// check that warning was sent to the main chat
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		warnMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(123), warnMsg.ChatID) // should be sent to the primary chat
 		assert.Contains(t, warnMsg.Text, "warning from admin")
@@ -401,8 +401,8 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Contains(t, err.Error(), "warn message is from super-user")
 
 		// check that no API calls were made
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-		assert.Equal(t, 0, len(mockAPI.SendCalls()))
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, mockAPI.SendCalls())
 	})
 }
 
@@ -480,7 +480,7 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		require.NoError(t, err)
 
 		// check that edit message was called with updated text
-		require.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.Len(t, mockAPI.SendCalls(), 1)
 		editMsg := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
 		assert.Equal(t, query.Message.Chat.ID, editMsg.ChatID)
 		assert.Equal(t, query.Message.MessageID, editMsg.MessageID)
@@ -488,7 +488,7 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		assert.Empty(t, editMsg.ReplyMarkup.InlineKeyboard)
 
 		// UpdateSpam should be called to update spam samples
-		require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "Spam message text", botMock.UpdateSpamCalls()[0].Msg)
 	})
 
@@ -522,19 +522,20 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		// find the BanChatMemberConfig call
 		var foundBanCall bool
 		for _, call := range mockAPI.RequestCalls() {
-			if _, ok := call.C.(tbapi.BanChatMemberConfig); ok {
-				foundBanCall = true
-				banCall := call.C.(tbapi.BanChatMemberConfig)
-				assert.Equal(t, int64(12345), banCall.UserID)
-				assert.Equal(t, int64(123), banCall.ChatID)
-				break
+			banCall, ok := call.C.(tbapi.BanChatMemberConfig)
+			if !ok {
+				continue
 			}
+			foundBanCall = true
+			assert.Equal(t, int64(12345), banCall.UserID)
+			assert.Equal(t, int64(123), banCall.ChatID)
+			break
 		}
 
 		assert.True(t, foundBanCall, "Expected a BanChatMemberConfig call")
 
 		// UpdateSpam should be called to update spam samples
-		require.Equal(t, 1, len(botMock.UpdateSpamCalls()))
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "Spam message text", botMock.UpdateSpamCalls()[0].Msg)
 	})
 }
@@ -550,13 +551,14 @@ func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			switch msg := c.(type) {
 			case tbapi.EditMessageTextConfig:
-				if msg.ParseMode == tbapi.ModeMarkdown {
+				switch msg.ParseMode {
+				case tbapi.ModeMarkdown:
 					// with the fix, underscore should be escaped
 					if strings.Contains(msg.Text, "user\\_name\\_with\\_underscore") {
 						// markdown should now succeed because special chars are escaped
 						return tbapi.Message{Text: msg.Text}, nil
 					}
-				} else if msg.ParseMode == tbapi.ModeHTML {
+				case tbapi.ModeHTML:
 					// HTML mode should succeed where markdown failed
 					if strings.Contains(msg.Text, "user_name_with_underscore") {
 						htmlSuccessCount++
@@ -564,7 +566,7 @@ func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
 						assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved in HTML mode")
 						return tbapi.Message{Text: msg.Text}, nil
 					}
-				} else if msg.ParseMode == "" {
+				case "":
 					// when messages are sent as plain text after markdown failure
 					// the link URL should still be preserved
 					assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved")
@@ -615,10 +617,10 @@ func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
 
 		// run the function that needs to maintain the links
 		err := adm.callbackShowInfo(query)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// with the fix, markdown should succeed on first attempt because underscore is escaped
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should succeed on first attempt with markdown")
+		assert.Len(t, mockAPI.SendCalls(), 1, "Should succeed on first attempt with markdown")
 		assert.Equal(t, 0, markdownErrorCount, "Should not fail with markdown")
 		assert.Equal(t, 0, htmlSuccessCount, "Should not need HTML fallback")
 	})
@@ -666,7 +668,7 @@ func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
 		}
 
 		err := adm.callbackShowInfo(query)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
 	})
 
@@ -716,7 +718,7 @@ func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
 		}
 
 		err := adm.callbackShowInfo(query)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// with the fix, markdown should succeed on first attempt
 		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
 		assert.Equal(t, tbapi.ModeMarkdown, usedParseMode, "Should use markdown mode successfully")
@@ -832,12 +834,12 @@ func TestAdmin_MsgHandlerWithEmptyText(t *testing.T) {
 
 			update := tbapi.Update{Message: tt.msg}
 			err := adminHandler.MsgHandler(update)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, "empty message text", err.Error())
 
 			// verify no requests were made to ban or delete
-			assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-			assert.Equal(t, 0, len(botMock.UpdateSpamCalls()))
+			assert.Empty(t, mockAPI.RequestCalls())
+			assert.Empty(t, botMock.UpdateSpamCalls())
 		})
 	}
 }
@@ -874,12 +876,12 @@ func TestAdmin_MsgHandler(t *testing.T) {
 
 		update := tbapi.Update{Message: msg}
 		err := adminHandler.MsgHandler(update)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify no actions were taken
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()))
-		assert.Equal(t, 0, len(mockAPI.SendCalls()))
-		assert.Equal(t, 0, len(botMock.UpdateSpamCalls()))
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, mockAPI.SendCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
 	})
 
 	t.Run("forwarded message from super-user", func(t *testing.T) {
@@ -941,7 +943,7 @@ func TestAdmin_MsgHandler(t *testing.T) {
 
 		update := tbapi.Update{Message: msg}
 		err := adminHandler.MsgHandler(update)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "forwarded message is about super-user")
 
 		// check that API calls were not made (according to admin.go line 106-107)
@@ -1013,15 +1015,15 @@ func TestAdmin_MsgHandler(t *testing.T) {
 
 		update := tbapi.Update{Message: msg}
 		err := adminHandler.MsgHandler(update)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify correct sequence of operations
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should send detection results to admin")
+		assert.Len(t, mockAPI.SendCalls(), 1, "Should send detection results to admin")
 		// the code makes at least 2 Request calls - one to delete message and one to ban user
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 2, "Should request to delete the message and ban user")
-		assert.Equal(t, 1, len(botMock.UpdateSpamCalls()), "Should update spam samples")
-		assert.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()), "Should remove user from approved list")
-		assert.Equal(t, 1, len(botMock.OnMessageCalls()), "Should check message for spam")
+		assert.Len(t, botMock.UpdateSpamCalls(), 1, "Should update spam samples")
+		assert.Len(t, botMock.RemoveApprovedUserCalls(), 1, "Should remove user from approved list")
+		assert.Len(t, botMock.OnMessageCalls(), 1, "Should check message for spam")
 
 		// verify ban request called
 		assert.Equal(t, int64(888), botMock.RemoveApprovedUserCalls()[0].ID, "Should remove correct user ID")
@@ -1062,7 +1064,7 @@ func TestAdmin_MsgHandler(t *testing.T) {
 
 		update := tbapi.Update{Message: msg}
 		err := adminHandler.MsgHandler(update)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
 
@@ -1126,12 +1128,12 @@ func TestAdmin_MsgHandler(t *testing.T) {
 
 		update := tbapi.Update{Message: msg}
 		err := adminHandler.MsgHandler(update)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// in dry mode, we should only notify admin but not delete or ban
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should send detection results to admin")
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "Should not make request calls in dry mode")
-		assert.Equal(t, 0, len(botMock.UpdateSpamCalls()), "Should not update spam in dry mode")
+		assert.Len(t, mockAPI.SendCalls(), 1, "Should send detection results to admin")
+		assert.Empty(t, mockAPI.RequestCalls(), "Should not make request calls in dry mode")
+		assert.Empty(t, botMock.UpdateSpamCalls(), "Should not update spam in dry mode")
 	})
 
 	t.Run("error removing approved user", func(t *testing.T) {
@@ -1206,10 +1208,10 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to remove user")
 
 		// other operations should still proceed
-		assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should send detection results to admin")
+		assert.Len(t, mockAPI.SendCalls(), 1, "Should send detection results to admin")
 		// the code makes at least 2 Request calls - one to delete message and one to ban user
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 2, "Should request to delete the message and ban user")
-		assert.Equal(t, 1, len(botMock.UpdateSpamCalls()), "Should update spam samples")
+		assert.Len(t, botMock.UpdateSpamCalls(), 1, "Should update spam samples")
 	})
 }
 
@@ -1271,19 +1273,19 @@ func TestAdmin_DirectSpamReport_ImageOnly(t *testing.T) {
 	err := adm.directReport(update, true)
 	require.NoError(t, err, "Should handle image-only spam without error")
 
-	assert.Equal(t, 1, len(botMock.RemoveApprovedUserCalls()), "Should remove user from approved list")
+	assert.Len(t, botMock.RemoveApprovedUserCalls(), 1, "Should remove user from approved list")
 	assert.Equal(t, int64(666), botMock.RemoveApprovedUserCalls()[0].ID)
 
-	assert.Equal(t, 1, len(mockAPI.SendCalls()), "Should send detection results to admin")
+	assert.Len(t, mockAPI.SendCalls(), 1, "Should send detection results to admin")
 
 	assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 2, "Should delete message and ban user")
 
-	assert.Equal(t, 0, len(botMock.UpdateSpamCalls()), "Should not update spam samples for empty messages")
+	assert.Empty(t, botMock.UpdateSpamCalls(), "Should not update spam samples for empty messages")
 }
 
 func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 	// setup helper function for aggressive cleanup tests
-	setupAggressiveCleanupTest := func(aggressiveCleanup bool, dry bool, messageIDs []int) (*mocks.TbAPIMock, *mocks.BotMock, *mocks.LocatorMock, *admin) {
+	setupAggressiveCleanupTest := func(aggressiveCleanup bool, dry bool, messageIDs []int) (*mocks.TbAPIMock, *mocks.LocatorMock, *admin) {
 		mockAPI := &mocks.TbAPIMock{
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 				return tbapi.Message{}, nil
@@ -1329,7 +1331,7 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 			dry:                    dry,
 		}
 
-		return mockAPI, botMock, locatorMock, adm
+		return mockAPI, locatorMock, adm
 	}
 
 	// helper to create test update
@@ -1350,7 +1352,7 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 	}
 
 	t.Run("aggressive cleanup enabled", func(t *testing.T) {
-		mockAPI, _, locatorMock, adm := setupAggressiveCleanupTest(true, false, []int{100, 101, 102})
+		mockAPI, locatorMock, adm := setupAggressiveCleanupTest(true, false, []int{100, 101, 102})
 		update := createSpamReportUpdate()
 
 		err := adm.directReport(update, true)
@@ -1360,7 +1362,7 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// verify GetUserMessageIDs was called
-		assert.Equal(t, 1, len(locatorMock.GetUserMessageIDsCalls()))
+		assert.Len(t, locatorMock.GetUserMessageIDsCalls(), 1)
 		assert.Equal(t, int64(666), locatorMock.GetUserMessageIDsCalls()[0].UserID)
 		assert.Equal(t, 100, locatorMock.GetUserMessageIDsCalls()[0].Limit)
 
@@ -1392,14 +1394,14 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 	})
 
 	t.Run("aggressive cleanup disabled", func(t *testing.T) {
-		mockAPI, _, locatorMock, adm := setupAggressiveCleanupTest(false, false, []int{})
+		mockAPI, locatorMock, adm := setupAggressiveCleanupTest(false, false, []int{})
 		update := createSpamReportUpdate()
 
 		err := adm.directReport(update, true)
 		require.NoError(t, err)
 
 		// verify GetUserMessageIDs was NOT called
-		assert.Equal(t, 0, len(locatorMock.GetUserMessageIDsCalls()))
+		assert.Empty(t, locatorMock.GetUserMessageIDsCalls())
 
 		// verify only original and admin messages were deleted (no aggressive cleanup)
 		requestCalls := mockAPI.RequestCalls()
@@ -1413,14 +1415,14 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 	})
 
 	t.Run("aggressive cleanup in dry mode", func(t *testing.T) {
-		_, _, locatorMock, adm := setupAggressiveCleanupTest(true, true, []int{})
+		_, locatorMock, adm := setupAggressiveCleanupTest(true, true, []int{})
 		update := createSpamReportUpdate()
 
 		err := adm.directReport(update, false)
 		require.NoError(t, err)
 
 		// verify GetUserMessageIDs was NOT called in dry mode
-		assert.Equal(t, 0, len(locatorMock.GetUserMessageIDsCalls()))
+		assert.Empty(t, locatorMock.GetUserMessageIDsCalls())
 	})
 }
 
@@ -1454,7 +1456,7 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 
 		// verify all messages were attempted to be deleted
 		requestCalls := mockAPI.RequestCalls()
-		assert.Equal(t, 3, len(requestCalls))
+		assert.Len(t, requestCalls, 3)
 		for i, call := range requestCalls {
 			deleteConfig, ok := call.C.(tbapi.DeleteMessageConfig)
 			require.True(t, ok)
@@ -1476,7 +1478,7 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 		}
 
 		deleted, err := adm.deleteUserMessages(666)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get user messages")
 		assert.Equal(t, 0, deleted)
 	})
@@ -1512,7 +1514,7 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 		assert.Equal(t, 2, deleted) // only 2 successful deletions
 
 		// verify all 3 were attempted
-		assert.Equal(t, 3, len(mockAPI.RequestCalls()))
+		assert.Len(t, mockAPI.RequestCalls(), 3)
 	})
 
 	t.Run("too many consecutive failures", func(t *testing.T) {
@@ -1538,10 +1540,10 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 		}
 
 		deleted, err := adm.deleteUserMessages(666)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "stopped after 5 consecutive failures")
 		assert.Equal(t, 0, deleted)
-		assert.Equal(t, 5, len(mockAPI.RequestCalls())) // stopped after 5 failures
+		assert.Len(t, mockAPI.RequestCalls(), 5) // stopped after 5 failures
 	})
 
 	t.Run("empty message list", func(t *testing.T) {

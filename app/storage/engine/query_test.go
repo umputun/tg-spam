@@ -90,7 +90,7 @@ func TestQueryMap_ChainedOperations(t *testing.T) {
 		})
 
 	query, err := qmap.Pick(Sqlite, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "query1 sqlite new", query)
 }
 
@@ -103,7 +103,7 @@ func TestQueryMap_EmptyQueries(t *testing.T) {
 
 	// empty queries are valid
 	query, err := qmap.Pick(Sqlite, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, query)
 }
 
@@ -119,9 +119,9 @@ func TestQueryMap_AddSameConsistency(t *testing.T) {
 		AddSame(1, query) // restore consistency
 
 	sqlite, err := qmap.Pick(Sqlite, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	postgres, err := qmap.Pick(Postgres, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// verify both dialects have the same query after AddSame
 	assert.Equal(t, query, sqlite)

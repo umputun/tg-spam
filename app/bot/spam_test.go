@@ -372,7 +372,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			if tc.message.From.ID == 0 {
 				assert.Empty(t, det.CheckCalls())
 			} else {
-				assert.Equal(t, 1, len(det.CheckCalls()))
+				assert.Len(t, det.CheckCalls(), 1)
 			}
 		})
 	}
@@ -422,8 +422,8 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, 1, len(det.UpdateSpamCalls()))
+			require.NoError(t, err)
+			assert.Len(t, det.UpdateSpamCalls(), 1)
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateSpamCalls()[0].Msg)
 		})
 	}
@@ -473,8 +473,8 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, 1, len(det.UpdateHamCalls()))
+			require.NoError(t, err)
+			assert.Len(t, det.UpdateHamCalls(), 1)
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateHamCalls()[0].Msg)
 		})
 	}
@@ -575,7 +575,7 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// check IsApprovedUser
 			result := s.IsApprovedUser(tc.userID)
@@ -670,12 +670,12 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// verify all required methods were called
-			assert.Equal(t, 1, len(det.LoadSamplesCalls()))
-			assert.Equal(t, 1, len(det.LoadStopWordsCalls()))
-			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
+			assert.Len(t, det.LoadSamplesCalls(), 1)
+			assert.Len(t, det.LoadStopWordsCalls(), 1)
+			assert.Len(t, samplesStore.StatsCalls(), 1)
 		})
 	}
 }
@@ -738,7 +738,7 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Len(t, det.RemoveSpamCalls(), 1)
 			assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)
 		})
@@ -778,7 +778,7 @@ func TestSpamFilter_IsApprovedUser(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{})
 			got := s.IsApprovedUser(tc.userID)
 			assert.Equal(t, tc.want, got)
-			assert.Equal(t, 1, len(det.IsApprovedUserCalls()))
+			assert.Len(t, det.IsApprovedUserCalls(), 1)
 		})
 	}
 }
@@ -916,7 +916,7 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if tc.sampleType == "spam" {
 				assert.Len(t, det.RemoveSpamCalls(), 1)
 				assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)

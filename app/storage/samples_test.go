@@ -39,10 +39,10 @@ func (s *StorageTestSuite) TestNewSamples() {
 				s.Run(tt.name, func() {
 					samples, err := NewSamples(context.Background(), tt.db)
 					if tt.wantErr {
-						s.Error(err)
+						s.Require().Error(err)
 						s.Nil(samples)
 					} else {
-						s.NoError(err)
+						s.Require().NoError(err)
 						s.NotNil(samples)
 					}
 				})
@@ -129,9 +129,9 @@ func (s *StorageTestSuite) TestSamples_AddSample() {
 				s.Run(tt.name, func() {
 					err := samples.Add(ctx, tt.sType, tt.origin, tt.message)
 					if tt.wantErr {
-						s.Error(err)
+						s.Require().Error(err)
 					} else {
-						s.NoError(err)
+						s.Require().NoError(err)
 						// verify message exists and has correct type and origin
 						var count int
 						err = db.Get(&count, db.Adopt("SELECT COUNT(*) FROM samples WHERE message = ? AND type = ? AND origin = ?"),
@@ -215,8 +215,8 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 			}
 
 			for _, td := range testData {
-				err := samples.Add(ctx, td.sType, td.origin, td.message)
-				s.Require().NoError(err)
+				addErr := samples.Add(ctx, td.sType, td.origin, td.message)
+				s.Require().NoError(addErr)
 			}
 
 			tests := []struct {
@@ -243,11 +243,11 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 
 			for _, tt := range tests {
 				s.Run(tt.name, func() {
-					err := samples.DeleteMessage(ctx, tt.message)
+					delErr := samples.DeleteMessage(ctx, tt.message)
 					if tt.wantErr {
-						s.Error(err)
+						s.Require().Error(delErr)
 					} else {
-						s.NoError(err)
+						s.Require().NoError(delErr)
 
 						// verify message no longer exists
 						var count int
@@ -266,10 +266,10 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 
 			s.Run("concurrent delete", func() {
 				// add a message that will be deleted concurrently
-				msg := "concurrent delete message"
+				baseMsg := "concurrent delete message"
 				for i := range 10 {
-					err := samples.Add(ctx, SampleTypeHam, SampleOriginPreset, msg+fmt.Sprintf("-%d", i))
-					s.Require().NoError(err)
+					addErr := samples.Add(ctx, SampleTypeHam, SampleOriginPreset, baseMsg+fmt.Sprintf("-%d", i))
+					s.Require().NoError(addErr)
 				}
 
 				const numWorkers = 10
@@ -277,16 +277,15 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 				errCh := make(chan error, numWorkers)
 
 				// start multiple goroutines trying to delete the same message
-				for i := 0; i < numWorkers; i++ {
+				for i := range numWorkers {
 					wg.Add(1)
-					go func() {
-						i := i
+					go func(idx int) {
 						defer wg.Done()
-						msg := msg + fmt.Sprintf("-%d", i)
-						if err := samples.DeleteMessage(ctx, msg); err != nil && !strings.Contains(err.Error(), "not found") {
-							errCh <- err
+						delMsg := baseMsg + fmt.Sprintf("-%d", idx)
+						if delErr := samples.DeleteMessage(ctx, delMsg); delErr != nil && !strings.Contains(delErr.Error(), "not found") {
+							errCh <- delErr
 						}
-					}()
+					}(i)
 				}
 
 				wg.Wait()
@@ -299,7 +298,7 @@ func (s *StorageTestSuite) TestSamples_DeleteMessage() {
 
 				// verify message was deleted
 				var count int
-				err = db.Get(&count, db.Adopt("SELECT COUNT(*) FROM samples WHERE message = ?"), msg)
+				err = db.Get(&count, db.Adopt("SELECT COUNT(*) FROM samples WHERE message = ?"), baseMsg)
 				s.Require().NoError(err)
 				s.Equal(0, count)
 			})
@@ -374,10 +373,10 @@ func (s *StorageTestSuite) TestSamples_ReadSamples() {
 				s.Run(tt.name, func() {
 					samples, err := samples.Read(ctx, tt.sType, tt.origin)
 					if tt.wantErr {
-						s.Error(err)
+						s.Require().Error(err)
 						s.Nil(samples)
 					} else {
-						s.NoError(err)
+						s.Require().NoError(err)
 						s.Len(samples, tt.expectedCount)
 					}
 				})
@@ -410,8 +409,8 @@ func (s *StorageTestSuite) TestSamples_GetStats() {
 			}
 
 			for _, td := range testData {
-				err := samples.Add(ctx, td.sType, td.origin, td.message)
-				s.Require().NoError(err)
+				addErr := samples.Add(ctx, td.sType, td.origin, td.message)
+				s.Require().NoError(addErr)
 			}
 
 			stats, err := samples.Stats(ctx)
@@ -443,9 +442,9 @@ func (s *StorageTestSuite) TestSampleType_Validate() {
 		s.Run(tt.name, func() {
 			err := tt.sType.Validate()
 			if tt.wantErr {
-				s.Assert().Error(err)
+				s.Error(err)
 			} else {
-				s.Assert().NoError(err)
+				s.NoError(err)
 			}
 		})
 	}
@@ -467,9 +466,9 @@ func (s *StorageTestSuite) TestSampleOrigin_Validate() {
 		s.Run(tt.name, func() {
 			err := tt.origin.Validate()
 			if tt.wantErr {
-				s.Assert().Error(err)
+				s.Error(err)
 			} else {
-				s.Assert().NoError(err)
+				s.NoError(err)
 			}
 		})
 	}
@@ -497,14 +496,14 @@ func (s *StorageTestSuite) TestSamples_Concurrent() {
 			errCh := make(chan error, numWorkers*2)
 
 			// start readers
-			for i := 0; i < numWorkers; i++ {
+			for i := range numWorkers {
 				wg.Add(1)
 				go func(workerID int) {
 					defer wg.Done()
-					for j := 0; j < numOps; j++ {
-						if _, err := samples.Read(ctx, SampleTypeHam, SampleOriginAny); err != nil {
+					for range numOps {
+						if _, readErr := samples.Read(ctx, SampleTypeHam, SampleOriginAny); readErr != nil {
 							select {
-							case errCh <- fmt.Errorf("reader %d failed: %w", workerID, err):
+							case errCh <- fmt.Errorf("reader %d failed: %w", workerID, readErr):
 							default:
 							}
 							return
@@ -514,19 +513,19 @@ func (s *StorageTestSuite) TestSamples_Concurrent() {
 			}
 
 			// start writers
-			for i := 0; i < numWorkers; i++ {
+			for i := range numWorkers {
 				wg.Add(1)
 				go func(workerID int) {
 					defer wg.Done()
-					for j := 0; j < numOps; j++ {
+					for j := range numOps {
 						msg := fmt.Sprintf("test message %d-%d", workerID, j)
 						sType := SampleTypeHam
 						if j%2 == 0 {
 							sType = SampleTypeSpam
 						}
-						if err := samples.Add(ctx, sType, SampleOriginUser, msg); err != nil {
+						if addErr := samples.Add(ctx, sType, SampleOriginUser, msg); addErr != nil {
 							select {
-							case errCh <- fmt.Errorf("writer %d failed: %w", workerID, err):
+							case errCh <- fmt.Errorf("writer %d failed: %w", workerID, addErr):
 							default:
 							}
 							return
@@ -662,8 +661,8 @@ func (s *StorageTestSuite) TestSamples_IteratorOrder() {
 			}
 
 			for _, td := range testData {
-				err := samples.Add(ctx, td.sType, td.origin, td.message)
-				s.Require().NoError(err)
+				addErr := samples.Add(ctx, td.sType, td.origin, td.message)
+				s.Require().NoError(addErr)
 				time.Sleep(time.Second) // ensure each message has a unique timestamp
 			}
 
@@ -1012,7 +1011,7 @@ func (s *StorageTestSuite) TestSamples_ImportEdgeCases() {
 				longLine := strings.Repeat("a", 64*1024) // 64KB line
 				input := strings.NewReader(longLine)
 				_, err := samples.Import(ctx, SampleTypeHam, SampleOriginUser, input, true)
-				s.Error(err) // should fail due to scanner limit
+				s.Require().Error(err) // should fail due to scanner limit
 				s.Contains(err.Error(), "token too long")
 			})
 
@@ -1060,9 +1059,9 @@ func (s *StorageTestSuite) TestSamples_IteratorBehavior() {
 
 			s.Run("early termination", func() {
 				// add test data
-				for i := 0; i < 10; i++ {
-					err := samples.Add(ctx, SampleTypeHam, SampleOriginUser, fmt.Sprintf("msg%d", i))
-					s.Require().NoError(err)
+				for i := range 10 {
+					addErr := samples.Add(ctx, SampleTypeHam, SampleOriginUser, fmt.Sprintf("msg%d", i))
+					s.Require().NoError(addErr)
 				}
 
 				iter, err := samples.Iterator(ctx, SampleTypeHam, SampleOriginUser)
@@ -1165,10 +1164,10 @@ func (s *StorageTestSuite) TestSamples_DatabaseErrors() {
 					invalidSQL = "CREATE TABLE samples (id INTEGER, CONSTRAINT bad_const CHECK (id > 'text'))"
 				}
 				_, err := db.Exec(invalidSQL)
-				s.Error(err) // should fail on create due to invalid check constraint
+				s.Require().Error(err) // should fail on create due to invalid check constraint
 
 				stats, err := samples.Stats(ctx)
-				s.Error(err)
+				s.Require().Error(err)
 				s.Nil(stats)
 			})
 		})
@@ -1225,22 +1224,22 @@ func (s *StorageTestSuite) TestSamples_ImportSizeLimits() {
 				s.Run(tt.name, func() {
 					stats, err := sm.Import(ctx, SampleTypeHam, SampleOriginUser, strings.NewReader(tt.input), true)
 					if tt.wantErr {
-						s.Assert().Error(err)
+						s.Error(err)
 						return
 					}
 					s.Require().NoError(err)
-					s.Assert().Equal(stats.UserHam, tt.expected)
+					s.Equal(tt.expected, stats.UserHam)
 
 					// verify content for successful cases
 					if !tt.wantErr {
 						samples, err := sm.Read(ctx, SampleTypeHam, SampleOriginUser)
 						s.Require().NoError(err)
-						s.Assert().Len(samples, tt.expected)
+						s.Len(samples, tt.expected)
 
 						// verify each non-empty line was imported
-						for _, line := range strings.Split(strings.TrimSpace(tt.input), "\n") {
+						for line := range strings.SplitSeq(strings.TrimSpace(tt.input), "\n") {
 							if line != "" {
-								s.Assert().Contains(samples, line)
+								s.Contains(samples, line)
 							}
 						}
 					}
@@ -1267,7 +1266,7 @@ func (s *StorageTestSuite) TestSamples_ReaderUnlock() {
 			s.Require().NoError(err)
 			data, err := io.ReadAll(r1)
 			s.Require().NoError(err)
-			s.Assert().NotEmpty(data)
+			s.NotEmpty(data)
 			r1.Close()
 
 			// should be able to add after read
@@ -1279,7 +1278,7 @@ func (s *StorageTestSuite) TestSamples_ReaderUnlock() {
 			s.Require().NoError(err)
 			data, err = io.ReadAll(r2)
 			s.Require().NoError(err)
-			s.Assert().NotEmpty(data)
+			s.NotEmpty(data)
 			r2.Close()
 		})
 	}
@@ -1351,9 +1350,9 @@ func (s *StorageTestSuite) TestSamples_DuplicateLongMessages() {
 			s.Require().NoError(err)
 
 			// add same long message multiple times
-			for i := 0; i < 3; i++ {
-				err := samples.Add(context.Background(), SampleTypeSpam, SampleOriginUser, longMsg)
-				s.Require().NoError(err, "should add message attempt %d", i)
+			for i := range 3 {
+				addErr := samples.Add(context.Background(), SampleTypeSpam, SampleOriginUser, longMsg)
+				s.Require().NoError(addErr, "should add message attempt %d", i)
 			}
 
 			// verify only one instance exists

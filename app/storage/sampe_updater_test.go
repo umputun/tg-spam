@@ -26,7 +26,7 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 
 				data, err := io.ReadAll(reader)
 				s.Require().NoError(err)
-				s.Assert().Equal("test spam message\n", string(data))
+				s.Equal("test spam message\n", string(data))
 			})
 
 			s.Run("append multiple messages", func() {
@@ -49,9 +49,9 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				data, err := io.ReadAll(reader)
 				s.Require().NoError(err)
 				result := strings.Split(strings.TrimSpace(string(data)), "\n")
-				s.Assert().Equal(len(messages), len(result))
+				s.Len(result, len(messages))
 				for _, msg := range messages {
-					s.Assert().Contains(result, msg)
+					s.Contains(result, msg)
 				}
 			})
 
@@ -73,7 +73,7 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				s.Require().NoError(err)
 
 				updater := NewSampleUpdater(samples, SampleTypeSpam, 1)
-				s.Assert().Error(updater.Append("test message"))
+				s.Error(updater.Append("test message"))
 			})
 
 			s.Run("verify user origin", func() {
@@ -88,12 +88,12 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				ctx := context.Background()
 				messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
 				s.Require().NoError(err)
-				s.Assert().Contains(messages, "test message")
+				s.Contains(messages, "test message")
 
 				// verify it's not in preset origin
 				messages, err = samples.Read(ctx, SampleTypeSpam, SampleOriginPreset)
 				s.Require().NoError(err)
-				s.Assert().NotContains(messages, "test message")
+				s.NotContains(messages, "test message")
 			})
 
 			s.Run("sample type consistency", func() {
@@ -112,14 +112,14 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				// verify spam messages
 				messages, err := samples.Read(ctx, SampleTypeSpam, SampleOriginUser)
 				s.Require().NoError(err)
-				s.Assert().Contains(messages, "spam message")
-				s.Assert().NotContains(messages, "ham message")
+				s.Contains(messages, "spam message")
+				s.NotContains(messages, "ham message")
 
 				// verify ham messages
 				messages, err = samples.Read(ctx, SampleTypeHam, SampleOriginUser)
 				s.Require().NoError(err)
-				s.Assert().Contains(messages, "ham message")
-				s.Assert().NotContains(messages, "spam message")
+				s.Contains(messages, "ham message")
+				s.NotContains(messages, "spam message")
 			})
 
 			s.Run("read empty", func() {
@@ -162,7 +162,7 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				data := make([]byte, 100)
 				n, err := reader.Read(data)
 				s.Require().NoError(err)
-				s.Assert().Equal("test\n", string(data[:n]))
+				s.Equal("test\n", string(data[:n]))
 			})
 
 			s.Run("remove message", func() {
@@ -180,7 +180,7 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 
 				data, err := io.ReadAll(reader)
 				s.Require().NoError(err)
-				s.Assert().Empty(string(data))
+				s.Empty(string(data))
 			})
 
 			s.Run("remove with timeout", func() {
@@ -192,7 +192,7 @@ func (s *StorageTestSuite) TestSampleUpdater() {
 				time.Sleep(time.Microsecond)
 				err = updater.Remove("test message")
 				s.Require().Error(err)
-				s.Assert().Contains(err.Error(), "context deadline exceeded")
+				s.Contains(err.Error(), "context deadline exceeded")
 			})
 
 			s.Run("remove non-existent", func() {

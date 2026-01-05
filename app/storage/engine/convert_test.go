@@ -215,7 +215,7 @@ func TestConverter_SqliteToPostgres_NonSqliteError(t *testing.T) {
 	// test conversion from PostgreSQL should fail
 	var buf bytes.Buffer
 	err := converter.SqliteToPostgres(ctx, &buf)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "source database must be SQLite")
 }
 
@@ -304,7 +304,7 @@ func TestConverter_FormatPostgresValue(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		value    interface{}
+		value    any
 		expected string
 	}{
 		{
@@ -404,7 +404,7 @@ func TestConverter_ExportTableData_Empty(t *testing.T) {
 	require.NoError(t, err)
 
 	// an empty table should not produce any COPY statements
-	assert.Equal(t, "", buf.String())
+	assert.Empty(t, buf.String())
 }
 
 func TestConverter_ExportTableData_WithNullValues(t *testing.T) {
@@ -609,7 +609,7 @@ func setupPostgresContainer(ctx context.Context, t *testing.T) *containers.Postg
 }
 
 // createTestSqliteDatabase creates a test SQLite database with all tables used in tg-spam
-func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
+func createTestSqliteDatabase(t *testing.T) (db *SQL, path string) {
 	// create temporary SQLite file
 	tmp, err := os.CreateTemp("", "test-convert-integration-*.db")
 	require.NoError(t, err)
@@ -617,7 +617,7 @@ func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
 	tmp.Close() // close file, will be opened by SQLite
 
 	// create SQLite database
-	db, err := NewSqlite(sqlitePath, "test")
+	db, err = NewSqlite(sqlitePath, "test")
 	require.NoError(t, err)
 
 	// create detected_spam table
@@ -712,10 +712,10 @@ func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
 
 	// 3. Insert data into samples
 	samples := []struct {
-		gid     string
-		type_   string
-		origin  string
-		message string
+		gid       string
+		sampleTyp string
+		origin    string
+		message   string
 	}{
 		{"test", "spam", "user", "Sample spam message 1"},
 		{"test", "ham", "preset", "Sample ham message 1"},
@@ -725,15 +725,15 @@ func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
 
 	for _, s := range samples {
 		_, err = db.Exec(`INSERT INTO samples (gid, type, origin, message) VALUES (?, ?, ?, ?)`,
-			s.gid, s.type_, s.origin, s.message)
+			s.gid, s.sampleTyp, s.origin, s.message)
 		require.NoError(t, err)
 	}
 
 	// 4. Insert data into dictionary
 	dictEntries := []struct {
-		gid   string
-		type_ string
-		data  string
+		gid     string
+		dictTyp string
+		data    string
 	}{
 		{"test", "stop_phrase", "spam phrase 1"},
 		{"test", "ignored_word", "ignore1"},
@@ -743,7 +743,7 @@ func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
 
 	for _, d := range dictEntries {
 		_, err = db.Exec(`INSERT INTO dictionary (gid, type, data) VALUES (?, ?, ?)`,
-			d.gid, d.type_, d.data)
+			d.gid, d.dictTyp, d.data)
 		require.NoError(t, err)
 	}
 
@@ -761,7 +761,7 @@ func createTestSqliteDatabase(t *testing.T) (*SQL, string) {
 }
 
 // verifyPostgresData verifies that the PostgreSQL database has the correct data after conversion
-func verifyPostgresData(t *testing.T, ctx context.Context, pgConn *sqlx.DB) {
+func verifyPostgresData(ctx context.Context, t *testing.T, pgConn *sqlx.DB) {
 	// 1. Verify tables exist
 	tables := []string{"detected_spam", "approved_users", "samples", "dictionary"}
 	for _, table := range tables {
@@ -1065,5 +1065,5 @@ func TestSqliteToPostgresIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to insert dictionary 4")
 
 	// 4. Verify data in PostgreSQL
-	verifyPostgresData(t, ctx, pgConn)
+	verifyPostgresData(ctx, t, pgConn)
 }

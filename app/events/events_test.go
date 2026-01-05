@@ -8,6 +8,7 @@ import (
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
@@ -182,8 +183,8 @@ func TestEvents_send(t *testing.T) {
 	t.Run("send with markdown passed", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		err := send(tbapi.NewMessage(123, "test"), mockAPI)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.NoError(t, err)
+		assert.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "test", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, "Markdown", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ParseMode)
@@ -192,9 +193,9 @@ func TestEvents_send(t *testing.T) {
 	t.Run("send with markdown failed", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		err := send(tbapi.NewMessage(123, "badmd"), mockAPI)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.Equal(t, 2, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 2)
 
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "badmd", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
@@ -202,7 +203,7 @@ func TestEvents_send(t *testing.T) {
 
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "badmd", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, "", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ParseMode)
+		assert.Empty(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ParseMode)
 	})
 
 }
@@ -830,9 +831,9 @@ func Test_parseCallbackData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gotUserID, gotMsgID, err := parseCallbackData(tt.data)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.wantUserID, gotUserID)
 				assert.Equal(t, tt.wantMsgID, gotMsgID)
 			}

@@ -1,6 +1,9 @@
 version: "2"
 run:
-  tests: false
+  concurrency: 4
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 linters:
   default: none
   enable:
@@ -54,9 +57,17 @@ linters:
           - revive
         text: should have a package comment
       - linters:
+          - revive
+          - unparam
+          - unused
+        path: _test\.go$
+        text: unused-parameter
+      - linters:
           - dupl
           - gosec
-        path: _test\.go
+          - unparam
+          - wrapcheck
+        path: _test\.go$
     paths:
       - vendor
       - third_party$

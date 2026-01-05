@@ -34,13 +34,13 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.False(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "not found", cr[0].Details)
 		assert.Equal(t, "emoji", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "0/1", cr[1].Details)
 		assert.Equal(t, "message length", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "too short", cr[2].Details)
 	})
 
@@ -49,13 +49,13 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "в личку", cr[0].Details)
 		assert.Equal(t, "emoji", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "0/1", cr[1].Details)
 		assert.Equal(t, "message length", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "too short", cr[2].Details)
 	})
 
@@ -64,13 +64,13 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "not found", cr[0].Details)
 		assert.Equal(t, "emoji", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "3/1", cr[1].Details)
 		assert.Equal(t, "message length", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "too short", cr[2].Details)
 	})
 
@@ -79,13 +79,13 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam)
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "в личку", cr[0].Details)
 		assert.Equal(t, "emoji", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "3/1", cr[1].Details)
 		assert.Equal(t, "message length", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "too short", cr[2].Details)
 	})
 
@@ -100,7 +100,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam, "should detect stopword with extra spaces")
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with extra space in 'Дам  денег'")
+		assert.True(t, cr[0].Spam, "should match 'дам денег' even with extra space in 'Дам  денег'")
 		assert.Equal(t, "дам денег", cr[0].Details)
 
 		// test with different case
@@ -108,7 +108,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam, "should detect stopword with uppercase")
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with uppercase 'ДАМ ДЕНЕГ'")
+		assert.True(t, cr[0].Spam, "should match 'дам денег' even with uppercase 'ДАМ ДЕНЕГ'")
 		assert.Equal(t, "дам денег", cr[0].Details)
 
 		// test with multiple extra spaces
@@ -116,7 +116,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		assert.True(t, spam, "should detect stopword with multiple spaces")
 		require.Len(t, cr, 3, cr)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam, "should match 'дам денег' even with multiple spaces")
+		assert.True(t, cr[0].Spam, "should match 'дам денег' even with multiple spaces")
 		assert.Equal(t, "дам денег", cr[0].Details)
 	})
 
@@ -129,8 +129,8 @@ func TestDetector_CheckWithShort(t *testing.T) {
 
 		lr, err := d.LoadSamples(strings.NewReader(""), []io.Reader{spamSamples}, []io.Reader{hamSamples})
 		require.NoError(t, err)
-		assert.Greater(t, lr.SpamSamples, 0)
-		assert.Greater(t, lr.HamSamples, 0)
+		assert.Positive(t, lr.SpamSamples)
+		assert.Positive(t, lr.HamSamples)
 
 		// test short message - should NOT have classifier or similarity results
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi"})
@@ -139,7 +139,7 @@ func TestDetector_CheckWithShort(t *testing.T) {
 		// verify we only get message length check, no classifier or similarity
 		require.Len(t, cr, 1)
 		assert.Equal(t, "message length", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "too short", cr[0].Details)
 
 		// verify classifier and similarity are NOT in the results
@@ -390,7 +390,6 @@ func TestDetector_CheckStopWordsEdgeCases(t *testing.T) {
 	})
 }
 
-//nolint:stylecheck // it has unicode symbols purposely
 func TestDetector_CheckEmojis(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: 2})
 	tests := []struct {
@@ -455,11 +454,11 @@ func TestDetector_CheckDuplicates(t *testing.T) {
 	assert.Contains(t, dupResp.Details, "3 times")
 
 	// different message from same user - not spam
-	spam, cr = d.Check(spamcheck.Request{Msg: "different message", UserID: "123"})
+	spam, _ = d.Check(spamcheck.Request{Msg: "different message", UserID: "123"})
 	assert.False(t, spam)
 
 	// same message from different user - not spam
-	spam, cr = d.Check(spamcheck.Request{Msg: "test message", UserID: "456"})
+	spam, _ = d.Check(spamcheck.Request{Msg: "test message", UserID: "456"})
 	assert.False(t, spam)
 }
 
@@ -476,7 +475,7 @@ func TestDetector_CheckDuplicatesDisabled(t *testing.T) {
 	})
 
 	// send same message multiple times - should never trigger
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		spam, cr := d.Check(spamcheck.Request{Msg: "test", UserID: "123"})
 		assert.False(t, spam)
 		dupResp := findResponseByName(cr, "duplicate")
@@ -538,10 +537,10 @@ func TestDetector_CheckDuplicatesConcurrency(t *testing.T) {
 	wg.Add(concurrency)
 
 	// send same message concurrently from same user
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				d.Check(spamcheck.Request{
 					UserID: userID,
 					Msg:    message,
@@ -589,7 +588,7 @@ func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
 
 	// send many unique messages to try to exhaust memory
 	// the detector should limit to maxEntriesPerUser (200)
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		message := fmt.Sprintf("unique message %d", i)
 		d.Check(spamcheck.Request{
 			UserID: userID,
@@ -860,7 +859,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 				}
 				expResp = strings.TrimSuffix(expResp, ".")
 				assert.Equal(t, expResp, cr[0].Details)
-				assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
+				assert.Len(t, mockedHTTPClient.DoCalls(), 1)
 			}
 		})
 	}
@@ -897,7 +896,7 @@ func TestSpam_CheckIsCasSpamEmptyUserID(t *testing.T) {
 	assert.Equal(t, "check disabled", casCheck.Details)
 
 	// verify HTTP client was never called
-	assert.Equal(t, 0, len(mockedHTTPClient.DoCalls()))
+	assert.Empty(t, mockedHTTPClient.DoCalls())
 }
 
 func TestSpam_CheckIsCasSpamUserAgent(t *testing.T) {
@@ -950,7 +949,7 @@ func TestSpam_CheckIsCasSpamUserAgent(t *testing.T) {
 			d.Check(spamcheck.Request{UserID: "123", Msg: "test message"})
 
 			// verify HTTP client was called
-			assert.Equal(t, 1, len(mockedHTTPClient.DoCalls()))
+			assert.Len(t, mockedHTTPClient.DoCalls(), 1)
 		})
 	}
 }
@@ -1254,7 +1253,7 @@ func TestDetector_CheckSimilarity(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			d.Config.SimilarityThreshold = test.threshold // update threshold for each test case
+			d.SimilarityThreshold = test.threshold // update threshold for each test case
 			spam, cr := d.Check(spamcheck.Request{Msg: test.message})
 			assert.Equal(t, test.expected, spam)
 			require.Len(t, cr, 1)
@@ -1339,7 +1338,7 @@ func TestDetector_CheckClassifierNoHam(t *testing.T) {
 		t.Run(test, func(t *testing.T) {
 			spam, cr := d.Check(spamcheck.Request{Msg: test})
 			assert.False(t, spam)
-			require.Len(t, cr, 0)
+			require.Empty(t, cr)
 		})
 	}
 }
@@ -1358,12 +1357,12 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "openai", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr[0].Details)
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai and not first-only", func(t *testing.T) {
@@ -1379,16 +1378,16 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, false, spam)
-		require.Len(t, cr, 0)
-		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.False(t, spam)
+		require.Empty(t, cr)
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
 	})
 
 	t.Run("without openai", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1})
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, false, spam)
-		require.Len(t, cr, 0)
+		assert.False(t, spam)
+		require.Empty(t, cr)
 	})
 
 	t.Run("with openai, first-only but spam detected before", func(t *testing.T) {
@@ -1404,15 +1403,15 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "some message", cr[0].Details)
-		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
 	})
 
 	t.Run("with openai, first-only spam detected before, veto passes", func(t *testing.T) {
@@ -1428,20 +1427,20 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "some message", cr[0].Details)
 
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
 
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai, first-only spam detected before, veto failed", func(t *testing.T) {
@@ -1457,19 +1456,19 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "some message", cr[0].Details)
 
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "good text, confidence: 100%", cr[1].Details)
 
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai, first-only spam detected before, openai error", func(t *testing.T) {
@@ -1485,20 +1484,20 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		spam, cr := d.Check(spamcheck.Request{Msg: "some message 1234"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "some message", cr[0].Details)
 
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "OpenAI error: failed to create chat completion: openai error", cr[1].Details)
 		assert.Equal(t, "failed to create chat completion: openai error", cr[1].Error.Error())
 
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai, first-only spam not detected before", func(t *testing.T) {
@@ -1514,19 +1513,19 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		}
 		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
 		_, err := d.LoadStopWords(strings.NewReader("some message"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		spam, cr := d.Check(spamcheck.Request{Msg: "1234"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "not found", cr[0].Details)
 
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
 
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai and MinMsgLen - short message skips openai by default", func(t *testing.T) {
@@ -1545,23 +1544,23 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		// test with short message (less than MinMsgLen)
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "message length", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "too short", cr[0].Details)
 		// verify openai was NOT called
-		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
 
 		// test with long message (more than MinMsgLen)
 		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
-		assert.Equal(t, true, spam2)
+		assert.True(t, spam2)
 		require.Len(t, cr2, 1)
 		assert.Equal(t, "openai", cr2[0].Name)
-		assert.Equal(t, true, cr2[0].Spam)
+		assert.True(t, cr2[0].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
 		// verify openai WAS called for long message
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("with openai and MinMsgLen - short message checked when flag is true", func(t *testing.T) {
@@ -1580,26 +1579,26 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		// test with short message (less than MinMsgLen)
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "message length", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "too short", cr[0].Details)
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
 		// verify openai WAS called even for short message
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 
 		// test with long message (more than MinMsgLen)
 		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
-		assert.Equal(t, true, spam2)
+		assert.True(t, spam2)
 		require.Len(t, cr2, 1)
 		assert.Equal(t, "openai", cr2[0].Name)
-		assert.Equal(t, true, cr2[0].Spam)
+		assert.True(t, cr2[0].Spam)
 		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
 		// verify openai WAS called this time too
-		assert.Equal(t, 2, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 2)
 	})
 
 	t.Run("with openai and MinMsgLen - short message already spam skips openai", func(t *testing.T) {
@@ -1618,20 +1617,20 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		// load stop words
 		_, err := d.LoadStopWords(strings.NewReader("viagra"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// test with short message containing stop word
 		spam, cr := d.Check(spamcheck.Request{Msg: "buy viagra"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 2)
 		assert.Equal(t, "stopword", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "viagra", cr[0].Details)
 		assert.Equal(t, "message length", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "too short", cr[1].Details)
 		// verify openai was NOT called because spam was already detected
-		assert.Equal(t, 0, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
 	})
 
 	t.Run("with openai enabled for short messages - still skips classifier/similarity", func(t *testing.T) {
@@ -1642,8 +1641,8 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		hamSamples := strings.NewReader("hello world\nhow are you")
 		lr, err := d.LoadSamples(strings.NewReader(""), []io.Reader{spamSamples}, []io.Reader{hamSamples})
 		require.NoError(t, err)
-		assert.Greater(t, lr.SpamSamples, 0)
-		assert.Greater(t, lr.HamSamples, 0)
+		assert.Positive(t, lr.SpamSamples)
+		assert.Positive(t, lr.HamSamples)
 
 		// setup openai mock
 		mockOpenAIClient := &mocks.OpenAIClientMock{
@@ -1659,7 +1658,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		// test short message
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		// verify we get message length and openai, but NO classifier or similarity
 		hasMessageLength := false
@@ -1668,11 +1667,11 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 			switch r.Name {
 			case "message length":
 				hasMessageLength = true
-				assert.Equal(t, false, r.Spam)
+				assert.False(t, r.Spam)
 				assert.Equal(t, "too short", r.Details)
 			case "openai":
 				hasOpenAI = true
-				assert.Equal(t, false, r.Spam)
+				assert.False(t, r.Spam)
 			case "classifier":
 				t.Error("classifier should not run for short messages even with openai enabled")
 			case "similarity":
@@ -1682,7 +1681,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		assert.True(t, hasMessageLength, "should have message length check")
 		assert.True(t, hasOpenAI, "should have openai check when enabled for short messages")
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("short message with CheckShortMessagesWithOpenAI ignores veto mode", func(t *testing.T) {
@@ -1715,21 +1714,21 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
 
 		// should detect as spam because OpenAI says it's spam
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 2)
 
 		// verify we have message length check
 		assert.Equal(t, "message length", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "too short", cr[0].Details)
 
 		// verify we have openai check
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "suspicious short message, confidence: 95%", cr[1].Details)
 
 		// verify openai WAS called even with veto mode enabled
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("short message with CheckShortMessagesWithOpenAI and OpenAIVeto=false", func(t *testing.T) {
@@ -1759,15 +1758,15 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "hi there"})
 
 		// should not detect spam because OpenAI says it's clean
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 2)
 
 		assert.Equal(t, "message length", cr[0].Name)
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 
 		// verify openai WAS called
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
 	t.Run("short message with veto mode - OpenAI returns ham", func(t *testing.T) {
@@ -1797,15 +1796,15 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "hello"})
 
 		// should not detect spam
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 2)
 
 		assert.Equal(t, "message length", cr[0].Name)
 		assert.Equal(t, "openai", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "looks clean, confidence: 85%", cr[1].Details)
 
-		assert.Equal(t, 1, len(mockOpenAIClient.CreateChatCompletionCalls()))
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 }
 
@@ -1815,92 +1814,92 @@ func TestDetector_CheckWithMeta(t *testing.T) {
 
 	t.Run("no links, no images", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you?"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "links 0/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "text or no images", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 	})
 
 	t.Run("one link, no images", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "links 1/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "text or no images", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 	})
 
 	t.Run("one link, no text", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: " https://google.com"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		t.Logf("%+v", cr)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "links 1/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "text or no images", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, true, cr[2].Spam)
+		assert.True(t, cr[2].Spam)
 	})
 
 	t.Run("one link, one image with some text", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com", Meta: spamcheck.MetaData{Images: 1}})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		t.Logf("%+v", cr)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "links 1/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "text or no images", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "message contains text", cr[2].Details)
 	})
 
 	t.Run("two links, one image with text", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "Hello, how are you? https://google.com https://google.com", Meta: spamcheck.MetaData{Images: 1}})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		t.Logf("%+v", cr)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "too many links 2/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, false, cr[1].Spam)
+		assert.False(t, cr[1].Spam)
 		assert.Equal(t, "text or no images", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "message contains text", cr[2].Details)
 	})
 
 	t.Run("no links, two images, no text", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{Images: 2}})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		t.Logf("%+v", cr)
 		require.Len(t, cr, 3)
 		assert.Equal(t, "links", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "links 0/1", cr[0].Details)
 		assert.Equal(t, "images", cr[1].Name)
-		assert.Equal(t, true, cr[1].Spam)
+		assert.True(t, cr[1].Spam)
 		assert.Equal(t, "image without text", cr[1].Details)
 		assert.Equal(t, "link-only", cr[2].Name)
-		assert.Equal(t, false, cr[2].Spam)
+		assert.False(t, cr[2].Spam)
 		assert.Equal(t, "empty message", cr[2].Details)
 	})
 }
@@ -1914,7 +1913,7 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		spam  bool
 	}{
 		{"No MultiLang", "Hello, world!\n 12345-980! _", 0, false},
-		{"One MultiLang", "Hi therе", 1, false},
+		{"One MultiLang", "Hi therе", 1, false}, //nolint:misspell // intentional Cyrillic 'е' for multilang test
 		{"Two MultiLang", "Gооd moфning", 2, true},
 		{"WithCyrillic no MultiLang", "Привет  мир", 0, false},
 		{"WithCyrillic two MultiLang", "Привеt  мip", 2, true},
@@ -1952,11 +1951,11 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 
 func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	d := NewDetector(Config{MaxAllowedEmoji: -1})
-	d.Config.AbnormalSpacing.Enabled = true
-	d.Config.AbnormalSpacing.ShortWordLen = 3
-	d.Config.AbnormalSpacing.ShortWordRatioThreshold = 0.7
-	d.Config.AbnormalSpacing.SpaceRatioThreshold = 0.3
-	d.Config.AbnormalSpacing.MinWordsCount = 6
+	d.AbnormalSpacing.Enabled = true
+	d.AbnormalSpacing.ShortWordLen = 3
+	d.AbnormalSpacing.ShortWordRatioThreshold = 0.7
+	d.AbnormalSpacing.SpaceRatioThreshold = 0.3
+	d.AbnormalSpacing.MinWordsCount = 6
 
 	tests := []struct {
 		name     string
@@ -2050,7 +2049,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	}
 
 	t.Run("disabled short word threshold", func(t *testing.T) {
-		d.Config.AbnormalSpacing.ShortWordLen = 0
+		d.AbnormalSpacing.ShortWordLen = 0
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.False(t, spam)
@@ -2058,7 +2057,7 @@ func TestDetector_CheckWithAbnormalSpacing(t *testing.T) {
 	})
 
 	t.Run("enabled short word threshold", func(t *testing.T) {
-		d.Config.AbnormalSpacing.ShortWordLen = 3
+		d.AbnormalSpacing.ShortWordLen = 3
 		spam, resp := d.Check(spamcheck.Request{Msg: "СРО ЧНО ЭТО КАС АЕТ СЯ КАЖ ДОГО В ЭТ ОЙ ГРУ ППЕ something else"})
 		t.Logf("Response: %+v", resp)
 		assert.True(t, spam)
@@ -2092,24 +2091,24 @@ func TestDetector_UpdateSpam(t *testing.T) {
 	msg := "another good world one iphone user writes good things day"
 	t.Run("initially a little bit ham", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: msg})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "probability of ham: 59.97%", cr[0].Details)
 	})
 
 	err = d.UpdateSpam("another user writes")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 6, d.classifier.nAllDocument)
-	assert.Equal(t, 1, len(upd.AppendCalls()))
+	assert.Len(t, upd.AppendCalls(), 1)
 
 	t.Run("after update mostly spam", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: msg})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "probability of spam: 66.67%", cr[0].Details)
 	})
 }
@@ -2139,24 +2138,24 @@ func TestDetector_UpdateHam(t *testing.T) {
 	msg := "another free good world one iphone user writes good things day"
 	t.Run("initially a little bit spam", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: msg})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
-		assert.Equal(t, true, cr[0].Spam)
+		assert.True(t, cr[0].Spam)
 		assert.Equal(t, "probability of spam: 60.89%", cr[0].Details)
 	})
 
 	err = d.UpdateHam("another writes things")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 6, d.classifier.nAllDocument)
-	assert.Equal(t, 1, len(upd.AppendCalls()))
+	assert.Len(t, upd.AppendCalls(), 1)
 
 	t.Run("after update mostly ham", func(t *testing.T) {
 		spam, cr := d.Check(spamcheck.Request{Msg: msg})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 		require.Len(t, cr, 1)
 		assert.Equal(t, "classifier", cr[0].Name)
-		assert.Equal(t, false, cr[0].Spam)
+		assert.False(t, cr[0].Spam)
 		assert.Equal(t, "probability of ham: 72.16%", cr[0].Details)
 	})
 }
@@ -2173,64 +2172,64 @@ func TestDetector_Reset(t *testing.T) {
 	assert.Equal(t, LoadResult{StopWords: 2}, sr)
 
 	assert.Equal(t, 5, d.classifier.nAllDocument)
-	assert.Equal(t, 2, len(d.tokenizedSpam))
-	assert.Equal(t, 1, len(d.excludedTokens))
-	assert.Equal(t, 2, len(d.stopWords))
+	assert.Len(t, d.tokenizedSpam, 2)
+	assert.Len(t, d.excludedTokens, 1)
+	assert.Len(t, d.stopWords, 2)
 
 	d.Reset()
 	assert.Equal(t, 0, d.classifier.nAllDocument)
-	assert.Equal(t, 0, len(d.tokenizedSpam))
-	assert.Equal(t, 0, len(d.excludedTokens))
-	assert.Equal(t, 0, len(d.stopWords))
+	assert.Empty(t, d.tokenizedSpam)
+	assert.Empty(t, d.excludedTokens)
+	assert.Empty(t, d.stopWords)
 }
 
 func TestDetector_FirstMessagesCount(t *testing.T) {
 	t.Run("first message is spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
 		spam, _ := d.Check(spamcheck.Request{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 	})
 	t.Run("first messages are ham, third is spam", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 3, FirstMessageOnly: true})
 
 		// first ham
 		spam, _ := d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		// second ham
 		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		spam, _ = d.Check(spamcheck.Request{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
-		assert.Equal(t, true, spam)
+		assert.True(t, spam)
 	})
 	t.Run("first messages are ham, spam after approved", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: true})
 
 		// first ham
 		spam, _ := d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		// second ham
 		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		spam, _ = d.Check(spamcheck.Request{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
-		assert.Equal(t, false, spam, "spam is not detected because user is approved")
+		assert.False(t, spam, "spam is not detected because user is approved")
 	})
 	t.Run("first messages are ham, spam after approved, FirstMessageOnly were false", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: 1, MinMsgLen: 5, FirstMessagesCount: 2, FirstMessageOnly: false})
 
 		// first ham
 		spam, _ := d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		// second ham
 		spam, _ = d.Check(spamcheck.Request{Msg: "ham, no emojis", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 
 		spam, _ = d.Check(spamcheck.Request{Msg: "spam, too many emojis 🤣🤣🤣", UserID: "123"})
-		assert.Equal(t, false, spam)
+		assert.False(t, spam)
 	})
 }
 
@@ -2250,7 +2249,7 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2, count)
 		err = d.AddApprovedUser(approved.UserInfo{UserID: "999", UserName: "test"})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		res := d.ApprovedUsers()
 		ids := make([]string, len(res))
 		for i, u := range res {
@@ -2258,7 +2257,7 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		}
 		sort.Strings(ids)
 		assert.Equal(t, []string{"123", "456", "999"}, ids)
-		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 1)
 		assert.Equal(t, "999", mockUserStore.WriteCalls()[0].Au.UserID)
 		assert.Equal(t, "test", mockUserStore.WriteCalls()[0].Au.UserName)
 	})
@@ -2273,13 +2272,13 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		require.NoError(t, err)
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "999"})
 		t.Logf("%+v", info)
-		assert.Equal(t, true, isSpam)
+		assert.True(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
 		assert.False(t, d.IsApprovedUser("999"))
-		assert.Equal(t, 1, len(mockUserStore.ReadCalls()))
-		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
-		assert.Equal(t, 0, len(mockUserStore.DeleteCalls()))
+		assert.Len(t, mockUserStore.ReadCalls(), 1)
+		assert.Empty(t, mockUserStore.WriteCalls())
+		assert.Empty(t, mockUserStore.DeleteCalls())
 	})
 
 	t.Run("user pre-approved, spam check avoided", func(t *testing.T) {
@@ -2292,7 +2291,7 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		require.NoError(t, err)
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("123"))
@@ -2308,7 +2307,7 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		assert.Equal(t, 2, count)
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("123"))
@@ -2324,24 +2323,24 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		assert.Equal(t, 2, count)
 
 		err = d.AddApprovedUser(approved.UserInfo{UserID: "999"})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "999"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("999"))
-		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 1)
 		assert.Equal(t, "999", mockUserStore.WriteCalls()[0].Au.UserID)
 
 		d.RemoveApprovedUser("123")
 		isSpam, info = d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
-		assert.Equal(t, true, isSpam)
+		assert.True(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
 		assert.False(t, d.IsApprovedUser("123"))
-		assert.Equal(t, 1, len(mockUserStore.DeleteCalls()))
+		assert.Len(t, mockUserStore.DeleteCalls(), 1)
 		assert.Equal(t, "123", mockUserStore.DeleteCalls()[0].ID)
 	})
 
@@ -2354,7 +2353,7 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		d.AddApprovedUser(approved.UserInfo{UserID: "123"})
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("123"))
@@ -2362,12 +2361,12 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		d.RemoveApprovedUser("123")
 		isSpam, info = d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "123"})
 		t.Logf("%+v", info)
-		assert.Equal(t, true, isSpam)
+		assert.True(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "stopword", info[0].Name)
 		assert.False(t, d.IsApprovedUser("123"))
-		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
-		assert.Equal(t, 0, len(mockUserStore.DeleteCalls()))
+		assert.Empty(t, mockUserStore.WriteCalls())
+		assert.Empty(t, mockUserStore.DeleteCalls())
 	})
 
 	t.Run("add user", func(t *testing.T) {
@@ -2382,11 +2381,11 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		d.AddApprovedUser(approved.UserInfo{UserID: "777"})
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "777"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("777"))
-		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 1)
 		assert.Equal(t, "777", mockUserStore.WriteCalls()[0].Au.UserID)
 	})
 
@@ -2399,11 +2398,11 @@ func TestDetector_ApprovedUsers(t *testing.T) {
 		d.AddApprovedUser(approved.UserInfo{UserID: "777"})
 		isSpam, info := d.Check(spamcheck.Request{Msg: "Hello, how are you my friend? buy cryptocurrency now!", UserID: "777"})
 		t.Logf("%+v", info)
-		assert.Equal(t, false, isSpam)
+		assert.False(t, isSpam)
 		require.Len(t, info, 1)
 		assert.Equal(t, "pre-approved", info[0].Name)
 		assert.True(t, d.IsApprovedUser("777"))
-		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
+		assert.Empty(t, mockUserStore.WriteCalls())
 	})
 
 }
@@ -2612,7 +2611,6 @@ func TestCleanText(t *testing.T) {
 	}
 }
 
-//nolint:stylecheck // it has unicode symbols purposely
 func Test_countEmoji(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -2644,7 +2642,6 @@ func Test_countEmoji(t *testing.T) {
 	}
 }
 
-//nolint:stylecheck // it has unicode symbols purposely
 func Test_cleanEmoji(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -2689,8 +2686,8 @@ func TestDetector_RemoveHam(t *testing.T) {
 	require.Equal(t, 2, lr.HamSamples)
 
 	// test removing a ham sample that exists
-	assert.NoError(t, d.RemoveHam("test message"))
-	assert.Equal(t, 1, len(updMock.RemoveCalls()))
+	require.NoError(t, d.RemoveHam("test message"))
+	assert.Len(t, updMock.RemoveCalls(), 1)
 	assert.Equal(t, "test message", updMock.RemoveCalls()[0].Msg)
 
 	// test error handling
@@ -2698,7 +2695,7 @@ func TestDetector_RemoveHam(t *testing.T) {
 		return errors.New("remove error")
 	}
 	err = d.RemoveHam("hello world")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "remove error")
 }
 
@@ -2737,8 +2734,8 @@ func TestDetector_RemoveSpamHam(t *testing.T) {
 	})
 
 	err = d.RemoveSpam(spamMsg)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(updSpam.RemoveCalls()))
+	require.NoError(t, err)
+	assert.Len(t, updSpam.RemoveCalls(), 1)
 	assert.Equal(t, spamMsg, updSpam.RemoveCalls()[0].Msg)
 
 	t.Run("after removing spam", func(t *testing.T) {
@@ -2758,13 +2755,13 @@ func TestDetector_RemoveSpamHam(t *testing.T) {
 		}
 		d.WithSpamUpdater(failingUpd)
 		err := d.RemoveSpam(spamMsg)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "can't unlearn spam samples")
 	})
 
 	t.Run("error on non-existent message", func(t *testing.T) {
 		err := d.RemoveSpam("not-learned-message")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "can't unlearn spam samples")
 	})
 }
@@ -2773,7 +2770,7 @@ func TestDetector_buildDocs(t *testing.T) {
 	d := &Detector{excludedTokens: map[string]struct{}{"the": {}, "and": {}}}
 
 	docs := d.buildDocs("buy crypto coins now", "spam")
-	assert.Equal(t, 1, len(docs), "should create single document")
+	assert.Len(t, docs, 1, "should create single document")
 	assert.Equal(t, spamClass("spam"), docs[0].spamClass)
 	assert.ElementsMatch(t, []string{"buy", "crypto", "coins", "now"}, docs[0].tokens)
 }
@@ -2787,7 +2784,7 @@ func TestDetector_CheckHistory(t *testing.T) {
 	isSpam, _ := d.Check(spamcheck.Request{Msg: "good message", UserID: "1"})
 	assert.False(t, isSpam)
 	hamMsgs := d.hamHistory.Last(5)
-	require.Equal(t, 1, len(hamMsgs))
+	require.Len(t, hamMsgs, 1)
 	assert.Equal(t, "good message", hamMsgs[0].Msg)
 	assert.Empty(t, d.spamHistory.Last(5))
 
@@ -2795,18 +2792,18 @@ func TestDetector_CheckHistory(t *testing.T) {
 	isSpam, _ = d.Check(spamcheck.Request{Msg: "spam text", UserID: "1"})
 	assert.True(t, isSpam)
 	spamMsgs := d.spamHistory.Last(5)
-	require.Equal(t, 1, len(spamMsgs))
+	require.Len(t, spamMsgs, 1)
 	assert.Equal(t, "spam text", spamMsgs[0].Msg)
-	assert.Equal(t, 1, len(d.hamHistory.Last(5)), "ham history should remain unchanged")
+	assert.Len(t, d.hamHistory.Last(5), 1, "ham history should remain unchanged")
 
 	// third message is ham
 	isSpam, _ = d.Check(spamcheck.Request{Msg: "another good one", UserID: "2"})
 	assert.False(t, isSpam)
 	hamMsgs = d.hamHistory.Last(5)
-	require.Equal(t, 2, len(hamMsgs))
+	require.Len(t, hamMsgs, 2)
 	assert.Equal(t, "good message", hamMsgs[0].Msg)
 	assert.Equal(t, "another good one", hamMsgs[1].Msg)
-	assert.Equal(t, 1, len(d.spamHistory.Last(5)), "spam history should remain unchanged")
+	assert.Len(t, d.spamHistory.Last(5), 1, "spam history should remain unchanged")
 }
 
 func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
@@ -2821,7 +2818,7 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 
 		// short unvalidated message should NOT be in hamHistory
 		hamMsgs := d.hamHistory.Last(5)
-		assert.Equal(t, 0, len(hamMsgs), "short unchecked messages should not be added to hamHistory")
+		assert.Empty(t, hamMsgs, "short unchecked messages should not be added to hamHistory")
 	})
 
 	t.Run("short ham message with openai enabled should be added to history", func(t *testing.T) {
@@ -2841,7 +2838,7 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 
 		// properly validated short message should be in hamHistory
 		hamMsgs := d.hamHistory.Last(5)
-		assert.Equal(t, 1, len(hamMsgs), "short messages checked by openai should be added to hamHistory")
+		assert.Len(t, hamMsgs, 1, "short messages checked by openai should be added to hamHistory")
 		assert.Equal(t, "hi", hamMsgs[0].Msg)
 	})
 
@@ -2854,7 +2851,7 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 
 		// normal messages should be in hamHistory
 		hamMsgs := d.hamHistory.Last(5)
-		assert.Equal(t, 1, len(hamMsgs), "normal length messages should be added to hamHistory")
+		assert.Len(t, hamMsgs, 1, "normal length messages should be added to hamHistory")
 		assert.Equal(t, "this is a normal length message", hamMsgs[0].Msg)
 	})
 }
@@ -2948,17 +2945,14 @@ func BenchmarkLoadSamples(b *testing.B) {
 	for _, tc := range tests {
 		b.Run(tc.name, func(b *testing.B) {
 			d := NewDetector(Config{})
-			spamReader := makeReader(tc.spam)
-			hamReader := makeReader(tc.ham)
-			exclReader := makeReader(tc.excluded)
 
 			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				// need to rewind readers for each iteration
-				spamReader = makeReader(tc.spam)
-				hamReader = makeReader(tc.ham)
-				exclReader = makeReader(tc.excluded)
+			for range b.N {
+				// need to create new readers for each iteration
+				spamReader := makeReader(tc.spam)
+				hamReader := makeReader(tc.ham)
+				exclReader := makeReader(tc.excluded)
 
 				_, err := d.LoadSamples(exclReader, []io.Reader{spamReader}, []io.Reader{hamReader})
 				if err != nil {
@@ -3042,7 +3036,7 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 3, FirstMessageOnly: true, MaxAllowedEmoji: -1})
 
 		// send 3 short messages (less than MinMsgLen)
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			spam, cr := d.Check(spamcheck.Request{Msg: "hi", UserID: "123"})
 			assert.False(t, spam)
 			assert.NotEmpty(t, cr)
@@ -3094,7 +3088,7 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		d := NewDetector(Config{MinMsgLen: 10, FirstMessagesCount: 3, FirstMessageOnly: true, MaxAllowedEmoji: -1})
 
 		// send 2 normal messages
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			spam, _ := d.Check(spamcheck.Request{Msg: "this is a normal message", UserID: "456"})
 			assert.False(t, spam)
 		}
@@ -3185,14 +3179,14 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		d.Check(spamcheck.Request{Msg: "ok", UserID: "111"})
 
 		// storage should NOT be called for short messages
-		assert.Equal(t, 0, len(mockUserStore.WriteCalls()))
+		assert.Empty(t, mockUserStore.WriteCalls())
 
 		// send 2 normal messages
 		d.Check(spamcheck.Request{Msg: "normal message one", UserID: "111"})
-		assert.Equal(t, 1, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 1)
 
 		d.Check(spamcheck.Request{Msg: "normal message two", UserID: "111"})
-		assert.Equal(t, 2, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 2)
 
 		// user is not approved yet (need > 2)
 		assert.False(t, d.IsApprovedUser("111"))
@@ -3201,7 +3195,7 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		// so the 3rd message will be pre-approved and won't update storage
 		d.Check(spamcheck.Request{Msg: "normal message three", UserID: "111"})
 		// storage write is NOT called for pre-approved message
-		assert.Equal(t, 2, len(mockUserStore.WriteCalls()))
+		assert.Len(t, mockUserStore.WriteCalls(), 2)
 		// IsApprovedUser returns false because count (2) is not > FirstMessagesCount (2)
 		assert.False(t, d.IsApprovedUser("111"))
 	})

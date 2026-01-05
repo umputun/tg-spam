@@ -194,12 +194,12 @@ func TestDuplicateDetector_AutomaticCleanup(t *testing.T) {
 	d.cleanupInterval = 50 * time.Millisecond // set short cleanup interval for test
 
 	// add messages from multiple users
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		d.check(spamcheck.Request{Msg: fmt.Sprintf("msg%d", i), UserID: fmt.Sprintf("%d", i)})
 	}
 
 	// verify history exists
-	assert.Equal(t, 5, len(d.cache.Keys()))
+	assert.Len(t, d.cache.Keys(), 5)
 
 	// wait for messages to expire
 	time.Sleep(150 * time.Millisecond)
@@ -209,7 +209,7 @@ func TestDuplicateDetector_AutomaticCleanup(t *testing.T) {
 
 	// verify old entries are cleaned, only the new one remains
 	keys := d.cache.Keys()
-	assert.Equal(t, 1, len(keys))
+	assert.Len(t, keys, 1)
 	assert.Equal(t, int64(999), keys[0])
 }
 
@@ -218,7 +218,7 @@ func TestDuplicateDetector_CleanupInterval(t *testing.T) {
 	d.cleanupInterval = time.Hour // long cleanup interval
 
 	// add messages from multiple users
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		d.check(spamcheck.Request{Msg: fmt.Sprintf("msg%d", i), UserID: fmt.Sprintf("%d", i)})
 	}
 
@@ -229,7 +229,7 @@ func TestDuplicateDetector_CleanupInterval(t *testing.T) {
 	d.check(spamcheck.Request{Msg: "trigger", UserID: "999"})
 
 	// verify expired entries are still there (cleanup didn't run)
-	assert.Equal(t, 6, len(d.cache.Keys()), "should have all 6 users, cleanup didn't run")
+	assert.Len(t, d.cache.Keys(), 6, "should have all 6 users, cleanup didn't run")
 }
 
 func TestDuplicateDetector_NilDetector(t *testing.T) {
@@ -246,9 +246,9 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 
 	// run concurrent checks
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(userID int) {
-			for j := 0; j < 10; j++ {
+			for j := range 10 {
 				d.check(spamcheck.Request{
 					Msg:    fmt.Sprintf("msg%d", j%3),
 					UserID: fmt.Sprintf("%d", userID),
@@ -259,7 +259,7 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 	}
 
 	// wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 
@@ -272,8 +272,8 @@ func TestDuplicateDetector_ConcurrentAccess(t *testing.T) {
 		history, found := d.cache.Get(userID)
 		require.True(t, found)
 		require.NotNil(t, history)
-		assert.Equal(t, 10, len(history.entries)) // exactly 10 messages sent per user
-		assert.Equal(t, 3, len(history.trackers)) // exactly 3 different messages (msg0, msg1, msg2)
+		assert.Len(t, history.entries, 10) // exactly 10 messages sent per user
+		assert.Len(t, history.trackers, 3) // exactly 3 different messages (msg0, msg1, msg2)
 	}
 }
 
@@ -327,7 +327,7 @@ func TestDuplicateDetector_MessageIDsGrowthExceedsMax(t *testing.T) {
 	// maxEntriesPerUser is 200 by default
 
 	// send 300 duplicate messages, staying below threshold but exceeding maxEntriesPerUser
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		resp := d.check(spamcheck.Request{
 			Msg:    "spam message",
 			UserID: "123",
@@ -348,11 +348,11 @@ func TestDuplicateDetector_MessageIDsGrowthExceedsMax(t *testing.T) {
 	t.Logf("Number of message IDs stored: %d", len(tracker.messageIDs))
 
 	// entries should be limited to maxEntriesPerUser
-	assert.Equal(t, d.maxEntriesPerUser, len(history.entries))
+	assert.Len(t, history.entries, d.maxEntriesPerUser)
 
 	// messageIDs should now be capped at 100 (or threshold if lower)
 	assert.LessOrEqual(t, len(tracker.messageIDs), 100, "messageIDs should be capped to prevent unbounded growth")
-	assert.Greater(t, len(tracker.messageIDs), 0, "should have some message IDs")
+	assert.NotEmpty(t, tracker.messageIDs, "should have some message IDs")
 }
 
 func TestDuplicateDetector_FirstSeenAfterTrimming(t *testing.T) {
@@ -360,7 +360,7 @@ func TestDuplicateDetector_FirstSeenAfterTrimming(t *testing.T) {
 	d.maxEntriesPerUser = 3                  // very small limit to force trimming
 
 	// send 5 messages with delays to have different timestamps
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		resp := d.check(spamcheck.Request{
 			Msg:    "same message",
 			UserID: "123",
@@ -373,7 +373,7 @@ func TestDuplicateDetector_FirstSeenAfterTrimming(t *testing.T) {
 	// check the history
 	history, found := d.cache.Get(int64(123))
 	assert.True(t, found)
-	assert.Equal(t, 3, len(history.entries), "should only keep 3 most recent entries")
+	assert.Len(t, history.entries, 3, "should only keep 3 most recent entries")
 
 	// check the tracker
 	msgHash := d.hash("same message")
@@ -417,7 +417,7 @@ func TestDuplicateDetector_InvalidMessageIDs(t *testing.T) {
 	// check that invalid IDs are not in ExtraDeleteIDs
 	t.Logf("ExtraDeleteIDs: %v", resp.ExtraDeleteIDs)
 	for _, id := range resp.ExtraDeleteIDs {
-		assert.Greater(t, id, 0, "should not include invalid IDs (0 or negative)")
+		assert.Positive(t, id, "should not include invalid IDs (0 or negative)")
 	}
 
 	// extra IDs should only contain the valid ID (1001) if any
@@ -430,7 +430,7 @@ func TestDuplicateDetector_LRUEviction(t *testing.T) {
 	d.cache = cache.NewCache[int64, userHistory]().WithMaxKeys(3).WithTTL(time.Hour)
 
 	// add messages from 5 users (exceeds limit of 3)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		d.check(spamcheck.Request{Msg: "test", UserID: fmt.Sprintf("%d", i)})
 	}
 

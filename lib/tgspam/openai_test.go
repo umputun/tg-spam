@@ -140,8 +140,8 @@ func TestOpenAIChecker_CheckWithHistory(t *testing.T) {
 	assert.True(t, spam)
 	assert.Equal(t, "openai", details.Name)
 	assert.Equal(t, "suspicious pattern in history, confidence: 90%", details.Details)
-	assert.NoError(t, details.Error)
-	assert.Equal(t, 1, len(clientMock.CreateChatCompletionCalls()))
+	require.NoError(t, details.Error)
+	assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 }
 
 func TestOpenAIChecker_FormatMessage(t *testing.T) {
@@ -207,7 +207,7 @@ History:
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"})
 			checker.check(tt.currentMsg, tt.history)
 			assert.Equal(t, tt.expectedMessage, capturedMsg, "message formatting mismatch")
-			assert.Equal(t, 1, len(clientMock.CreateChatCompletionCalls()))
+			assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 		})
 	}
 }
