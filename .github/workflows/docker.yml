@@ -27,7 +27,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -80,14 +80,14 @@ jobs:
           touch "/tmp/digests/dockerhub/${digest_dockerhub#sha256:}"
 
       - name: upload ghcr digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: digests-ghcr-${{ matrix.artifact }}
           path: /tmp/digests/ghcr/*
           retention-days: 1
 
       - name: upload dockerhub digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: digests-dockerhub-${{ matrix.artifact }}
           path: /tmp/digests/dockerhub/*
@@ -101,14 +101,14 @@ jobs:
       packages: write
     steps:
       - name: download ghcr digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: /tmp/digests/ghcr
           pattern: digests-ghcr-*
           merge-multiple: true
 
       - name: download dockerhub digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: /tmp/digests/dockerhub
           pattern: digests-dockerhub-*
