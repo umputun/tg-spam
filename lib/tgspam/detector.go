@@ -543,7 +543,7 @@ func (d *Detector) LoadSamples(exclReader io.Reader, spamReaders, hamReaders []i
 	lr := LoadResult{ExcludedTokens: len(d.excludedTokens)}
 
 	// load spam samples and update the classifier with them
-	docs := []document{}
+	docs := make([]document, 0) //nolint:prealloc // iterator size unknown
 	for token := range d.readerIterator(spamReaders...) {
 		tokenizedSpam := d.tokenize(token)
 		d.tokenizedSpam = append(d.tokenizedSpam, tokenizedSpam) // add to list of samples
@@ -656,7 +656,7 @@ func (d *Detector) removeSample(msg string, upd SampleUpdater, sc spamClass) err
 
 // buildDocs builds a list of classifier documents from a message
 func (d *Detector) buildDocs(msg string, sc spamClass) []document {
-	docs := []document{}
+	docs := make([]document, 0) //nolint:prealloc // iterator size unknown
 	for token := range d.readerIterator(bytes.NewBufferString(msg)) {
 		tokenizedSample := d.tokenize(token)
 		tokens := make([]string, 0, len(tokenizedSample))

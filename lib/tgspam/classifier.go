@@ -169,12 +169,11 @@ func (c *classifier) classify(tokens ...string) (spamClass, float64, bool) {
 
 func (c *classifier) removeDuplicate(tokens ...string) []string {
 	mapTokens := make(map[string]struct{})
-	newTokens := []string{}
-
 	for _, token := range tokens {
 		mapTokens[token] = struct{}{}
 	}
 
+	newTokens := make([]string, 0, len(mapTokens))
 	for key := range mapTokens {
 		newTokens = append(newTokens, key)
 	}
