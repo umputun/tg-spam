@@ -54,7 +54,7 @@ func (r *Response) String() string {
 
 // ChecksToString converts a slice of checks to a string
 func ChecksToString(checks []Response) string {
-	elems := []string{}
+	elems := make([]string, 0, len(checks))
 	for _, r := range checks {
 		elems = append(elems, "{"+r.String()+"}")
 

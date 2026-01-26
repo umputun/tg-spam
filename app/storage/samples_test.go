@@ -668,7 +668,7 @@ func (s *StorageTestSuite) TestSamples_IteratorOrder() {
 
 			iter, err := samples.Iterator(ctx, SampleTypeHam, SampleOriginPreset)
 			s.Require().NoError(err)
-			var messages []string
+			messages := make([]string, 0, 3) //nolint:prealloc // iterator size unknown at compile time
 			for msg := range iter {
 				messages = append(messages, msg)
 			}

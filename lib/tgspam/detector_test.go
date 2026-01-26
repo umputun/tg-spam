@@ -2473,7 +2473,7 @@ func TestDetector_LoadSamples(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 3, lr.ExcludedTokens)
 
-		exTkns := []string{}
+		exTkns := make([]string, 0, len(d.excludedTokens))
 		for k := range d.excludedTokens {
 			exTkns = append(exTkns, k)
 		}
@@ -2532,7 +2532,7 @@ func TestDetector_readerIterator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ch := d.readerIterator(bytes.NewBufferString(tt.input))
-			res := []string{}
+			res := make([]string, 0) //nolint:prealloc // iterator size unknown
 			for token := range ch {
 				res = append(res, token)
 			}
@@ -2544,7 +2544,7 @@ func TestDetector_readerIterator(t *testing.T) {
 func TestDetector_readerIteratorMultipleReaders(t *testing.T) {
 	d := Detector{}
 	ch := d.readerIterator(bytes.NewBufferString("hello\nworld"), bytes.NewBufferString("something, new"))
-	res := []string{}
+	res := make([]string, 0) //nolint:prealloc // iterator size unknown
 	for token := range ch {
 		res = append(res, token)
 	}

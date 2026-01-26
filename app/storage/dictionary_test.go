@@ -151,7 +151,7 @@ func (s *StorageTestSuite) TestDictionary_Iterator() {
 				iter, err := d.Iterator(ctx, DictionaryTypeStopPhrase)
 				s.Require().NoError(err)
 
-				var phrases []string
+				phrases := make([]string, 0, 3) //nolint:prealloc // iterator size unknown at compile time
 				for phrase := range iter {
 					phrases = append(phrases, phrase)
 				}
