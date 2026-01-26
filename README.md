@@ -74,6 +74,8 @@ This is the main spam detection module. It uses the list of spam and ham samples
 
 The analysis is active only if both ham and spam samples are present in the database.
 
+When a message contains quoted or reply-to content (e.g., from external channels), that text is concatenated with the main message and included in the analysis.
+
 **Spam message similarity check**
 
 This check uses the provided samples and is active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.
