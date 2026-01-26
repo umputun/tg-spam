@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -342,6 +343,93 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				UserID:   "1",
 				UserName: "user1",
 				Meta:     spamcheck.MetaData{Links: 2}, // 2 from entities (url + text_link)
+			},
+		},
+		{
+			name: "spam in quoted/reply-to text from external channel",
+			message: Message{
+				Text: "Есть в наличии",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "Мефедрон VHQ Кристалл 1г",
+					From: User{ID: 999, Username: "spammer_channel"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Есть в наличии\nМефедрон VHQ Кристалл 1г",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "message with empty reply-to text",
+			message: Message{
+				Text: "spam message",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "",
+					From: User{ID: 999, Username: "other_user"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "empty main text with spam in reply-to",
+			message: Message{
+				Text: "",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "spam in quoted message",
+					From: User{ID: 999, Username: "spammer_channel"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "\nspam in quoted message",
+				UserID:   "1",
+				UserName: "user1",
 			},
 		},
 	}

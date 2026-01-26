@@ -78,7 +78,13 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	displayUsername := DisplayName(msg)
 
-	spamReq := spamcheck.Request{Msg: msg.Text, CheckOnly: checkOnly,
+	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
+	msgText := msg.Text
+	if msg.ReplyTo.Text != "" {
+		msgText = msg.Text + "\n" + msg.ReplyTo.Text
+	}
+
+	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
 		UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
@@ -126,13 +132,13 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		}
 	}
 	isSpam, checkResults := s.Check(spamReq)
-	crs := []string{}
+	crs := make([]string, 0, len(checkResults))
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
 	}
 	checkResultStr := strings.Join(crs, ", ")
 	if isSpam {
-		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text)
+		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msgText)
 		msgPrefix := s.params.SpamMsg
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
