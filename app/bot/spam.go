@@ -79,8 +79,12 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	displayUsername := DisplayName(msg)
 
 	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
+	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion
 	msgText := msg.Text
-	if msg.ReplyTo.Text != "" {
+	switch {
+	case msg.Quote != "":
+		msgText = msg.Text + "\n" + msg.Quote
+	case msg.ReplyTo.Text != "":
 		msgText = msg.Text + "\n" + msg.ReplyTo.Text
 	}
 

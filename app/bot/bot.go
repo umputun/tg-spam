@@ -54,6 +54,7 @@ type Message struct {
 		Sent       time.Time
 		SenderChat SenderChat `json:"sender_chat,omitzero"`
 	} `json:",omitzero"`
+	Quote string `json:",omitempty"` // quoted text from TextQuote
 
 	WithVideo     bool `json:",omitempty"`
 	WithVideoNote bool `json:",omitempty"`

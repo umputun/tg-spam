@@ -58,10 +58,11 @@
 ## Spam Detection Architecture
 
 ### Quoted/Reply-to Text Handling
-- When checking messages for spam, `ReplyTo.Text` is concatenated with the main message text
+- When checking messages for spam, quoted text is concatenated with the main message text
 - This catches spammers who quote spam content from external channels
-- The concatenation uses newline separator: `msg.Text + "\n" + msg.ReplyTo.Text`
-- Empty reply-to text is ignored (no extra newline added when `ReplyTo.Text == ""`)
+- `Quote` (from Telegram's TextQuote) takes precedence over `ReplyTo.Text`
+- The concatenation uses newline separator: `msg.Text + "\n" + msg.Quote`
+- Empty quote/reply-to text is ignored (no extra newline added)
 
 ### ExtraDeleteIDs Feature
 - `spamcheck.Response` includes `ExtraDeleteIDs []int` field for additional message IDs to delete when spam is detected

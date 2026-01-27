@@ -386,6 +386,11 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	// handle quoted text (TextQuote) - this is the specific text portion quoted by the user
+	if msg.Quote != nil && msg.Quote.Text != "" {
+		message.Quote = msg.Quote.Text
+	}
+
 	// handle caption - either as main text if no text present, or append to existing text
 	if msg.Caption != "" {
 		if message.Text == "" {

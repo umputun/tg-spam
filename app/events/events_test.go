@@ -706,6 +706,57 @@ func TestTelegramListener_transformReplyTo(t *testing.T) {
 	}
 }
 
+func TestTelegramListener_transformQuote(t *testing.T) {
+	tbl := []struct {
+		name  string
+		in    *tbapi.Message
+		quote string
+	}{
+		{
+			name: "message with Quote (TextQuote)",
+			in: &tbapi.Message{
+				MessageID: 100,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				Quote: &tbapi.TextQuote{
+					Text:     "quoted spam text",
+					Position: 18,
+				},
+			},
+			quote: "quoted spam text",
+		},
+		{
+			name: "message without Quote",
+			in: &tbapi.Message{
+				MessageID: 101,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+			},
+			quote: "",
+		},
+		{
+			name: "message with empty Quote text",
+			in: &tbapi.Message{
+				MessageID: 102,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				Quote:     &tbapi.TextQuote{Text: ""},
+			},
+			quote: "",
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.quote, res.Quote)
+		})
+	}
+}
+
 func TestTelegramListener_transformForward(t *testing.T) {
 	tbl := []struct {
 		name string

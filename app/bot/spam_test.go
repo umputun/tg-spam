@@ -432,6 +432,56 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				UserName: "user1",
 			},
 		},
+		{
+			name: "spam in Quote field (telegram TextQuote)",
+			message: Message{
+				Text:  "Мяу в наличии!",
+				From:  User{ID: 1, Username: "user1"},
+				Quote: "Мефедрон VHQ Кристалл 1г",
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Мяу в наличии!\nМефедрон VHQ Кристалл 1г",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "both Quote and ReplyTo.Text present - Quote takes precedence",
+			message: Message{
+				Text:  "check this",
+				From:  User{ID: 1, Username: "user1"},
+				Quote: "spam quote text",
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "full reply text",
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "check this\nspam quote text",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
 	}
 
 	for _, tc := range tests {
