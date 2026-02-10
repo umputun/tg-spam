@@ -242,14 +242,38 @@ func (s *StorageTestSuite) TestDictionary_Import() {
 				s.Len(phrases, 4)
 			})
 
-			s.Run("import with invalid input", func() {
+			s.Run("import with bare double quotes", func() {
 				d, err := NewDictionary(ctx, db)
 				s.Require().NoError(err)
 				defer db.Exec("DROP TABLE dictionary")
 
 				input := strings.NewReader(`this is "bad csv`)
-				_, err = d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-				s.Error(err)
+				stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+				s.Require().NoError(err)
+				s.Require().NotNil(stats)
+
+				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+				s.Require().NoError(err)
+				s.Len(phrases, 1)
+				s.Contains(phrases, `this is "bad csv`)
+			})
+
+			s.Run("import with cyrillic and unmatched quotes", func() {
+				d, err := NewDictionary(ctx, db)
+				s.Require().NoError(err)
+				defer db.Exec("DROP TABLE dictionary")
+
+				input := strings.NewReader("\"++\" в лс\nв ЛС \"+\"\nобычная фраза")
+				stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+				s.Require().NoError(err)
+				s.Require().NotNil(stats)
+
+				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+				s.Require().NoError(err)
+				s.Len(phrases, 3)
+				s.Contains(phrases, "\"++\" в лс")
+				s.Contains(phrases, "в ЛС \"+\"")
+				s.Contains(phrases, "обычная фраза")
 			})
 
 			s.Run("quoted strings and special chars", func() {

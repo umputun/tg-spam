@@ -50,6 +50,12 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("cannot report messages from channels or anonymous admins")
 	}
 
+	// reject reports targeting forum topic creation messages to prevent accidental topic deletion or bans
+	if origMsg.ForumTopicCreated != nil {
+		log.Printf("[DEBUG] user report ignored: reported message is a forum topic creation message")
+		return fmt.Errorf("cannot report forum topic creation messages")
+	}
+
 	log.Printf("[DEBUG] user report: msg id: %d, reporter: %q (%d), reported: %q (%d)",
 		origMsg.MessageID,
 		update.Message.From.UserName, update.Message.From.ID,

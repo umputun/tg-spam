@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -272,32 +273,46 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	}
 	defer insertStmt.Close()
 
-	// use csv reader to handle quoted strings and comma separation properly
-	csvReader := csv.NewReader(r)
-	csvReader.FieldsPerRecord = -1 // allow variable number of fields
-	csvReader.TrimLeadingSpace = true
-
-	for {
-		record, csvErr := csvReader.Read()
-		if csvErr == io.EOF {
-			break
-		}
-		if csvErr != nil {
-			d.Unlock()
-			return nil, fmt.Errorf("error reading input: %w", csvErr)
+	// read line by line, applying csv parsing per line only when the line contains commas.
+	// this handles both one-phrase-per-line format and comma-separated entries on a single line,
+	// while allowing bare double quotes in phrases (e.g., "+" в лс).
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
 		}
 
-		// process each field in the record
-		for _, field := range record {
-			if field == "" { // skip empty entries
+		var fields []string
+		if strings.Contains(line, ",") {
+			// line has commas, parse as csv to handle quoted fields with embedded commas
+			csvReader := csv.NewReader(strings.NewReader(line))
+			csvReader.FieldsPerRecord = -1
+			csvReader.TrimLeadingSpace = true
+			csvReader.LazyQuotes = true
+			record, csvErr := csvReader.Read()
+			if csvErr != nil {
+				d.Unlock()
+				return nil, fmt.Errorf("error reading input: %w", csvErr)
+			}
+			fields = record
+		} else {
+			fields = []string{line}
+		}
+
+		for _, field := range fields {
+			if field == "" {
 				continue
 			}
-
 			if _, err = insertStmt.ExecContext(ctx, t, field, gid); err != nil {
 				d.Unlock()
 				return nil, fmt.Errorf("failed to add entry: %w", err)
 			}
 		}
+	}
+	if err = scanner.Err(); err != nil {
+		d.Unlock()
+		return nil, fmt.Errorf("error reading input: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
