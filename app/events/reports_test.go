@@ -281,8 +281,8 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot report forum topic creation messages")
-		assert.Equal(t, 0, len(mockAPI.RequestCalls()), "should not delete message")
-		assert.Equal(t, 0, len(mockReports.AddCalls()), "should not add report")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
 	t.Run("rate limit exceeded - should delete command and return error", func(t *testing.T) {
