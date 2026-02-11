@@ -276,6 +276,8 @@ func (d *Dictionary) Import(ctx context.Context, t DictionaryType, r io.Reader, 
 	// read line by line, applying csv parsing per line only when the line contains commas.
 	// this handles both one-phrase-per-line format and comma-separated entries on a single line,
 	// while allowing bare double quotes in phrases (e.g., "+" в лс).
+	// note: phrases containing commas must be quoted, e.g. "buy stuff, пишите в лс",
+	// otherwise they will be split into separate entries.
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
