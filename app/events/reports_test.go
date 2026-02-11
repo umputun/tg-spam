@@ -252,6 +252,39 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
+	t.Run("forum topic creation message - should return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		mockReports := &mocks.ReportsMock{}
+
+		rep := &userReports{
+			tbAPI:        mockAPI,
+			primChatID:   123,
+			adminChatID:  456,
+			superUsers:   SuperUsers{},
+			ReportConfig: ReportConfig{Storage: mockReports},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:         1,
+					From:              &tbapi.User{ID: 666, UserName: "topic_creator"},
+					ForumTopicCreated: &tbapi.ForumTopicCreated{Name: "General"},
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot report forum topic creation messages")
+		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		assert.Empty(t, mockReports.AddCalls(), "should not add report")
+	})
+
 	t.Run("rate limit exceeded - should delete command and return error", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
