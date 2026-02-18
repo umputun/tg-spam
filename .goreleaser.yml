@@ -42,6 +42,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - completions/*
     rlcp: true
 
 
@@ -60,6 +61,10 @@ brews:
     homepage: "https://tg-spam.umputun.dev"
     description: "tg-spam is a self-hosted Telegram bot fighting spam like no tomorrow."
     license: "MIT"
+    extra_install: |
+      bash_completion.install "completions/tg-spam.bash" => "tg-spam"
+      zsh_completion.install "completions/tg-spam.zsh" => "_tg-spam"
+      fish_completion.install "completions/tg-spam.fish" => "tg-spam.fish"
 
 nfpms:
   - id: tg-spam
@@ -77,3 +82,10 @@ nfpms:
     bindir: /usr/bin
     epoch: 1
     release: 1
+    contents:
+      - src: completions/tg-spam.bash
+        dst: /usr/share/bash-completion/completions/tg-spam
+      - src: completions/tg-spam.zsh
+        dst: /usr/share/zsh/vendor-completions/_tg-spam
+      - src: completions/tg-spam.fish
+        dst: /usr/share/fish/vendor_completions.d/tg-spam.fish
