@@ -75,6 +75,15 @@ linters:
       - linters:
           - lll
         path: _test\.go$
+      - linters:
+          - gosec
+        text: "G705:|G706:|G704:"
+      - linters:
+          - staticcheck
+        text: "QF1012:"
+      - linters:
+          - revive
+        text: "var-naming: avoid package names"
     paths:
       - vendor
       - third_party$

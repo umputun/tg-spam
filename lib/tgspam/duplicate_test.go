@@ -633,6 +633,32 @@ func TestDuplicateDetector_EditOldMessageWithinTimeWindow(t *testing.T) {
 	assert.True(t, resp.Spam, "moving message back to 'hello' increases count from 5 to 6")
 }
 
+func TestDuplicateDetector_EmptyMessagesNotDuplicates(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	// send multiple empty-text messages from the same user (simulating video notes, videos, etc.)
+	for i := range 5 {
+		resp := d.check(spamcheck.Request{
+			Msg:    "",
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: 1001 + i},
+		})
+		assert.False(t, resp.Spam, "empty message %d should not be flagged as spam", i)
+		assert.Equal(t, "empty message skipped", resp.Details, "empty message %d", i)
+	}
+
+	// whitespace-only messages should also be skipped
+	for i, msg := range []string{"   ", "\t", "\n", " \t\n "} {
+		resp := d.check(spamcheck.Request{
+			Msg:    msg,
+			UserID: "123",
+			Meta:   spamcheck.MetaData{MessageID: 2001 + i},
+		})
+		assert.False(t, resp.Spam, "whitespace-only message %q should not be flagged as spam", msg)
+		assert.Equal(t, "empty message skipped", resp.Details, "whitespace-only message %q", msg)
+	}
+}
+
 func TestDuplicateDetector_SameContentEditDoesNotRetriggerSpam(t *testing.T) {
 	d := newDuplicateDetector(3, time.Hour)
 

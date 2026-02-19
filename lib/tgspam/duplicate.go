@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,10 @@ func newDuplicateDetector(threshold int, window time.Duration) *duplicateDetecto
 func (d *duplicateDetector) check(req spamcheck.Request) spamcheck.Response {
 	if d == nil || d.threshold <= 0 || req.UserID == "" {
 		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "check disabled"}
+	}
+
+	if strings.TrimSpace(req.Msg) == "" {
+		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "empty message skipped"}
 	}
 
 	userID, err := strconv.ParseInt(req.UserID, 10, 64)
