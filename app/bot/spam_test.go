@@ -454,6 +454,24 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "spam detected from channel message",
+			message: Message{
+				Text:       "spam message",
+				From:       User{ID: 136817688, Username: "Channel_Bot"},
+				SenderChat: SenderChat{ID: 12345, UserName: "spam_channel"},
+			},
+			wantResponse: Response{
+				Text:          `detected: "Channel_Bot" (136817688)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 136817688, Username: "Channel_Bot"},
+				ChannelID:     12345,
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{Msg: "spam message", UserID: "12345", UserName: "spam_channel"},
+		},
+		{
 			name: "both Quote and ReplyTo.Text present - Quote takes precedence",
 			message: Message{
 				Text:  "check this",

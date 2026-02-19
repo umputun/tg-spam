@@ -88,8 +88,17 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		msgText = msg.Text + "\n" + msg.ReplyTo.Text
 	}
 
+	// use channel identity for spam check when message is from a channel,
+	// so that approved/banned status is tracked per-channel, not for the shared Channel_Bot user
+	checkUserID := msg.From.ID
+	checkUserName := msg.From.Username
+	if msg.SenderChat.ID != 0 {
+		checkUserID = msg.SenderChat.ID
+		checkUserName = msg.SenderChat.UserName
+	}
+
 	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
-		UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
 	}
@@ -150,6 +159,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
 		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration, CheckResults: checkResults,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
+			ChannelID: msg.SenderChat.ID,
 		}
 	}
 	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)

@@ -876,6 +876,8 @@ func Test_parseCallbackData(t *testing.T) {
 		{"valid prefix R? with valid data", "R?12345:678", 12345, 678, false},
 		{"valid prefix R! with valid data", "R!12345:678", 12345, 678, false},
 		{"valid prefix RX with valid data", "RX12345:678", 12345, 678, false},
+		{"negative channel ID", "-100123456:678", -100123456, 678, false},
+		{"negative channel ID with prefix", "?-100123456:678", -100123456, 678, false},
 	}
 
 	for _, tt := range tests {
@@ -888,6 +890,23 @@ func Test_parseCallbackData(t *testing.T) {
 				assert.Equal(t, tt.wantUserID, gotUserID)
 				assert.Equal(t, tt.wantMsgID, gotMsgID)
 			}
+		})
+	}
+}
+
+func Test_channelIDFromCallback(t *testing.T) {
+	tests := []struct {
+		name string
+		id   int64
+		want int64
+	}{
+		{"positive user ID", 12345, 0},
+		{"zero ID", 0, 0},
+		{"negative channel ID", -100123456, -100123456},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, channelIDFromCallback(tt.id))
 		})
 	}
 }

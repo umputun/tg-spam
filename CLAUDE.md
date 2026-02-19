@@ -64,6 +64,14 @@
 - The concatenation uses newline separator: `msg.Text + "\n" + msg.Quote`
 - Empty quote/reply-to text is ignored (no extra newline added)
 
+### Channel Message Handling
+- When a channel posts in a group, Telegram uses a shared fake user `Channel_Bot` (ID `136817688`) in `msg.From`
+- The actual channel identity is in `msg.SenderChat` with unique ID and username
+- `SenderChat.ID` is used for locator tracking (`AddMessage`, `AddSpam`), and for banning via `BanChatSenderChatConfig`
+- `bot.OnMessage` sets `Response.ChannelID = msg.SenderChat.ID` when SenderChat is present
+- Admin `/spam` command (`directReport`) detects `origMsg.SenderChat` and passes channel ID for ban and cleanup
+- Anonymous admin posts (where `SenderChat.ID == group chat ID`) skip spam check entirely
+
 ### ExtraDeleteIDs Feature
 - `spamcheck.Response` includes `ExtraDeleteIDs []int` field for additional message IDs to delete when spam is detected
 - Any spam checker can populate this field to request deletion of related messages
