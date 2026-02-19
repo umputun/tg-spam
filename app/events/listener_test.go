@@ -3066,6 +3066,74 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 		assert.Equal(t, "event announcement with lots of emojis", botMock.OnMessageCalls()[0].Msg.Text)
 	})
 
+	t.Run("channel spam uses channel ID for locator", func(t *testing.T) {
+		locatorMock := &mocks.LocatorMock{
+			AddMessageFunc: func(ctx context.Context, msg string, chatID, userID int64, userName string, msgID int) error {
+				return nil
+			},
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error {
+				return nil
+			},
+		}
+
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{
+				Send: true, Text: "this is spam", BanInterval: 2 * time.Minute,
+				User:          bot.User{ID: 777000, Username: "Telegram"},
+				ChannelID:     -1001261918100,
+				ReplyTo:       msg.ID,
+				DeleteReplyTo: true,
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			}
+		}}
+
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "-1001688024850",
+			Locator:    locatorMock,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: -1001688024850},
+				Text: "channel spam message",
+				From: &tbapi.User{ID: 777000, FirstName: "Telegram"},
+				SenderChat: &tbapi.Chat{
+					ID:       -1001261918100,
+					Type:     "channel",
+					UserName: "esnlausanne",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		// verify AddMessage was called with channel ID and username, not Channel_Bot
+		require.Len(t, locatorMock.AddMessageCalls(), 1)
+		assert.Equal(t, int64(-1001261918100), locatorMock.AddMessageCalls()[0].UserID)
+		assert.Equal(t, "esnlausanne", locatorMock.AddMessageCalls()[0].UserName)
+
+		// verify AddSpam was called with channel ID, not Channel_Bot user ID
+		require.Len(t, locatorMock.AddSpamCalls(), 1)
+		assert.Equal(t, int64(-1001261918100), locatorMock.AddSpamCalls()[0].UserID)
+	})
+
 	t.Run("regular user message should run spam check", func(t *testing.T) {
 		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 			return bot.Response{

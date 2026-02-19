@@ -201,6 +201,47 @@ func TestAdmin_dryModeForwardMessage(t *testing.T) {
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned [testUser]")
 }
 
+func TestAdmin_reportBanChannel(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+	}
+
+	adm := admin{tbAPI: mockAPI, adminChatID: 123}
+
+	t.Run("channel message uses SenderChat.ID in callback data", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		msg := &bot.Message{
+			From:       bot.User{ID: 136817688, Username: "Channel_Bot"},
+			SenderChat: bot.SenderChat{ID: -100999888, UserName: "spamchannel"},
+			Text:       "spam from channel",
+		}
+		adm.ReportBan("spamchannel", msg)
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		markup := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		// callback data should contain channel ID (-100999888), not Channel_Bot (136817688)
+		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
+		assert.Contains(t, *markup.InlineKeyboard[0][0].CallbackData, "-100999888:")
+		assert.NotContains(t, *markup.InlineKeyboard[0][0].CallbackData, "136817688")
+	})
+
+	t.Run("regular user message uses From.ID in callback data", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		msg := &bot.Message{
+			From: bot.User{ID: 456, Username: "spammer"},
+			Text: "spam from user",
+		}
+		adm.ReportBan("spammer", msg)
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		markup := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
+		assert.Contains(t, *markup.InlineKeyboard[0][0].CallbackData, "456:")
+	})
+}
+
 func TestAdmin_DirectCommands(t *testing.T) {
 	// setup common mock objects and test data
 	setupTest := func() (*mocks.TbAPIMock, *mocks.BotMock, *admin, func()) {
@@ -388,6 +429,78 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Contains(t, warnMsg.Text, "@user please follow our rules")
 	})
 
+	t.Run("DirectSpamReport_ChannelMessage", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "Channel_Bot", ID: 136817688},
+					SenderChat: &tbapi.Chat{ID: 12345, UserName: "spam_channel"},
+					Text:       "spam message text",
+				},
+			},
+		}
+
+		err := adm.DirectSpamReport(update)
+		require.NoError(t, err)
+
+		// verify ban used BanChatSenderChatConfig with channel ID, not BanChatMemberConfig
+		var foundChannelBan bool
+		for _, call := range mockAPI.RequestCalls() {
+			if banCfg, ok := call.C.(tbapi.BanChatSenderChatConfig); ok {
+				foundChannelBan = true
+				assert.Equal(t, int64(12345), banCfg.SenderChatID)
+				assert.Equal(t, int64(123), banCfg.ChatID)
+			}
+		}
+		assert.True(t, foundChannelBan, "expected BanChatSenderChatConfig for channel message")
+
+		// verify BanChatMemberConfig was NOT used (should ban channel, not user)
+		for _, call := range mockAPI.RequestCalls() {
+			_, isMemberBan := call.C.(tbapi.BanChatMemberConfig)
+			assert.False(t, isMemberBan, "should not use BanChatMemberConfig for channel message")
+		}
+
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+	})
+
+	t.Run("DirectSpamReport_AnonymousAdmin", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+
+		// anonymous admin post where SenderChat.ID equals the group chat ID (123)
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "GroupLinkedChannel", ID: 136817688},
+					SenderChat: &tbapi.Chat{ID: 123, UserName: "the_group"}, // same as group chat ID
+					Text:       "admin message",
+				},
+			},
+		}
+
+		err := adm.DirectSpamReport(update)
+		require.NoError(t, err)
+
+		// should NOT use BanChatSenderChatConfig (would ban the group from itself)
+		for _, call := range mockAPI.RequestCalls() {
+			_, isChannelBan := call.C.(tbapi.BanChatSenderChatConfig)
+			assert.False(t, isChannelBan, "should not use BanChatSenderChatConfig for anonymous admin post")
+		}
+
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+	})
+
 	t.Run("DirectWarnReport_SuperUser", func(t *testing.T) {
 		mockAPI, _, adm, teardown := setupTest()
 		defer teardown()
@@ -537,6 +650,81 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		// UpdateSpam should be called to update spam samples
 		require.Len(t, botMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "Spam message text", botMock.UpdateSpamCalls()[0].Msg)
+	})
+
+	t.Run("callbackUnbanConfirmed_channel", func(t *testing.T) {
+		mockAPI, _, adm, _ := setupCallback(false, false)
+		botMock := &mocks.BotMock{
+			UpdateHamFunc:       func(msg string) error { return nil },
+			AddApprovedUserFunc: func(id int64, name string) error { return nil },
+		}
+		adm.bot = botMock
+
+		// callback data with negative channel ID (channel unban)
+		query := &tbapi.CallbackQuery{
+			ID:   "test-callback-id",
+			Data: "-100999888:999",
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "**permanently banned [spamchannel](tg://user?id=-100999888)**\n\nSpam from channel",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+		}
+
+		err := adm.callbackUnbanConfirmed(query)
+		require.NoError(t, err)
+
+		// verify UnbanChatSenderChatConfig was used (not UnbanChatMemberConfig)
+		var foundChannelUnban bool
+		for _, call := range mockAPI.RequestCalls() {
+			if unbanCall, ok := call.C.(tbapi.UnbanChatSenderChatConfig); ok {
+				foundChannelUnban = true
+				assert.Equal(t, int64(-100999888), unbanCall.SenderChatID)
+				assert.Equal(t, int64(123), unbanCall.ChatID)
+				break
+			}
+		}
+		assert.True(t, foundChannelUnban, "expected UnbanChatSenderChatConfig for channel ID")
+
+		// verify approved user was added with channel ID
+		require.Len(t, botMock.AddApprovedUserCalls(), 1)
+		assert.Equal(t, int64(-100999888), botMock.AddApprovedUserCalls()[0].ID)
+	})
+
+	t.Run("callbackBanConfirmed_SoftBan_channel", func(t *testing.T) {
+		mockAPI, botMock, adm, _ := setupCallback(false, true)
+
+		// callback data with negative channel ID
+		query := &tbapi.CallbackQuery{
+			ID:   "test-callback-id",
+			Data: "+-100999888:999",
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "**permanently banned [spamchannel](tg://user?id=-100999888)**\n\nSpam from channel",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+		}
+
+		err := adm.callbackBanConfirmed(query)
+		require.NoError(t, err)
+
+		// in soft ban mode with channel, should use BanChatSenderChatConfig
+		var foundChannelBan bool
+		for _, call := range mockAPI.RequestCalls() {
+			if banCall, ok := call.C.(tbapi.BanChatSenderChatConfig); ok {
+				foundChannelBan = true
+				assert.Equal(t, int64(-100999888), banCall.SenderChatID)
+				assert.Equal(t, int64(123), banCall.ChatID)
+				break
+			}
+		}
+		assert.True(t, foundChannelBan, "expected BanChatSenderChatConfig for channel ID")
+
+		_ = botMock // silence unused
 	})
 }
 
@@ -1028,6 +1216,128 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		// verify ban request called
 		assert.Equal(t, int64(888), botMock.RemoveApprovedUserCalls()[0].ID, "Should remove correct user ID")
 		assert.Equal(t, "spam message text", botMock.UpdateSpamCalls()[0].Msg, "Should update with correct text")
+	})
+
+	t.Run("channel message uses BanChatSenderChatConfig", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+
+		// locator returns a negative channel ID (stored by procEvents for channel messages)
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{UserID: -1001261918100, UserName: "spam_channel", MsgID: 999}, true
+			},
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{}, true
+			},
+		}
+
+		adm := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, superUsers: SuperUsers{"superuser"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+			Text: "spam from channel",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "channel",
+				SenderChat: &tbapi.Chat{ID: -1001261918100, UserName: "spam_channel"},
+			},
+		}
+
+		err := adm.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+
+		// verify BanChatSenderChatConfig was used with the channel ID
+		var foundChannelBan bool
+		for _, call := range mockAPI.RequestCalls() {
+			if banCfg, ok := call.C.(tbapi.BanChatSenderChatConfig); ok {
+				foundChannelBan = true
+				assert.Equal(t, int64(-1001261918100), banCfg.SenderChatID)
+				assert.Equal(t, int64(123), banCfg.ChatID)
+			}
+		}
+		assert.True(t, foundChannelBan, "expected BanChatSenderChatConfig for channel message")
+
+		// verify BanChatMemberConfig was NOT used
+		for _, call := range mockAPI.RequestCalls() {
+			_, isMemberBan := call.C.(tbapi.BanChatMemberConfig)
+			assert.False(t, isMemberBan, "should not use BanChatMemberConfig for channel message")
+		}
+	})
+
+	t.Run("anonymous admin post skips ban in MsgHandler", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+
+		// locator returns user ID matching the group chat ID (anonymous admin post)
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{UserID: 123, UserName: "the_group", MsgID: 999}, true
+			},
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{}, true
+			},
+		}
+
+		adm := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, superUsers: SuperUsers{"superuser"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+			Text: "admin message forwarded",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:           "hidden_user",
+				SenderUserName: "the_group",
+			},
+		}
+
+		err := adm.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+
+		// verify the handler reached the locator (not exited early)
+		require.Len(t, locatorMock.MessageCalls(), 1)
+
+		// should NOT attempt any ban (no BanChatSenderChatConfig or BanChatMemberConfig)
+		for _, call := range mockAPI.RequestCalls() {
+			_, isChannelBan := call.C.(tbapi.BanChatSenderChatConfig)
+			assert.False(t, isChannelBan, "should not ban channel when user ID matches group chat")
+			_, isMemberBan := call.C.(tbapi.BanChatMemberConfig)
+			assert.False(t, isMemberBan, "should not ban member when user ID matches group chat")
+		}
 	})
 
 	t.Run("message not found in locator", func(t *testing.T) {

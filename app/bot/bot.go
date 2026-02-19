@@ -19,7 +19,7 @@ type Response struct {
 	Send          bool                 // status
 	BanInterval   time.Duration        // bots banning user set the interval
 	User          User                 // user to ban
-	ChannelID     int64                // channel to ban, if set then User and BanInterval are ignored
+	ChannelID     int64                // channel to ban via BanChatSenderChatConfig, if set then User is ignored
 	ReplyTo       int                  // message to reply to, if 0 then no reply but common message
 	DeleteReplyTo bool                 // delete message what bot replays to
 	CheckResults  []spamcheck.Response // check results for the message

@@ -307,7 +307,15 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	ctx := context.TODO()
 	log.Printf("[DEBUG] incoming msg: %+v", strings.ReplaceAll(msg.Text, "\n", " "))
 	log.Printf("[DEBUG] incoming msg details: %+v", msg)
-	if err := l.Locator.AddMessage(ctx, msg.Text, fromChat, msg.From.ID, msg.From.Username, msg.ID); err != nil {
+
+	// use channel identity for locator when message is sent on behalf of a channel
+	locatorUserID := msg.From.ID
+	locatorUserName := msg.From.Username
+	if msg.SenderChat.ID != 0 {
+		locatorUserID = msg.SenderChat.ID
+		locatorUserName = msg.SenderChat.UserName
+	}
+	if err := l.Locator.AddMessage(ctx, msg.Text, fromChat, locatorUserID, locatorUserName, msg.ID); err != nil {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 
@@ -337,7 +345,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if resp.Send && resp.BanInterval > 0 {
 		log.Printf("[DEBUG] ban initiated for %+v", resp)
 		l.SpamLogger.Save(msg, &resp)
-		if err := l.Locator.AddSpam(ctx, msg.From.ID, resp.CheckResults); err != nil {
+		spamUserID := msg.From.ID
+		if msg.SenderChat.ID != 0 {
+			spamUserID = msg.SenderChat.ID
+		}
+		if err := l.Locator.AddSpam(ctx, spamUserID, resp.CheckResults); err != nil {
 			log.Printf("[WARN] failed to add spam to locator: %v", err)
 		}
 		banUserStr := l.getBanUsername(resp, update)
@@ -558,7 +570,7 @@ func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update
 		botChat.UserName = update.Message.SenderChat.UserName
 	}
 	// if botChat.UserName not set, that means the ban comes from superuser and username should be taken from ReplyToMessage
-	if botChat.UserName == "" && update.Message.ReplyToMessage.SenderChat != nil {
+	if botChat.UserName == "" && update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.SenderChat != nil {
 		if update.Message.ReplyToMessage.ForwardOrigin != nil {
 			if update.Message.ReplyToMessage.ForwardOrigin.IsUser() {
 				botChat.UserName = update.Message.ReplyToMessage.ForwardOrigin.SenderUser.UserName

@@ -198,7 +198,25 @@ func banUserOrChannel(r banRequest) error {
 		r.duration = 1 * time.Minute
 	}
 
-	if r.restrict { // soft ban mode
+	// channel ban takes precedence over soft ban - channels can't be "restricted",
+	// they must be banned/unbanned via BanChatSenderChatConfig/UnbanChatSenderChatConfig
+	if r.channelID != 0 {
+		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
+			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
+			SenderChatID: r.channelID,
+			UntilDate:    int(time.Now().Add(r.duration).Unix()),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to ban channel: %w", err)
+		}
+		if !resp.Ok {
+			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
+		}
+		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
+		return nil
+	}
+
+	if r.restrict { // soft ban mode - restrict user permissions
 		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{
 				ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
@@ -226,22 +244,6 @@ func banUserOrChannel(r banRequest) error {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
 		log.Printf("[INFO] %s restricted by bot for %v", r.userName, r.duration)
-		return nil
-	}
-
-	if r.channelID != 0 {
-		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
-			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
-			SenderChatID: r.channelID,
-			UntilDate:    int(time.Now().Add(r.duration).Unix()),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to ban channel: %w", err)
-		}
-		if !resp.Ok {
-			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
-		}
-		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
 		return nil
 	}
 
@@ -434,6 +436,15 @@ func parseCallbackData(data string) (userID int64, msgID int, err error) {
 	}
 
 	return userID, msgID, nil
+}
+
+// channelIDFromCallback returns the channel ID if the parsed callback ID is negative (channel),
+// otherwise returns 0. Telegram channel IDs are negative, user IDs are positive.
+func channelIDFromCallback(id int64) int64 {
+	if id < 0 {
+		return id
+	}
+	return 0
 }
 
 // sinceQuery calculates time elapsed since callback query message was sent
