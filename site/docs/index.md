@@ -508,7 +508,7 @@ report:
       --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
 
 files:
-      --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, defaults to dynamic data path [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
       --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 

@@ -138,7 +138,7 @@ type options struct {
 	} `group:"report" namespace:"report" env-namespace:"REPORT"`
 
 	Files struct {
-		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" description:"samples data path, defaults to dynamic data path"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
 		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
@@ -242,7 +242,11 @@ func main() {
 
 	// expand, make absolute paths
 	opts.Files.DynamicDataPath = expandPath(opts.Files.DynamicDataPath)
-	opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
+	if opts.Files.SamplesDataPath == "" {
+		opts.Files.SamplesDataPath = opts.Files.DynamicDataPath
+	} else {
+		opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
+	}
 
 	if err := execute(ctx, opts); err != nil {
 		log.Printf("[ERROR] %v", err)

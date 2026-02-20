@@ -536,7 +536,7 @@ report:
       --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
 
 files:
-      --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, defaults to dynamic data path [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
       --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 
@@ -581,7 +581,7 @@ The provided preset set of samples is just an example collected by the bot autho
 
 To do so, several conditions must be met:
 
-- For first-time setup, specify both `--files.dynamic [$FILES_DYNAMIC]` and `--files.samples [$FILES_SAMPLES]` parameters pointing to the directory with your data files
+- For first-time setup, specify `--files.dynamic [$FILES_DYNAMIC]` parameter pointing to the directory with your data files. The `--files.samples [$FILES_SAMPLES]` parameter defaults to the same path and usually doesn't need to be set separately
 - For custom database storage, set `--db` to your database URL
 - Admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above
 - Admin name(s) should be set with `--super [$SUPER_USER]` parameter
