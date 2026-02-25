@@ -234,7 +234,7 @@ func httpRequest(l *lua.LState) int {
 	}
 
 	// execute the request
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // url constructed from plugin configuration
 	if err != nil {
 		l.Push(lua.LNil)
 		l.Push(lua.LNumber(0))

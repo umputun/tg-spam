@@ -75,7 +75,10 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
-// the user will be baned even in training mode, but not in the dry mode.
+// the user will be banned even in training mode, but not in the dry mode.
+// if the locator lookup fails but ForwardOrigin provides the original sender's user ID,
+// a degraded fallback path is used: the user is banned and spam samples updated,
+// but the original message cannot be deleted automatically.
 func (a *admin) MsgHandler(update tbapi.Update) error {
 	shrink := func(inp string, maxLen int) string {
 		if utf8.RuneCountInString(inp) <= maxLen {
@@ -84,7 +87,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		return string([]rune(inp)[:maxLen]) + "..."
 	}
 
-	// try to get the forwarded user ID, this is just for logging
+	// get forwarded user ID and username; used for logging and fallback path when locator lookup fails
 	fwdID, username := a.getForwardUsernameAndID(update)
 
 	log.Printf("[DEBUG] message from admin chat: msg id: %d, update id: %d, from: %s, sender: %q (%d)",
@@ -115,6 +118,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	// it is empty in update.Message. to ban this user, we need to get the match on the message from the locator and ban from there.
 	info, ok := a.locator.Message(context.TODO(), msgTxt)
 	if !ok {
+		// locator lookup failed; if ForwardOrigin provides a user ID, use degraded fallback path
+		if fwdID != 0 {
+			return a.msgHandlerFallback(update, fwdID, username, msgTxt)
+		}
 		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
 	}
 
@@ -122,7 +129,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	errs := new(multierror.Error)
 
 	// check if the forwarded message will ban a super-user and ignore it
-	if info.UserName != "" && a.superUsers.IsSuper(info.UserName, info.UserID) {
+	if a.superUsers.IsSuper(info.UserName, info.UserID) {
 		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", info.UserName, info.UserID)
 	}
 
@@ -185,6 +192,84 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		if err := banUserOrChannel(banReq); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
 		}
+	}
+
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("spam notification failed: %w", err)
+	}
+	return nil
+}
+
+// msgHandlerFallback handles the degraded fallback path when the locator lookup fails
+// but ForwardOrigin provides the original sender's user ID. performs all possible actions
+// (ban, spam update, remove from approved) and warns the admin that the original message
+// must be deleted manually since we don't have the message ID from the primary chat.
+func (a *admin) msgHandlerFallback(update tbapi.Update, fwdID int64, username, msgTxt string) error {
+	log.Printf("[INFO] locator fallback: forwarded user %q (%d), processing without locator data", username, fwdID)
+	errs := new(multierror.Error)
+
+	// check if the forwarded user is a super-user and ignore if so
+	if a.superUsers.IsSuper(username, fwdID) {
+		return fmt.Errorf("forwarded message is about super-user %s (%d), ignored", username, fwdID)
+	}
+
+	// remove user from the approved list
+	if err := a.bot.RemoveApprovedUser(fwdID); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to remove user %d from approved list: %w", fwdID, err))
+	}
+
+	// get detection results (check only, don't update storage)
+	spamInfo := []string{}
+	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: fwdID}}, true)
+	spamInfoText := "**can't get spam info**"
+	for _, check := range resp.CheckResults {
+		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+	}
+	if len(spamInfo) > 0 {
+		spamInfoText = strings.Join(spamInfo, "\n")
+	}
+
+	// send detection results to admin chat (no unban button - msgID is unavailable without locator)
+	detectionMsg := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned*",
+		escapeMarkDownV1Text(username), fwdID, spamInfoText)
+	if err := send(tbapi.NewMessage(a.adminChatID, detectionMsg), a.tbAPI); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+	}
+
+	if a.dry {
+		// warn admin about manual deletion even in dry mode
+		warnMsg := fmt.Sprintf("⚠ *locator fallback* (dry mode): user %q (%d), original message needs manual deletion",
+			escapeMarkDownV1Text(username), fwdID)
+		if err := send(tbapi.NewMessage(a.adminChatID, warnMsg), a.tbAPI); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to send fallback warning: %w", err))
+		}
+		if err := errs.ErrorOrNil(); err != nil {
+			return fmt.Errorf("dry run errors: %w", err)
+		}
+		return nil
+	}
+
+	// update spam samples
+	if err := a.bot.UpdateSpam(msgTxt); err != nil {
+		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+	}
+
+	// ban user (no message deletion - we don't have the message ID from primary chat)
+	banReq := banRequest{duration: bot.PermanentBanDuration, userID: fwdID, chatID: a.primChatID,
+		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: username}
+	if err := banUserOrChannel(banReq); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", fwdID, err))
+	}
+
+	// warn admin that the original message must be deleted manually
+	snippet := msgTxt
+	if len([]rune(snippet)) > 100 {
+		snippet = string([]rune(snippet)[:100]) + "..."
+	}
+	warnMsg := fmt.Sprintf("⚠ *locator fallback*: original message from %q (%d) needs manual deletion\n\n_%s_",
+		escapeMarkDownV1Text(username), fwdID, escapeMarkDownV1Text(snippet))
+	if err := send(tbapi.NewMessage(a.adminChatID, warnMsg), a.tbAPI); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to send fallback warning: %w", err))
 	}
 
 	if err := errs.ErrorOrNil(); err != nil {

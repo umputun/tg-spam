@@ -1491,7 +1491,7 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("message not found in locator", func(t *testing.T) {
+	t.Run("message not found in locator with hidden user", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		botMock := &mocks.BotMock{}
 		locatorMock := &mocks.LocatorMock{
@@ -1508,18 +1508,15 @@ func TestAdmin_MsgHandler(t *testing.T) {
 			adminChatID: 456,
 		}
 
-		// create a forwarded message in admin chat
+		// forwarded message with hidden user (fwdID=0), should return error
 		msg := &tbapi.Message{
 			MessageID: 789,
-			Chat:      tbapi.Chat{ID: 456}, // admin chat
+			Chat:      tbapi.Chat{ID: 456},
 			From:      &tbapi.User{UserName: "admin", ID: 123},
 			Text:      "spam message text",
 			ForwardOrigin: &tbapi.MessageOrigin{
-				Type: "user",
-				SenderUser: &tbapi.User{
-					ID:       555,
-					UserName: "user",
-				},
+				Type:           "hidden_user",
+				SenderUserName: "hidden",
 			},
 		}
 
@@ -1673,6 +1670,304 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		// the code makes at least 2 Request calls - one to delete message and one to ban user
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 2, "Should request to delete the message and ban user")
 		assert.Len(t, botMock.UpdateSpamCalls(), 1, "Should update spam samples")
+	})
+}
+
+func TestAdmin_MsgHandlerFallback(t *testing.T) {
+	t.Run("locator fails, ForwardOrigin has user ID", func(t *testing.T) {
+		var sentMessages []string
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if msg, ok := c.(tbapi.MessageConfig); ok {
+					sentMessages = append(sentMessages, msg.Text)
+				}
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{
+					{Name: "test", Spam: true, Details: "test details"},
+				}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false // locator fails
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, superUsers: SuperUsers{"superuser"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "user",
+				SenderUser: &tbapi.User{ID: 555, UserName: "spammer"},
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+
+		// verify ban, spam update, remove approved all called
+		assert.Len(t, botMock.RemoveApprovedUserCalls(), 1)
+		assert.Equal(t, int64(555), botMock.RemoveApprovedUserCalls()[0].ID)
+		assert.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, "spam message text", botMock.UpdateSpamCalls()[0].Msg)
+		assert.Len(t, botMock.OnMessageCalls(), 1)
+		assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
+
+		// verify ban request was made
+		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should make ban request")
+
+		// verify detection results and warning messages sent
+		require.Len(t, sentMessages, 2, "should send detection results and fallback warning")
+		assert.Contains(t, sentMessages[0], `original detection results for "spammer" (555)`)
+		assert.Contains(t, sentMessages[1], "locator fallback")
+		assert.Contains(t, sentMessages[1], "manual deletion")
+		assert.Contains(t, sentMessages[1], "spammer")
+	})
+
+	t.Run("locator fails, hidden user (fwdID=0)", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		botMock := &mocks.BotMock{}
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456,
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:           "hidden_user",
+				SenderUserName: "hidden_name",
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+
+		// verify no actions were taken
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
+	})
+
+	t.Run("locator fails, channel forward (fwdID=0)", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		botMock := &mocks.BotMock{}
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456,
+		}
+
+		// channel forward - ForwardOrigin exists but no SenderUser, so getForwardUsernameAndID returns 0
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type: "channel",
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("locator fails, ForwardOrigin has user ID, dry mode", func(t *testing.T) {
+		var sentMessages []string
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if msg, ok := c.(tbapi.MessageConfig); ok {
+					sentMessages = append(sentMessages, msg.Text)
+				}
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{
+					{Name: "test", Spam: true, Details: "test details"},
+				}}
+			},
+		}
+
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, dry: true,
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "user",
+				SenderUser: &tbapi.User{ID: 555, UserName: "spammer"},
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+
+		// in dry mode: no ban, no spam update
+		assert.Empty(t, mockAPI.RequestCalls(), "should not ban in dry mode")
+		assert.Empty(t, botMock.UpdateSpamCalls(), "should not update spam in dry mode")
+
+		// detection results and warning still sent
+		require.Len(t, sentMessages, 2)
+		assert.Contains(t, sentMessages[0], "original detection results")
+		assert.Contains(t, sentMessages[1], "locator fallback")
+		assert.Contains(t, sentMessages[1], "dry mode")
+	})
+
+	t.Run("locator fails, ForwardOrigin has user ID, training mode", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{
+					{Name: "test", Spam: true, Details: "test details"},
+				}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, trainingMode: true,
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "user",
+				SenderUser: &tbapi.User{ID: 555, UserName: "spammer"},
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+
+		// training mode: UpdateSpam called, ban is a no-op (logged only, no tbAPI.Request)
+		assert.Len(t, botMock.UpdateSpamCalls(), 1, "should update spam in training mode")
+		assert.Len(t, botMock.RemoveApprovedUserCalls(), 1, "should remove approved user")
+		assert.Len(t, botMock.OnMessageCalls(), 1, "should check message")
+		assert.Empty(t, mockAPI.RequestCalls(), "training mode ban is a no-op, no request calls")
+	})
+
+	t.Run("locator fails, ForwardOrigin has user ID, super-user", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		botMock := &mocks.BotMock{}
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, superUsers: SuperUsers{"superuser"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "user",
+				SenderUser: &tbapi.User{ID: 555, UserName: "superuser"},
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "super-user")
+		assert.Contains(t, err.Error(), "ignored")
+
+		// verify no actions were taken
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
+	})
+
+	t.Run("locator fails, ForwardOrigin has user ID, super-user by ID only (no username)", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{}
+		botMock := &mocks.BotMock{}
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{}, false
+			},
+		}
+
+		adminHandler := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, adminChatID: 456, superUsers: SuperUsers{"555"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 123}, Text: "spam message text",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:       "user",
+				SenderUser: &tbapi.User{ID: 555, UserName: ""},
+			},
+		}
+
+		err := adminHandler.MsgHandler(tbapi.Update{Message: msg})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "super-user")
+		assert.Contains(t, err.Error(), "ignored")
+
+		// verify no actions were taken
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
 	})
 }
 

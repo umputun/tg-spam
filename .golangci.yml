@@ -64,6 +64,10 @@ linters:
         path: _test\.go$
         text: unused-parameter
       - linters:
+          - revive
+        path: lib/tgspam/plugin/
+        text: avoid package names that conflict with Go standard library package names
+      - linters:
           - dupl
           - gosec
           - unparam

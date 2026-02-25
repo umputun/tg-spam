@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	tokenizer "github.com/sandwich-go/gpt3-encoder"
@@ -120,7 +121,7 @@ func (o *openAIChecker) buildSystemPrompt() string {
 
 	// add each custom prompt as a numbered item
 	for i, prompt := range o.params.CustomPrompts {
-		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, prompt))
+		sb.WriteString(strconv.Itoa(i+1) + ". " + prompt + "\n")
 	}
 
 	return sb.String()

@@ -47,35 +47,35 @@ Related to #373
 **Files:**
 - Modify: `app/events/admin.go`
 
-- [ ] refactor `MsgHandler` at lines 98-100: when `a.locator.Message()` returns `!ok`, check `fwdID` (already extracted at line 70) — if `fwdID != 0`, enter the fallback path instead of returning error
-- [ ] in the fallback path, perform all possible operations using `fwdID` and `username` from ForwardOrigin:
+- [x] refactor `MsgHandler` at lines 98-100: when `a.locator.Message()` returns `!ok`, check `fwdID` (already extracted at line 70) — if `fwdID != 0`, enter the fallback path instead of returning error
+- [x] in the fallback path, perform all possible operations using `fwdID` and `username` from ForwardOrigin:
   - call `a.bot.RemoveApprovedUser(fwdID)` (log error but don't fail, same as `directReport` pattern)
   - call `a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: fwdID}}, true)` — use `update.Message.Text` (not `msgTxt`) to match normal path line 120
   - send detection results to admin chat (plain `send()`, no unban button — `msgID` is unavailable without locator)
   - if not dry run: call `a.bot.UpdateSpam(msgTxt)` — use `msgTxt` here (may include caption from `transform()`)
   - if not dry run: call `banUserOrChannel()` with `fwdID`, passing `training: a.trainingMode` to match normal path behavior
   - send warning to admin chat that original message must be deleted manually (include message text snippet, username, and user ID for identification)
-- [ ] check if forwarded user is a super-user using `a.superUsers.IsSuper(username, fwdID)` before banning — same guard as the normal path
-- [ ] when `fwdID == 0` (hidden user or no ForwardOrigin), keep existing behavior — return error
-- [ ] write tests in `app/events/admin_test.go` for the fallback path:
+- [x] check if forwarded user is a super-user using `a.superUsers.IsSuper(username, fwdID)` before banning — same guard as the normal path
+- [x] when `fwdID == 0` (hidden user or no ForwardOrigin), keep existing behavior — return error
+- [x] write tests in `app/events/admin_test.go` for the fallback path:
   - subtest: locator fails, ForwardOrigin.IsUser() with valid user ID → verify ban (with training flag), spam update, remove approved all called, warning sent about manual deletion
   - subtest: locator fails, ForwardOrigin.IsHiddenUser() (fwdID=0) → verify error returned as before
   - subtest: locator fails, ForwardOrigin.IsChannel() (fwdID=0) → verify error returned as before
   - subtest: locator fails, ForwardOrigin.IsUser() + dry mode → verify no ban/spam-update, detection results still sent
   - subtest: locator fails, ForwardOrigin.IsUser() + training mode → verify UpdateSpam called, ban request made with training=true
   - subtest: locator fails, ForwardOrigin.IsUser() + super-user → verify ignored with appropriate error
-- [ ] run `go test -race ./app/events/` — must pass before next task
+- [x] run `go test -race ./app/events/` — must pass before next task
 
 ### Task 2: Verify acceptance criteria
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify edge cases are handled (hidden user, no ForwardOrigin, super-user, dry mode)
-- [ ] run full unit test suite: `go test -race ./...`
-- [ ] run linter: `golangci-lint run`
-- [ ] run formatters
+- [x] verify all requirements from Overview are implemented
+- [x] verify edge cases are handled (hidden user, no ForwardOrigin, super-user, dry mode)
+- [x] run full unit test suite: `go test -race ./...`
+- [x] run linter: `golangci-lint run`
+- [x] run formatters
 
 ### Task 3: [Final] Update documentation
-- [ ] update README.md if behavior change warrants mention
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md if behavior change warrants mention
+- [x] move this plan to `docs/plans/completed/`
 
 ## Technical Details
 

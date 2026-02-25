@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -111,7 +112,7 @@ func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
 			return nil, fmt.Errorf("failed to create database: %w", err)
 		}
 	}
-	log.Printf("[INFO] created database %s", dbName)
+	log.Printf("[INFO] created database %s", dbName) //nolint:gosec // dbName from internal config, not user input
 
 	// connect to the new database
 	db, err = sqlx.ConnectContext(ctx, "postgres", connURL)
@@ -186,7 +187,7 @@ func (e *SQL) Adopt(q string) string {
 			if inQuotes {
 				result.WriteRune(r)
 			} else {
-				result.WriteString(fmt.Sprintf("$%d", placeholderCount))
+				result.WriteString("$" + strconv.Itoa(placeholderCount))
 				placeholderCount++
 			}
 		default:

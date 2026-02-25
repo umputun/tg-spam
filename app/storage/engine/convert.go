@@ -228,12 +228,12 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 		copyColumns = filteredColumns
 	}
 
-	// write COPY statement header with explanatory comment
+	//nolint:gosec // table name from internal schema, not user input
 	if _, err := fmt.Fprintf(w, "-- Data for table %s\n", table); err != nil {
 		return fmt.Errorf("failed to write comment: %w", err)
 	}
 
-	// the COPY command specifies which table and columns to load data into
+	//nolint:gosec // table/columns from internal schema
 	if _, err := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n", table, strings.Join(copyColumns, ", ")); err != nil {
 		return fmt.Errorf("failed to write COPY header: %w", err)
 	}
@@ -278,7 +278,7 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 			values = append(values, c.formatPostgresValue(val))
 		}
 
-		// write row as tab-separated values
+		//nolint:gosec // values from internal database rows
 		if _, err := fmt.Fprintf(w, "%s\n", strings.Join(values, "\t")); err != nil {
 			return fmt.Errorf("failed to write data row: %w", err)
 		}

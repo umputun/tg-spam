@@ -829,7 +829,7 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 			countHTML = fmt.Sprintf("(%d)", len(ds))
 		}
 
-		buf.WriteString(fmt.Sprintf(`<span id="count-display" hx-swap-oob="true">%s</span>`, countHTML))
+		buf.WriteString(`<span id="count-display" hx-swap-oob="true">` + countHTML + `</span>`)
 
 		// write the combined response
 		if _, err := buf.WriteTo(w); err != nil {
