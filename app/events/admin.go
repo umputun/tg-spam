@@ -42,7 +42,22 @@ const (
 // ReportBan a ban message to admin chat with a button to unban the user
 func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
-	text := strings.ReplaceAll(escapeMarkDownV1Text(msg.Text), "\n", " ")
+	msgText := msg.Text
+	switch {
+	case msg.Quote != "":
+		if msgText == "" {
+			msgText = msg.Quote
+		} else {
+			msgText += "\n" + msg.Quote
+		}
+	case msg.ReplyTo.Text != "":
+		if msgText == "" {
+			msgText = msg.ReplyTo.Text
+		} else {
+			msgText += "\n" + msg.ReplyTo.Text
+		}
+	}
+	text := strings.ReplaceAll(escapeMarkDownV1Text(msgText), "\n", " ")
 	would := ""
 	if a.dry {
 		would = "would have "
