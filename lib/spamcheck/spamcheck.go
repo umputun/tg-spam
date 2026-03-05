@@ -10,6 +10,9 @@ type Request struct {
 	Msg       string   `json:"msg"`        // message to check
 	UserID    string   `json:"user_id"`    // user id
 	UserName  string   `json:"user_name"`  // user name
+	FirstName string   `json:"first_name"` // user's first name
+	LastName  string   `json:"last_name"`  // user's last name
+	IsPremium bool     `json:"is_premium"` // true if user has telegram premium
 	Meta      MetaData `json:"meta"`       // meta-info, provided by the client
 	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not write newly approved user to the database
 }
@@ -29,9 +32,11 @@ type MetaData struct {
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, mentions:%d, "+
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, first_name:%q, last_name:%q, is_premium:%v, "+
+		"images:%d, links:%d, mentions:%d, "+
 		"has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.Mentions,
+		r.Msg, r.UserName, r.UserID, r.FirstName, r.LastName, r.IsPremium,
+		r.Meta.Images, r.Meta.Links, r.Meta.Mentions,
 		r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway)
 }
 

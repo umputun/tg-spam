@@ -327,8 +327,8 @@ Each Lua plugin must define a `check` function that takes a request object and r
 
 ```lua
 function check(request)
-    -- request contains: msg, user_id, user_name, meta
-    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard
+    -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, message_id
     
     -- Your custom spam detection logic here
     if string.match(request.msg, "some pattern") then
