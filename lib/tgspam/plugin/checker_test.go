@@ -44,6 +44,92 @@ func TestChecker_LoadScript(t *testing.T) {
 	assert.Equal(t, "test details", resp.Details)
 }
 
+func TestChecker_UserFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "user_fields.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+		function check(req)
+			if req.first_name == "John" and req.last_name == "Doe" and req.is_premium then
+				return true, "premium user John Doe"
+			end
+			return false, "not matched"
+		end
+	`), 0o666)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	checkFunc, err := checker.GetCheck("user_fields")
+	require.NoError(t, err)
+
+	t.Run("all fields set", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "1", UserName: "johndoe",
+			FirstName: "John", LastName: "Doe", IsPremium: true,
+		})
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "premium user John Doe", resp.Details)
+	})
+
+	t.Run("fields not matching", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "2", UserName: "jane",
+			FirstName: "Jane", LastName: "Smith", IsPremium: false,
+		})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+
+	t.Run("empty fields", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{Msg: "test", UserID: "3", UserName: "anon"})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+}
+
+func TestChecker_MetaFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "meta_fields.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+		function check(req)
+			if req.meta.has_contact and req.meta.message_id == 42 and req.meta.has_giveaway then
+				return true, "meta matched"
+			end
+			return false, "not matched"
+		end
+	`), 0o666)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	checkFunc, err := checker.GetCheck("meta_fields")
+	require.NoError(t, err)
+
+	t.Run("all meta fields set", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "1", UserName: "user",
+			Meta: spamcheck.MetaData{HasContact: true, MessageID: 42, HasGiveaway: true},
+		})
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "meta matched", resp.Details)
+	})
+
+	t.Run("meta fields not matching", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "2", UserName: "user",
+			Meta: spamcheck.MetaData{HasContact: false, MessageID: 10},
+		})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+}
+
 func TestChecker_LoadInvalidScript(t *testing.T) {
 	// create a temporary script with invalid Lua
 	tmpDir := t.TempDir()

@@ -92,13 +92,16 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	// so that approved/banned status is tracked per-channel, not for the shared Channel_Bot user
 	checkUserID := msg.From.ID
 	checkUserName := msg.From.Username
+	firstName, lastName, isPremium := msg.From.FirstName, msg.From.LastName, msg.From.IsPremium
 	if msg.SenderChat.ID != 0 {
 		checkUserID = msg.SenderChat.ID
 		checkUserName = msg.SenderChat.UserName
+		firstName, lastName, isPremium = "", "", false // channels don't have personal user fields
 	}
 
 	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
-		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName}
+		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName,
+		FirstName: firstName, LastName: lastName, IsPremium: isPremium}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
 	}

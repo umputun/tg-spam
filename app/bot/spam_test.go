@@ -454,10 +454,30 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "spam with user first/last name and premium",
+			message: Message{
+				Text: "spam message",
+				From: User{ID: 1, Username: "user1", DisplayName: "John Doe",
+					FirstName: "John", LastName: "Doe", IsPremium: true},
+			},
+			wantResponse: Response{
+				Text:          `detected: "John Doe" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1", DisplayName: "John Doe"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg: "spam message", UserID: "1", UserName: "user1",
+				FirstName: "John", LastName: "Doe", IsPremium: true,
+			},
+		},
+		{
 			name: "spam detected from channel message",
 			message: Message{
 				Text:       "spam message",
-				From:       User{ID: 136817688, Username: "Channel_Bot"},
+				From:       User{ID: 136817688, Username: "Channel_Bot", FirstName: "Channel_Bot"},
 				SenderChat: SenderChat{ID: 12345, UserName: "spam_channel"},
 			},
 			wantResponse: Response{

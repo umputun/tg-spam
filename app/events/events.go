@@ -285,9 +285,17 @@ func transform(msg *tbapi.Message) *bot.Message {
 			}
 			if entity.User != nil {
 				e.User = &bot.User{
-					ID:          entity.User.ID,
-					Username:    entity.User.UserName,
-					DisplayName: entity.User.FirstName + " " + entity.User.LastName,
+					ID:        entity.User.ID,
+					Username:  entity.User.UserName,
+					FirstName: strings.TrimSpace(entity.User.FirstName),
+					LastName:  strings.TrimSpace(entity.User.LastName),
+					IsPremium: entity.User.IsPremium,
+				}
+				if e.User.FirstName != "" {
+					e.User.DisplayName = e.User.FirstName
+				}
+				if e.User.LastName != "" {
+					e.User.DisplayName += " " + e.User.LastName
 				}
 			}
 			result = append(result, e)
@@ -306,15 +314,18 @@ func transform(msg *tbapi.Message) *bot.Message {
 	// set sender info
 	if msg.From != nil {
 		message.From = bot.User{
-			ID:       msg.From.ID,
-			Username: msg.From.UserName,
+			ID:        msg.From.ID,
+			Username:  msg.From.UserName,
+			FirstName: strings.TrimSpace(msg.From.FirstName),
+			LastName:  strings.TrimSpace(msg.From.LastName),
+			IsPremium: msg.From.IsPremium,
 		}
 		// combine first and last name for display name if present
-		if firstName := strings.TrimSpace(msg.From.FirstName); firstName != "" {
-			message.From.DisplayName = firstName
+		if message.From.FirstName != "" {
+			message.From.DisplayName = message.From.FirstName
 		}
-		if lastName := strings.TrimSpace(msg.From.LastName); lastName != "" {
-			message.From.DisplayName += " " + lastName
+		if message.From.LastName != "" {
+			message.From.DisplayName += " " + message.From.LastName
 		}
 	}
 
@@ -375,9 +386,17 @@ func transform(msg *tbapi.Message) *bot.Message {
 		message.ReplyTo.Sent = msg.ReplyToMessage.Time()
 		if msg.ReplyToMessage.From != nil {
 			message.ReplyTo.From = bot.User{
-				ID:          msg.ReplyToMessage.From.ID,
-				Username:    msg.ReplyToMessage.From.UserName,
-				DisplayName: msg.ReplyToMessage.From.FirstName + " " + msg.ReplyToMessage.From.LastName,
+				ID:        msg.ReplyToMessage.From.ID,
+				Username:  msg.ReplyToMessage.From.UserName,
+				FirstName: strings.TrimSpace(msg.ReplyToMessage.From.FirstName),
+				LastName:  strings.TrimSpace(msg.ReplyToMessage.From.LastName),
+				IsPremium: msg.ReplyToMessage.From.IsPremium,
+			}
+			if message.ReplyTo.From.FirstName != "" {
+				message.ReplyTo.From.DisplayName = message.ReplyTo.From.FirstName
+			}
+			if message.ReplyTo.From.LastName != "" {
+				message.ReplyTo.From.DisplayName += " " + message.ReplyTo.From.LastName
 			}
 		}
 		if msg.ReplyToMessage.SenderChat != nil {
