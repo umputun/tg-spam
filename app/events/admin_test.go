@@ -2039,6 +2039,106 @@ func TestAdmin_DirectSpamReport_ImageOnly(t *testing.T) {
 	assert.Empty(t, botMock.UpdateSpamCalls(), "Should not update spam samples for empty messages")
 }
 
+func TestAdmin_DirectSpamReport_QuoteHandling(t *testing.T) {
+	setup := func() (*mocks.TbAPIMock, *mocks.BotMock, *admin) {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc:    func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) { return &tbapi.APIResponse{Ok: true}, nil },
+		}
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+		adm := &admin{
+			tbAPI: mockAPI, bot: botMock, primChatID: 123, adminChatID: 456,
+			locator: &mocks.LocatorMock{}, superUsers: SuperUsers{},
+		}
+		return mockAPI, botMock, adm
+	}
+
+	t.Run("message with quote text", func(t *testing.T) {
+		_, botMock, adm := setup()
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+				From: &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:  "Thank you",
+					Quote: &tbapi.TextQuote{Text: "Buy cheap stuff at spam.com"},
+				},
+			},
+		}
+		err := adm.directReport(update, true)
+		require.NoError(t, err)
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, "Thank you\nBuy cheap stuff at spam.com", botMock.UpdateSpamCalls()[0].Msg)
+		require.Len(t, botMock.OnMessageCalls(), 1)
+		assert.Equal(t, "Thank you\nBuy cheap stuff at spam.com", botMock.OnMessageCalls()[0].Msg.Text)
+	})
+
+	t.Run("message with empty quote text", func(t *testing.T) {
+		_, botMock, adm := setup()
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+				From: &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:  "some text",
+					Quote: &tbapi.TextQuote{Text: ""},
+				},
+			},
+		}
+		err := adm.directReport(update, true)
+		require.NoError(t, err)
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, "some text", botMock.UpdateSpamCalls()[0].Msg)
+	})
+
+	t.Run("message without quote", func(t *testing.T) {
+		_, botMock, adm := setup()
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+				From: &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text: "plain spam text",
+				},
+			},
+		}
+		err := adm.directReport(update, true)
+		require.NoError(t, err)
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, "plain spam text", botMock.UpdateSpamCalls()[0].Msg)
+	})
+
+	t.Run("empty text with quote present uses transform fallback plus quote", func(t *testing.T) {
+		_, botMock, adm := setup()
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+				From: &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:    "",
+					Caption: "image caption",
+					Photo:   []tbapi.PhotoSize{{FileID: "photo123"}},
+					Quote:   &tbapi.TextQuote{Text: "quoted spam content"},
+				},
+			},
+		}
+		err := adm.directReport(update, true)
+		require.NoError(t, err)
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, "image caption\nquoted spam content", botMock.UpdateSpamCalls()[0].Msg)
+	})
+}
+
 func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 	// setup helper function for aggressive cleanup tests
 	setupAggressiveCleanupTest := func(aggressiveCleanup bool, dry bool, messageIDs []int) (*mocks.TbAPIMock, *mocks.LocatorMock, *admin) {

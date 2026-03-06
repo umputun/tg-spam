@@ -63,6 +63,8 @@
 - `Quote` (from Telegram's TextQuote) takes precedence over `ReplyTo.Text`
 - The concatenation uses newline separator: `msg.Text + "\n" + msg.Quote`
 - Empty quote/reply-to text is ignored (no extra newline added)
+- All three paths apply the same Quote concatenation: auto-detection (`app/bot/spam.go:OnMessage`), admin `/spam` (`app/events/admin.go:directReport`), and user `/report` (`app/events/reports.go:DirectUserReport`)
+- Quote concatenation is placed AFTER the transform fallback block so image-only messages with quotes get both caption text and quote text
 
 ### Channel Message Handling
 - When a channel posts in a group, Telegram uses a shared fake user `Channel_Bot` (ID `136817688`) in `msg.From`
