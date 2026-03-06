@@ -646,6 +646,203 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Len(t, mockBot.IsApprovedUserCalls(), 1, "should check approved status")
 	})
 
+	t.Run("message with quote text includes quote in stored report", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 0, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, "Thank you\nBuy cheap stuff at spam.com", report.MsgText)
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool { return true },
+		}
+
+		rep := &userReports{
+			tbAPI: mockAPI, bot: mockBot, primChatID: 123, adminChatID: 456,
+			superUsers: SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage: mockReports, RateLimit: 10, RatePeriod: 1 * time.Hour, Threshold: 2,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/report",
+				From: &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:  "Thank you",
+					Quote: &tbapi.TextQuote{Text: "Buy cheap stuff at spam.com"},
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		require.Len(t, mockReports.AddCalls(), 1)
+	})
+
+	t.Run("message without quote stores only text", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 0, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, "plain spam text", report.MsgText)
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool { return true },
+		}
+
+		rep := &userReports{
+			tbAPI: mockAPI, bot: mockBot, primChatID: 123, adminChatID: 456,
+			superUsers: SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage: mockReports, RateLimit: 10, RatePeriod: 1 * time.Hour, Threshold: 2,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/report",
+				From: &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text: "plain spam text",
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		require.Len(t, mockReports.AddCalls(), 1)
+	})
+
+	t.Run("message with empty quote text stores only text", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 0, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, "some text", report.MsgText)
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool { return true },
+		}
+
+		rep := &userReports{
+			tbAPI: mockAPI, bot: mockBot, primChatID: 123, adminChatID: 456,
+			superUsers: SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage: mockReports, RateLimit: 10, RatePeriod: 1 * time.Hour, Threshold: 2,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/report",
+				From: &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:  "some text",
+					Quote: &tbapi.TextQuote{Text: ""},
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		require.Len(t, mockReports.AddCalls(), 1)
+	})
+
+	t.Run("empty text with quote present uses transform fallback plus quote", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+
+		mockReports := &mocks.ReportsMock{
+			GetReporterCountSinceFunc: func(ctx context.Context, reporterID int64, since time.Time) (int, error) {
+				return 0, nil
+			},
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, "image caption\nquoted spam content", report.MsgText)
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+
+		mockBot := &mocks.BotMock{
+			IsApprovedUserFunc: func(id int64) bool { return true },
+		}
+
+		rep := &userReports{
+			tbAPI: mockAPI, bot: mockBot, primChatID: 123, adminChatID: 456,
+			superUsers: SuperUsers{},
+			ReportConfig: ReportConfig{
+				Storage: mockReports, RateLimit: 10, RatePeriod: 1 * time.Hour, Threshold: 2,
+			},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/report",
+				From: &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"},
+					Text:    "",
+					Caption: "image caption",
+					Photo:   []tbapi.PhotoSize{{FileID: "photo123"}},
+					Quote:   &tbapi.TextQuote{Text: "quoted spam content"},
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		require.Len(t, mockReports.AddCalls(), 1)
+	})
+
 	t.Run("super-user should use /spam instead of /report", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		mockBot := &mocks.BotMock{}

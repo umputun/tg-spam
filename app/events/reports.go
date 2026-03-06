@@ -115,6 +115,9 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
+	if origMsg.Quote != nil && origMsg.Quote.Text != "" {
+		msgTxt = msgTxt + "\n" + origMsg.Quote.Text
+	}
 
 	// check if reports storage is initialized
 	if r.Storage == nil {

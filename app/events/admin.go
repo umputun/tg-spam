@@ -455,6 +455,9 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		m := transform(origMsg)
 		msgTxt = m.Text
 	}
+	if origMsg.Quote != nil && origMsg.Quote.Text != "" {
+		msgTxt = msgTxt + "\n" + origMsg.Quote.Text
+	}
 	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q",
 		update.Message.From.UserName, update.Message.From.ID, msgTxt)
 
