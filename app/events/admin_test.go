@@ -63,6 +63,22 @@ func TestAdmin_reportBan(t *testing.T) {
 		assert.Equal(t, "⛔︎ change ban",
 			mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup).InlineKeyboard[0][0].Text)
 	})
+
+	t.Run("message with quote", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		msgWithQuote := &bot.Message{
+			From:  bot.User{ID: 456},
+			Text:  "Спасибо!!",
+			Quote: "Бесплатный VPN для Telegram",
+		}
+		adm.ReportBan("spammer", msgWithQuote)
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
+		t.Logf("sent text: %+v", sentText)
+		assert.Contains(t, sentText, "Спасибо!!")
+		assert.Contains(t, sentText, "Бесплатный VPN для Telegram")
+	})
 }
 
 func TestAdmin_getCleanMessage(t *testing.T) {

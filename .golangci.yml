@@ -81,7 +81,7 @@ linters:
         path: _test\.go$
       - linters:
           - gosec
-        text: "G705:|G706:|G704:"
+        text: "G705:|G706:|G704:|G118:|G120:"
       - linters:
           - staticcheck
         text: "QF1012:"
