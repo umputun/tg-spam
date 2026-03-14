@@ -30,26 +30,28 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: login to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.PKG_TOKEN }}
 
       - name: login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: build and push to ghcr.io
         id: build-ghcr
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./updater
           platforms: ${{ matrix.platform }}
@@ -61,7 +63,7 @@ jobs:
 
       - name: build and push to DockerHub
         id: build-dockerhub
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./updater
           platforms: ${{ matrix.platform }}
@@ -80,14 +82,14 @@ jobs:
           touch "/tmp/digests/dockerhub/${digest_dockerhub#sha256:}"
 
       - name: upload ghcr digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: digests-ghcr-${{ matrix.artifact }}
           path: /tmp/digests/ghcr/*
           retention-days: 1
 
       - name: upload dockerhub digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: digests-dockerhub-${{ matrix.artifact }}
           path: /tmp/digests/dockerhub/*
@@ -102,14 +104,14 @@ jobs:
       packages: write
     steps:
       - name: download ghcr digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests/ghcr
           pattern: digests-ghcr-*
           merge-multiple: true
 
       - name: download dockerhub digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests/dockerhub
           pattern: digests-dockerhub-*
@@ -129,29 +131,32 @@ jobs:
           echo "All $expected digests present for both registries"
 
       - name: set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: login to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.PKG_TOKEN }}
 
       - name: login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: set docker tags
         id: tags
+        env:
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          if [[ "$GIT_REF" == refs/tags/* ]]; then
+            echo "tag=${GIT_REF_NAME}" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
           else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "tag=${GIT_REF_NAME}" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
