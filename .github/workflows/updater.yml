@@ -37,6 +37,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: login to ghcr.io
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -44,13 +45,27 @@ jobs:
           password: ${{ secrets.PKG_TOKEN }}
 
       - name: login to DockerHub
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
+      - name: build only (PR)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./updater
+          platforms: ${{ matrix.platform }}
+          push: false
+          build-args: |
+            CI=github
+            GITHUB_SHA=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
       - name: build and push to ghcr.io
         id: build-ghcr
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: ./updater
@@ -63,6 +78,7 @@ jobs:
 
       - name: build and push to DockerHub
         id: build-dockerhub
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: ./updater
@@ -74,6 +90,7 @@ jobs:
           outputs: type=image,name=docker.io/${{ github.actor }}/tg-spam-updater,push-by-digest=true,name-canonical=true,push=true
 
       - name: export digests
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p /tmp/digests/ghcr /tmp/digests/dockerhub
           digest_ghcr="${{ steps.build-ghcr.outputs.digest }}"
@@ -82,6 +99,7 @@ jobs:
           touch "/tmp/digests/dockerhub/${digest_dockerhub#sha256:}"
 
       - name: upload ghcr digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: digests-ghcr-${{ matrix.artifact }}
@@ -89,6 +107,7 @@ jobs:
           retention-days: 1
 
       - name: upload dockerhub digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: digests-dockerhub-${{ matrix.artifact }}
