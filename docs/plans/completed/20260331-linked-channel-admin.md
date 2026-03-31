@@ -80,9 +80,9 @@
 
 ### Task 4: [Final] Update documentation
 
-- [ ] update README.md with linked channel admin feature description
-- [ ] update CLAUDE.md if new patterns discovered
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md with linked channel admin feature description
+- [x] update CLAUDE.md if new patterns discovered
+- [x] move this plan to `docs/plans/completed/`
 
 ## Technical Details
 
