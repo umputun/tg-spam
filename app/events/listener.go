@@ -51,10 +51,11 @@ type TelegramListener struct {
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
 
-	adminHandler   *admin
-	reportsHandler *userReports
-	chatID         int64
-	adminChatID    int64
+	adminHandler    *admin
+	reportsHandler  *userReports
+	chatID          int64
+	adminChatID     int64
+	linkedChannelID int64 // channel linked to the discussion group, resolved at startup
 
 	msgs struct {
 		once sync.Once
@@ -80,6 +81,15 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
 	}
 	log.Printf("[INFO] primary chat ID: %d", l.chatID)
+
+	// resolve the linked channel for this discussion group
+	chatInfo, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	if err != nil {
+		log.Printf("[WARN] failed to get chat info for linked channel resolution: %v", err)
+	} else if chatInfo.LinkedChatID != 0 {
+		l.linkedChannelID = chatInfo.LinkedChatID
+		log.Printf("[INFO] linked channel ID: %d", l.linkedChannelID)
+	}
 
 	if err := l.updateSupers(); err != nil {
 		log.Printf("[WARN] failed to update superusers: %v", err)
@@ -538,6 +548,11 @@ func (l *TelegramListener) deleteSystemMessage(msgID int, chatID int64, msgType 
 	} else {
 		log.Printf("[DEBUG] %s message %d deleted", msgType, msgID)
 	}
+}
+
+// isLinkedChannel checks if the message was sent on behalf of the linked channel
+func (l *TelegramListener) isLinkedChannel(msg *tbapi.Message) bool {
+	return l.linkedChannelID != 0 && msg.SenderChat != nil && msg.SenderChat.ID == l.linkedChannelID
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {

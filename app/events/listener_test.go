@@ -3599,3 +3599,56 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestTelegramListener_IsLinkedChannel(t *testing.T) {
+	tests := []struct {
+		name            string
+		linkedChannelID int64
+		msg             *tbapi.Message
+		expected        bool
+	}{
+		{
+			name:            "matching sender chat",
+			linkedChannelID: -1001234567890,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1001234567890},
+			},
+			expected: true,
+		},
+		{
+			name:            "non-matching sender chat",
+			linkedChannelID: -1001234567890,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1009999999999},
+			},
+			expected: false,
+		},
+		{
+			name:            "nil sender chat",
+			linkedChannelID: -1001234567890,
+			msg:             &tbapi.Message{},
+			expected:        false,
+		},
+		{
+			name:            "zero linked channel ID",
+			linkedChannelID: 0,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1001234567890},
+			},
+			expected: false,
+		},
+		{
+			name:            "zero linked channel ID and nil sender chat",
+			linkedChannelID: 0,
+			msg:             &tbapi.Message{},
+			expected:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{linkedChannelID: tt.linkedChannelID}
+			assert.Equal(t, tt.expected, l.isLinkedChannel(tt.msg))
+		})
+	}
+}
