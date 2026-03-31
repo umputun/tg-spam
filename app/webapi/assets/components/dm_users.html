@@ -1,0 +1,28 @@
+{{define "dm_users.html"}}
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Display Name</th>
+            <th>Username</th>
+            <th>When</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Users}}
+        <tr>
+            <td>{{.UserID}}</td>
+            <td>{{.DisplayName}}</td>
+            <td>{{if .UserName}}@{{.UserName}}{{end}}</td>
+            <td>{{.When}}</td>
+            <td><button class="btn btn-sm btn-outline-primary" onclick="addSuperUser({{.UserID}}, this)">Add</button></td>
+        </tr>
+        {{else}}
+        <tr>
+            <td colspan="5" class="text-muted text-center">No recent DM users. Send a message to the bot to appear here.</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

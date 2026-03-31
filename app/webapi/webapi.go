@@ -27,6 +27,7 @@ import (
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
 
+	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
@@ -39,6 +40,7 @@ import (
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
 //go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
 //go:generate moq --out mocks/dictionary.go --pkg mocks --with-resets --skip-ensure . Dictionary
+//go:generate moq --out mocks/dm_users_provider.go --pkg mocks --with-resets --skip-ensure . DMUsersProvider
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
@@ -54,18 +56,19 @@ type Server struct {
 
 // Config defines  server parameters
 type Config struct {
-	Version       string        // version to show in /ping
-	ListenAddr    string        // listen address
-	Detector      Detector      // spam detector
-	SpamFilter    SpamFilter    // spam filter (bot)
-	DetectedSpam  DetectedSpam  // detected spam accessor
-	Locator       Locator       // locator for user info
-	Dictionary    Dictionary    // dictionary for stop phrases and ignored words
-	StorageEngine StorageEngine // database engine access for backups
-	AuthPasswd    string        // basic auth password for user "tg-spam"
-	AuthHash      string        // basic auth hash for user "tg-spam". If both AuthPasswd and AuthHash are provided, AuthHash is used
-	Dbg           bool          // debug mode
-	Settings      Settings      // application settings
+	Version         string          // version to show in /ping
+	ListenAddr      string          // listen address
+	Detector        Detector        // spam detector
+	SpamFilter      SpamFilter      // spam filter (bot)
+	DetectedSpam    DetectedSpam    // detected spam accessor
+	Locator         Locator         // locator for user info
+	Dictionary      Dictionary      // dictionary for stop phrases and ignored words
+	StorageEngine   StorageEngine   // database engine access for backups
+	DMUsersProvider DMUsersProvider // provider for recent DM users
+	AuthPasswd      string          // basic auth password for user "tg-spam"
+	AuthHash        string          // basic auth bcrypt hash for user "tg-spam", takes precedence over AuthPasswd
+	Dbg             bool            // debug mode
+	Settings        Settings        // application settings
 }
 
 // Settings contains all application settings
@@ -168,6 +171,13 @@ type Dictionary interface {
 	Read(ctx context.Context, t storage.DictionaryType) ([]string, error)
 	ReadWithIDs(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error)
 	Stats(ctx context.Context) (*storage.DictionaryStats, error)
+}
+
+// DMUsersProvider provides access to recent DM users for the admin UI
+type DMUsersProvider interface {
+	GetDMUsers() []events.DMUser
+	SubscribeDMUsers() <-chan events.DMUser
+	UnsubscribeDMUsers(<-chan events.DMUser)
 }
 
 // NewServer creates a new web API server.
@@ -279,6 +289,8 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+		webUI.HandleFunc("GET /dm-users", s.getDMUsersHandler)                    // get recent DM users (HTMX/JSON)
+		webUI.HandleFunc("GET /dm-users/stream", s.sseHandler)                    // SSE stream for DM user events
 
 		// handle logout - force Basic Auth re-authentication
 		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
@@ -951,6 +963,141 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 		log.Printf("[WARN] can't execute template: %v", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
 		return
+	}
+}
+
+// getDMUsersHandler handles GET /dm-users. For HTMX requests it renders the dm_users.html partial,
+// for API requests it returns JSON with the list of recent DM users.
+func (s *Server) getDMUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if s.DMUsersProvider == nil {
+		http.Error(w, "DM users provider not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	users := s.DMUsersProvider.GetDMUsers()
+
+	if r.Header.Get("HX-Request") != "true" {
+		// api response — return raw timestamps, no relative time
+		type dmUserJSON struct {
+			UserID      int64     `json:"user_id"`
+			UserName    string    `json:"user_name"`
+			DisplayName string    `json:"display_name"`
+			Timestamp   time.Time `json:"timestamp"`
+		}
+		result := make([]dmUserJSON, len(users))
+		for i, u := range users {
+			result[i] = dmUserJSON{
+				UserID:      u.UserID,
+				UserName:    u.UserName,
+				DisplayName: u.DisplayName,
+				Timestamp:   u.Timestamp,
+			}
+		}
+		rest.RenderJSON(w, result)
+		return
+	}
+
+	// htmx response — render partial template with relative timestamps
+	type dmUserView struct {
+		UserID      int64
+		UserName    string
+		DisplayName string
+		When        string
+	}
+	viewUsers := make([]dmUserView, len(users))
+	for i, u := range users {
+		viewUsers[i] = dmUserView{
+			UserID:      u.UserID,
+			UserName:    u.UserName,
+			DisplayName: u.DisplayName,
+			When:        relativeTime(u.Timestamp),
+		}
+	}
+
+	data := struct {
+		Users []dmUserView
+	}{Users: viewUsers}
+
+	if err := tmpl.ExecuteTemplate(w, "dm_users.html", data); err != nil {
+		log.Printf("[WARN] can't execute dm_users template: %v", err)
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		return
+	}
+}
+
+// sseHandler handles GET /dm-users/stream. It establishes an SSE connection and pushes
+// new DM user events as rendered HTML table row fragments.
+func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
+	if s.DMUsersProvider == nil {
+		http.Error(w, "DM users provider not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ch := s.DMUsersProvider.SubscribeDMUsers()
+	defer s.DMUsersProvider.UnsubscribeDMUsers(ch)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case user, ok := <-ch:
+			if !ok {
+				return
+			}
+			// render a table row fragment for HTMX sse-swap
+			row := fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%s</td><td>just now</td>"+
+				"<td><button onclick=\"addSuperUser(%d, this)\">Add</button></td></tr>",
+				user.UserID, template.HTMLEscapeString(user.DisplayName),
+				template.HTMLEscapeString(formatUsername(user.UserName)),
+				user.UserID)
+			fmt.Fprintf(w, "event: dm-user\ndata: %s\n\n", row)
+			flusher.Flush()
+		}
+	}
+}
+
+// formatUsername prepends @ to a username if non-empty
+func formatUsername(userName string) string {
+	if userName == "" {
+		return ""
+	}
+	return "@" + userName
+}
+
+// relativeTime formats a timestamp as a human-readable relative time string
+func relativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1m ago"
+		}
+		return fmt.Sprintf("%dm ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1h ago"
+		}
+		return fmt.Sprintf("%dh ago", h)
+	default:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1d ago"
+		}
+		return fmt.Sprintf("%dd ago", days)
 	}
 }
 

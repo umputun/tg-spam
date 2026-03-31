@@ -87,17 +87,17 @@
 - Modify: `app/webapi/webapi.go` — add `DMUsersProvider` interface to Config, add handler, register route
 - Modify: `app/main.go` — wire `GetDMUsers` to webapi config
 
-- [ ] define `DMUsersProvider` interface in webapi.go: `type DMUsersProvider interface { GetDMUsers() []events.DMUser; SubscribeDMUsers() <-chan events.DMUser; UnsubscribeDMUsers(<-chan events.DMUser) }`
-- [ ] add `//go:generate moq --out mocks/dm_users_provider.go --pkg mocks --with-resets --skip-ensure . DMUsersProvider` directive and run `go generate`
-- [ ] add `DMUsersProvider DMUsersProvider` field to `Config` struct
-- [ ] implement `getDMUsersHandler` — if HTMX request, render `dm_users.html` partial template; if API request, return JSON via `rest.RenderJSON` (omit `when` field from JSON — return raw timestamps only, compute relative time server-side for HTMX only)
-- [ ] implement `sseHandler` — SSE endpoint: sets `Content-Type: text/event-stream`, subscribes to DM user events, sends each new user as an SSE event with rendered HTML row fragment, unsubscribes on client disconnect (`r.Context().Done()`)
-- [ ] register routes in the web UI auth group: `GET /dm-users` for HTMX/JSON, `GET /dm-users/stream` for SSE
-- [ ] in `main.go`, wire up: `DMUsersProvider: &tgListener` when creating webapi config (after tgListener creation)
-- [ ] write test for `getDMUsersHandler` JSON response with mock DMUsersProvider
-- [ ] write test for `getDMUsersHandler` HTMX response (HX-Request header)
-- [ ] write test for `sseHandler` — mock subscriber, verify SSE event format
-- [ ] run tests: `go test -race ./app/webapi/ -run TestDMUsers`
+- [x] define `DMUsersProvider` interface in webapi.go: `type DMUsersProvider interface { GetDMUsers() []events.DMUser; SubscribeDMUsers() <-chan events.DMUser; UnsubscribeDMUsers(<-chan events.DMUser) }`
+- [x] add `//go:generate moq --out mocks/dm_users_provider.go --pkg mocks --with-resets --skip-ensure . DMUsersProvider` directive and run `go generate`
+- [x] add `DMUsersProvider DMUsersProvider` field to `Config` struct
+- [x] implement `getDMUsersHandler` — if HTMX request, render `dm_users.html` partial template; if API request, return JSON via `rest.RenderJSON` (omit `when` field from JSON — return raw timestamps only, compute relative time server-side for HTMX only)
+- [x] implement `sseHandler` — SSE endpoint: sets `Content-Type: text/event-stream`, subscribes to DM user events, sends each new user as an SSE event with rendered HTML row fragment, unsubscribes on client disconnect (`r.Context().Done()`)
+- [x] register routes in the web UI auth group: `GET /dm-users` for HTMX/JSON, `GET /dm-users/stream` for SSE
+- [x] in `main.go`, wire up: `DMUsersProvider: &tgListener` when creating webapi config (after tgListener creation)
+- [x] write test for `getDMUsersHandler` JSON response with mock DMUsersProvider
+- [x] write test for `getDMUsersHandler` HTMX response (HX-Request header)
+- [x] write test for `sseHandler` — mock subscriber, verify SSE event format
+- [x] run tests: `go test -race ./app/webapi/ -run TestDMUsers`
 
 ### Task 4: Add UI section in Bot Behavior tab
 

@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi/mocks"
@@ -2855,4 +2856,184 @@ func TestServer_ErrorResponseContentType(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
 	})
+}
+
+func TestDMUsers_getDMUsersHandlerJSON(t *testing.T) {
+	ts := time.Date(2026, 3, 31, 10, 30, 0, 0, time.UTC)
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: ts},
+				{UserID: 87654321, UserName: "alice", DisplayName: "Alice", Timestamp: ts.Add(-15 * time.Minute)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+
+	t.Run("json response", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.getDMUsersHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "application/json")
+
+		var result []struct {
+			UserID      int64     `json:"user_id"`
+			UserName    string    `json:"user_name"`
+			DisplayName string    `json:"display_name"`
+			Timestamp   time.Time `json:"timestamp"`
+		}
+		err := json.Unmarshal(rr.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.Equal(t, int64(12345678), result[0].UserID)
+		assert.Equal(t, "dkrm", result[0].UserName)
+		assert.Equal(t, "Dmitry K.", result[0].DisplayName)
+		assert.Equal(t, ts, result[0].Timestamp)
+		assert.Equal(t, int64(87654321), result[1].UserID)
+		assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		emptyProvider := &mocks.DMUsersProviderMock{
+			GetDMUsersFunc: func() []events.DMUser { return nil },
+		}
+		srv := NewServer(Config{DMUsersProvider: emptyProvider})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "[]")
+	})
+
+	t.Run("nil provider returns 503", func(t *testing.T) {
+		srv := NewServer(Config{})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	})
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: time.Now().Add(-2 * time.Minute)},
+				{UserID: 87654321, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-1 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "12345678")
+	assert.Contains(t, body, "Dmitry K.")
+	assert.Contains(t, body, "@dkrm")
+	assert.Contains(t, body, "87654321")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2m ago")
+	assert.Contains(t, body, "1h ago")
+	assert.Contains(t, body, "addSuperUser")
+	assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_Empty(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser { return nil },
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "No recent DM users")
+}
+
+func TestDMUsers_sseHandler(t *testing.T) {
+	ch := make(chan events.DMUser, 1)
+	mockProvider := &mocks.DMUsersProviderMock{
+		SubscribeDMUsersFunc:   func() <-chan events.DMUser { return ch },
+		UnsubscribeDMUsersFunc: func(_ <-chan events.DMUser) {},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody).WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	// send a user event then cancel context
+	go func() {
+		ch <- events.DMUser{UserID: 42, UserName: "testuser", DisplayName: "Test User"}
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	assert.Contains(t, body, "event: dm-user")
+	assert.Contains(t, body, "42")
+	assert.Contains(t, body, "Test User")
+	assert.Contains(t, body, "@testuser")
+	assert.Contains(t, body, "just now")
+	assert.Contains(t, body, "addSuperUser(42")
+
+	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
+	assert.Len(t, mockProvider.SubscribeDMUsersCalls(), 1)
+	assert.Len(t, mockProvider.UnsubscribeDMUsersCalls(), 1)
+}
+
+func TestDMUsers_sseHandler_NilProvider(t *testing.T) {
+	server := NewServer(Config{})
+	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody)
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+}
+
+func TestDMUsers_relativeTime(t *testing.T) {
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"just now", 30 * time.Second, "just now"},
+		{"1 minute", 1 * time.Minute, "1m ago"},
+		{"5 minutes", 5 * time.Minute, "5m ago"},
+		{"1 hour", 1 * time.Hour, "1h ago"},
+		{"3 hours", 3 * time.Hour, "3h ago"},
+		{"1 day", 25 * time.Hour, "1d ago"},
+		{"5 days", 5 * 24 * time.Hour, "5d ago"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := time.Now().Add(-tc.d)
+			assert.Equal(t, tc.want, relativeTime(ts))
+		})
+	}
+}
+
+func TestDMUsers_formatUsername(t *testing.T) {
+	assert.Equal(t, "@dkrm", formatUsername("dkrm"))
+	assert.Empty(t, formatUsername(""))
 }
