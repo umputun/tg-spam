@@ -134,8 +134,8 @@
 
 ### Task 6: [Final] Update documentation
 
-- [ ] update README.md — mention the recent bot users feature in the admin UI section
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md — mention the recent bot users feature in the admin UI section
+- [x] move this plan to `docs/plans/completed/`
 
 ## Technical Details
 

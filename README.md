@@ -704,6 +704,7 @@ If webapi server enabled (see [Running with webapi server](#running-with-webapi-
 - **Manage Samples**: Add, view, and delete spam/ham training samples
 - **Dictionary Management**: Manage stop phrases (words that trigger spam detection) and ignored words (tokens excluded from analysis)
 - **Manage Users**: View and control the approved users list
+- **Settings / Bot Behaviour**: Configure bot parameters including super-users. The "Find Your User ID" section helps admins discover their Telegram user ID — send a direct message to the bot and it appears in real-time via SSE. An "Add" button lets you append the ID to the Super Users list directly.
 
 All pages are protected by basic auth the same way as webapi server.
 
