@@ -61,22 +61,22 @@
 - Modify: `app/events/listener.go`
 - Modify: `app/events/listener_test.go`
 
-- [ ] at line ~255, extend `fromSuper` assignment: `fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) || l.isLinkedChannel(update.Message)`
-- [ ] at line ~335, extend the anonymous admin spam check skip: change `msg.SenderChat.ID == fromChat` to `msg.SenderChat.ID == fromChat || msg.SenderChat.ID == l.linkedChannelID`
-- [ ] update the comment to reflect both cases (group itself + linked channel)
-- [ ] write `TestTelegramListener_LinkedChannelBanSpam` — table-driven test with `/ban`, `/spam`, and `/warn` from linked channel (SenderChat matches LinkedChatID, From is Channel_Bot, no SuperUsers configured); verify ban request and message deletion for `/ban`, spam training for `/spam`, warning message for `/warn`
-- [ ] write `TestTelegramListener_LinkedChannelSkipsSpamCheck` — two subtests: linked channel message skips `OnMessage` call; non-linked channel message still runs spam check
-- [ ] mock `GetChatFunc` to return `tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}, LinkedChatID: -1001234567890}`
-- [ ] run tests: `go test -race ./app/events/ -run "LinkedChannel|IsLinkedChannel"` — must pass before task 3
+- [x] at line ~255, extend `fromSuper` assignment: `fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) || l.isLinkedChannel(update.Message)`
+- [x] at line ~335, extend the anonymous admin spam check skip: change `msg.SenderChat.ID == fromChat` to `msg.SenderChat.ID == fromChat || msg.SenderChat.ID == l.linkedChannelID`
+- [x] update the comment to reflect both cases (group itself + linked channel)
+- [x] write `TestTelegramListener_LinkedChannelBanSpam` — table-driven test with `/ban`, `/spam`, and `/warn` from linked channel (SenderChat matches LinkedChatID, From is Channel_Bot, no SuperUsers configured); verify ban request and message deletion for `/ban`, spam training for `/spam`, warning message for `/warn`
+- [x] write `TestTelegramListener_LinkedChannelSkipsSpamCheck` — two subtests: linked channel message skips `OnMessage` call; non-linked channel message still runs spam check
+- [x] mock `GetChatFunc` to return `tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}, LinkedChatID: -1001234567890}`
+- [x] run tests: `go test -race ./app/events/ -run "LinkedChannel|IsLinkedChannel"` — must pass before task 3
 
 ### Task 3: Verify acceptance criteria
 
-- [ ] verify linked channel can use `/ban`, `/spam`, `/warn` via tests
-- [ ] verify linked channel messages skip spam check
-- [ ] verify non-linked channels are not affected
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run linter: `golangci-lint run`
-- [ ] run comment normaliser: `unfuck-ai-comments run --fmt --skip=mocks ./...`
+- [x] verify linked channel can use `/ban`, `/spam`, `/warn` via tests
+- [x] verify linked channel messages skip spam check
+- [x] verify non-linked channels are not affected
+- [x] run full test suite: `go test -race ./...`
+- [x] run linter: `golangci-lint run`
+- [x] run comment normaliser: `unfuck-ai-comments run --fmt --skip=mocks ./...`
 
 ### Task 4: [Final] Update documentation
 

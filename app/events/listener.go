@@ -251,8 +251,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-			// handle spam reports from superusers
-			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID)
+			// handle spam reports from superusers and linked channel
+			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) ||
+				l.isLinkedChannel(update.Message)
 			if update.Message.ReplyToMessage != nil && fromSuper {
 				if l.procSuperReply(update) {
 					// superuser command processed, skip the rest
@@ -329,10 +330,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 
-	// skip spam check for anonymous admin posts from this group
-	// when admins post "as the group", SenderChat.ID equals the group's chat ID
-	if msg.SenderChat.ID != 0 && msg.SenderChat.ID == fromChat {
-		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself")
+	// skip spam check for anonymous admin posts from this group or from the linked channel.
+	// when admins post "as the group", SenderChat.ID equals the group's chat ID;
+	// when the linked channel posts, SenderChat.ID equals the linked channel ID.
+	if msg.SenderChat.ID != 0 && (msg.SenderChat.ID == fromChat || msg.SenderChat.ID == l.linkedChannelID) {
+		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself or linked channel")
 		return nil
 	}
 
