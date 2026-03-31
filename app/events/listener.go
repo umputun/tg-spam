@@ -53,6 +53,7 @@ type TelegramListener struct {
 
 	adminHandler    *admin
 	reportsHandler  *userReports
+	dmUsers         dmUsers // recent DM senders, stored in memory for admin UI
 	chatID          int64
 	adminChatID     int64
 	linkedChannelID int64 // channel linked to the discussion group, resolved at startup
@@ -61,6 +62,21 @@ type TelegramListener struct {
 		once sync.Once
 		ch   chan bot.Response
 	}
+}
+
+// GetDMUsers returns the list of recent DM senders
+func (l *TelegramListener) GetDMUsers() []DMUser {
+	return l.dmUsers.List()
+}
+
+// SubscribeDMUsers returns a channel that receives new DM users as they are added
+func (l *TelegramListener) SubscribeDMUsers() <-chan DMUser {
+	return l.dmUsers.Subscribe()
+}
+
+// UnsubscribeDMUsers removes a subscriber channel
+func (l *TelegramListener) UnsubscribeDMUsers(ch <-chan DMUser) {
+	l.dmUsers.Unsubscribe(ch)
 }
 
 // Do process all events, blocked call
@@ -302,6 +318,21 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if errJSON != nil {
 		return fmt.Errorf("failed to marshal update.Message to json: %w", errJSON)
 	}
+
+	// intercept private (DM) messages before any other processing.
+	// stores the sender info for the admin UI and silently drops the message.
+	if update.Message.Chat.Type == "private" {
+		from := update.Message.From
+		displayName := strings.TrimSpace(from.FirstName + " " + from.LastName)
+		l.dmUsers.Add(DMUser{
+			UserID:      from.ID,
+			UserName:    from.UserName,
+			DisplayName: displayName,
+			Timestamp:   time.Now(),
+		})
+		return nil
+	}
+
 	fromChat := update.Message.Chat.ID
 	// ignore messages from other chats except the one we are monitor and ones from the test list
 	if !l.isChatAllowed(fromChat) {
