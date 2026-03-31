@@ -4221,6 +4221,29 @@ func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
 		require.Len(t, users, 1)
 		assert.Equal(t, "Alice", users[0].DisplayName)
 	})
+
+	t.Run("nil From in private chat does not panic", func(t *testing.T) {
+		l3 := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "123",
+			Locator:    locatorMock,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 666, Type: "private"},
+				Text: "hello",
+				From: nil,
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		err := l3.procEvents(update)
+		require.NoError(t, err)
+		assert.Empty(t, l3.GetDMUsers())
+	})
 }
 
 func TestTelegramListener_PrivateChatViaDoLoop(t *testing.T) {
@@ -4312,8 +4335,13 @@ func TestTelegramListener_DMUsersMethods(t *testing.T) {
 
 		l.UnsubscribeDMUsers(ch)
 
-		// channel should be closed after unsubscribe
-		_, ok := <-ch
-		assert.False(t, ok, "channel should be closed after unsubscribe")
+		// after unsubscribe, new additions should not be delivered
+		l.dmUsers.Add(DMUser{UserID: 2, UserName: "other", Timestamp: time.Now()})
+		select {
+		case <-ch:
+			t.Fatal("should not receive after unsubscribe")
+		case <-time.After(50 * time.Millisecond):
+			// expected: no delivery
+		}
 	})
 }

@@ -20,7 +20,7 @@ type DMUser struct {
 type dmUsers struct {
 	mu          sync.RWMutex
 	users       []DMUser
-	subscribers map[chan DMUser]struct{}
+	subscribers map[<-chan DMUser]chan DMUser
 }
 
 // Add stores or updates a DM user. If the user already exists (by UserID),
@@ -47,7 +47,7 @@ func (d *dmUsers) Add(user DMUser) {
 
 	// snapshot subscribers while holding the lock
 	subs := make([]chan DMUser, 0, len(d.subscribers))
-	for ch := range d.subscribers {
+	for _, ch := range d.subscribers {
 		subs = append(subs, ch)
 	}
 	d.mu.Unlock()
@@ -77,22 +77,16 @@ func (d *dmUsers) Subscribe() <-chan DMUser {
 	defer d.mu.Unlock()
 	ch := make(chan DMUser, 10)
 	if d.subscribers == nil {
-		d.subscribers = make(map[chan DMUser]struct{})
+		d.subscribers = make(map[<-chan DMUser]chan DMUser)
 	}
-	d.subscribers[ch] = struct{}{}
+	d.subscribers[ch] = ch
 	return ch
 }
 
-// Unsubscribe removes a subscriber channel and closes it.
+// Unsubscribe removes a subscriber channel. The channel is not closed because
+// a concurrent Add may still be sending on it after snapshotting subscribers.
 func (d *dmUsers) Unsubscribe(ch <-chan DMUser) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	// find the matching channel in subscribers map
-	for sub := range d.subscribers {
-		if sub == ch {
-			delete(d.subscribers, sub)
-			close(sub)
-			return
-		}
-	}
+	delete(d.subscribers, ch)
 }

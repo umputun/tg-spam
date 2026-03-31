@@ -322,6 +322,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	// intercept private (DM) messages before any other processing.
 	// stores the sender info for the admin UI and silently drops the message.
 	if update.Message.Chat.Type == "private" {
+		if update.Message.From == nil {
+			return nil
+		}
 		from := update.Message.From
 		displayName := strings.TrimSpace(from.FirstName + " " + from.LastName)
 		l.dmUsers.Add(DMUser{

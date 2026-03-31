@@ -3,6 +3,7 @@
 <head>
     <title>Settings - TG-Spam</title>
     {{template "heads.html"}}
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 <body>
 
@@ -270,6 +271,71 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- find your user ID section -->
+            <div class="mt-3">
+                <button class="btn btn-outline-info" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#dm-users-panel" aria-expanded="false" aria-controls="dm-users-panel">
+                    <i class="bi bi-info-circle me-1"></i>Don't know your ID? Message the bot!
+                </button>
+                <div class="collapse mt-2" id="dm-users-panel">
+                    <div class="card card-body">
+                        <p class="mb-2"><strong>How to find your Telegram User ID:</strong></p>
+                        <ol class="mb-3">
+                            <li>Open Telegram</li>
+                            <li>Find the bot and open a chat with it</li>
+                            <li>Send any message</li>
+                            <li>Your ID will appear in the table below</li>
+                        </ol>
+                        <div hx-get="/dm-users" hx-trigger="intersect once" hx-swap="innerHTML">
+                            <div class="text-center text-muted py-3">
+                                <span class="spinner-border spinner-border-sm me-1"></span> Loading...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            function addSuperUser(userId, btn) {
+                // try textarea first (editable settings), fall back to clipboard copy (read-only settings)
+                var textarea = document.getElementById('super-users');
+                if (textarea) {
+                    var current = textarea.value.trim();
+                    var ids = current ? current.split(',').map(function(s) { return s.trim(); }) : [];
+                    if (ids.indexOf(String(userId)) !== -1) {
+                        if (btn) { btn.textContent = 'Already added'; setTimeout(function() { btn.textContent = 'Copy ID'; }, 2000); }
+                        return;
+                    }
+                    textarea.value = current ? current + ', ' + userId : String(userId);
+                    if (btn) {
+                        btn.textContent = 'Added!';
+                        btn.classList.add('btn-success');
+                        setTimeout(function() { btn.textContent = 'Copy ID'; btn.classList.remove('btn-success'); }, 2000);
+                    }
+                    return;
+                }
+                // no textarea available — copy user ID to clipboard
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(String(userId)).then(function() {
+                        if (btn) {
+                            btn.textContent = 'Copied!';
+                            btn.classList.add('btn-success');
+                            setTimeout(function() { btn.textContent = 'Copy ID'; btn.classList.remove('btn-success'); }, 2000);
+                        }
+                    }).catch(function() {
+                        if (btn) {
+                            btn.textContent = 'Failed to copy';
+                            setTimeout(function() { btn.textContent = 'Copy ID'; }, 2000);
+                        }
+                    });
+                } else if (btn) {
+                    btn.textContent = 'Failed to copy';
+                    setTimeout(function() { btn.textContent = 'Copy ID'; }, 2000);
+                }
+                return;
+            }
+            </script>
         </div>
         
         <!-- System Settings -->

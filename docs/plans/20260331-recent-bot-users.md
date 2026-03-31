@@ -105,32 +105,32 @@
 - Create: `app/webapi/assets/components/dm_users.html`
 - Modify: `app/webapi/assets/settings.html`
 
-- [ ] create `dm_users.html` partial template — table with columns: ID, Display Name, Username, When (relative time); each row has an "Add" button; empty state shows friendly instructions
-- [ ] the partial template should format timestamps as relative (e.g. "2m ago") — compute in the Go handler and pass as a string field
-- [ ] in `settings.html` Bot Behavior tab (after Super Users row): add a collapsible "Find Your User ID" section:
+- [x] create `dm_users.html` partial template — table with columns: ID, Display Name, Username, When (relative time); each row has an "Add" button; empty state shows friendly instructions
+- [x] the partial template should format timestamps as relative (e.g. "2m ago") — compute in the Go handler and pass as a string field
+- [x] in `settings.html` Bot Behavior tab (after Super Users row): add a collapsible "Find Your User ID" section:
   - a friendly guide button: `"Don't know your ID? Message the bot!"` with an info icon
   - clicking the button reveals (Bootstrap collapse) a panel with:
     - step-by-step instructions: "1. Open Telegram 2. Find the bot (@botname) 3. Send any message 4. Your ID will appear below"
     - the DM users table container, loaded via HTMX `hx-get="/dm-users"` on reveal
     - SSE connection via HTMX `hx-ext="sse"` `sse-connect="/dm-users/stream"` for real-time updates — new rows appear automatically
-- [ ] add inline `<script>` with `addSuperUser(userId)` function: reads Super Users textarea value, trims, checks if ID already present, appends with comma if needed; after adding, show brief visual feedback (e.g. button text changes to "Added!" for 2s)
-- [ ] each "Add" button in the partial calls `addSuperUser(id)` via `onclick`
-- [ ] SSE events append new rows to the table body using HTMX SSE swap (`sse-swap="dm-user"` on tbody)
-- [ ] verify the settings handler loads the `dm_users.html` partial via `{{template}}` or as a standalone parsed template
-- [ ] write test that `getDMUsersHandler` with HTMX header renders valid HTML containing expected user data
-- [ ] write test that settings page Bot Behavior tab contains the collapsible section with HTMX/SSE attributes
-- [ ] run tests: `go test -race ./app/webapi/ -run TestDMUsers`
+- [x] add inline `<script>` with `addSuperUser(userId)` function: reads Super Users textarea value, trims, checks if ID already present, appends with comma if needed; after adding, show brief visual feedback (e.g. button text changes to "Added!" for 2s)
+- [x] each "Add" button in the partial calls `addSuperUser(id)` via `onclick`
+- [x] SSE events append new rows to the table body using HTMX SSE swap (`sse-swap="dm-user"` on tbody)
+- [x] verify the settings handler loads the `dm_users.html` partial via `{{template}}` or as a standalone parsed template
+- [x] write test that `getDMUsersHandler` with HTMX header renders valid HTML containing expected user data
+- [x] write test that settings page Bot Behavior tab contains the collapsible section with HTMX/SSE attributes
+- [x] run tests: `go test -race ./app/webapi/ -run TestDMUsers`
 
 ### Task 5: Verify acceptance criteria
 
-- [ ] verify DM to bot stores user info silently (no reply)
-- [ ] verify admin UI shows recent DM users in Bot Behavior tab
-- [ ] verify Add button appends user ID to Super Users textarea correctly
-- [ ] verify dedup: same user DM twice shows once with updated timestamp
-- [ ] verify cap: more than 50 DM users drops oldest
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run linter: `golangci-lint run`
-- [ ] normalize comments: `unfuck-ai-comments run --fmt --skip=mocks ./...`
+- [x] verify DM to bot stores user info silently (no reply)
+- [x] verify admin UI shows recent DM users in Bot Behavior tab
+- [x] verify Add button appends user ID to Super Users textarea correctly
+- [x] verify dedup: same user DM twice shows once with updated timestamp
+- [x] verify cap: more than 50 DM users drops oldest
+- [x] run full test suite: `go test -race ./...`
+- [x] run linter: `golangci-lint run`
+- [x] normalize comments: `unfuck-ai-comments run --fmt --skip=mocks ./...`
 
 ### Task 6: [Final] Update documentation
 

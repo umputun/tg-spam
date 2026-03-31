@@ -1043,22 +1043,38 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	// disable write deadline for SSE — the default server WriteTimeout would kill the connection
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	ch := s.DMUsersProvider.SubscribeDMUsers()
 	defer s.DMUsersProvider.UnsubscribeDMUsers(ch)
+
+	keepalive := time.NewTicker(3 * time.Second)
+	defer keepalive.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-keepalive.C:
+			// send SSE comment to keep connection alive through proxies
+			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case user, ok := <-ch:
 			if !ok {
 				return
 			}
-			// render a table row fragment for HTMX sse-swap
+			// render a table row fragment for HTMX sse-swap;
+			// strip newlines to prevent breaking the SSE data line
+			displayName := strings.ReplaceAll(user.DisplayName, "\n", " ")
+			userName := strings.ReplaceAll(user.UserName, "\n", " ")
 			row := fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%s</td><td>just now</td>"+
-				"<td><button onclick=\"addSuperUser(%d, this)\">Add</button></td></tr>",
-				user.UserID, template.HTMLEscapeString(user.DisplayName),
-				template.HTMLEscapeString(formatUsername(user.UserName)),
+				"<td><button class=\"btn btn-sm btn-outline-primary\" onclick=\"addSuperUser(%d, this)\">Copy ID</button></td></tr>",
+				user.UserID, template.HTMLEscapeString(displayName),
+				template.HTMLEscapeString(formatUsername(userName)),
 				user.UserID)
 			fmt.Fprintf(w, "event: dm-user\ndata: %s\n\n", row)
 			flusher.Flush()
@@ -1074,30 +1090,23 @@ func formatUsername(userName string) string {
 	return "@" + userName
 }
 
-// relativeTime formats a timestamp as a human-readable relative time string
-func relativeTime(t time.Time) string {
-	d := time.Since(t)
+// relativeTime formats a timestamp as a human-readable relative time string.
+// accepts an optional reference time; if omitted, uses time.Now().
+func relativeTime(t time.Time, now ...time.Time) string {
+	ref := time.Now()
+	if len(now) > 0 {
+		ref = now[0]
+	}
+	d := ref.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"
 	case d < time.Hour:
-		m := int(d.Minutes())
-		if m == 1 {
-			return "1m ago"
-		}
-		return fmt.Sprintf("%dm ago", m)
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		h := int(d.Hours())
-		if h == 1 {
-			return "1h ago"
-		}
-		return fmt.Sprintf("%dh ago", h)
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	default:
-		days := int(d.Hours() / 24)
-		if days == 1 {
-			return "1d ago"
-		}
-		return fmt.Sprintf("%dd ago", days)
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
 

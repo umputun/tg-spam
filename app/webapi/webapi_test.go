@@ -3002,6 +3002,41 @@ func TestDMUsers_sseHandler(t *testing.T) {
 	assert.Len(t, mockProvider.UnsubscribeDMUsersCalls(), 1)
 }
 
+func TestDMUsers_sseHandler_XSSEscape(t *testing.T) {
+	ch := make(chan events.DMUser, 1)
+	mockProvider := &mocks.DMUsersProviderMock{
+		SubscribeDMUsersFunc:   func() <-chan events.DMUser { return ch },
+		UnsubscribeDMUsersFunc: func(_ <-chan events.DMUser) {},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody).WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	go func() {
+		ch <- events.DMUser{
+			UserID:      99,
+			UserName:    `<script>alert("xss")</script>`,
+			DisplayName: `Bob<img src=x onerror=alert(1)>`,
+		}
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	// raw HTML must not appear — it should be escaped
+	assert.NotContains(t, body, `<script>`)
+	assert.NotContains(t, body, `<img`)
+	assert.Contains(t, body, "&lt;script&gt;")
+	assert.Contains(t, body, "&lt;img")
+}
+
 func TestDMUsers_sseHandler_NilProvider(t *testing.T) {
 	server := NewServer(Config{})
 	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody)
@@ -3012,6 +3047,7 @@ func TestDMUsers_sseHandler_NilProvider(t *testing.T) {
 }
 
 func TestDMUsers_relativeTime(t *testing.T) {
+	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name string
 		d    time.Duration
@@ -3027,8 +3063,8 @@ func TestDMUsers_relativeTime(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ts := time.Now().Add(-tc.d)
-			assert.Equal(t, tc.want, relativeTime(ts))
+			ts := now.Add(-tc.d)
+			assert.Equal(t, tc.want, relativeTime(ts, now))
 		})
 	}
 }
@@ -3036,4 +3072,93 @@ func TestDMUsers_relativeTime(t *testing.T) {
 func TestDMUsers_formatUsername(t *testing.T) {
 	assert.Equal(t, "@dkrm", formatUsername("dkrm"))
 	assert.Empty(t, formatUsername(""))
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 111, UserName: "bob", DisplayName: "Bob Smith", Timestamp: time.Now().Add(-5 * time.Minute)},
+				{UserID: 222, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-2 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify valid table structure
+	assert.Contains(t, body, "<table")
+	assert.Contains(t, body, "<thead>")
+	assert.Contains(t, body, `<tbody id="dm-users-tbody">`)
+	assert.Contains(t, body, "</table>")
+
+	// verify user data is rendered
+	assert.Contains(t, body, "111")
+	assert.Contains(t, body, "Bob Smith")
+	assert.Contains(t, body, "@bob")
+	assert.Contains(t, body, "5m ago")
+	assert.Contains(t, body, "222")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2h ago")
+
+	// verify Copy ID buttons with addSuperUser calls (Go templates insert spaces around integer args)
+	assert.Contains(t, body, "addSuperUser( 111 , this)")
+	assert.Contains(t, body, "addSuperUser( 222 , this)")
+	assert.Contains(t, body, "Copy ID")
+
+	// verify SSE wrapper is present in the dm_users.html response
+	assert.Contains(t, body, `hx-ext="sse"`)
+	assert.Contains(t, body, `sse-connect="/dm-users/stream"`)
+	assert.Contains(t, body, `sse-swap="dm-user"`)
+	assert.Contains(t, body, `hx-target="#dm-users-tbody"`)
+}
+
+func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{
+		GetLuaPluginNamesFunc: func() []string { return nil },
+	}
+
+	server := NewServer(Config{
+		Version:  "1.0",
+		Detector: detectorMock,
+		Settings: Settings{SuperUsers: []string{"admin1"}},
+	})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.htmlSettingsHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify collapsible section exists with guide button
+	assert.Contains(t, body, `id="dm-users-panel"`)
+	assert.Contains(t, body, "Don't know your ID? Message the bot!")
+	assert.Contains(t, body, `data-bs-toggle="collapse"`)
+	assert.Contains(t, body, `data-bs-target="#dm-users-panel"`)
+
+	// verify step-by-step instructions
+	assert.Contains(t, body, "How to find your Telegram User ID")
+	assert.Contains(t, body, "Open Telegram")
+	assert.Contains(t, body, "Send any message")
+	assert.Contains(t, body, "Your ID will appear in the table below")
+
+	// verify HTMX lazy-load trigger for DM users; SSE attributes are in dm_users.html,
+	// loaded only when the panel is opened (not eagerly on page load)
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.NotContains(t, body, `sse-connect="/dm-users/stream"`, "SSE should not be in settings page")
+
+	// verify addSuperUser JS function
+	assert.Contains(t, body, "function addSuperUser(userId, btn)")
+	assert.Contains(t, body, `getElementById('super-users')`)
 }

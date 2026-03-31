@@ -134,9 +134,14 @@ func TestDMUsers_Subscribe(t *testing.T) {
 		ch := d.Subscribe()
 		d.Unsubscribe(ch)
 
-		// channel should be closed after unsubscribe
-		_, ok := <-ch
-		assert.False(t, ok, "channel should be closed after unsubscribe")
+		// after unsubscribe, new additions should not be delivered
+		d.Add(DMUser{UserID: 77, Timestamp: time.Now()})
+		select {
+		case <-ch:
+			t.Fatal("should not receive after unsubscribe")
+		case <-time.After(50 * time.Millisecond):
+			// expected: no delivery
+		}
 	})
 
 	t.Run("multiple subscribers", func(t *testing.T) {
