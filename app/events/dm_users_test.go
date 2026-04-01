@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDMUsers_Add(t *testing.T) {
@@ -108,91 +107,5 @@ func TestDMUsers_List(t *testing.T) {
 		users := d.List()
 		assert.Empty(t, users)
 		assert.NotNil(t, users)
-	})
-}
-
-func TestDMUsers_Subscribe(t *testing.T) {
-	t.Run("subscriber receives new users", func(t *testing.T) {
-		var d dmUsers
-		ch := d.Subscribe()
-		defer d.Unsubscribe(ch)
-
-		user := DMUser{UserID: 42, UserName: "alice", Timestamp: time.Now()}
-		d.Add(user)
-
-		select {
-		case received := <-ch:
-			assert.Equal(t, int64(42), received.UserID)
-			assert.Equal(t, "alice", received.UserName)
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for subscriber notification")
-		}
-	})
-
-	t.Run("unsubscribe stops delivery", func(t *testing.T) {
-		var d dmUsers
-		ch := d.Subscribe()
-		d.Unsubscribe(ch)
-
-		// after unsubscribe, new additions should not be delivered
-		d.Add(DMUser{UserID: 77, Timestamp: time.Now()})
-		select {
-		case <-ch:
-			t.Fatal("should not receive after unsubscribe")
-		case <-time.After(50 * time.Millisecond):
-			// expected: no delivery
-		}
-	})
-
-	t.Run("multiple subscribers", func(t *testing.T) {
-		var d dmUsers
-		ch1 := d.Subscribe()
-		ch2 := d.Subscribe()
-		defer d.Unsubscribe(ch1)
-		defer d.Unsubscribe(ch2)
-
-		user := DMUser{UserID: 99, UserName: "bob", Timestamp: time.Now()}
-		d.Add(user)
-
-		for i, ch := range []<-chan DMUser{ch1, ch2} {
-			select {
-			case received := <-ch:
-				assert.Equal(t, int64(99), received.UserID, "subscriber %d should receive the user", i)
-			case <-time.After(time.Second):
-				t.Fatalf("subscriber %d timed out waiting for notification", i)
-			}
-		}
-	})
-
-	t.Run("unsubscribe unknown channel is no-op", func(t *testing.T) {
-		var d dmUsers
-		unknownCh := make(chan DMUser)
-		require.NotPanics(t, func() {
-			d.Unsubscribe(unknownCh)
-		})
-	})
-
-	t.Run("slow subscriber does not block", func(t *testing.T) {
-		var d dmUsers
-		ch := d.Subscribe()
-		defer d.Unsubscribe(ch)
-
-		// fill the buffer (channel has buffer of 10)
-		for i := range 15 {
-			d.Add(DMUser{UserID: int64(i), Timestamp: time.Now()})
-		}
-
-		// should not block, just drain what we can
-		count := 0
-		for {
-			select {
-			case <-ch:
-				count++
-			default:
-				goto done
-			}
-		}
-	done:
-		assert.Equal(t, 10, count, "should receive only buffered messages")
 	})
 }

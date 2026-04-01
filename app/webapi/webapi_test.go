@@ -2965,87 +2965,6 @@ func TestDMUsers_getDMUsersHandlerHTMX_Empty(t *testing.T) {
 	assert.Contains(t, body, "No recent DM users")
 }
 
-func TestDMUsers_sseHandler(t *testing.T) {
-	ch := make(chan events.DMUser, 1)
-	mockProvider := &mocks.DMUsersProviderMock{
-		SubscribeDMUsersFunc:   func() <-chan events.DMUser { return ch },
-		UnsubscribeDMUsersFunc: func(_ <-chan events.DMUser) {},
-	}
-
-	server := NewServer(Config{DMUsersProvider: mockProvider})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody).WithContext(ctx)
-	rr := httptest.NewRecorder()
-
-	// send a user event then cancel context
-	go func() {
-		ch <- events.DMUser{UserID: 42, UserName: "testuser", DisplayName: "Test User"}
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-
-	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
-
-	body := rr.Body.String()
-	assert.Contains(t, body, "event: dm-user")
-	assert.Contains(t, body, "42")
-	assert.Contains(t, body, "Test User")
-	assert.Contains(t, body, "@testuser")
-	assert.Contains(t, body, "just now")
-	assert.Contains(t, body, "addSuperUser(42")
-
-	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
-	assert.Len(t, mockProvider.SubscribeDMUsersCalls(), 1)
-	assert.Len(t, mockProvider.UnsubscribeDMUsersCalls(), 1)
-}
-
-func TestDMUsers_sseHandler_XSSEscape(t *testing.T) {
-	ch := make(chan events.DMUser, 1)
-	mockProvider := &mocks.DMUsersProviderMock{
-		SubscribeDMUsersFunc:   func() <-chan events.DMUser { return ch },
-		UnsubscribeDMUsersFunc: func(_ <-chan events.DMUser) {},
-	}
-
-	server := NewServer(Config{DMUsersProvider: mockProvider})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody).WithContext(ctx)
-	rr := httptest.NewRecorder()
-
-	go func() {
-		ch <- events.DMUser{
-			UserID:      99,
-			UserName:    `<script>alert("xss")</script>`,
-			DisplayName: `Bob<img src=x onerror=alert(1)>`,
-		}
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-
-	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
-
-	body := rr.Body.String()
-	// raw HTML must not appear — it should be escaped
-	assert.NotContains(t, body, `<script>`)
-	assert.NotContains(t, body, `<img`)
-	assert.Contains(t, body, "&lt;script&gt;")
-	assert.Contains(t, body, "&lt;img")
-}
-
-func TestDMUsers_sseHandler_NilProvider(t *testing.T) {
-	server := NewServer(Config{})
-	req := httptest.NewRequest("GET", "/dm-users/stream", http.NoBody)
-	rr := httptest.NewRecorder()
-	http.HandlerFunc(server.sseHandler).ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
-}
-
 func TestDMUsers_relativeTime(t *testing.T) {
 	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
@@ -3096,7 +3015,7 @@ func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
 	// verify valid table structure
 	assert.Contains(t, body, "<table")
 	assert.Contains(t, body, "<thead>")
-	assert.Contains(t, body, `<tbody id="dm-users-tbody">`)
+	assert.Contains(t, body, "<tbody>")
 	assert.Contains(t, body, "</table>")
 
 	// verify user data is rendered
@@ -3113,11 +3032,10 @@ func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
 	assert.Contains(t, body, "addSuperUser( 222 , this)")
 	assert.Contains(t, body, "Copy ID")
 
-	// verify SSE wrapper is present in the dm_users.html response
-	assert.Contains(t, body, `hx-ext="sse"`)
-	assert.Contains(t, body, `sse-connect="/dm-users/stream"`)
-	assert.Contains(t, body, `sse-swap="dm-user"`)
-	assert.Contains(t, body, `hx-target="#dm-users-tbody"`)
+	// verify refresh button is present
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.Contains(t, body, `hx-target="#dm-users-container"`)
+	assert.Contains(t, body, "Refresh")
 }
 
 func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
@@ -3149,9 +3067,9 @@ func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
 
 	// verify step-by-step instructions
 	assert.Contains(t, body, "How to find your Telegram User ID")
-	assert.Contains(t, body, "Open Telegram")
+	assert.Contains(t, body, "Open a chat with the bot")
 	assert.Contains(t, body, "Send any message")
-	assert.Contains(t, body, "Your ID will appear in the table below")
+	assert.Contains(t, body, "your ID will appear in the table")
 
 	// verify HTMX lazy-load trigger for DM users; SSE attributes are in dm_users.html,
 	// loaded only when the panel is opened (not eagerly on page load)

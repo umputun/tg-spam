@@ -74,6 +74,7 @@ type Config struct {
 // Settings contains all application settings
 type Settings struct {
 	InstanceID               string        `json:"instance_id"`
+	BotUsername              string        `json:"bot_username"`
 	PrimaryGroup             string        `json:"primary_group"`
 	AdminGroup               string        `json:"admin_group"`
 	DisableAdminSpamForward  bool          `json:"disable_admin_spam_forward"`
@@ -176,8 +177,6 @@ type Dictionary interface {
 // DMUsersProvider provides access to recent DM users for the admin UI
 type DMUsersProvider interface {
 	GetDMUsers() []events.DMUser
-	SubscribeDMUsers() <-chan events.DMUser
-	UnsubscribeDMUsers(<-chan events.DMUser)
 }
 
 // NewServer creates a new web API server.
@@ -290,7 +289,6 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
 		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
 		webUI.HandleFunc("GET /dm-users", s.getDMUsersHandler)                    // get recent DM users (HTMX/JSON)
-		webUI.HandleFunc("GET /dm-users/stream", s.sseHandler)                    // SSE stream for DM user events
 
 		// handle logout - force Basic Auth re-authentication
 		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
@@ -1022,63 +1020,6 @@ func (s *Server) getDMUsersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[WARN] can't execute dm_users template: %v", err)
 		http.Error(w, "Error rendering template", http.StatusInternalServerError)
 		return
-	}
-}
-
-// sseHandler handles GET /dm-users/stream. It establishes an SSE connection and pushes
-// new DM user events as rendered HTML table row fragments.
-func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
-	if s.DMUsersProvider == nil {
-		http.Error(w, "DM users provider not configured", http.StatusServiceUnavailable)
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	// disable write deadline for SSE — the default server WriteTimeout would kill the connection
-	rc := http.NewResponseController(w)
-	_ = rc.SetWriteDeadline(time.Time{})
-
-	ch := s.DMUsersProvider.SubscribeDMUsers()
-	defer s.DMUsersProvider.UnsubscribeDMUsers(ch)
-
-	keepalive := time.NewTicker(3 * time.Second)
-	defer keepalive.Stop()
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-keepalive.C:
-			// send SSE comment to keep connection alive through proxies
-			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		case user, ok := <-ch:
-			if !ok {
-				return
-			}
-			// render a table row fragment for HTMX sse-swap;
-			// strip newlines to prevent breaking the SSE data line
-			displayName := strings.ReplaceAll(user.DisplayName, "\n", " ")
-			userName := strings.ReplaceAll(user.UserName, "\n", " ")
-			row := fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%s</td><td>just now</td>"+
-				"<td><button class=\"btn btn-sm btn-outline-primary\" onclick=\"addSuperUser(%d, this)\">Copy ID</button></td></tr>",
-				user.UserID, template.HTMLEscapeString(displayName),
-				template.HTMLEscapeString(formatUsername(userName)),
-				user.UserID)
-			fmt.Fprintf(w, "event: dm-user\ndata: %s\n\n", row)
-			flusher.Flush()
-		}
 	}
 }
 

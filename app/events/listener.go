@@ -69,16 +69,6 @@ func (l *TelegramListener) GetDMUsers() []DMUser {
 	return l.dmUsers.List()
 }
 
-// SubscribeDMUsers returns a channel that receives new DM users as they are added
-func (l *TelegramListener) SubscribeDMUsers() <-chan DMUser {
-	return l.dmUsers.Subscribe()
-}
-
-// UnsubscribeDMUsers removes a subscriber channel
-func (l *TelegramListener) UnsubscribeDMUsers(ch <-chan DMUser) {
-	l.dmUsers.Unsubscribe(ch)
-}
-
 // Do process all events, blocked call
 func (l *TelegramListener) Do(ctx context.Context) error {
 	log.Printf("[INFO] start telegram listener for %q", l.Group)

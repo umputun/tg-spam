@@ -4312,36 +4312,7 @@ func TestTelegramListener_PrivateChatViaDoLoop(t *testing.T) {
 
 func TestTelegramListener_DMUsersMethods(t *testing.T) {
 	l := TelegramListener{}
-
-	t.Run("GetDMUsers returns empty list initially", func(t *testing.T) {
-		users := l.GetDMUsers()
-		assert.Empty(t, users)
-		assert.NotNil(t, users)
-	})
-
-	t.Run("subscribe and unsubscribe", func(t *testing.T) {
-		ch := l.SubscribeDMUsers()
-		require.NotNil(t, ch)
-
-		// add a user directly to trigger notification
-		l.dmUsers.Add(DMUser{UserID: 1, UserName: "test", Timestamp: time.Now()})
-
-		select {
-		case user := <-ch:
-			assert.Equal(t, int64(1), user.UserID)
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for DM user notification")
-		}
-
-		l.UnsubscribeDMUsers(ch)
-
-		// after unsubscribe, new additions should not be delivered
-		l.dmUsers.Add(DMUser{UserID: 2, UserName: "other", Timestamp: time.Now()})
-		select {
-		case <-ch:
-			t.Fatal("should not receive after unsubscribe")
-		case <-time.After(50 * time.Millisecond):
-			// expected: no delivery
-		}
-	})
+	users := l.GetDMUsers()
+	assert.Empty(t, users)
+	assert.NotNil(t, users)
 }

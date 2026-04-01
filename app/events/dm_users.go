@@ -18,16 +18,15 @@ type DMUser struct {
 // dmUsers stores recent DM senders in memory with concurrent-safe access.
 // entries are sorted by timestamp descending and capped at maxDMUsers.
 type dmUsers struct {
-	mu          sync.RWMutex
-	users       []DMUser
-	subscribers map[<-chan DMUser]chan DMUser
+	mu    sync.RWMutex
+	users []DMUser
 }
 
 // Add stores or updates a DM user. If the user already exists (by UserID),
-// the entry is updated with the new timestamp and details. After adding,
-// all SSE subscribers are notified.
+// the entry is updated with the new timestamp and details.
 func (d *dmUsers) Add(user DMUser) {
 	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	// dedup: remove existing entry with same UserID
 	for i, u := range d.users {
@@ -44,22 +43,6 @@ func (d *dmUsers) Add(user DMUser) {
 	if len(d.users) > maxDMUsers {
 		d.users = d.users[:maxDMUsers]
 	}
-
-	// snapshot subscribers while holding the lock
-	subs := make([]chan DMUser, 0, len(d.subscribers))
-	for _, ch := range d.subscribers {
-		subs = append(subs, ch)
-	}
-	d.mu.Unlock()
-
-	// notify subscribers without holding the lock
-	for _, ch := range subs {
-		select {
-		case ch <- user:
-		default:
-			// subscriber is slow, skip
-		}
-	}
 }
 
 // List returns a copy of the stored DM users, sorted by timestamp descending.
@@ -69,24 +52,4 @@ func (d *dmUsers) List() []DMUser {
 	result := make([]DMUser, len(d.users))
 	copy(result, d.users)
 	return result
-}
-
-// Subscribe returns a channel that receives new DM users as they are added.
-func (d *dmUsers) Subscribe() <-chan DMUser {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	ch := make(chan DMUser, 10)
-	if d.subscribers == nil {
-		d.subscribers = make(map[<-chan DMUser]chan DMUser)
-	}
-	d.subscribers[ch] = ch
-	return ch
-}
-
-// Unsubscribe removes a subscriber channel. The channel is not closed because
-// a concurrent Add may still be sending on it after snapshotting subscribers.
-func (d *dmUsers) Unsubscribe(ch <-chan DMUser) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.subscribers, ch)
 }

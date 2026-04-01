@@ -3,7 +3,6 @@
 <head>
     <title>Settings - TG-Spam</title>
     {{template "heads.html"}}
-    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 <body>
 
@@ -282,12 +281,11 @@
                     <div class="card card-body">
                         <p class="mb-2"><strong>How to find your Telegram User ID:</strong></p>
                         <ol class="mb-3">
-                            <li>Open Telegram</li>
-                            <li>Find the bot and open a chat with it</li>
+                            <li>Open a chat with the bot: {{if .BotUsername}}<a href="https://t.me/{{.BotUsername}}" target="_blank">t.me/{{.BotUsername}}</a>{{else}}find the bot in Telegram{{end}}</li>
                             <li>Send any message</li>
-                            <li>Your ID will appear in the table below</li>
+                            <li>Click <strong>Refresh</strong> below — your ID will appear in the table</li>
                         </ol>
-                        <div hx-get="/dm-users" hx-trigger="intersect once" hx-swap="innerHTML">
+                        <div id="dm-users-container" hx-get="/dm-users" hx-trigger="intersect once" hx-swap="innerHTML">
                             <div class="text-center text-muted py-3">
                                 <span class="spinner-border spinner-border-sm me-1"></span> Loading...
                             </div>

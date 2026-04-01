@@ -319,7 +319,7 @@ func execute(ctx context.Context, opts options) error {
 	// activate web server if enabled, server-only mode (no telegram token)
 	if opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
 		// server starts in background goroutine without DM users provider
-		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, nil); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, nil, ""); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		log.Printf("[WARN] no telegram token and group set, web server only mode")
@@ -396,7 +396,7 @@ func execute(ctx context.Context, opts options) error {
 
 	// activate web server if enabled, with DM users provider from the telegram listener
 	if opts.Server.Enabled {
-		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, &tgListener); srvErr != nil {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, &tgListener, tgListener.BotUsername); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 	}
@@ -487,7 +487,7 @@ func checkVolumeMount(opts options) (ok bool) {
 }
 
 func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator,
-	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider) (err error) {
+	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -515,6 +515,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 	settings := webapi.Settings{
 		InstanceID:              opts.InstanceID,
+		BotUsername:             botUsername,
 		PrimaryGroup:            opts.Telegram.Group,
 		AdminGroup:              opts.AdminGroup,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
