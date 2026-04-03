@@ -26,6 +26,9 @@
                     {{if .OpenAIEnabled}}
                     <option value="openai" {{if eq .Filter "openai"}}selected{{end}}>OpenAI</option>
                     {{end}}
+                    {{if .GeminiEnabled}}
+                    <option value="gemini" {{if eq .Filter "gemini"}}selected{{end}}>Gemini</option>
+                    {{end}}
                 </select>
             </div>
         </div>

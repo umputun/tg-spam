@@ -97,6 +97,12 @@ type Settings struct {
 	OpenAIModel              string        `json:"openai_model"`
 	OpenAICheckShortMessages bool          `json:"openai_check_short_messages"`
 	OpenAICustomPrompts      []string      `json:"openai_custom_prompts"`
+	GeminiEnabled            bool          `json:"gemini_enabled"`
+	GeminiVeto               bool          `json:"gemini_veto"`
+	GeminiHistorySize        int           `json:"gemini_history_size"`
+	GeminiModel              string        `json:"gemini_model"`
+	GeminiCheckShortMessages bool          `json:"gemini_check_short_messages"`
+	GeminiCustomPrompts      []string      `json:"gemini_custom_prompts"`
 	LuaPluginsEnabled        bool          `json:"lua_plugins_enabled"`
 	LuaPluginsDir            string        `json:"lua_plugins_dir"`
 	LuaEnabledPlugins        []string      `json:"lua_enabled_plugins"`
@@ -792,6 +798,19 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 				filteredDS = append(filteredDS, entry)
 			}
 		}
+	case "gemini":
+		for _, entry := range ds {
+			hasGemini := false
+			for _, check := range entry.Checks {
+				if check.Name == "gemini" {
+					hasGemini = true
+					break
+				}
+			}
+			if hasGemini {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
 	default: // "all" or any other value
 		filteredDS = ds
 	}
@@ -802,12 +821,14 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		FilteredCount       int
 		Filter              string
 		OpenAIEnabled       bool
+		GeminiEnabled       bool
 	}{
 		DetectedSpamEntries: filteredDS,
 		TotalDetectedSpam:   len(ds),
 		FilteredCount:       len(filteredDS),
 		Filter:              filter,
 		OpenAIEnabled:       s.Settings.OpenAIEnabled,
+		GeminiEnabled:       s.Settings.GeminiEnabled,
 	}
 
 	// if it's an HTMX request, render both content and count display for OOB swap

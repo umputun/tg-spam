@@ -38,6 +38,7 @@ type Detector struct {
 	Config
 	classifier        classifier
 	openaiChecker     *openAIChecker
+	geminiChecker     *geminiChecker
 	duplicateDetector *duplicateDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.Check // separate field for Lua plugin checks
@@ -72,6 +73,8 @@ type Config struct {
 	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
 	OpenAIVeto          bool          // if true, openai vetos spam, otherwise vetos ham
 	OpenAIHistorySize   int           // history size for openai
+	GeminiVeto          bool          // if true, gemini vetos spam, otherwise vetos ham
+	GeminiHistorySize   int           // history size for gemini
 	MultiLangWords      int           // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
 
@@ -231,9 +234,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		// only return early if:
 		// 1. we already detected spam from simple checks above, OR
-		// 2. openai checker is not configured, OR
-		// 3. openai is configured but should skip short messages
-		if isSpamDetected(cr) || d.openaiChecker == nil || !d.openaiChecker.params.CheckShortMessagesWithOpenAI {
+		// 2. no LLM checker is configured for short messages, OR
+		// 3. LLM checkers are configured but should skip short messages
+		openaiChecksShort := d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI
+		geminiChecksShort := d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages
+		if isSpamDetected(cr) || (!openaiChecksShort && !geminiChecksShort) {
 			if isSpamDetected(cr) {
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
@@ -296,6 +301,32 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		}
 	}
 
+	// gemini check, same logic as openai
+	if d.geminiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
+		shouldCheck := (isShortMessage && d.geminiChecker.params.CheckShortMessages) ||
+			(!spamDetected && !d.GeminiVeto) ||
+			(spamDetected && d.GeminiVeto)
+
+		if shouldCheck {
+			var hist []spamcheck.Request
+			if d.GeminiHistorySize > 0 && d.HistorySize > 0 {
+				hist = d.hamHistory.Last(d.GeminiHistorySize)
+			}
+			spam, details := d.geminiChecker.check(cleanMsg, hist)
+			cr = append(cr, details)
+			if spamDetected && details.Error != nil {
+				log.Printf("[WARN] gemini error: %v", details.Error)
+			} else {
+				log.Printf("[DEBUG] gemini result: {%s}", details.String())
+				spamDetected = spam
+			}
+
+			if d.GeminiVeto && !spam {
+				log.Printf("[DEBUG] gemini vetoed ham message: %q, checks: %s", req.Msg, spamcheck.ChecksToString(cr))
+			}
+		}
+	}
+
 	if spamDetected {
 		d.spamHistory.Push(req)
 		return true, cr
@@ -344,6 +375,11 @@ func (d *Detector) Reset() {
 // WithOpenAIChecker sets an openAIChecker for spam checking.
 func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 	d.openaiChecker = newOpenAIChecker(client, config)
+}
+
+// WithGeminiChecker sets a geminiChecker for spam checking.
+func (d *Detector) WithGeminiChecker(client geminiClient, config GeminiConfig) {
+	d.geminiChecker = newGeminiChecker(client, config)
 }
 
 // WithLuaEngine sets a Lua plugin engine and loads plugins
