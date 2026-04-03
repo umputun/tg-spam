@@ -280,6 +280,10 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 * Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
 
+**linked channel admin rights**
+
+If the monitored group is a discussion group linked to a Telegram channel, the linked channel automatically receives admin-like rights. When the channel owner sends commands "as the channel" in the discussion group, the bot recognises the channel identity and grants it the same privileges as a superuser. This means the linked channel can use `/ban`, `/spam`, and `/warn` commands without being explicitly listed in `--super=`. The linked channel is resolved at startup via the Telegram Bot API `getChat` method, and no additional configuration is required. Regular messages posted by the linked channel also skip spam checking, similar to anonymous admin posts from the group itself.
+
 **aggressive cleanup**
 
 When admins use `/spam` or `/ban` commands, the bot can optionally delete all recent messages from the banned user. This feature is disabled by default and can be configured with:
@@ -584,7 +588,7 @@ Help Options:
 
 ### Application Options in details
 
-- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default. Additionally, anonymous admin posts (when admins post "as the group" itself) are automatically excluded from spam checks, though linked channel auto-forwards are still checked for spam.
+- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default. Additionally, anonymous admin posts (when admins post "as the group" itself) are automatically excluded from spam checks. If the group is linked to a channel (i.e. it is a discussion group), the linked channel is also treated as a superuser and its messages skip spam checking. This is resolved automatically at startup and requires no extra configuration.
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.

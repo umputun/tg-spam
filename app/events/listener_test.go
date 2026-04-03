@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -3598,4 +3599,512 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 			assert.Equal(t, tt.want, got, "isReportCommand(%q) with botUsername=%q", tt.text, tt.botUsername)
 		})
 	}
+}
+
+func TestTelegramListener_IsLinkedChannel(t *testing.T) {
+	tests := []struct {
+		name            string
+		linkedChannelID int64
+		msg             *tbapi.Message
+		expected        bool
+	}{
+		{
+			name:            "matching sender chat",
+			linkedChannelID: -1001234567890,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1001234567890},
+			},
+			expected: true,
+		},
+		{
+			name:            "non-matching sender chat",
+			linkedChannelID: -1001234567890,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1009999999999},
+			},
+			expected: false,
+		},
+		{
+			name:            "nil sender chat",
+			linkedChannelID: -1001234567890,
+			msg:             &tbapi.Message{},
+			expected:        false,
+		},
+		{
+			name:            "zero linked channel ID",
+			linkedChannelID: 0,
+			msg: &tbapi.Message{
+				SenderChat: &tbapi.Chat{ID: -1001234567890},
+			},
+			expected: false,
+		},
+		{
+			name:            "zero linked channel ID and nil sender chat",
+			linkedChannelID: 0,
+			msg:             &tbapi.Message{},
+			expected:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{linkedChannelID: tt.linkedChannelID}
+			assert.Equal(t, tt.expected, l.isLinkedChannel(tt.msg))
+		})
+	}
+}
+
+func TestTelegramListener_LinkedChannelBanSpam(t *testing.T) {
+	const (
+		groupChatID     = int64(-1001688024850)
+		linkedChannelID = int64(-1001234567890)
+		channelBotID    = int64(136817688)
+		targetUserID    = int64(666)
+	)
+
+	tests := []struct {
+		name           string
+		command        string
+		wantBan        bool
+		wantSpamTrain  bool
+		wantWarnMsg    bool
+		wantOnMessage  bool // whether bot.OnMessage should be called (for diagnostics)
+		wantDeleteOrig bool // whether original replied-to message should be deleted
+	}{
+		{
+			name:           "linked channel /ban command bans target user",
+			command:        "/ban",
+			wantBan:        true,
+			wantSpamTrain:  false,
+			wantWarnMsg:    false,
+			wantOnMessage:  true, // directReport calls OnMessage for diagnostics
+			wantDeleteOrig: true,
+		},
+		{
+			name:           "linked channel /spam command bans and trains",
+			command:        "/spam",
+			wantBan:        true,
+			wantSpamTrain:  true,
+			wantWarnMsg:    false,
+			wantOnMessage:  true,
+			wantDeleteOrig: true,
+		},
+		{
+			name:           "linked channel /warn command sends warning",
+			command:        "/warn",
+			wantBan:        false,
+			wantSpamTrain:  false,
+			wantWarnMsg:    true,
+			wantOnMessage:  false,
+			wantDeleteOrig: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{
+						Chat:         tbapi.Chat{ID: groupChatID},
+						LinkedChatID: linkedChannelID,
+					}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{Send: true, Text: "detected spam"}
+				},
+				UpdateSpamFunc:         func(msg string) error { return nil },
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+			}
+
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := TelegramListener{
+				SpamLogger: mockLogger,
+				TbAPI:      mockAPI,
+				Bot:        botMock,
+				Group:      fmt.Sprintf("%d", groupChatID),
+				Locator:    locator,
+				SuperUsers: SuperUsers{}, // no superusers configured, linked channel should still work
+				WarnMsg:    "You have been warned",
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+
+			// linked channel sends command, From is Channel_Bot, SenderChat is the linked channel
+			updMsg := tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: tbapi.Chat{ID: groupChatID},
+					Text: tt.command,
+					From: &tbapi.User{ID: channelBotID, UserName: "Channel_Bot"},
+					SenderChat: &tbapi.Chat{
+						ID:       linkedChannelID,
+						Type:     "channel",
+						UserName: "linked_channel",
+					},
+					ReplyToMessage: &tbapi.Message{
+						MessageID: 999999,
+						From:      &tbapi.User{ID: targetUserID, UserName: "spammer"},
+						Text:      "this is spam text",
+					},
+				},
+			}
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- updMsg
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			err := l.Do(ctx)
+			require.EqualError(t, err, "telegram update chan closed")
+
+			// verify the linked channel ID was resolved from GetChat
+			assert.Equal(t, linkedChannelID, l.linkedChannelID)
+
+			if tt.wantBan {
+				// find ban request among Request calls
+				var foundBan bool
+				for _, call := range mockAPI.RequestCalls() {
+					if ban, ok := call.C.(tbapi.BanChatMemberConfig); ok {
+						assert.Equal(t, groupChatID, ban.ChatID)
+						assert.Equal(t, targetUserID, ban.UserID)
+						foundBan = true
+					}
+				}
+				assert.True(t, foundBan, "expected ban request for target user")
+			}
+
+			if tt.wantSpamTrain {
+				require.Len(t, botMock.UpdateSpamCalls(), 1)
+				assert.Equal(t, "this is spam text", botMock.UpdateSpamCalls()[0].Msg)
+			} else {
+				assert.Empty(t, botMock.UpdateSpamCalls())
+			}
+
+			if tt.wantOnMessage {
+				require.Len(t, botMock.OnMessageCalls(), 1)
+				assert.True(t, botMock.OnMessageCalls()[0].CheckOnly, "spam command should call OnMessage with checkOnly=true")
+			} else {
+				assert.Empty(t, botMock.OnMessageCalls())
+			}
+
+			if tt.wantWarnMsg {
+				// find warning send among Send calls
+				var foundWarn bool
+				for _, call := range mockAPI.SendCalls() {
+					mc := call.C.(tbapi.MessageConfig)
+					if strings.Contains(mc.Text, "warning from") && strings.Contains(mc.Text, "You have been warned") {
+						foundWarn = true
+					}
+				}
+				assert.True(t, foundWarn, "expected warning message to be sent")
+			}
+
+			if tt.wantDeleteOrig {
+				// verify the original replied-to message was deleted
+				var foundDelete bool
+				for _, call := range mockAPI.RequestCalls() {
+					if del, ok := call.C.(tbapi.DeleteMessageConfig); ok {
+						if del.MessageID == 999999 {
+							foundDelete = true
+						}
+					}
+				}
+				assert.True(t, foundDelete, "expected original message to be deleted")
+			}
+		})
+	}
+}
+
+func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
+	const (
+		groupChatID     = int64(-1001688024850)
+		linkedChannelID = int64(-1001234567890)
+		channelBotID    = int64(136817688)
+	)
+
+	t.Run("linked channel message skips spam check", func(t *testing.T) {
+		mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		mockAPI := &mocks.TbAPIMock{
+			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+				return tbapi.ChatFullInfo{
+					Chat:         tbapi.Chat{ID: groupChatID},
+					LinkedChatID: linkedChannelID,
+				}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+			},
+			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+				return nil, nil
+			},
+		}
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Fatalf("bot.OnMessage should not be called for linked channel message")
+			return bot.Response{}
+		}}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      fmt.Sprintf("%d", groupChatID),
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// linked channel posts a normal message (no command)
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: groupChatID},
+				Text: "a normal message from the linked channel",
+				From: &tbapi.User{ID: channelBotID, UserName: "Channel_Bot"},
+				SenderChat: &tbapi.Chat{
+					ID:       linkedChannelID,
+					Type:     "channel",
+					UserName: "linked_channel",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage was NOT called (spam check skipped)
+		assert.Empty(t, botMock.OnMessageCalls())
+		// verify no spam was logged
+		assert.Empty(t, mockLogger.SaveCalls())
+	})
+
+	t.Run("non-linked channel message runs spam check", func(t *testing.T) {
+		mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		mockAPI := &mocks.TbAPIMock{
+			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+				return tbapi.ChatFullInfo{
+					Chat:         tbapi.Chat{ID: groupChatID},
+					LinkedChatID: linkedChannelID,
+				}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+				return nil, nil
+			},
+		}
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{} // not spam
+		}}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      fmt.Sprintf("%d", groupChatID),
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// a different channel (not linked) posts a message
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: groupChatID},
+				Text: "suspicious message from unknown channel",
+				From: &tbapi.User{ID: channelBotID, UserName: "Channel_Bot"},
+				SenderChat: &tbapi.Chat{
+					ID:       -1009999999999, // not the linked channel
+					Type:     "channel",
+					UserName: "random_channel",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage WAS called (spam check ran)
+		assert.Len(t, botMock.OnMessageCalls(), 1)
+		assert.Equal(t, "suspicious message from unknown channel", botMock.OnMessageCalls()[0].Msg.Text)
+	})
+
+	t.Run("linked channel reply with non-command text skips spam check", func(t *testing.T) {
+		// when a linked channel replies to someone with non-command text, procSuperReply returns false,
+		// then execution falls through to procEvents where the linked channel spam skip catches it
+		mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		mockAPI := &mocks.TbAPIMock{
+			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+				return tbapi.ChatFullInfo{
+					Chat:         tbapi.Chat{ID: groupChatID},
+					LinkedChatID: linkedChannelID,
+				}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+			},
+			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+				return nil, nil
+			},
+		}
+		botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+			t.Fatalf("bot.OnMessage should not be called for linked channel reply")
+			return bot.Response{}
+		}}
+
+		locator, teardown := prepTestLocator(t)
+		defer teardown()
+
+		l := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      fmt.Sprintf("%d", groupChatID),
+			Locator:    locator,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		// linked channel replies to a user with non-command text
+		updMsg := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: groupChatID},
+				Text: "just a normal reply",
+				From: &tbapi.User{ID: channelBotID, UserName: "Channel_Bot"},
+				SenderChat: &tbapi.Chat{
+					ID:       linkedChannelID,
+					Type:     "channel",
+					UserName: "linked_channel",
+				},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 42,
+					Text:      "original message from a user",
+					From:      &tbapi.User{ID: 999, UserName: "some_user"},
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- updMsg
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		// verify bot.OnMessage was NOT called (spam check skipped via procEvents linked channel check)
+		assert.Empty(t, botMock.OnMessageCalls())
+		assert.Empty(t, mockLogger.SaveCalls())
+	})
+}
+
+func TestTelegramListener_LinkedChannelGetChatFailure(t *testing.T) {
+	// when GetChat fails during linked channel resolution at startup, the bot should
+	// start normally with linkedChannelID = 0 and treat all channels as non-linked
+	const (
+		groupChatID  = int64(-1001688024850)
+		channelBotID = int64(136817688)
+	)
+
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			// the only GetChat call is for linked channel resolution (getChatID parses numeric group directly)
+			return tbapi.ChatFullInfo{}, fmt.Errorf("telegram api error: chat not found")
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+		return bot.Response{} // not spam
+	}}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        botMock,
+		Group:      fmt.Sprintf("%d", groupChatID),
+		Locator:    locator,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	// a channel posts a message — should be spam-checked since no linked channel was resolved
+	channelID := int64(-1001234567890)
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat: tbapi.Chat{ID: groupChatID},
+			Text: "message from a channel",
+			From: &tbapi.User{ID: channelBotID, UserName: "Channel_Bot"},
+			SenderChat: &tbapi.Chat{
+				ID:       channelID,
+				Type:     "channel",
+				UserName: "some_channel",
+			},
+			Date: int(time.Now().Unix()),
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	require.EqualError(t, err, "telegram update chan closed")
+
+	// verify GetChat was called once for linked channel resolution
+	assert.Len(t, mockAPI.GetChatCalls(), 1)
+	// verify bot.OnMessage WAS called — the channel is treated as non-linked and spam-checked
+	assert.Len(t, botMock.OnMessageCalls(), 1)
+	assert.Equal(t, "message from a channel", botMock.OnMessageCalls()[0].Msg.Text)
 }

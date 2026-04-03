@@ -51,10 +51,11 @@ type TelegramListener struct {
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
 
-	adminHandler   *admin
-	reportsHandler *userReports
-	chatID         int64
-	adminChatID    int64
+	adminHandler    *admin
+	reportsHandler  *userReports
+	chatID          int64
+	adminChatID     int64
+	linkedChannelID int64 // channel linked to the discussion group, resolved at startup
 
 	msgs struct {
 		once sync.Once
@@ -80,6 +81,15 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		return fmt.Errorf("failed to get chat ID for group %q: %w", l.Group, getChatErr)
 	}
 	log.Printf("[INFO] primary chat ID: %d", l.chatID)
+
+	// resolve the linked channel for this discussion group
+	chatInfo, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	if err != nil {
+		log.Printf("[WARN] failed to get chat info for linked channel resolution: %v", err)
+	} else if chatInfo.LinkedChatID != 0 {
+		l.linkedChannelID = chatInfo.LinkedChatID
+		log.Printf("[INFO] linked channel ID: %d", l.linkedChannelID)
+	}
 
 	if err := l.updateSupers(); err != nil {
 		log.Printf("[WARN] failed to update superusers: %v", err)
@@ -241,8 +251,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-			// handle spam reports from superusers
-			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID)
+			// handle spam reports from superusers and linked channel
+			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) ||
+				l.isLinkedChannel(update.Message)
 			if update.Message.ReplyToMessage != nil && fromSuper {
 				if l.procSuperReply(update) {
 					// superuser command processed, skip the rest
@@ -319,10 +330,11 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		log.Printf("[WARN] failed to add message to locator: %v", err)
 	}
 
-	// skip spam check for anonymous admin posts from this group
-	// when admins post "as the group", SenderChat.ID equals the group's chat ID
-	if msg.SenderChat.ID != 0 && msg.SenderChat.ID == fromChat {
-		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself")
+	// skip spam check for anonymous admin posts from this group or from the linked channel.
+	// when admins post "as the group", SenderChat.ID equals the group's chat ID;
+	// when the linked channel posts, SenderChat.ID equals the linked channel ID.
+	if msg.SenderChat.ID != 0 && (msg.SenderChat.ID == fromChat || msg.SenderChat.ID == l.linkedChannelID) {
+		log.Printf("[DEBUG] skipping spam check for anonymous admin post from group itself or linked channel")
 		return nil
 	}
 
@@ -538,6 +550,11 @@ func (l *TelegramListener) deleteSystemMessage(msgID int, chatID int64, msgType 
 	} else {
 		log.Printf("[DEBUG] %s message %d deleted", msgType, msgID)
 	}
+}
+
+// isLinkedChannel checks if the message was sent on behalf of the linked channel
+func (l *TelegramListener) isLinkedChannel(msg *tbapi.Message) bool {
+	return l.linkedChannelID != 0 && msg.SenderChat != nil && msg.SenderChat.ID == l.linkedChannelID
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
