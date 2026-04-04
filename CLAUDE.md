@@ -95,3 +95,4 @@
 - Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc
 - Common behavior such as history formatting, retry handling, and response detail formatting should be implemented once in `llm.go` to avoid `dupl` violations
 - Shared behavior belongs in `lib/tgspam/llm_test.go`; provider tests should focus on API-specific behavior such as request shape, model options, truncation, and safety settings
+- `context.Context` is threaded from `Detector.collectLLMCheck` → `check()` → `runLLMProviderCheck` → `sendRequest()` → API call; the detector creates a per-request context with `LLMRequestTimeout` (default 30s)

@@ -80,7 +80,7 @@ type detectorLLMCheck struct {
 	veto bool
 	// number of recent ham messages to pass as context
 	historySize int
-	check       func(string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
+	check       func(context.Context, string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
 }
 
 type detectorLLMResult struct {
@@ -104,6 +104,7 @@ type Config struct {
 	GeminiVeto          bool             // if true, gemini vetos spam, otherwise vetos ham
 	GeminiHistorySize   int              // history size for gemini
 	LLMConsensus        LLMConsensusMode // how eligible LLM checks flip the base decision
+	LLMRequestTimeout   time.Duration    // timeout for individual LLM requests, if not set - 30s default
 	MultiLangWords      int              // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration    // timeout for storage operations, if not set - no timeout
 
@@ -311,8 +312,8 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				checkShortMessages: d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI,
 				veto:               d.OpenAIVeto,
 				historySize:        d.OpenAIHistorySize,
-				check: func(msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
-					return d.openaiChecker.check(msg, history)
+				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+					return d.openaiChecker.check(ctx, msg, history)
 				},
 			},
 			{
@@ -321,8 +322,8 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				checkShortMessages: d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages,
 				veto:               d.GeminiVeto,
 				historySize:        d.GeminiHistorySize,
-				check: func(msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
-					return d.geminiChecker.check(msg, history)
+				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+					return d.geminiChecker.check(ctx, msg, history)
 				},
 			},
 		}
@@ -393,7 +394,10 @@ func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []
 		hist = d.hamHistory.Last(cfg.historySize)
 	}
 
-	spam, details := cfg.check(cleanMsg, hist)
+	ctx, cancel := d.ctxWithLLMTimeout()
+	defer cancel()
+
+	spam, details := cfg.check(ctx, cleanMsg, hist)
 	if baseSpam && details.Error != nil {
 		log.Printf("[WARN] %s error: %v", cfg.name, details.Error)
 	}
@@ -1200,6 +1204,16 @@ func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
 		return context.Background(), func() {}
 	}
 	return context.WithTimeout(context.Background(), d.StorageTimeout)
+}
+
+const defaultLLMRequestTimeout = 30 * time.Second
+
+func (d *Detector) ctxWithLLMTimeout() (context.Context, context.CancelFunc) {
+	timeout := d.LLMRequestTimeout
+	if timeout == 0 {
+		timeout = defaultLLMRequestTimeout
+	}
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 func cleanEmoji(s string) string {

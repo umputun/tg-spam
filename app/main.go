@@ -124,7 +124,8 @@ type options struct {
 	} `group:"gemini" namespace:"gemini" env-namespace:"GEMINI"`
 
 	LLM struct {
-		Consensus string `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
+		Consensus      string        `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
+		RequestTimeout time.Duration `long:"request-timeout" env:"REQUEST_TIMEOUT" default:"30s" description:"timeout for individual LLM requests"`
 	} `group:"llm" namespace:"llm" env-namespace:"LLM"`
 
 	LuaPlugins struct {
@@ -628,6 +629,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		GeminiVeto:          opts.Gemini.Veto,
 		GeminiHistorySize:   opts.Gemini.HistorySize, // how many last requests sent to gemini
 		LLMConsensus:        tgspam.LLMConsensusMode(opts.LLM.Consensus),
+		LLMRequestTimeout:   opts.LLM.RequestTimeout,
 		MultiLangWords:      opts.MultiLangWords,
 		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}

@@ -133,6 +133,7 @@ When multiple LLM providers are eligible for the same message, TG-Spam resolves 
 - `any` is the default. If any eligible LLM disagrees with the base decision, the base decision flips.
 - `all` requires all eligible LLMs to agree before the base decision flips.
 - Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, and the short-message flags.
+- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and the base decision is kept.
 
 
 **Emoji Count**
@@ -551,6 +552,7 @@ gemini:
 
 llm:
       --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]
+      --llm.request-timeout=            timeout for individual LLM requests (default: 30s) [$LLM_REQUEST_TIMEOUT]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]

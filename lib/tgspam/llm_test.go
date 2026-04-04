@@ -1,6 +1,7 @@
 package tgspam
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -36,8 +37,8 @@ History:
 func TestRunLLMProviderCheck(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		calls := 0
-		spam, details := runLLMProviderCheck("openai", "OpenAI", 3, "test message", nil,
-			func(msg string) (llmResponse, error) {
+		spam, details := runLLMProviderCheck(context.Background(), "openai", "OpenAI", 3, "test message", nil,
+			func(_ context.Context, msg string) (llmResponse, error) {
 				calls++
 				assert.Equal(t, "test message", msg)
 				return llmResponse{IsSpam: true, Reason: "bad text.", Confidence: 91}, nil
@@ -55,8 +56,8 @@ func TestRunLLMProviderCheck(t *testing.T) {
 		calls := 0
 		history := []spamcheck.Request{{Msg: "prev", UserName: "alice"}}
 
-		spam, details := runLLMProviderCheck("gemini", "Gemini", 3, "current", history,
-			func(msg string) (llmResponse, error) {
+		spam, details := runLLMProviderCheck(context.Background(), "gemini", "Gemini", 3, "current", history,
+			func(_ context.Context, msg string) (llmResponse, error) {
 				calls++
 				assert.Equal(t, "User message:\ncurrent\n\nHistory:\n\"alice\": \"prev\"\n", msg)
 				if calls < 3 {
@@ -76,8 +77,8 @@ func TestRunLLMProviderCheck(t *testing.T) {
 	t.Run("retry count defaults to one", func(t *testing.T) {
 		calls := 0
 
-		spam, details := runLLMProviderCheck("gemini", "Gemini", 0, "test", nil,
-			func(msg string) (llmResponse, error) {
+		spam, details := runLLMProviderCheck(context.Background(), "gemini", "Gemini", 0, "test", nil,
+			func(_ context.Context, msg string) (llmResponse, error) {
 				calls++
 				return llmResponse{}, errors.New("boom")
 			},

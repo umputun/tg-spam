@@ -67,12 +67,12 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 }
 
 // check checks if a text is spam using OpenAI API
-func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
+func (o *openAIChecker) check(ctx context.Context, msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
 	if o.client == nil {
 		return false, spamcheck.Response{}
 	}
 
-	return runLLMProviderCheck("openai", "OpenAI", o.params.RetryCount, msg, history, o.sendRequest)
+	return runLLMProviderCheck(ctx, "openai", "OpenAI", o.params.RetryCount, msg, history, o.sendRequest)
 }
 
 // buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts
@@ -107,7 +107,7 @@ func (o *openAIChecker) isReasoningModel() bool {
 		strings.Contains(modelLower, "gpt-5")
 }
 
-func (o *openAIChecker) sendRequest(msg string) (response llmResponse, err error) {
+func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response llmResponse, err error) {
 	// reduce the request size with tokenizer and fallback to default reducer if it fails.
 	// the API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
 	// the response is limited to 1000 tokens, and OpenAI always reserved it for the result.
@@ -171,7 +171,7 @@ func (o *openAIChecker) sendRequest(msg string) (response llmResponse, err error
 	}
 
 	resp, err := o.client.CreateChatCompletion(
-		context.Background(),
+		ctx,
 		request,
 	)
 

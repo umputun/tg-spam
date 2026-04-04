@@ -56,12 +56,12 @@ func newGeminiChecker(client geminiClient, params GeminiConfig) *geminiChecker {
 }
 
 // check checks if a text is spam using Gemini API
-func (g *geminiChecker) check(msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
+func (g *geminiChecker) check(ctx context.Context, msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
 	if g.client == nil {
 		return false, spamcheck.Response{}
 	}
 
-	return runLLMProviderCheck("gemini", "Gemini", g.params.RetryCount, msg, history, g.sendRequest)
+	return runLLMProviderCheck(ctx, "gemini", "Gemini", g.params.RetryCount, msg, history, g.sendRequest)
 }
 
 // buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts
@@ -83,7 +83,7 @@ func (g *geminiChecker) buildSystemPrompt() string {
 	return sb.String()
 }
 
-func (g *geminiChecker) sendRequest(msg string) (response llmResponse, err error) {
+func (g *geminiChecker) sendRequest(ctx context.Context, msg string) (response llmResponse, err error) {
 	// truncate request if needed
 	if len(msg) > g.params.MaxSymbolsRequest {
 		runes := []rune(msg)
@@ -107,7 +107,7 @@ func (g *geminiChecker) sendRequest(msg string) (response llmResponse, err error
 	}
 
 	resp, err := g.client.GenerateContent(
-		context.Background(),
+		ctx,
 		g.params.Model,
 		genai.Text(msg),
 		config,

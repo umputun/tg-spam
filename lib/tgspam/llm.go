@@ -1,6 +1,7 @@
 package tgspam
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -13,8 +14,8 @@ type llmResponse struct {
 	Confidence int    `json:"confidence"`
 }
 
-func runLLMProviderCheck(name, errorPrefix string, retryCount int, msg string, history []spamcheck.Request,
-	send func(string) (llmResponse, error),
+func runLLMProviderCheck(ctx context.Context, name, errorPrefix string, retryCount int, msg string, history []spamcheck.Request,
+	send func(context.Context, string) (llmResponse, error),
 ) (spam bool, cr spamcheck.Response) {
 	if retryCount < 1 {
 		retryCount = 1
@@ -25,7 +26,11 @@ func runLLMProviderCheck(name, errorPrefix string, retryCount int, msg string, h
 	var resp llmResponse
 	var err error
 	for i := 0; i < retryCount; i++ {
-		if resp, err = send(msg); err == nil {
+		if resp, err = send(ctx, msg); err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			err = ctx.Err()
 			break
 		}
 	}
