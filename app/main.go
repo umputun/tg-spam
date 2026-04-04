@@ -116,7 +116,7 @@ type options struct {
 		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"gemini system prompt, if empty uses builtin default"`
 		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
 		Model              string   `long:"model" env:"MODEL" default:"gemma-4-31b-it" description:"gemini model"`
-		MaxTokensResponse  int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"gemini max tokens in response"`
+		MaxTokensResponse  int32    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"gemini max tokens in response"`
 		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"8192" description:"gemini max symbols in request"`
 		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"gemini retry count"`
 		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"gemini history size"`
@@ -678,7 +678,7 @@ func makeDetector(opts options) *tgspam.Detector {
 			SystemPrompt:       opts.Gemini.Prompt,
 			CustomPrompts:      opts.Gemini.CustomPrompts,
 			Model:              opts.Gemini.Model,
-			MaxOutputTokens:    int32(opts.Gemini.MaxTokensResponse),
+			MaxOutputTokens:    opts.Gemini.MaxTokensResponse,
 			MaxSymbolsRequest:  opts.Gemini.MaxSymbolsRequest,
 			RetryCount:         opts.Gemini.RetryCount,
 			CheckShortMessages: opts.Gemini.CheckShortMessages,
