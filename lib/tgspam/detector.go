@@ -265,10 +265,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		// only return early if:
 		// 1. we already detected spam from simple checks above, OR
 		// 2. no LLM checker is configured for short messages, OR
-		// 3. LLM checkers are configured but should skip short messages
+		// 3. LLM checkers are configured but LLMs won't run (FirstMessageOnly/FirstMessagesCount not set)
 		openaiChecksShort := d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI
 		geminiChecksShort := d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages
-		if isSpamDetected(cr) || (!openaiChecksShort && !geminiChecksShort) {
+		llmEligible := d.FirstMessageOnly || d.FirstMessagesCount > 0
+		if isSpamDetected(cr) || !llmEligible || (!openaiChecksShort && !geminiChecksShort) {
 			if isSpamDetected(cr) {
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
@@ -276,7 +277,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			// don't add short messages to hamHistory as they haven't been properly checked
 			return false, cr
 		}
-		// if we get here, we have a short message but openai should still check it
+		// if we get here, we have a short message but an eligible LLM should still check it
 	}
 
 	// check for spam similarity if a similarity threshold is set and spam samples are loaded
