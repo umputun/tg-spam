@@ -72,12 +72,15 @@ const (
 
 // detectorLLMCheck describes how a single LLM provider participates in Detector.Check.
 type detectorLLMCheck struct {
-	name               string                                                       // provider name used in logs
-	enabled            bool                                                         // whether this provider is configured
-	checkShortMessages bool                                                         // whether short messages should still be sent to the provider
-	veto               bool                                                         // whether the provider confirms spam instead of checking clean messages
-	historySize        int                                                          // number of recent ham messages to pass as context
-	check              func(string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
+	name    string // provider name used in logs
+	enabled bool   // whether this provider is configured
+	// whether short messages should still be sent to the provider
+	checkShortMessages bool
+	// whether the provider confirms spam instead of checking clean messages
+	veto bool
+	// number of recent ham messages to pass as context
+	historySize int
+	check       func(string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
 }
 
 type detectorLLMResult struct {
@@ -366,7 +369,7 @@ func normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
 	return LLMConsensusAny
 }
 
-func shouldApplyLLMCheck(baseSpam bool, isShortMessage bool, cfg detectorLLMCheck) bool {
+func shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detectorLLMCheck) bool {
 	if isShortMessage {
 		return cfg.checkShortMessages
 	}

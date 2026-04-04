@@ -2867,7 +2867,7 @@ func TestDetector_CheckWithLLMConsensus(t *testing.T) {
 		return openai.ChatCompletionResponse{
 			Choices: []openai.ChatCompletionChoice{{
 				Message: openai.ChatCompletionMessage{
-					Content: fmt.Sprintf(`{"spam": %t, "reason":"%s", "confidence":%d}`, spam, reason, confidence),
+					Content: fmt.Sprintf(`{"spam": %t, "reason":%q, "confidence":%d}`, spam, reason, confidence),
 				},
 			}},
 		}
@@ -2878,7 +2878,7 @@ func TestDetector_CheckWithLLMConsensus(t *testing.T) {
 			Candidates: []*genai.Candidate{{
 				Content: &genai.Content{
 					Parts: []*genai.Part{{
-						Text: fmt.Sprintf(`{"spam": %t, "reason":"%s", "confidence":%d}`, spam, reason, confidence),
+						Text: fmt.Sprintf(`{"spam": %t, "reason":%q, "confidence":%d}`, spam, reason, confidence),
 					}},
 				},
 			}},
