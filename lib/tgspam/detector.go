@@ -181,7 +181,7 @@ func NewDetector(p Config) *Detector {
 		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
 		luaEngine:         nil, // will be set with WithLuaEngine if needed
 	}
-	res.LLMConsensus = normalizeLLMConsensusMode(p.LLMConsensus)
+	res.LLMConsensus = res.normalizeLLMConsensusMode(p.LLMConsensus)
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
 	// the reason for the redundant FirstMessageOnly flag is to avoid breaking api compatibility.
@@ -333,7 +333,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			}
 		}
 
-		spamDetected = applyLLMConsensus(baseSpam, llmResults, d.LLMConsensus)
+		spamDetected = d.applyLLMConsensus(baseSpam, llmResults, d.LLMConsensus)
 	}
 
 	if spamDetected {
@@ -362,14 +362,14 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	return false, cr
 }
 
-func normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
+func (d *Detector) normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
 	if mode == LLMConsensusAll {
 		return mode
 	}
 	return LLMConsensusAny
 }
 
-func shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detectorLLMCheck) bool {
+func (d *Detector) shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detectorLLMCheck) bool {
 	if isShortMessage {
 		return cfg.checkShortMessages
 	}
@@ -383,7 +383,7 @@ func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []
 		return detectorLLMResult{}, false
 	}
 
-	if !shouldApplyLLMCheck(baseSpam, isShortMessage, cfg) {
+	if !d.shouldApplyLLMCheck(baseSpam, isShortMessage, cfg) {
 		return detectorLLMResult{}, false
 	}
 
@@ -412,12 +412,12 @@ func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []
 	return detectorLLMResult{details: details, flip: flip}, true
 }
 
-func applyLLMConsensus(baseSpam bool, results []detectorLLMResult, mode LLMConsensusMode) bool {
+func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult, mode LLMConsensusMode) bool {
 	if len(results) == 0 {
 		return baseSpam
 	}
 
-	switch normalizeLLMConsensusMode(mode) {
+	switch d.normalizeLLMConsensusMode(mode) {
 	case LLMConsensusAll:
 		for _, result := range results {
 			if !result.flip {
