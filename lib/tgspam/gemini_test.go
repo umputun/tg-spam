@@ -3,6 +3,7 @@ package tgspam
 import (
 	"context"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -253,4 +254,41 @@ func TestGeminiChecker_ResponseWithThoughtTags(t *testing.T) {
 	assert.True(t, spam)
 	assert.Equal(t, "gemini", details.Name)
 	assert.Equal(t, "crypto scam, confidence: 95%", details.Details)
+}
+
+func TestGeminiChecker_TruncateUTF8(t *testing.T) {
+	var capturedMsg string
+	clientMock := &mocks.GeminiClientMock{
+		GenerateContentFunc: func(ctx context.Context, model string, contents []*genai.Content,
+			config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+			capturedMsg = contents[0].Parts[0].Text
+			return &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{{
+					Content: &genai.Content{Parts: []*genai.Part{{Text: `{"spam": false, "reason":"ok", "confidence":100}`}}},
+				}},
+			}, nil
+		},
+	}
+
+	// 'Привет' is 12 bytes in UTF-8 (2 bytes per char)
+	// '🌞' is 4 bytes
+	msg := "Привет🌞"
+
+	t.Run("truncate in middle of 2-byte char", func(t *testing.T) {
+		checker := newGeminiChecker(clientMock, GeminiConfig{
+			MaxSymbolsRequest: 1, // Will take 1 rune
+		})
+		checker.check(msg, nil)
+		assert.True(t, utf8.ValidString(capturedMsg), "Truncated string should be valid UTF-8. Got: %x", capturedMsg)
+		assert.Equal(t, "П", capturedMsg)
+	})
+
+	t.Run("truncate in middle of 4-byte emoji", func(t *testing.T) {
+		checker := newGeminiChecker(clientMock, GeminiConfig{
+			MaxSymbolsRequest: 7, // 6 runes for 'Привет' + 1 rune for '🌞'
+		})
+		checker.check(msg, nil)
+		assert.True(t, utf8.ValidString(capturedMsg), "Truncated string should be valid UTF-8. Got: %x", capturedMsg)
+		assert.Equal(t, "Привет🌞", capturedMsg)
+	})
 }

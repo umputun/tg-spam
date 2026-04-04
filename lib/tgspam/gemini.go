@@ -86,7 +86,10 @@ func (g *geminiChecker) buildSystemPrompt() string {
 func (g *geminiChecker) sendRequest(msg string) (response llmResponse, err error) {
 	// truncate request if needed
 	if len(msg) > g.params.MaxSymbolsRequest {
-		msg = msg[:g.params.MaxSymbolsRequest]
+		runes := []rune(msg)
+		if len(runes) > g.params.MaxSymbolsRequest {
+			msg = string(runes[:g.params.MaxSymbolsRequest])
+		}
 	}
 
 	completeSystemPrompt := g.buildSystemPrompt()

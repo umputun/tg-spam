@@ -3,6 +3,7 @@ package tgspam
 import (
 	"context"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -512,4 +513,36 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenAIChecker_TruncateUTF8(t *testing.T) {
+	var capturedMsg string
+	clientMock := &mocks.OpenAIClientMock{
+		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			capturedMsg = req.Messages[1].Content
+			return openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"ok", "confidence":100}`},
+				}},
+			}, nil
+		},
+	}
+
+	// 'Привет' is 12 bytes in UTF-8 (2 bytes per char)
+	// '🌞' is 4 bytes
+	msg := "Привет🌞"
+
+	t.Run("truncate in middle of 2-byte char", func(t *testing.T) {
+		// Mock OpenAI client already defined above.
+		// We need to use a model that doesn't trigger the real tokenizer
+		// or make the tokenizer fail.
+		// Since we're in a test, let's just make sure it falls back to defaultReducer.
+		checker := newOpenAIChecker(clientMock, OpenAIConfig{
+			MaxSymbolsRequest: 1, // Will take 1 rune in fallback
+			MaxTokensRequest:  0, // Forces tokenizer to be used if available, but let's test fallback
+		})
+
+		checker.check(msg, nil)
+		assert.True(t, utf8.ValidString(capturedMsg), "Truncated string should be valid UTF-8. Got: %x", capturedMsg)
+	})
 }

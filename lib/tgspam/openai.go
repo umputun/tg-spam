@@ -118,7 +118,11 @@ func (o *openAIChecker) sendRequest(msg string) (response llmResponse, err error
 			if len(text) <= o.params.MaxSymbolsRequest {
 				return text
 			}
-			return text[:o.params.MaxSymbolsRequest]
+			runes := []rune(text)
+			if len(runes) <= o.params.MaxSymbolsRequest {
+				return text
+			}
+			return string(runes[:o.params.MaxSymbolsRequest])
 		}
 
 		encoder, tokErr := tokenizer.NewEncoder()
