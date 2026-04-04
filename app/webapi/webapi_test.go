@@ -2945,7 +2945,7 @@ func TestDMUsers_getDMUsersHandlerHTMX(t *testing.T) {
 	assert.Contains(t, body, "Alice")
 	assert.Contains(t, body, "2m ago")
 	assert.Contains(t, body, "1h ago")
-	assert.Contains(t, body, "addSuperUser")
+	assert.Contains(t, body, "copyUserID")
 	assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
 }
 
@@ -2988,11 +2988,6 @@ func TestDMUsers_relativeTime(t *testing.T) {
 	}
 }
 
-func TestDMUsers_formatUsername(t *testing.T) {
-	assert.Equal(t, "@dkrm", formatUsername("dkrm"))
-	assert.Empty(t, formatUsername(""))
-}
-
 func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
 	mockProvider := &mocks.DMUsersProviderMock{
 		GetDMUsersFunc: func() []events.DMUser {
@@ -3027,9 +3022,9 @@ func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
 	assert.Contains(t, body, "Alice")
 	assert.Contains(t, body, "2h ago")
 
-	// verify Copy ID buttons with addSuperUser calls (Go templates insert spaces around integer args)
-	assert.Contains(t, body, "addSuperUser( 111 , this)")
-	assert.Contains(t, body, "addSuperUser( 222 , this)")
+	// verify Copy ID buttons with copyUserID calls (Go templates insert spaces around integer args)
+	assert.Contains(t, body, "copyUserID( 111 , this)")
+	assert.Contains(t, body, "copyUserID( 222 , this)")
 	assert.Contains(t, body, "Copy ID")
 
 	// verify refresh button is present
@@ -3076,7 +3071,7 @@ func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
 	assert.Contains(t, body, `hx-get="/dm-users"`)
 	assert.NotContains(t, body, `sse-connect="/dm-users/stream"`, "SSE should not be in settings page")
 
-	// verify addSuperUser JS function
-	assert.Contains(t, body, "function addSuperUser(userId, btn)")
-	assert.Contains(t, body, `getElementById('super-users')`)
+	// verify copyUserID JS function
+	assert.Contains(t, body, "function copyUserID(userId, btn)")
+	assert.Contains(t, body, "navigator.clipboard")
 }

@@ -21,7 +21,7 @@
             <td>{{.DisplayName}}</td>
             <td>{{if .UserName}}@{{.UserName}}{{end}}</td>
             <td>{{.When}}</td>
-            <td><button class="btn btn-sm btn-outline-primary" onclick="addSuperUser({{.UserID}}, this)">Copy ID</button></td>
+            <td><button class="btn btn-sm btn-outline-primary" onclick="copyUserID({{.UserID}}, this)">Copy ID</button></td>
         </tr>
         {{else}}
         <tr>

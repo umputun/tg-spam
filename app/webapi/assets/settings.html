@@ -295,25 +295,7 @@
             </div>
 
             <script>
-            function addSuperUser(userId, btn) {
-                // try textarea first (editable settings), fall back to clipboard copy (read-only settings)
-                var textarea = document.getElementById('super-users');
-                if (textarea) {
-                    var current = textarea.value.trim();
-                    var ids = current ? current.split(',').map(function(s) { return s.trim(); }) : [];
-                    if (ids.indexOf(String(userId)) !== -1) {
-                        if (btn) { btn.textContent = 'Already added'; setTimeout(function() { btn.textContent = 'Copy ID'; }, 2000); }
-                        return;
-                    }
-                    textarea.value = current ? current + ', ' + userId : String(userId);
-                    if (btn) {
-                        btn.textContent = 'Added!';
-                        btn.classList.add('btn-success');
-                        setTimeout(function() { btn.textContent = 'Copy ID'; btn.classList.remove('btn-success'); }, 2000);
-                    }
-                    return;
-                }
-                // no textarea available — copy user ID to clipboard
+            function copyUserID(userId, btn) {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(String(userId)).then(function() {
                         if (btn) {
@@ -331,7 +313,6 @@
                     btn.textContent = 'Failed to copy';
                     setTimeout(function() { btn.textContent = 'Copy ID'; }, 2000);
                 }
-                return;
             }
             </script>
         </div>

@@ -1023,14 +1023,6 @@ func (s *Server) getDMUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// formatUsername prepends @ to a username if non-empty
-func formatUsername(userName string) string {
-	if userName == "" {
-		return ""
-	}
-	return "@" + userName
-}
-
 // relativeTime formats a timestamp as a human-readable relative time string.
 // accepts an optional reference time; if omitted, uses time.Now().
 func relativeTime(t time.Time, now ...time.Time) string {
