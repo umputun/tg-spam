@@ -60,6 +60,16 @@ type Detector struct {
 	lock sync.RWMutex
 }
 
+// detectorLLMCheck describes how a single LLM provider participates in Detector.Check.
+type detectorLLMCheck struct {
+	name               string // provider name used in logs
+	enabled            bool   // whether this provider is configured
+	checkShortMessages bool   // whether short messages should still be sent to the provider
+	veto               bool   // whether the provider confirms spam instead of checking clean messages
+	historySize        int    // number of recent ham messages to pass as context
+	check              func(string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
+}
+
 // Config is a set of parameters for Detector.
 type Config struct {
 	SimilarityThreshold float64       // threshold for spam similarity, 0.0 - 1.0
@@ -270,61 +280,27 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	//  - all checks passed (ham) and OpenAIVeto is false - improves false negative rate
 	//  - checks failed (spam) and OpenAIVeto is true - improves false positive rate
 	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
-	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
-		// determine if we should check with openai:
-		// - short messages with CheckShortMessagesWithOpenAI (ignores veto mode)
-		// - normal veto mode logic for non-short messages
-		shouldCheck := (isShortMessage && d.openaiChecker.params.CheckShortMessagesWithOpenAI) ||
-			(!spamDetected && !d.OpenAIVeto) ||
-			(spamDetected && d.OpenAIVeto)
-
-		if shouldCheck {
-			var hist []spamcheck.Request // by default, openai doesn't use history
-			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
-				// if history size is set, we use the last N messages for openai
-				hist = d.hamHistory.Last(d.OpenAIHistorySize)
-			}
-			spam, details := d.openaiChecker.check(cleanMsg, hist)
-			cr = append(cr, details)
-			if spamDetected && details.Error != nil {
-				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
-				log.Printf("[WARN] openai error: %v", details.Error)
-			} else {
-				log.Printf("[DEBUG] openai result: {%s}", details.String())
-				spamDetected = spam
-			}
-
-			// log if veto is enabled, and openai detected no spam for message that was detected as spam by other checks
-			if d.OpenAIVeto && !spam {
-				log.Printf("[DEBUG] openai vetoed ham message: %q, checks: %s", req.Msg, spamcheck.ChecksToString(cr))
-			}
-		}
-	}
-
-	// gemini check, same logic as openai
-	if d.geminiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
-		shouldCheck := (isShortMessage && d.geminiChecker.params.CheckShortMessages) ||
-			(!spamDetected && !d.GeminiVeto) ||
-			(spamDetected && d.GeminiVeto)
-
-		if shouldCheck {
-			var hist []spamcheck.Request
-			if d.GeminiHistorySize > 0 && d.HistorySize > 0 {
-				hist = d.hamHistory.Last(d.GeminiHistorySize)
-			}
-			spam, details := d.geminiChecker.check(cleanMsg, hist)
-			cr = append(cr, details)
-			if spamDetected && details.Error != nil {
-				log.Printf("[WARN] gemini error: %v", details.Error)
-			} else {
-				log.Printf("[DEBUG] gemini result: {%s}", details.String())
-				spamDetected = spam
-			}
-
-			if d.GeminiVeto && !spam {
-				log.Printf("[DEBUG] gemini vetoed ham message: %q, checks: %s", req.Msg, spamcheck.ChecksToString(cr))
-			}
-		}
+	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+		spamDetected, cr = d.applyLLMCheck(req, cleanMsg, cr, spamDetected, isShortMessage, detectorLLMCheck{
+			name:               "openai",
+			enabled:            d.openaiChecker != nil,
+			checkShortMessages: d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI,
+			veto:               d.OpenAIVeto,
+			historySize:        d.OpenAIHistorySize,
+			check: func(msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+				return d.openaiChecker.check(msg, history)
+			},
+		})
+		spamDetected, cr = d.applyLLMCheck(req, cleanMsg, cr, spamDetected, isShortMessage, detectorLLMCheck{
+			name:               "gemini",
+			enabled:            d.geminiChecker != nil,
+			checkShortMessages: d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages,
+			veto:               d.GeminiVeto,
+			historySize:        d.GeminiHistorySize,
+			check: func(msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+				return d.geminiChecker.check(msg, history)
+			},
+		})
 	}
 
 	if spamDetected {
@@ -351,6 +327,42 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 	d.hamHistory.Push(req)
 	return false, cr
+}
+
+func (d *Detector) applyLLMCheck(req spamcheck.Request, cleanMsg string, cr []spamcheck.Response, spamDetected bool,
+	isShortMessage bool, cfg detectorLLMCheck,
+) (bool, []spamcheck.Response) {
+	if !cfg.enabled || cfg.check == nil {
+		return spamDetected, cr
+	}
+
+	shouldCheck := (isShortMessage && cfg.checkShortMessages) ||
+		(!spamDetected && !cfg.veto) ||
+		(spamDetected && cfg.veto)
+	if !shouldCheck {
+		return spamDetected, cr
+	}
+
+	var hist []spamcheck.Request
+	if cfg.historySize > 0 && d.HistorySize > 0 {
+		hist = d.hamHistory.Last(cfg.historySize)
+	}
+
+	spam, details := cfg.check(cleanMsg, hist)
+	cr = append(cr, details)
+	if spamDetected && details.Error != nil {
+		log.Printf("[WARN] %s error: %v", cfg.name, details.Error)
+		return spamDetected, cr
+	}
+
+	log.Printf("[DEBUG] %s result: {%s}", cfg.name, details.String())
+	spamDetected = spam
+
+	if cfg.veto && !spam {
+		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, req.Msg, spamcheck.ChecksToString(cr))
+	}
+
+	return spamDetected, cr
 }
 
 // Reset resets spam samples/classifier, excluded tokens, stop words and approved users.

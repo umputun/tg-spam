@@ -89,3 +89,9 @@
 - The listener handles these deletions with rate limiting (35ms between deletions) to respect Telegram API limits
 - Deletion errors are logged but don't fail the operation (messages might be already deleted or too old)
 - Design principle: When a spammer is detected, aggressively clean up ALL their spam messages, not just the triggering one
+
+### LLM Checker Structure
+- Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`
+- Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc
+- Common behavior such as history formatting, retry handling, and response detail formatting should be implemented once in `llm.go` to avoid `dupl` violations
+- Shared behavior belongs in `lib/tgspam/llm_test.go`; provider tests should focus on API-specific behavior such as request shape, model options, truncation, and safety settings

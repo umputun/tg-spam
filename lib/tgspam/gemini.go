@@ -61,31 +61,7 @@ func (g *geminiChecker) check(msg string, history []spamcheck.Request) (spam boo
 		return false, spamcheck.Response{}
 	}
 
-	// update the message with the history
-	if len(history) > 0 {
-		var hist []string
-		for _, h := range history {
-			hist = append(hist, fmt.Sprintf("%q: %q", h.UserName, h.Msg))
-		}
-		msgWithHist := fmt.Sprintf("User message:\n%s\n\nHistory:\n%s\n", msg, strings.Join(hist, "\n"))
-		msg = msgWithHist
-	}
-
-	// try to send a request several times if it fails
-	var resp openAIResponse
-	var err error
-	for i := 0; i < g.params.RetryCount; i++ {
-		if resp, err = g.sendRequest(msg); err == nil {
-			break
-		}
-	}
-	if err != nil {
-		return false, spamcheck.Response{
-			Spam: false, Name: "gemini", Details: fmt.Sprintf("Gemini error: %v", err), Error: err}
-	}
-
-	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "gemini",
-		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
+	return runLLMProviderCheck("gemini", "Gemini", g.params.RetryCount, msg, history, g.sendRequest)
 }
 
 // buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts
@@ -107,7 +83,7 @@ func (g *geminiChecker) buildSystemPrompt() string {
 	return sb.String()
 }
 
-func (g *geminiChecker) sendRequest(msg string) (response openAIResponse, err error) {
+func (g *geminiChecker) sendRequest(msg string) (response llmResponse, err error) {
 	// truncate request if needed
 	if len(msg) > g.params.MaxSymbolsRequest {
 		msg = msg[:g.params.MaxSymbolsRequest]
@@ -134,18 +110,18 @@ func (g *geminiChecker) sendRequest(msg string) (response openAIResponse, err er
 		config,
 	)
 	if err != nil {
-		return openAIResponse{}, fmt.Errorf("failed to generate content: %w", err)
+		return llmResponse{}, fmt.Errorf("failed to generate content: %w", err)
 	}
 
 	if resp == nil || len(resp.Candidates) == 0 {
-		return openAIResponse{}, fmt.Errorf("no candidates in response")
+		return llmResponse{}, fmt.Errorf("no candidates in response")
 	}
 
 	content := resp.Text()
 	content = stripThoughtTags(content)
 
 	if err := json.Unmarshal([]byte(content), &response); err != nil {
-		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", content, err)
+		return llmResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", content, err)
 	}
 
 	return response, nil
