@@ -91,6 +91,7 @@ type Settings struct {
 	MetaUsernameSymbols      string        `json:"meta_username_symbols"`
 	MetaGiveaway             bool          `json:"meta_giveaway"`
 	MultiLangLimit           int           `json:"multi_lang_limit"`
+	LLMConsensus             string        `json:"llm_consensus"`
 	OpenAIEnabled            bool          `json:"openai_enabled"`
 	OpenAIVeto               bool          `json:"openai_veto"`
 	OpenAIHistorySize        int           `json:"openai_history_size"`

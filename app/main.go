@@ -123,6 +123,10 @@ type options struct {
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with Gemini"`
 	} `group:"gemini" namespace:"gemini" env-namespace:"GEMINI"`
 
+	LLM struct {
+		Consensus string `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
+	} `group:"llm" namespace:"llm" env-namespace:"LLM"`
+
 	LuaPlugins struct {
 		Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
 		PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
@@ -547,6 +551,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
 		MetaGiveaway:             opts.Meta.Giveaway,
 		MultiLangLimit:           opts.MultiLangWords,
+		LLMConsensus:             opts.LLM.Consensus,
 		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		OpenAIVeto:               opts.OpenAI.Veto,
 		OpenAIHistorySize:        opts.OpenAI.HistorySize,
@@ -622,6 +627,7 @@ func makeDetector(opts options) *tgspam.Detector {
 		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
 		GeminiVeto:          opts.Gemini.Veto,
 		GeminiHistorySize:   opts.Gemini.HistorySize, // how many last requests sent to gemini
+		LLMConsensus:        tgspam.LLMConsensusMode(opts.LLM.Consensus),
 		MultiLangWords:      opts.MultiLangWords,
 		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}

@@ -116,7 +116,7 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 
 **Gemini integration**
 
-Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemini can be used alongside or instead of OpenAI — if both tokens are set, both LLMs will check messages independently. All other parameters are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemini can be used alongside or instead of OpenAI. If both tokens are set, all eligible LLMs will be checked and their results resolved according to `--llm.consensus`. All other parameters are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 - By default, the Gemini integration is disabled. To enable it, set `--gemini.token` to a valid Google Gemini API key.
 - The Gemini check follows the same workflow as OpenAI: it runs as one of the final checks in the detection pipeline.
@@ -125,6 +125,14 @@ Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemi
 - Custom prompts can be added via `--gemini.custom-prompt=[$GEMINI_CUSTOM_PROMPT]`, same as with OpenAI.
 - Short message checking can be enabled with `--gemini.check-short-messages`.
 - The default model is `gemma-4-31b-it`. You can change it with `--gemini.model=[$GEMINI_MODEL]`.
+
+**LLM consensus**
+
+When multiple LLM providers are eligible for the same message, TG-Spam resolves their results with `--llm.consensus=[$LLM_CONSENSUS]`:
+
+- `any` is the default. If any eligible LLM disagrees with the base decision, the base decision flips.
+- `all` requires all eligible LLMs to agree before the base decision flips.
+- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, and the short-message flags.
 
 
 **Emoji Count**
@@ -540,6 +548,9 @@ gemini:
       --gemini.retry-count=             gemini retry count (default: 1) [$GEMINI_RETRY_COUNT]
       --gemini.history-size=            gemini history size (default: 0) [$GEMINI_HISTORY_SIZE]
       --gemini.check-short-messages     check messages shorter than min-msg-len with Gemini [$GEMINI_CHECK_SHORT_MESSAGES]
+
+llm:
+      --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]

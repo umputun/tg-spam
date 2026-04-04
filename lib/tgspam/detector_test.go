@@ -17,6 +17,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genai"
 
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -2854,6 +2855,161 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 		assert.Len(t, hamMsgs, 1, "normal length messages should be added to hamHistory")
 		assert.Equal(t, "this is a normal length message", hamMsgs[0].Msg)
 	})
+}
+
+func TestNewDetector_DefaultLLMConsensus(t *testing.T) {
+	d := NewDetector(Config{})
+	assert.Equal(t, LLMConsensusAny, d.LLMConsensus)
+}
+
+func TestDetector_CheckWithLLMConsensus(t *testing.T) {
+	makeOpenAIResponse := func(spam bool, reason string, confidence int) openai.ChatCompletionResponse {
+		return openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{{
+				Message: openai.ChatCompletionMessage{
+					Content: fmt.Sprintf(`{"spam": %t, "reason":"%s", "confidence":%d}`, spam, reason, confidence),
+				},
+			}},
+		}
+	}
+
+	makeGeminiResponse := func(spam bool, reason string, confidence int) *genai.GenerateContentResponse {
+		return &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{
+				Content: &genai.Content{
+					Parts: []*genai.Part{{
+						Text: fmt.Sprintf(`{"spam": %t, "reason":"%s", "confidence":%d}`, spam, reason, confidence),
+					}},
+				},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		consensus  LLMConsensusMode
+		baseSpam   bool
+		openAISpam bool
+		geminiSpam bool
+		wantSpam   bool
+	}{
+		{
+			name:       "any flips ham base when either llm flags spam",
+			consensus:  LLMConsensusAny,
+			openAISpam: true,
+			geminiSpam: false,
+			wantSpam:   true,
+		},
+		{
+			name:       "all requires every llm to flag spam on ham base",
+			consensus:  LLMConsensusAll,
+			openAISpam: true,
+			geminiSpam: false,
+			wantSpam:   false,
+		},
+		{
+			name:       "any flips spam base when either veto llm clears spam",
+			consensus:  LLMConsensusAny,
+			baseSpam:   true,
+			openAISpam: false,
+			geminiSpam: true,
+			wantSpam:   false,
+		},
+		{
+			name:       "all requires every veto llm to clear spam",
+			consensus:  LLMConsensusAll,
+			baseSpam:   true,
+			openAISpam: false,
+			geminiSpam: true,
+			wantSpam:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDetector(Config{
+				MaxAllowedEmoji:  -1,
+				FirstMessageOnly: true,
+				OpenAIVeto:       tc.baseSpam,
+				GeminiVeto:       tc.baseSpam,
+				LLMConsensus:     tc.consensus,
+			})
+
+			req := spamcheck.Request{Msg: "hello there"}
+			if tc.baseSpam {
+				_, err := d.LoadStopWords(strings.NewReader("spamword"))
+				require.NoError(t, err)
+				req.Msg = "spamword message"
+			}
+
+			openAIMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return makeOpenAIResponse(tc.openAISpam, "openai verdict", 95), nil
+				},
+			}
+			geminiMock := &mocks.GeminiClientMock{
+				GenerateContentFunc: func(ctx context.Context, model string, contents []*genai.Content,
+					config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+					return makeGeminiResponse(tc.geminiSpam, "gemini verdict", 95), nil
+				},
+			}
+
+			d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+			d.WithGeminiChecker(geminiMock, GeminiConfig{Model: "gemma-4-31b-it"})
+
+			spam, cr := d.Check(req)
+			assert.Equal(t, tc.wantSpam, spam)
+			assert.Len(t, openAIMock.CreateChatCompletionCalls(), 1)
+			assert.Len(t, geminiMock.GenerateContentCalls(), 1)
+
+			checkNames := make([]string, 0, len(cr))
+			for _, check := range cr {
+				checkNames = append(checkNames, check.Name)
+			}
+			assert.Contains(t, checkNames, "openai")
+			assert.Contains(t, checkNames, "gemini")
+		})
+	}
+}
+
+func TestDetector_CheckWithShortMessageRunsOnlyEligibleLLMs(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+
+	openAIMock := &mocks.OpenAIClientMock{
+		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			return openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: `{"spam":false,"reason":"openai","confidence":20}`},
+				}},
+			}, nil
+		},
+	}
+	geminiMock := &mocks.GeminiClientMock{
+		GenerateContentFunc: func(ctx context.Context, model string, contents []*genai.Content,
+			config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+			return &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{{
+					Content: &genai.Content{Parts: []*genai.Part{{Text: `{"spam":false,"reason":"gemini","confidence":20}`}}},
+				}},
+			}, nil
+		},
+	}
+
+	d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+	d.WithGeminiChecker(geminiMock, GeminiConfig{Model: "gemma-4-31b-it", CheckShortMessages: true})
+
+	spam, cr := d.Check(spamcheck.Request{Msg: "hi"})
+	assert.False(t, spam)
+	assert.Empty(t, openAIMock.CreateChatCompletionCalls())
+	assert.Len(t, geminiMock.GenerateContentCalls(), 1)
+
+	checkNames := make([]string, 0, len(cr))
+	for _, check := range cr {
+		checkNames = append(checkNames, check.Name)
+	}
+	assert.Contains(t, checkNames, "message length")
+	assert.Contains(t, checkNames, "gemini")
+	assert.NotContains(t, checkNames, "openai")
 }
 
 func BenchmarkTokenize(b *testing.B) {
