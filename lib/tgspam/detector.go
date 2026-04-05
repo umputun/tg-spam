@@ -83,6 +83,15 @@ type detectorLLMCheck struct {
 	check       func(context.Context, string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
 }
 
+// llmCheckInput groups the per-message state passed to collectLLMCheck.
+type llmCheckInput struct {
+	req            spamcheck.Request    // original request, used for logging
+	cleanMsg       string               // sanitized message text to check
+	checks         []spamcheck.Response // accumulated check results so far
+	baseSpam       bool                 // base spam decision before LLM
+	isShortMessage bool                 // whether the message is below min length
+}
+
 type detectorLLMResult struct {
 	details spamcheck.Response
 	flip    bool
@@ -328,9 +337,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			},
 		}
 
+		inp := llmCheckInput{req: req, cleanMsg: cleanMsg, checks: cr, baseSpam: baseSpam, isShortMessage: isShortMessage}
 		for _, llmCheck := range llmChecks {
-			if res, ok := d.collectLLMCheck(req, cleanMsg, cr, baseSpam, isShortMessage, llmCheck); ok {
+			if res, ok := d.collectLLMCheck(inp, llmCheck); ok {
 				cr = append(cr, res.details)
+				inp.checks = cr
 				llmResults = append(llmResults, res)
 			}
 		}
@@ -378,14 +389,12 @@ func (d *Detector) shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detect
 	return (!baseSpam && !cfg.veto) || (baseSpam && cfg.veto)
 }
 
-func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []spamcheck.Response,
-	baseSpam bool, isShortMessage bool, cfg detectorLLMCheck,
-) (detectorLLMResult, bool) {
+func (d *Detector) collectLLMCheck(inp llmCheckInput, cfg detectorLLMCheck) (detectorLLMResult, bool) {
 	if !cfg.enabled || cfg.check == nil {
 		return detectorLLMResult{}, false
 	}
 
-	if !d.shouldApplyLLMCheck(baseSpam, isShortMessage, cfg) {
+	if !d.shouldApplyLLMCheck(inp.baseSpam, inp.isShortMessage, cfg) {
 		return detectorLLMResult{}, false
 	}
 
@@ -397,21 +406,21 @@ func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []
 	ctx, cancel := d.ctxWithLLMTimeout()
 	defer cancel()
 
-	spam, details := cfg.check(ctx, cleanMsg, hist)
-	if baseSpam && details.Error != nil {
+	spam, details := cfg.check(ctx, inp.cleanMsg, hist)
+	if inp.baseSpam && details.Error != nil {
 		log.Printf("[WARN] %s error: %v", cfg.name, details.Error)
 	}
 
 	log.Printf("[DEBUG] %s result: {%s}", cfg.name, details.String())
 
 	if cfg.veto && !spam && details.Error == nil {
-		allChecks := append(append(make([]spamcheck.Response, 0, len(cr)+1), cr...), details)
-		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, req.Msg, spamcheck.ChecksToString(allChecks))
+		allChecks := append(append(make([]spamcheck.Response, 0, len(inp.checks)+1), inp.checks...), details)
+		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, inp.req.Msg, spamcheck.ChecksToString(allChecks))
 	}
 
 	flip := false
 	if details.Error == nil {
-		flip = (!baseSpam && spam) || (baseSpam && !spam)
+		flip = (!inp.baseSpam && spam) || (inp.baseSpam && !spam)
 	}
 
 	return detectorLLMResult{details: details, flip: flip}, true
