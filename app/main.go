@@ -335,18 +335,15 @@ func execute(ctx context.Context, opts options) error {
 		}
 	}
 
-	// activate web server if enabled
-	if opts.Server.Enabled {
-		// server starts in background goroutine
-		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB); srvErr != nil {
+	// activate web server if enabled, server-only mode (no telegram token)
+	if opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+		// server starts in background goroutine without DM users provider
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, nil, ""); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
-		// if no telegram token and group set, just run the server
-		if opts.Telegram.Token == "" || opts.Telegram.Group == "" {
-			log.Printf("[WARN] no telegram token and group set, web server only mode")
-			<-ctx.Done()
-			return nil
-		}
+		log.Printf("[WARN] no telegram token and group set, web server only mode")
+		<-ctx.Done()
+		return nil
 	}
 
 	// make telegram bot
@@ -415,6 +412,13 @@ func execute(ctx context.Context, opts options) error {
 		tgListener.BotUsername, tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
 		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage,
 		tgListener.Dry, tgListener.TrainingMode)
+
+	// activate web server if enabled, with DM users provider from the telegram listener
+	if opts.Server.Enabled {
+		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, &tgListener, tgListener.BotUsername); srvErr != nil {
+			return fmt.Errorf("can't activate web server, %w", srvErr)
+		}
+	}
 
 	// run telegram listener and event processor loop
 	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // do() runs infinite loop, always returns error on exit
@@ -501,7 +505,8 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
+func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator,
+	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
 	authPassswd := opts.Server.AuthPasswd
 	if opts.Server.AuthPasswd == "auto" {
 		authPassswd, err = webapi.GenerateRandomPassword(20)
@@ -529,6 +534,7 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 	settings := webapi.Settings{
 		InstanceID:              opts.InstanceID,
+		BotUsername:             botUsername,
 		PrimaryGroup:            opts.Telegram.Group,
 		AdminGroup:              opts.AdminGroup,
 		DisableAdminSpamForward: opts.DisableAdminSpamForward,
@@ -589,18 +595,19 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	}
 
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:    opts.Server.ListenAddr,
-		Detector:      sf.Detector,
-		SpamFilter:    sf,
-		Locator:       loc,
-		DetectedSpam:  detectedSpamStore,
-		Dictionary:    dictionaryStore,
-		StorageEngine: db, // add database engine for backup functionality
-		AuthPasswd:    authPassswd,
-		AuthHash:      opts.Server.AuthHash,
-		Version:       revision,
-		Dbg:           opts.Dbg,
-		Settings:      settings,
+		ListenAddr:      opts.Server.ListenAddr,
+		Detector:        sf.Detector,
+		SpamFilter:      sf,
+		Locator:         loc,
+		DetectedSpam:    detectedSpamStore,
+		Dictionary:      dictionaryStore,
+		StorageEngine:   db, // add database engine for backup functionality
+		DMUsersProvider: dmUsersProvider,
+		AuthPasswd:      authPassswd,
+		AuthHash:        opts.Server.AuthHash,
+		Version:         revision,
+		Dbg:             opts.Dbg,
+		Settings:        settings,
 	}}
 
 	go func() {

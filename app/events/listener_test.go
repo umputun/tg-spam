@@ -4108,3 +4108,211 @@ func TestTelegramListener_LinkedChannelGetChatFailure(t *testing.T) {
 	assert.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "message from a channel", botMock.OnMessageCalls()[0].Msg.Text)
 }
+
+func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return []tbapi.ChatMember{}, nil
+		},
+	}
+
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+		t.Fatal("bot.OnMessage should not be called for private chat messages")
+		return bot.Response{}
+	}}
+
+	locatorMock := &mocks.LocatorMock{
+		AddMessageFunc: func(ctx context.Context, msg string, chatID, userID int64, userName string, msgID int) error {
+			t.Fatal("locator.AddMessage should not be called for private chat messages")
+			return nil
+		},
+	}
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        botMock,
+		Group:      "123",
+		Locator:    locatorMock,
+	}
+
+	t.Run("private chat message stores user and returns nil", func(t *testing.T) {
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 999, Type: "private"},
+				Text: "hello bot",
+				From: &tbapi.User{
+					ID:        42,
+					UserName:  "testuser",
+					FirstName: "Test",
+					LastName:  "User",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		err := l.procEvents(update)
+		require.NoError(t, err)
+
+		users := l.GetDMUsers()
+		require.Len(t, users, 1)
+		assert.Equal(t, int64(42), users[0].UserID)
+		assert.Equal(t, "testuser", users[0].UserName)
+		assert.Equal(t, "Test User", users[0].DisplayName)
+	})
+
+	t.Run("private chat does not reach spam checking", func(t *testing.T) {
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 888, Type: "private"},
+				Text: "buy crypto now!!!",
+				From: &tbapi.User{
+					ID:        100,
+					UserName:  "spammer",
+					FirstName: "Spammer",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		err := l.procEvents(update)
+		require.NoError(t, err)
+
+		// verify bot.OnMessage was NOT called (would have t.Fatal'd above)
+		assert.Empty(t, botMock.OnMessageCalls())
+		// verify locator.AddMessage was NOT called (would have t.Fatal'd above)
+		assert.Empty(t, locatorMock.AddMessageCalls())
+	})
+
+	t.Run("first name only display name", func(t *testing.T) {
+		// reset previous state by creating a fresh listener
+		l2 := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "123",
+			Locator:    locatorMock,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 777, Type: "private"},
+				Text: "hi",
+				From: &tbapi.User{
+					ID:        200,
+					UserName:  "alice",
+					FirstName: "Alice",
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		err := l2.procEvents(update)
+		require.NoError(t, err)
+
+		users := l2.GetDMUsers()
+		require.Len(t, users, 1)
+		assert.Equal(t, "Alice", users[0].DisplayName)
+	})
+
+	t.Run("nil From in private chat does not panic", func(t *testing.T) {
+		l3 := TelegramListener{
+			SpamLogger: mockLogger,
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "123",
+			Locator:    locatorMock,
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 666, Type: "private"},
+				Text: "hello",
+				From: nil,
+				Date: int(time.Now().Unix()),
+			},
+		}
+
+		err := l3.procEvents(update)
+		require.NoError(t, err)
+		assert.Empty(t, l3.GetDMUsers())
+	})
+}
+
+func TestTelegramListener_PrivateChatViaDoLoop(t *testing.T) {
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return []tbapi.ChatMember{}, nil
+		},
+	}
+
+	botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+		if msg.Text == "idle" {
+			return bot.Response{}
+		}
+		t.Fatal("bot.OnMessage should not be called for private chat messages via Do loop")
+		return bot.Response{}
+	}}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        botMock,
+		Group:      "123",
+		Locator:    locator,
+	}
+
+	// private chat message sent via the Do update channel
+	updMsg := tbapi.Update{
+		Message: &tbapi.Message{
+			Chat: tbapi.Chat{ID: 555, Type: "private"},
+			Text: "hello from DM",
+			From: &tbapi.User{
+				ID:        77,
+				UserName:  "dmuser",
+				FirstName: "DM",
+				LastName:  "User",
+			},
+			Date: int(time.Now().Unix()),
+		},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- updMsg
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(context.Background())
+	require.EqualError(t, err, "telegram update chan closed")
+
+	// verify user was stored
+	users := l.GetDMUsers()
+	require.Len(t, users, 1)
+	assert.Equal(t, int64(77), users[0].UserID)
+	assert.Equal(t, "dmuser", users[0].UserName)
+	assert.Equal(t, "DM User", users[0].DisplayName)
+}
+
+func TestTelegramListener_DMUsersMethods(t *testing.T) {
+	l := TelegramListener{}
+	users := l.GetDMUsers()
+	assert.Empty(t, users)
+	assert.NotNil(t, users)
+}

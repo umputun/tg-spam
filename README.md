@@ -719,6 +719,8 @@ It is truly a **bad idea** to run the server without basic auth protection, as i
 
 - `GET /settings` - return the current settings of the bot
 
+- `GET /dm-users` - get the list of recent DM users (users who sent direct messages to the bot). Returns JSON with user ID, username, display name and timestamp.
+
 _for the real examples of http requests see [webapp.rest](https://github.com/umputun/tg-spam/blob/master/webapp.rest) file._
 
 **how it works**
@@ -739,6 +741,7 @@ If webapi server enabled (see [Running with webapi server](#running-with-webapi-
 - **Manage Samples**: Add, view, and delete spam/ham training samples
 - **Dictionary Management**: Manage stop phrases (words that trigger spam detection) and ignored words (tokens excluded from analysis)
 - **Manage Users**: View and control the approved users list
+- **Settings / Bot Behaviour**: Configure bot parameters including super-users. The "Find Your User ID" section helps admins discover their Telegram user ID — send a direct message to the bot, click Refresh, and copy the ID.
 
 All pages are protected by basic auth the same way as webapi server.
 

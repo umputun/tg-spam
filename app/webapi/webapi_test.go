@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/app/webapi/mocks"
@@ -2855,4 +2856,222 @@ func TestServer_ErrorResponseContentType(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
 	})
+}
+
+func TestDMUsers_getDMUsersHandlerJSON(t *testing.T) {
+	ts := time.Date(2026, 3, 31, 10, 30, 0, 0, time.UTC)
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: ts},
+				{UserID: 87654321, UserName: "alice", DisplayName: "Alice", Timestamp: ts.Add(-15 * time.Minute)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+
+	t.Run("json response", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.getDMUsersHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "application/json")
+
+		var result []struct {
+			UserID      int64     `json:"user_id"`
+			UserName    string    `json:"user_name"`
+			DisplayName string    `json:"display_name"`
+			Timestamp   time.Time `json:"timestamp"`
+		}
+		err := json.Unmarshal(rr.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.Equal(t, int64(12345678), result[0].UserID)
+		assert.Equal(t, "dkrm", result[0].UserName)
+		assert.Equal(t, "Dmitry K.", result[0].DisplayName)
+		assert.Equal(t, ts, result[0].Timestamp)
+		assert.Equal(t, int64(87654321), result[1].UserID)
+		assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		emptyProvider := &mocks.DMUsersProviderMock{
+			GetDMUsersFunc: func() []events.DMUser { return nil },
+		}
+		srv := NewServer(Config{DMUsersProvider: emptyProvider})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "[]")
+	})
+
+	t.Run("nil provider returns 503", func(t *testing.T) {
+		srv := NewServer(Config{})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	})
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: time.Now().Add(-2 * time.Minute)},
+				{UserID: 87654321, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-1 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "12345678")
+	assert.Contains(t, body, "Dmitry K.")
+	assert.Contains(t, body, "@dkrm")
+	assert.Contains(t, body, "87654321")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2m ago")
+	assert.Contains(t, body, "1h ago")
+	assert.Contains(t, body, "copyUserID")
+	assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_Empty(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser { return nil },
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "No recent DM users")
+}
+
+func TestDMUsers_relativeTime(t *testing.T) {
+	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"just now", 30 * time.Second, "just now"},
+		{"1 minute", 1 * time.Minute, "1m ago"},
+		{"5 minutes", 5 * time.Minute, "5m ago"},
+		{"1 hour", 1 * time.Hour, "1h ago"},
+		{"3 hours", 3 * time.Hour, "3h ago"},
+		{"1 day", 25 * time.Hour, "1d ago"},
+		{"5 days", 5 * 24 * time.Hour, "5d ago"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := now.Add(-tc.d)
+			assert.Equal(t, tc.want, relativeTime(ts, now))
+		})
+	}
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 111, UserName: "bob", DisplayName: "Bob Smith", Timestamp: time.Now().Add(-5 * time.Minute)},
+				{UserID: 222, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-2 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify valid table structure
+	assert.Contains(t, body, "<table")
+	assert.Contains(t, body, "<thead>")
+	assert.Contains(t, body, "<tbody>")
+	assert.Contains(t, body, "</table>")
+
+	// verify user data is rendered
+	assert.Contains(t, body, "111")
+	assert.Contains(t, body, "Bob Smith")
+	assert.Contains(t, body, "@bob")
+	assert.Contains(t, body, "5m ago")
+	assert.Contains(t, body, "222")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2h ago")
+
+	// verify Copy ID buttons with copyUserID calls (Go templates insert spaces around integer args)
+	assert.Contains(t, body, "copyUserID( 111 , this)")
+	assert.Contains(t, body, "copyUserID( 222 , this)")
+	assert.Contains(t, body, "Copy ID")
+
+	// verify refresh button is present
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.Contains(t, body, `hx-target="#dm-users-container"`)
+	assert.Contains(t, body, "Refresh")
+}
+
+func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{
+		GetLuaPluginNamesFunc: func() []string { return nil },
+	}
+
+	server := NewServer(Config{
+		Version:  "1.0",
+		Detector: detectorMock,
+		Settings: Settings{SuperUsers: []string{"admin1"}},
+	})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.htmlSettingsHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify collapsible section exists with guide button
+	assert.Contains(t, body, `id="dm-users-panel"`)
+	assert.Contains(t, body, "Don't know your ID? Message the bot!")
+	assert.Contains(t, body, `data-bs-toggle="collapse"`)
+	assert.Contains(t, body, `data-bs-target="#dm-users-panel"`)
+
+	// verify step-by-step instructions
+	assert.Contains(t, body, "How to find your Telegram User ID")
+	assert.Contains(t, body, "Open a chat with the bot")
+	assert.Contains(t, body, "Send any message")
+	assert.Contains(t, body, "your ID will appear in the table")
+
+	// verify HTMX lazy-load trigger for DM users; SSE attributes are in dm_users.html,
+	// loaded only when the panel is opened (not eagerly on page load)
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.NotContains(t, body, `sse-connect="/dm-users/stream"`, "SSE should not be in settings page")
+
+	// verify copyUserID JS function
+	assert.Contains(t, body, "function copyUserID(userId, btn)")
+	assert.Contains(t, body, "navigator.clipboard")
 }
