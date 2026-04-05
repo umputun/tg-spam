@@ -26,6 +26,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
 	"github.com/sashabaranov/go-openai"
+	"google.golang.org/genai"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"
@@ -108,6 +109,24 @@ type options struct {
 		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+
+	Gemini struct {
+		Token              string   `long:"token" env:"TOKEN" description:"gemini token, disabled if not set"`
+		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"gemini system prompt, if empty uses builtin default"`
+		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
+		Model              string   `long:"model" env:"MODEL" default:"gemma-4-31b-it" description:"gemini model"`
+		MaxTokensResponse  int32    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"gemini max tokens in response"`
+		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"8192" description:"gemini max symbols in request"`
+		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"gemini retry count"`
+		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"gemini history size"`
+		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with Gemini"`
+	} `group:"gemini" namespace:"gemini" env-namespace:"GEMINI"`
+
+	LLM struct {
+		Consensus      string        `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
+		RequestTimeout time.Duration `long:"request-timeout" env:"REQUEST_TIMEOUT" default:"30s" description:"timeout for individual LLM requests"`
+	} `group:"llm" namespace:"llm" env-namespace:"LLM"`
 
 	LuaPlugins struct {
 		Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
@@ -210,7 +229,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	masked := []string{opts.Telegram.Token, opts.OpenAI.Token}
+	masked := []string{opts.Telegram.Token, opts.OpenAI.Token, opts.Gemini.Token}
 	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" {
 		// auto passwd should not be masked as we print it
 		masked = append(masked, opts.Server.AuthPasswd)
@@ -533,12 +552,19 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
 		MetaGiveaway:             opts.Meta.Giveaway,
 		MultiLangLimit:           opts.MultiLangWords,
+		LLMConsensus:             opts.LLM.Consensus,
 		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
 		OpenAIVeto:               opts.OpenAI.Veto,
 		OpenAIHistorySize:        opts.OpenAI.HistorySize,
 		OpenAIModel:              opts.OpenAI.Model,
 		OpenAICheckShortMessages: opts.OpenAI.CheckShortMessages,
 		OpenAICustomPrompts:      opts.OpenAI.CustomPrompts,
+		GeminiEnabled:            opts.Gemini.Token != "",
+		GeminiVeto:               opts.Gemini.Veto,
+		GeminiHistorySize:        opts.Gemini.HistorySize,
+		GeminiModel:              opts.Gemini.Model,
+		GeminiCheckShortMessages: opts.Gemini.CheckShortMessages,
+		GeminiCustomPrompts:      opts.Gemini.CustomPrompts,
 		LuaPluginsEnabled:        opts.LuaPlugins.Enabled,
 		LuaPluginsDir:            opts.LuaPlugins.PluginsDir,
 		LuaEnabledPlugins:        opts.LuaPlugins.EnabledPlugins,
@@ -600,6 +626,10 @@ func makeDetector(opts options) *tgspam.Detector {
 		FirstMessagesCount:  opts.FirstMessagesCount,
 		OpenAIVeto:          opts.OpenAI.Veto,
 		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
+		GeminiVeto:          opts.Gemini.Veto,
+		GeminiHistorySize:   opts.Gemini.HistorySize, // how many last requests sent to gemini
+		LLMConsensus:        tgspam.LLMConsensusMode(opts.LLM.Consensus),
+		LLMRequestTimeout:   opts.LLM.RequestTimeout,
 		MultiLangWords:      opts.MultiLangWords,
 		HistorySize:         opts.HistorySize, // how many last request stored in memory
 	}
@@ -648,6 +678,29 @@ func makeDetector(opts options) *tgspam.Detector {
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
+	}
+
+	if opts.Gemini.Token != "" {
+		log.Printf("[WARN] gemini enabled")
+		geminiConfig := tgspam.GeminiConfig{
+			SystemPrompt:       opts.Gemini.Prompt,
+			CustomPrompts:      opts.Gemini.CustomPrompts,
+			Model:              opts.Gemini.Model,
+			MaxOutputTokens:    opts.Gemini.MaxTokensResponse,
+			MaxSymbolsRequest:  opts.Gemini.MaxSymbolsRequest,
+			RetryCount:         opts.Gemini.RetryCount,
+			CheckShortMessages: opts.Gemini.CheckShortMessages,
+		}
+
+		client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+			APIKey:  opts.Gemini.Token,
+			Backend: genai.BackendGeminiAPI,
+		})
+		if err != nil {
+			log.Fatalf("[ERROR] failed to create gemini client: %v", err)
+		}
+		log.Printf("[DEBUG] gemini config: %+v", geminiConfig)
+		detector.WithGeminiChecker(client.Models, geminiConfig)
 	}
 
 	if opts.AbnormalSpacing.Enabled {

@@ -38,6 +38,7 @@ type Detector struct {
 	Config
 	classifier        classifier
 	openaiChecker     *openAIChecker
+	geminiChecker     *geminiChecker
 	duplicateDetector *duplicateDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.Check // separate field for Lua plugin checks
@@ -59,21 +60,53 @@ type Detector struct {
 	lock sync.RWMutex
 }
 
+// LLMConsensusMode controls how eligible LLM checks flip the base decision.
+type LLMConsensusMode string
+
+const (
+	// LLMConsensusAny flips the base decision if any eligible LLM agrees.
+	LLMConsensusAny LLMConsensusMode = "any"
+	// LLMConsensusAll flips the base decision only if all eligible LLMs agree.
+	LLMConsensusAll LLMConsensusMode = "all"
+)
+
+// detectorLLMCheck describes how a single LLM provider participates in Detector.Check.
+type detectorLLMCheck struct {
+	name    string // provider name used in logs
+	enabled bool   // whether this provider is configured
+	// whether short messages should still be sent to the provider
+	checkShortMessages bool
+	// whether the provider confirms spam instead of checking clean messages
+	veto bool
+	// number of recent ham messages to pass as context
+	historySize int
+	check       func(context.Context, string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
+}
+
+type detectorLLMResult struct {
+	details spamcheck.Response
+	flip    bool
+}
+
 // Config is a set of parameters for Detector.
 type Config struct {
-	SimilarityThreshold float64       // threshold for spam similarity, 0.0 - 1.0
-	MinMsgLen           int           // minimum message length to check
-	MaxAllowedEmoji     int           // maximum number of emojis allowed in a message
-	CasAPI              string        // CAS API URL
-	CasUserAgent        string        // CAS API User-Agent header value, set only if non-empty
-	FirstMessageOnly    bool          // if true, only the first message from a user is checked
-	FirstMessagesCount  int           // number of first messages to check for spam
-	HTTPClient          HTTPClient    // http client to use for requests
-	MinSpamProbability  float64       // minimum spam probability to consider a message spam with classifier, if 0 - ignored
-	OpenAIVeto          bool          // if true, openai vetos spam, otherwise vetos ham
-	OpenAIHistorySize   int           // history size for openai
-	MultiLangWords      int           // if true, check for number of multi-lingual words
-	StorageTimeout      time.Duration // timeout for storage operations, if not set - no timeout
+	SimilarityThreshold float64          // threshold for spam similarity, 0.0 - 1.0
+	MinMsgLen           int              // minimum message length to check
+	MaxAllowedEmoji     int              // maximum number of emojis allowed in a message
+	CasAPI              string           // CAS API URL
+	CasUserAgent        string           // CAS API User-Agent header value, set only if non-empty
+	FirstMessageOnly    bool             // if true, only the first message from a user is checked
+	FirstMessagesCount  int              // number of first messages to check for spam
+	HTTPClient          HTTPClient       // http client to use for requests
+	MinSpamProbability  float64          // minimum spam probability to consider a message spam with classifier, if 0 - ignored
+	OpenAIVeto          bool             // if true, openai vetos spam, otherwise vetos ham
+	OpenAIHistorySize   int              // history size for openai
+	GeminiVeto          bool             // if true, gemini vetos spam, otherwise vetos ham
+	GeminiHistorySize   int              // history size for gemini
+	LLMConsensus        LLMConsensusMode // how eligible LLM checks flip the base decision
+	LLMRequestTimeout   time.Duration    // timeout for individual LLM requests, if not set - 30s default
+	MultiLangWords      int              // if true, check for number of multi-lingual words
+	StorageTimeout      time.Duration    // timeout for storage operations, if not set - no timeout
 
 	LuaPlugins struct {
 		Enabled        bool     // if true, enable Lua plugins
@@ -149,6 +182,7 @@ func NewDetector(p Config) *Detector {
 		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
 		luaEngine:         nil, // will be set with WithLuaEngine if needed
 	}
+	res.LLMConsensus = res.normalizeLLMConsensusMode(p.LLMConsensus)
 	// if FirstMessagesCount is set, FirstMessageOnly enforced to true.
 	// this is to avoid confusion when FirstMessagesCount is set but FirstMessageOnly is false.
 	// the reason for the redundant FirstMessageOnly flag is to avoid breaking api compatibility.
@@ -231,9 +265,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, spamcheck.Response{Name: "message length", Spam: false, Details: "too short"})
 		// only return early if:
 		// 1. we already detected spam from simple checks above, OR
-		// 2. openai checker is not configured, OR
-		// 3. openai is configured but should skip short messages
-		if isSpamDetected(cr) || d.openaiChecker == nil || !d.openaiChecker.params.CheckShortMessagesWithOpenAI {
+		// 2. no LLM checker is configured for short messages, OR
+		// 3. LLM checkers are configured but LLMs won't run (FirstMessageOnly/FirstMessagesCount not set)
+		openaiChecksShort := d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI
+		geminiChecksShort := d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages
+		llmEligible := d.FirstMessageOnly || d.FirstMessagesCount > 0
+		if isSpamDetected(cr) || !llmEligible || (!openaiChecksShort && !geminiChecksShort) {
 			if isSpamDetected(cr) {
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
@@ -241,7 +278,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			// don't add short messages to hamHistory as they haven't been properly checked
 			return false, cr
 		}
-		// if we get here, we have a short message but openai should still check it
+		// if we get here, we have a short message but an eligible LLM should still check it
 	}
 
 	// check for spam similarity if a similarity threshold is set and spam samples are loaded
@@ -258,42 +295,47 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		cr = append(cr, d.isSpamClassified(cleanMsg))
 	}
 
-	spamDetected := isSpamDetected(cr)
+	baseSpam := isSpamDetected(cr)
+	spamDetected := baseSpam
 
-	// we hit openai in three cases:
-	//  - short message with CheckShortMessagesWithOpenAI enabled (ignores veto mode since there's no decision to veto)
-	//  - all checks passed (ham) and OpenAIVeto is false - improves false negative rate
-	//  - checks failed (spam) and OpenAIVeto is true - improves false positive rate
-	// FirstMessageOnly or FirstMessagesCount has to be set to use openai, because it's slow and expensive to run on all messages
-	if d.openaiChecker != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
-		// determine if we should check with openai:
-		// - short messages with CheckShortMessagesWithOpenAI (ignores veto mode)
-		// - normal veto mode logic for non-short messages
-		shouldCheck := (isShortMessage && d.openaiChecker.params.CheckShortMessagesWithOpenAI) ||
-			(!spamDetected && !d.OpenAIVeto) ||
-			(spamDetected && d.OpenAIVeto)
+	// we hit eligible LLMs in three cases:
+	//  - short message with short-message checking enabled (ignores veto mode since there's no decision to veto)
+	//  - all checks passed (ham) and veto is false - improves false negative rate
+	//  - checks failed (spam) and veto is true - improves false positive rate
+	// FirstMessageOnly or FirstMessagesCount has to be set to use LLMs, because they are slow and expensive to run on all messages
+	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+		llmResults := make([]detectorLLMResult, 0, 2)
+		llmChecks := []detectorLLMCheck{
+			{
+				name:               "openai",
+				enabled:            d.openaiChecker != nil,
+				checkShortMessages: d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI,
+				veto:               d.OpenAIVeto,
+				historySize:        d.OpenAIHistorySize,
+				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+					return d.openaiChecker.check(ctx, msg, history)
+				},
+			},
+			{
+				name:               "gemini",
+				enabled:            d.geminiChecker != nil,
+				checkShortMessages: d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages,
+				veto:               d.GeminiVeto,
+				historySize:        d.GeminiHistorySize,
+				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+					return d.geminiChecker.check(ctx, msg, history)
+				},
+			},
+		}
 
-		if shouldCheck {
-			var hist []spamcheck.Request // by default, openai doesn't use history
-			if d.OpenAIHistorySize > 0 && d.HistorySize > 0 {
-				// if history size is set, we use the last N messages for openai
-				hist = d.hamHistory.Last(d.OpenAIHistorySize)
-			}
-			spam, details := d.openaiChecker.check(cleanMsg, hist)
-			cr = append(cr, details)
-			if spamDetected && details.Error != nil {
-				// spam detected with other checks, but openai failed. in this case, we still return spam, but log the error
-				log.Printf("[WARN] openai error: %v", details.Error)
-			} else {
-				log.Printf("[DEBUG] openai result: {%s}", details.String())
-				spamDetected = spam
-			}
-
-			// log if veto is enabled, and openai detected no spam for message that was detected as spam by other checks
-			if d.OpenAIVeto && !spam {
-				log.Printf("[DEBUG] openai vetoed ham message: %q, checks: %s", req.Msg, spamcheck.ChecksToString(cr))
+		for _, llmCheck := range llmChecks {
+			if res, ok := d.collectLLMCheck(req, cleanMsg, cr, baseSpam, isShortMessage, llmCheck); ok {
+				cr = append(cr, res.details)
+				llmResults = append(llmResults, res)
 			}
 		}
+
+		spamDetected = d.applyLLMConsensus(baseSpam, llmResults, d.LLMConsensus)
 	}
 
 	if spamDetected {
@@ -322,6 +364,82 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	return false, cr
 }
 
+func (d *Detector) normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
+	if mode == LLMConsensusAll {
+		return mode
+	}
+	return LLMConsensusAny
+}
+
+func (d *Detector) shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detectorLLMCheck) bool {
+	if isShortMessage {
+		return cfg.checkShortMessages
+	}
+	return (!baseSpam && !cfg.veto) || (baseSpam && cfg.veto)
+}
+
+func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []spamcheck.Response,
+	baseSpam bool, isShortMessage bool, cfg detectorLLMCheck,
+) (detectorLLMResult, bool) {
+	if !cfg.enabled || cfg.check == nil {
+		return detectorLLMResult{}, false
+	}
+
+	if !d.shouldApplyLLMCheck(baseSpam, isShortMessage, cfg) {
+		return detectorLLMResult{}, false
+	}
+
+	var hist []spamcheck.Request
+	if cfg.historySize > 0 && d.HistorySize > 0 {
+		hist = d.hamHistory.Last(cfg.historySize)
+	}
+
+	ctx, cancel := d.ctxWithLLMTimeout()
+	defer cancel()
+
+	spam, details := cfg.check(ctx, cleanMsg, hist)
+	if baseSpam && details.Error != nil {
+		log.Printf("[WARN] %s error: %v", cfg.name, details.Error)
+	}
+
+	log.Printf("[DEBUG] %s result: {%s}", cfg.name, details.String())
+
+	if cfg.veto && !spam && details.Error == nil {
+		allChecks := append(append(make([]spamcheck.Response, 0, len(cr)+1), cr...), details)
+		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, req.Msg, spamcheck.ChecksToString(allChecks))
+	}
+
+	flip := false
+	if details.Error == nil {
+		flip = (!baseSpam && spam) || (baseSpam && !spam)
+	}
+
+	return detectorLLMResult{details: details, flip: flip}, true
+}
+
+func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult, mode LLMConsensusMode) bool {
+	if len(results) == 0 {
+		return baseSpam
+	}
+
+	switch d.normalizeLLMConsensusMode(mode) {
+	case LLMConsensusAll:
+		for _, result := range results {
+			if !result.flip {
+				return baseSpam
+			}
+		}
+		return !baseSpam
+	default:
+		for _, result := range results {
+			if result.flip {
+				return !baseSpam
+			}
+		}
+		return baseSpam
+	}
+}
+
 // Reset resets spam samples/classifier, excluded tokens, stop words and approved users.
 func (d *Detector) Reset() {
 	d.lock.Lock()
@@ -344,6 +462,11 @@ func (d *Detector) Reset() {
 // WithOpenAIChecker sets an openAIChecker for spam checking.
 func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 	d.openaiChecker = newOpenAIChecker(client, config)
+}
+
+// WithGeminiChecker sets a geminiChecker for spam checking.
+func (d *Detector) WithGeminiChecker(client geminiClient, config GeminiConfig) {
+	d.geminiChecker = newGeminiChecker(client, config)
 }
 
 // WithLuaEngine sets a Lua plugin engine and loads plugins
@@ -1081,6 +1204,16 @@ func (d *Detector) ctxWithStoreTimeout() (context.Context, context.CancelFunc) {
 		return context.Background(), func() {}
 	}
 	return context.WithTimeout(context.Background(), d.StorageTimeout)
+}
+
+const defaultLLMRequestTimeout = 30 * time.Second
+
+func (d *Detector) ctxWithLLMTimeout() (context.Context, context.CancelFunc) {
+	timeout := d.LLMRequestTimeout
+	if timeout == 0 {
+		timeout = defaultLLMRequestTimeout
+	}
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 func cleanEmoji(s string) string {

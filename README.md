@@ -23,6 +23,7 @@ TG-Spam's spam detection algorithm is multifaceted, incorporating several criter
 - **Spam Message Similarity Check**: TG-Spam assesses the overall resemblance of each message to known spam patterns.
 - **Stop Words Comparison**: Messages are compared against a curated list of stop words commonly found in spam.
 - **OpenAI Integration**: TG-Spam may optionally use OpenAI's GPT models to analyze messages for spam patterns.
+- **Google Gemini Integration**: TG-Spam may optionally use Google Gemini models as an alternative or additional LLM for spam detection. Both OpenAI and Gemini can be used simultaneously.
 - **Emoji Count**: Messages with an excessive number of emojis are scrutinized, as this is a common trait in spam messages.
 - **Meta checks**: TG-Spam can optionally check the message for the number of links and the presence of images, forwarded messages, etc. If the number of links is greater than the specified limit, or if the message contains images but no text, it will be marked as spam.
 - **Custom Lua Plugins**: TG-Spam supports custom spam detection logic through Lua plugins. Users can write their own Lua scripts to detect specific patterns or behaviors without modifying the main codebase.
@@ -113,6 +114,28 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  Messages shorter than `--min-msg-len` are typically skipped by most checks because short messages often lack sufficient context to accurately determine if they are spam. However, you can enable OpenAI checks for short messages by setting `--openai.check-short-messages`. This can be useful when dealing with concise spam patterns that OpenAI might be able to detect through its more sophisticated analysis, even with limited text. When this feature is enabled, short messages are always checked by OpenAI regardless of the `--openai.veto` setting, since there are no other spam detection results to veto (most checks are skipped for short messages). **Note**: Enabling this feature may increase API costs, especially in high-volume environments with many short messages.
 
 
+**Gemini integration**
+
+Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemini can be used alongside or instead of OpenAI. If both tokens are set, all eligible LLMs will be checked and their results resolved according to `--llm.consensus`. All other parameters are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+
+- By default, the Gemini integration is disabled. To enable it, set `--gemini.token` to a valid Google Gemini API key.
+- The Gemini check follows the same workflow as OpenAI: it runs as one of the final checks in the detection pipeline.
+- Configuring `--gemini.veto` enables veto mode for Gemini, identical to OpenAI's veto behavior.
+- The `--gemini.history-size` parameter works the same way as `--openai.history-size`, providing conversation context to Gemini.
+- Custom prompts can be added via `--gemini.custom-prompt=[$GEMINI_CUSTOM_PROMPT]`, same as with OpenAI.
+- Short message checking can be enabled with `--gemini.check-short-messages`.
+- The default model is `gemma-4-31b-it`. You can change it with `--gemini.model=[$GEMINI_MODEL]`.
+
+**LLM consensus**
+
+When multiple LLM providers are eligible for the same message, TG-Spam resolves their results with `--llm.consensus=[$LLM_CONSENSUS]`:
+
+- `any` is the default. If any eligible LLM disagrees with the base decision, the base decision flips.
+- `all` requires all eligible LLMs to agree before the base decision flips.
+- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, and the short-message flags.
+- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and the base decision is kept.
+
+
 **Emoji Count**
 
 If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJI]` (default is 2), the message is marked as spam. Setting the max emoji count to -1 will effectively disable this check. Note: setting it to 0 will mark all the messages with any emoji as spam.
@@ -175,7 +198,7 @@ Using words that mix characters from multiple languages is a common spam techniq
 
 This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly.
 
-**Important**: Duplicate detection is a behavioral check that runs for **all users**, including approved users. This differs from content-based checks (similarity, classifier, OpenAI) which are skipped for approved users for performance reasons. The rationale is that approved users can still exhibit spam behavior by sending duplicate messages, and this pattern should be detected regardless of trust status.
+**Important**: Duplicate detection is a behavioral check that runs for **all users**, including approved users. This differs from content-based checks (similarity, classifier, OpenAI, Gemini) which are skipped for approved users for performance reasons. The rationale is that approved users can still exhibit spam behavior by sending duplicate messages, and this pattern should be detected regardless of trust status.
 
 Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
@@ -514,6 +537,22 @@ openai:
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
       --openai.reasoning-effort=[none|low|medium|high] reasoning effort for thinking models, none disables thinking (default: none) [$OPENAI_REASONING_EFFORT]
       --openai.check-short-messages     check messages shorter than min-msg-len with OpenAI [$OPENAI_CHECK_SHORT_MESSAGES]
+
+gemini:
+      --gemini.token=                   gemini token, disabled if not set [$GEMINI_TOKEN]
+      --gemini.veto                     veto mode, confirm detected spam [$GEMINI_VETO]
+      --gemini.prompt=                  gemini system prompt, if empty uses builtin default [$GEMINI_PROMPT]
+      --gemini.custom-prompt=           additional custom prompts for specific spam patterns [$GEMINI_CUSTOM_PROMPT]
+      --gemini.model=                   gemini model (default: gemma-4-31b-it) [$GEMINI_MODEL]
+      --gemini.max-tokens-response=     gemini max tokens in response (default: 1024) [$GEMINI_MAX_TOKENS_RESPONSE]
+      --gemini.max-symbols-request=     gemini max symbols in request (default: 8192) [$GEMINI_MAX_SYMBOLS_REQUEST]
+      --gemini.retry-count=             gemini retry count (default: 1) [$GEMINI_RETRY_COUNT]
+      --gemini.history-size=            gemini history size (default: 0) [$GEMINI_HISTORY_SIZE]
+      --gemini.check-short-messages     check messages shorter than min-msg-len with Gemini [$GEMINI_CHECK_SHORT_MESSAGES]
+
+llm:
+      --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]
+      --llm.request-timeout=            timeout for individual LLM requests (default: 30s) [$LLM_REQUEST_TIMEOUT]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]

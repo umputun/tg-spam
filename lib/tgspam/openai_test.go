@@ -3,6 +3,7 @@ package tgspam
 import (
 	"context"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -41,7 +42,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.True(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -58,7 +59,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -71,7 +72,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, assert.AnError
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -88,7 +89,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -103,7 +104,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -135,7 +136,7 @@ func TestOpenAIChecker_CheckWithHistory(t *testing.T) {
 		{Msg: "third message", UserName: "user1"},
 	}
 
-	spam, details := checker.check("current message", history)
+	spam, details := checker.check(context.Background(), "current message", history)
 	t.Logf("spam: %v, details: %+v", spam, details)
 	assert.True(t, spam)
 	assert.Equal(t, "openai", details.Name)
@@ -205,7 +206,7 @@ History:
 		t.Run(tt.name, func(t *testing.T) {
 			clientMock.ResetCalls() // reset mock before each test case
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"})
-			checker.check(tt.currentMsg, tt.history)
+			checker.check(context.Background(), tt.currentMsg, tt.history)
 			assert.Equal(t, tt.expectedMessage, capturedMsg, "message formatting mismatch")
 			assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 		})
@@ -311,7 +312,7 @@ func TestReasoningEffortInRequest(t *testing.T) {
 			})
 
 			// call the check method to trigger the client call
-			checker.check("test message", nil)
+			checker.check(context.Background(), "test message", nil)
 
 			// verify the reasoning_effort parameter in the request
 			if tt.expectInRequest {
@@ -419,7 +420,7 @@ func TestCustomPromptsInActualRequest(t *testing.T) {
 			})
 
 			// call the check method to trigger the request
-			checker.check("test message", nil)
+			checker.check(context.Background(), "test message", nil)
 
 			// verify the system message in the request contains what we expect
 			expectedContent := checker.buildSystemPrompt()
@@ -499,7 +500,7 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 			})
 
 			// call the check method to trigger the client call
-			checker.check("test message", nil)
+			checker.check(context.Background(), "test message", nil)
 
 			// verify the correct field is used
 			if tt.expectMaxTokens {
@@ -512,4 +513,36 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenAIChecker_TruncateUTF8(t *testing.T) {
+	var capturedMsg string
+	clientMock := &mocks.OpenAIClientMock{
+		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			capturedMsg = req.Messages[1].Content
+			return openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"ok", "confidence":100}`},
+				}},
+			}, nil
+		},
+	}
+
+	// 'Привет' is 12 bytes in UTF-8 (2 bytes per char)
+	// '🌞' is 4 bytes
+	msg := "Привет🌞"
+
+	t.Run("truncate in middle of 2-byte char", func(t *testing.T) {
+		// mock OpenAI client already defined above.
+		// we need to use a model that doesn't trigger the real tokenizer
+		// or make the tokenizer fail.
+		// since we're in a test, let's just make sure it falls back to defaultReducer.
+		checker := newOpenAIChecker(clientMock, OpenAIConfig{
+			MaxSymbolsRequest: 1, // will take 1 rune in fallback
+			MaxTokensRequest:  0, // forces tokenizer to be used if available, but let's test fallback
+		})
+
+		checker.check(context.Background(), msg, nil)
+		assert.True(t, utf8.ValidString(capturedMsg), "Truncated string should be valid UTF-8. Got: %x", capturedMsg)
+	})
 }

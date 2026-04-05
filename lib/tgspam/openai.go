@@ -43,12 +43,6 @@ type openAIClient interface {
 
 const defaultPrompt = `I'll give you a text from the messaging application and you will return me a json with three fields: {"spam": true/false, "reason":"why this is spam", "confidence":1-100}. Set spam:true only of confidence above 80. Return JSON only with no extra formatting!` + "\n" + `If history of previous messages provided, use them as extra context to make the decision.`
 
-type openAIResponse struct {
-	IsSpam     bool   `json:"spam"`
-	Reason     string `json:"reason"`
-	Confidence int    `json:"confidence"`
-}
-
 // newOpenAIChecker makes a bot for ChatGPT
 func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 	if params.SystemPrompt == "" {
@@ -73,36 +67,12 @@ func newOpenAIChecker(client openAIClient, params OpenAIConfig) *openAIChecker {
 }
 
 // check checks if a text is spam using OpenAI API
-func (o *openAIChecker) check(msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
+func (o *openAIChecker) check(ctx context.Context, msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
 	if o.client == nil {
 		return false, spamcheck.Response{}
 	}
 
-	// update the message with the history
-	if len(history) > 0 {
-		var hist []string
-		for _, h := range history {
-			hist = append(hist, fmt.Sprintf("%q: %q", h.UserName, h.Msg))
-		}
-		msgWithHist := fmt.Sprintf("User message:\n%s\n\nHistory:\n%s\n", msg, strings.Join(hist, "\n"))
-		msg = msgWithHist
-	}
-
-	// try to send a request several times if it fails
-	var resp openAIResponse
-	var err error
-	for i := 0; i < o.params.RetryCount; i++ {
-		if resp, err = o.sendRequest(msg); err == nil {
-			break
-		}
-	}
-	if err != nil {
-		return false, spamcheck.Response{
-			Spam: false, Name: "openai", Details: fmt.Sprintf("OpenAI error: %v", err), Error: err}
-	}
-
-	return resp.IsSpam, spamcheck.Response{Spam: resp.IsSpam, Name: "openai",
-		Details: strings.TrimSuffix(resp.Reason, ".") + ", confidence: " + fmt.Sprintf("%d%%", resp.Confidence)}
+	return runLLMProviderCheck(ctx, "openai", "OpenAI", o.params.RetryCount, msg, history, o.sendRequest)
 }
 
 // buildSystemPrompt creates the complete system prompt by combining the base prompt with custom prompts
@@ -137,7 +107,7 @@ func (o *openAIChecker) isReasoningModel() bool {
 		strings.Contains(modelLower, "gpt-5")
 }
 
-func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err error) {
+func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response llmResponse, err error) {
 	// reduce the request size with tokenizer and fallback to default reducer if it fails.
 	// the API supports 4097 tokens ~16000 characters (<=4 per token) for request + result together.
 	// the response is limited to 1000 tokens, and OpenAI always reserved it for the result.
@@ -148,7 +118,11 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 			if len(text) <= o.params.MaxSymbolsRequest {
 				return text
 			}
-			return text[:o.params.MaxSymbolsRequest]
+			runes := []rune(text)
+			if len(runes) <= o.params.MaxSymbolsRequest {
+				return text
+			}
+			return string(runes[:o.params.MaxSymbolsRequest])
 		}
 
 		encoder, tokErr := tokenizer.NewEncoder()
@@ -197,18 +171,18 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 	}
 
 	resp, err := o.client.CreateChatCompletion(
-		context.Background(),
+		ctx,
 		request,
 	)
 
 	if err != nil {
-		return openAIResponse{}, fmt.Errorf("failed to create chat completion: %w", err)
+		return llmResponse{}, fmt.Errorf("failed to create chat completion: %w", err)
 	}
 
 	// openAI platform supports returning multiple chat completion choices, but we use only the first one:
 	// https://platform.openai.com/docs/api-reference/chat/create#chat/create-n
 	if len(resp.Choices) == 0 {
-		return openAIResponse{}, fmt.Errorf("no choices in response")
+		return llmResponse{}, fmt.Errorf("no choices in response")
 	}
 
 	// strip <thought> tags from response content if present
@@ -216,7 +190,7 @@ func (o *openAIChecker) sendRequest(msg string) (response openAIResponse, err er
 	content = stripThoughtTags(content)
 
 	if err := json.Unmarshal([]byte(content), &response); err != nil {
-		return openAIResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", content, err)
+		return llmResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", content, err)
 	}
 
 	return response, nil
