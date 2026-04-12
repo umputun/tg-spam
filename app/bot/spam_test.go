@@ -36,7 +36,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				Image: &Image{FileID: "123"},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -59,7 +59,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				WithForward: true,
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -81,7 +81,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				WithVideoNote: true,
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -103,7 +103,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			},
 			dry: true,
 			wantResponse: Response{
-				Text:          `detected dry: "user1" (1)`,
+				Text:          `detected dry`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -151,7 +151,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -172,7 +172,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				From: User{ID: 1, Username: "user1", DisplayName: "User One"},
 			},
 			wantResponse: Response{
-				Text:          `detected: "User One" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -195,7 +195,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -223,7 +223,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -254,7 +254,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -278,7 +278,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -306,7 +306,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -331,7 +331,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -361,7 +361,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -390,7 +390,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -419,7 +419,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -440,7 +440,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				Quote: "Мефедрон VHQ Кристалл 1г",
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -461,7 +461,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 					FirstName: "John", LastName: "Doe", IsPremium: true},
 			},
 			wantResponse: Response{
-				Text:          `detected: "John Doe" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -481,7 +481,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				SenderChat: SenderChat{ID: 12345, UserName: "spam_channel"},
 			},
 			wantResponse: Response{
-				Text:          `detected: "Channel_Bot" (136817688)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,
@@ -507,7 +507,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				},
 			},
 			wantResponse: Response{
-				Text:          `detected: "user1" (1)`,
+				Text:          `detected`,
 				Send:          true,
 				BanInterval:   PermanentBanDuration,
 				DeleteReplyTo: true,

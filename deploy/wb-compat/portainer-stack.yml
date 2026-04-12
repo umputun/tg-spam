@@ -1,0 +1,60 @@
+services:
+  tg-spam:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: tg-spam-wb-compat:local
+    container_name: tg-spam
+    restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_GROUP: ${TELEGRAM_GROUP}
+      ADMIN_GROUP: ${ADMIN_GROUP}
+      TZ: ${TZ:-Europe/Moscow}
+
+      # Keep admin moderation flow enabled for unban/restore scenario
+      DISABLE_ADMIN_SPAM_FORWARD: ${DISABLE_ADMIN_SPAM_FORWARD:-false}
+
+      # Core behavior
+      DRY: ${DRY:-false}
+      SOFT_BAN: ${SOFT_BAN:-true}
+      NO_SPAM_REPLY: ${NO_SPAM_REPLY:-true}
+      MAX_EMOJI: ${MAX_EMOJI:-3}
+      MIN_MSG_LEN: ${MIN_MSG_LEN:-20}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.7}
+
+      # Messages
+      MESSAGE_SPAM: ${MESSAGE_SPAM:-Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.}
+      MESSAGE_DRY: ${MESSAGE_DRY:-this is spam (dry mode)}
+      MESSAGE_RESTORE: ${MESSAGE_RESTORE:-Прошу прощения, принял вас за спамера. Вот ваше сообщение:}
+
+      # Optional OpenAI veto
+      OPENAI_TOKEN: ${OPENAI_TOKEN}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      OPENAI_VETO: ${OPENAI_VETO:-true}
+
+      # Logging and optional server
+      LOGGER_ENABLED: ${LOGGER_ENABLED:-true}
+      LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
+      LOGGER_MAX_SIZE: ${LOGGER_MAX_SIZE:-5M}
+      SERVER_ENABLED: ${SERVER_ENABLED:-true}
+      SERVER_LISTEN: ${SERVER_LISTEN:-:8080}
+
+      # Keep this marker for in-container behavior
+      TGSPAM_IN_DOCKER: "1"
+    command: ${TGSPAM_COMMAND:---super=evgeny_boger}
+    volumes:
+      - tg-spam_data:/srv/var
+      - tg-spam_log:/srv/log
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  tg-spam_data:
+  tg-spam_log:
