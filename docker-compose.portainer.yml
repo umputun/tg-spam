@@ -1,10 +1,10 @@
 services:
-  tg-spam:
+  tg-spam-wb:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tg-spam-wb-compat:local
-    container_name: tg-spam
+    image: tg-spam-wb-compat:latest
+    container_name: tg-spam-wb
     restart: unless-stopped
     environment:
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
@@ -32,15 +32,15 @@ services:
       LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
       LOGGER_MAX_SIZE: ${LOGGER_MAX_SIZE:-5M}
       SERVER_ENABLED: ${SERVER_ENABLED:-true}
-      SERVER_LISTEN: ${SERVER_LISTEN:-:8080}
+      SERVER_LISTEN: ${SERVER_LISTEN:-:8081}
       TGSPAM_IN_DOCKER: "1"
     command: ${TGSPAM_COMMAND:---super=evgeny_boger}
     volumes:
-      - tg-spam_data:/srv/data
-      - tg-spam_log:/srv/log
+      - tg-spam-wb_data:/srv/data
+      - tg-spam-wb_log:/srv/log
     ports:
-      - "8080:8080"
+      - "8081:8081"
 
 volumes:
-  tg-spam_data:
-  tg-spam_log:
+  tg-spam-wb_data:
+  tg-spam-wb_log:
