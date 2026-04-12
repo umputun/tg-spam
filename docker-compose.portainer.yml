@@ -36,7 +36,7 @@ services:
       TGSPAM_IN_DOCKER: "1"
     command: ${TGSPAM_COMMAND:---super=evgeny_boger}
     volumes:
-      - tg-spam_data:/srv/var
+      - tg-spam_data:/srv/data
       - tg-spam_log:/srv/log
     ports:
       - "8080:8080"
