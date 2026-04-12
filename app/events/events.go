@@ -444,7 +444,7 @@ func parseCallbackData(data string) (userID int64, msgID int, err error) {
 	}
 
 	parts := strings.Split(data, ":")
-	if len(parts) != 2 {
+	if len(parts) < 2 {
 		return 0, 0, fmt.Errorf("unexpected callback data, should have both ids %q", data)
 	}
 	if userID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {

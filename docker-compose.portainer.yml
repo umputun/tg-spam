@@ -1,0 +1,46 @@
+services:
+  tg-spam-wb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tg-spam-wb-compat:latest
+    container_name: tg-spam-wb
+    restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_GROUP: ${TELEGRAM_GROUP}
+      ADMIN_GROUP: ${ADMIN_GROUP}
+      TZ: ${TZ:-Europe/Moscow}
+
+      DISABLE_ADMIN_SPAM_FORWARD: ${DISABLE_ADMIN_SPAM_FORWARD:-false}
+      DRY: ${DRY:-false}
+      SOFT_BAN: ${SOFT_BAN:-true}
+      NO_SPAM_REPLY: ${NO_SPAM_REPLY:-true}
+      MAX_EMOJI: ${MAX_EMOJI:-3}
+      MIN_MSG_LEN: ${MIN_MSG_LEN:-20}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.7}
+
+      MESSAGE_SPAM: ${MESSAGE_SPAM:-Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.}
+      MESSAGE_DRY: ${MESSAGE_DRY:-this is spam (dry mode)}
+      MESSAGE_RESTORE: ${MESSAGE_RESTORE:-Прошу прощения, принял вас за спамера. Вот ваше сообщение:}
+
+      OPENAI_TOKEN: ${OPENAI_TOKEN}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      OPENAI_VETO: ${OPENAI_VETO:-true}
+
+      LOGGER_ENABLED: ${LOGGER_ENABLED:-true}
+      LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
+      LOGGER_MAX_SIZE: ${LOGGER_MAX_SIZE:-5M}
+      SERVER_ENABLED: ${SERVER_ENABLED:-true}
+      SERVER_LISTEN: ${SERVER_LISTEN:-:8081}
+      TGSPAM_IN_DOCKER: "1"
+    command: ${TGSPAM_COMMAND:---super=evgeny_boger}
+    volumes:
+      - tg-spam-wb_data:/srv/data
+      - tg-spam-wb_log:/srv/log
+    ports:
+      - "8081:8081"
+
+volumes:
+  tg-spam-wb_data:
+  tg-spam-wb_log:

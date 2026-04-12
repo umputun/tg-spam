@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -29,6 +30,7 @@ type admin struct {
 	softBan                bool // if true, the user not banned automatically, but only restricted
 	dry                    bool
 	warnMsg                string
+	restoreMsg             string
 	aggressiveCleanup      bool
 	aggressiveCleanupLimit int
 }
@@ -40,7 +42,7 @@ const (
 )
 
 // ReportBan a ban message to admin chat with a button to unban the user
-func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
+func (a *admin) ReportBan(banUserStr string, msg *bot.Message, spamReplyID int) {
 	log.Printf("[DEBUG] report to admin chat, ban msgsData for %s, group: %d", banUserStr, a.adminChatID)
 	msgText := msg.Text
 	if msg.Quote != "" {
@@ -72,7 +74,7 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 			would, escapeMarkDownV1Text(banUserStr), msg.SenderChat.ID)
 	}
 	forwardMsg := fmt.Sprintf("%s\n\n%s\n\n", banLine, text)
-	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", callbackUser, msg.ID, a.adminChatID); err != nil {
+	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", callbackUser, msg.ID, a.adminChatID, spamReplyID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
@@ -705,7 +707,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 		log.Printf("[DEBUG] failed to get clean message: %v", err)
 	}
 
-	userID, msgID, parseErr := parseCallbackData(query.Data)
+	userID, msgID, spamReplyID, parseErr := parseCallbackDataWithSpamReply(query.Data)
 	if parseErr != nil {
 		return fmt.Errorf("failed to parse callback's userID %q: %w", query.Data, parseErr)
 	}
@@ -719,6 +721,15 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 
 	// for soft ban we need to ban user for real on confirmation
 	if a.softBan && !a.trainingMode {
+		if spamReplyID != 0 {
+			if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+				MessageID:  spamReplyID,
+				ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+			}}); err != nil {
+				log.Printf("[WARN] failed to delete spam reply message %d: %v", spamReplyID, err)
+			}
+		}
+
 		userName, err := a.extractUsername(query.Message.Text) // try to extract username from the message
 		if err != nil {
 			log.Printf("[DEBUG] failed to extract username from %q: %v", query.Message.Text, err)
@@ -748,13 +759,15 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 		return fmt.Errorf("failed to send callback response: %w", err)
 	}
 
-	userID, _, err := parseCallbackData(callbackData)
+	userID, _, spamReplyID, err := parseCallbackDataWithSpamReply(callbackData)
 	if err != nil {
 		return fmt.Errorf("failed to parse callback msgsData %q: %w", callbackData, err)
 	}
 
+	cleanMsg := ""
 	// get the original spam message to update ham samples
-	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr == nil && cleanMsg != "" {
+	if msg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr == nil && msg != "" {
+		cleanMsg = msg
 		// update ham samples if we have a clean message
 		if upErr := a.bot.UpdateHam(cleanMsg); upErr != nil {
 			return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, upErr)
@@ -811,6 +824,35 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
+	}
+
+	if spamReplyID != 0 {
+		if _, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  spamReplyID,
+			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+		}}); err != nil {
+			log.Printf("[WARN] failed to delete spam reply message %d: %v", spamReplyID, err)
+		}
+	}
+
+	if a.restoreMsg != "" && cleanMsg != "" {
+		name, nameErr := a.extractUsername(query.Message.Text)
+		if nameErr != nil || name == "" {
+			name = fmt.Sprintf("%d", userID)
+		}
+
+		mention := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(name), userID)
+		if userID < 0 {
+			mention = escapeMarkDownV1Text(name)
+		}
+
+		restoreText := fmt.Sprintf("%s, %s\n\n%s", mention, escapeMarkDownV1Text(a.restoreMsg), escapeMarkDownV1Text(cleanMsg))
+		tbMsg := tbapi.NewMessage(a.primChatID, restoreText)
+		tbMsg.ParseMode = tbapi.ModeMarkdown
+		tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+		if _, err := a.tbAPI.Send(tbMsg); err != nil {
+			return fmt.Errorf("can't send restore message to telegram %q: %w", restoreText, err)
+		}
 	}
 	return nil
 }
@@ -993,7 +1035,7 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 // text is message with details and action is the button label to unban,
 // which is user id prefixed with "?" for confirmation.
 // the second button is to show info about the spam analysis.
-func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID int, chatID int64) error {
+func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID int, chatID int64, spamReplyID int) error {
 	log.Printf("[DEBUG] action response %q: user %+v, msgID:%d, text: %q",
 		action, user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
 	tbMsg := tbapi.NewMessage(chatID, text)
@@ -1003,9 +1045,9 @@ func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID in
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
 			// ?userID to request confirmation
-			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("%s%d:%d", confirmationPrefix, user.ID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("%s%d:%d:%d", confirmationPrefix, user.ID, msgID, spamReplyID)),
 			// !userID to request info
-			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("%s%d:%d", infoPrefix, user.ID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("%s%d:%d:%d", infoPrefix, user.ID, msgID, spamReplyID)),
 		),
 	)
 
@@ -1013,6 +1055,32 @@ func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID in
 		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
 	}
 	return nil
+}
+
+func parseCallbackDataWithSpamReply(data string) (userID int64, msgID int, spamReplyID int, err error) {
+	userID, msgID, err = parseCallbackData(data)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	trimmed := data
+	if len(trimmed) >= 3 && trimmed[:1] == "R" {
+		trimmed = trimmed[2:]
+	} else if strings.HasPrefix(trimmed, confirmationPrefix) || strings.HasPrefix(trimmed, banPrefix) || strings.HasPrefix(trimmed, infoPrefix) {
+		trimmed = trimmed[1:]
+	}
+
+	parts := strings.Split(trimmed, ":")
+	if len(parts) < 3 {
+		return userID, msgID, 0, nil
+	}
+
+	spamReplyID, err = strconv.Atoi(parts[2])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to parse spamReplyID %q: %w", parts[2], err)
+	}
+
+	return userID, msgID, spamReplyID, nil
 }
 
 // extractUsername tries to extract the username from a ban message.

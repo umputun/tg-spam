@@ -1,0 +1,28 @@
+services:
+  tg-spam:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: tg-spam-wb-compat:local
+    container_name: tg-spam
+    restart: unless-stopped
+    env_file:
+      - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    volumes:
+      - ./var:/srv/data
+      - ./logs:/srv/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "8080:8080"
+    # Add superusers below if needed:
+    # command: --super=123456789 --super=987654321

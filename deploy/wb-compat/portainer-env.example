@@ -1,0 +1,37 @@
+# Required
+TELEGRAM_TOKEN=replace_with_new_bot_token
+TELEGRAM_GROUP=wirenboard
+ADMIN_GROUP=-1002485520426
+
+# Timezone
+TZ=Europe/Moscow
+
+# Recommended for your workflow
+DISABLE_ADMIN_SPAM_FORWARD=false
+DRY=false
+SOFT_BAN=true
+NO_SPAM_REPLY=true
+MAX_EMOJI=3
+MIN_MSG_LEN=20
+SIMILARITY_THRESHOLD=0.7
+
+# Messages
+MESSAGE_SPAM=Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.
+MESSAGE_DRY=this is spam (dry mode)
+MESSAGE_RESTORE=Прошу прощения, принял вас за спамера. Вот ваше сообщение:
+
+# OpenAI (optional but recommended if you use veto)
+OPENAI_TOKEN=replace_with_new_openai_key
+OPENAI_MODEL=gpt-5-mini
+OPENAI_VETO=true
+
+# Logging / web
+LOGGER_ENABLED=true
+LOGGER_FILE=/srv/log/tg-spam.log
+LOGGER_MAX_SIZE=5M
+SERVER_ENABLED=true
+SERVER_LISTEN=:8080
+
+# Comma is NOT supported by tg-spam for repeated --super,
+# use repeated flags in TGSPAM_COMMAND:
+TGSPAM_COMMAND=--super=evgeny_boger --super=MicroVolk

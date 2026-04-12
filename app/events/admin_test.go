@@ -38,7 +38,7 @@ func TestAdmin_reportBan(t *testing.T) {
 
 	t.Run("normal user name", func(t *testing.T) {
 		mockAPI.ResetCalls()
-		adm.ReportBan("testUser", msg)
+		adm.ReportBan("testUser", msg, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
@@ -52,7 +52,7 @@ func TestAdmin_reportBan(t *testing.T) {
 
 	t.Run("name with md chars", func(t *testing.T) {
 		mockAPI.ResetCalls()
-		adm.ReportBan("test_User", msg)
+		adm.ReportBan("test_User", msg, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
@@ -71,7 +71,7 @@ func TestAdmin_reportBan(t *testing.T) {
 			Text:  "Спасибо!!",
 			Quote: "Бесплатный VPN для Telegram",
 		}
-		adm.ReportBan("spammer", msgWithQuote)
+		adm.ReportBan("spammer", msgWithQuote, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
@@ -202,7 +202,7 @@ func TestAdmin_dryModeForwardMessage(t *testing.T) {
 	}
 	msg := &bot.Message{}
 
-	adm.ReportBan("testUser", msg)
+	adm.ReportBan("testUser", msg, 0)
 	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned [testUser]")
 }
 
@@ -222,7 +222,7 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 			SenderChat: bot.SenderChat{ID: -100999888, UserName: "spamchannel"},
 			Text:       "spam from channel",
 		}
-		adm.ReportBan("spamchannel", msg)
+		adm.ReportBan("spamchannel", msg, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
@@ -243,7 +243,7 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 			SenderChat: bot.SenderChat{ID: -100999888},
 			Text:       "spam from channel",
 		}
-		adm.ReportBan("Some Channel", msg)
+		adm.ReportBan("Some Channel", msg, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
@@ -257,7 +257,7 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 			From: bot.User{ID: 456, Username: "spammer"},
 			Text: "spam from user",
 		}
-		adm.ReportBan("spammer", msg)
+		adm.ReportBan("spammer", msg, 0)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
