@@ -59,6 +59,76 @@ func TestServer_Run(t *testing.T) {
 	<-done
 }
 
+func TestServer_RunCrossOriginProtection(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv := NewServer(Config{ListenAddr: ":9879", Version: "dev",
+		Detector: &mocks.DetectorMock{
+			CheckFunc: func(spamcheck.Request) (bool, []spamcheck.Response) { return false, nil },
+		},
+		SpamFilter: &mocks.SpamFilterMock{}, AuthPasswd: "test"})
+	done := make(chan struct{})
+	go func() {
+		err := srv.Run(ctx)
+		assert.NoError(t, err)
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9879/ping")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 2*time.Second, 50*time.Millisecond, "server did not start")
+
+	tests := []struct {
+		name          string
+		method        string
+		path          string
+		secFetchSite  string
+		origin        string
+		wantForbidden bool
+	}{
+		{name: "GET ping allowed without headers", method: "GET", path: "/ping"},
+		{name: "POST same-origin allowed", method: "POST", path: "/check", secFetchSite: "same-origin"},
+		{name: "POST none allowed (direct nav)", method: "POST", path: "/check", secFetchSite: "none"},
+		{name: "POST cross-site rejected", method: "POST", path: "/check",
+			secFetchSite: "cross-site", wantForbidden: true},
+		{name: "POST same-site rejected (subdomain)", method: "POST", path: "/check",
+			secFetchSite: "same-site", wantForbidden: true},
+		{name: "POST origin mismatch rejected", method: "POST", path: "/check",
+			origin: "http://evil.com", wantForbidden: true},
+		{name: "POST no headers (non-browser) allowed", method: "POST", path: "/check"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := bytes.NewBufferString(`{"msg":"x"}`)
+			req, err := http.NewRequest(tt.method, "http://localhost:9879"+tt.path, body)
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.SetBasicAuth("tg-spam", "test")
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			if tt.wantForbidden {
+				assert.Equal(t, http.StatusForbidden, resp.StatusCode, "should be rejected as cross-origin")
+				return
+			}
+			assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, "should not be rejected as cross-origin")
+		})
+	}
+}
+
 func TestServer_RunAuth(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
