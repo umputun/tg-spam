@@ -200,6 +200,7 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
 	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
+	router.Use(http.NewCrossOriginProtection().Handler)
 
 	if s.AuthPasswd != "" || s.AuthHash != "" {
 		log.Printf("[INFO] basic auth enabled for webapi server")
