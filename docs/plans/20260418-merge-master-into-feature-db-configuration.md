@@ -623,12 +623,14 @@ Task 14 notes: `go build ./...` clean. First `golangci-lint` pass surfaced 177 i
 **Files:**
 - Modify: `app/config/store_test.go`
 
-- [ ] inspect `store_test.go` to confirm whether the existing test matrix runs SQLite only or SQLite+PostgreSQL — record finding in task note so we know the reach of the round-trip
-- [ ] extend `TestSaveAndLoadConfig` (or add new subtest) that constructs a `*config.Settings` with every field in every new group populated to non-default values
-- [ ] save to the encrypted store, reload into a fresh `*Settings`, assert deep equality
-- [ ] run the test under every engine the existing matrix supports; do not add a new engine case
-- [ ] add assertion that encrypted `Gemini.Token` is stored with `ENC:` prefix and decodes back to plaintext
-- [ ] run `go test ./app/config/... -race` — must pass before next task
+- [x] inspect `store_test.go` to confirm whether the existing test matrix runs SQLite only or SQLite+PostgreSQL — record finding in task note so we know the reach of the round-trip
+- [x] extend `TestSaveAndLoadConfig` (or add new subtest) that constructs a `*config.Settings` with every field in every new group populated to non-default values
+- [x] save to the encrypted store, reload into a fresh `*Settings`, assert deep equality
+- [x] run the test under every engine the existing matrix supports; do not add a new engine case
+- [x] add assertion that encrypted `Gemini.Token` is stored with `ENC:` prefix and decodes back to plaintext
+- [x] run `go test ./app/config/... -race` — must pass before next task
+
+Task 15 notes: `store_test.go` runs both SQLite (always, file-based unique-per-pid path) and PostgreSQL (when not `-short`, via `containers.NewPostgresTestContainerWithDB`). The shared matrix is reached via `getTestDB()`. Added new test method `TestStore_NewMasterFeatureGroups_RoundTrip` (`app/config/store_test.go:452`) that constructs an encrypted store, populates a fresh `*config.Settings` with non-default values for every new master group (Delete, Meta.ContactOnly/Giveaway, full Gemini incl. Token, LLM, Duplicates, Report, AggressiveCleanup*), saves, reads the raw row to verify `Gemini.Token` is stored with `ENC:` prefix and `IsEncrypted()` returns true, then reloads and asserts struct-level equality on every new group plus an explicit plaintext check on the decrypted `Gemini.Token`. Engine matrix unchanged (no new engine case added). `go test -race -count=1 ./app/config/...` green in 8.3s (8 subtests run twice — once per engine — when Postgres is available); `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0 ./app/config/...` reports `0 issues.`. Note: there's no top-level `TestSaveAndLoadConfig` in `app/config/store_test.go` (that's the suite-driven `TestSettingsSuite/TestStore_SaveLoad`); the plan likely meant either of those names — adding a new dedicated subtest gives the round-trip its own clear assertion surface and avoids bloating `TestStore_SaveLoad` with new-group concerns.
 
 ### Task 16: Manual --confdb round-trip smoke test
 

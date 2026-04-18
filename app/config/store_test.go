@@ -449,6 +449,115 @@ func (s *SettingsTestSuite) TestStore_WithEncryption() {
 	}
 }
 
+// TestStore_NewMasterFeatureGroups_RoundTrip exercises every new domain group
+// added during the master merge (Delete, Gemini, LLM, Duplicates, Report,
+// AggressiveCleanup, Meta.ContactOnly, Meta.Giveaway). It saves a fully
+// populated *config.Settings through the encrypted store, reloads it, and
+// asserts deep equality of every new field. It also asserts that Gemini.Token
+// is stored with the ENC: prefix in the raw database row (mirrors the
+// pre-existing OpenAI/Telegram token guarantees).
+//
+// Test matrix: runs against every engine returned by getTestDB() — SQLite by
+// default, plus PostgreSQL when running without -short (matrix is unchanged
+// from the rest of the suite).
+func (s *SettingsTestSuite) TestStore_NewMasterFeatureGroups_RoundTrip() {
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+			s.Require().NoError(err)
+
+			store, err := NewStore(s.ctx, db, WithCrypter(crypter))
+			s.Require().NoError(err)
+
+			// build a settings object with non-default values for every new group
+			settings := New()
+			settings.InstanceID = "new-groups-roundtrip"
+
+			// Delete group
+			settings.Delete.JoinMessages = true
+			settings.Delete.LeaveMessages = true
+
+			// Meta extensions added on master
+			settings.Meta.ContactOnly = true
+			settings.Meta.Giveaway = true
+
+			// Gemini group (Token gets encrypted at rest)
+			settings.Gemini.Token = "super-secret-gemini-token"
+			settings.Gemini.Veto = true
+			settings.Gemini.Prompt = "gemini prompt"
+			settings.Gemini.CustomPrompts = []string{"prompt-a", "prompt-b"}
+			settings.Gemini.Model = "gemini-2.5-pro"
+			settings.Gemini.MaxTokensResponse = 1024
+			settings.Gemini.MaxSymbolsRequest = 8000
+			settings.Gemini.RetryCount = 3
+			settings.Gemini.HistorySize = 7
+			settings.Gemini.CheckShortMessages = true
+
+			// LLM orchestration
+			settings.LLM.Consensus = "all"
+			settings.LLM.RequestTimeout = 45 * time.Second
+
+			// Duplicates
+			settings.Duplicates.Threshold = 4
+			settings.Duplicates.Window = 2 * time.Minute
+
+			// Report
+			settings.Report.Enabled = true
+			settings.Report.Threshold = 5
+			settings.Report.AutoBanThreshold = 10
+			settings.Report.RateLimit = 3
+			settings.Report.RatePeriod = 90 * time.Second
+
+			// top-level cleanup additions
+			settings.AggressiveCleanup = true
+			settings.AggressiveCleanupLimit = 50
+
+			// save through encrypted store
+			err = store.Save(s.ctx, settings)
+			s.Require().NoError(err)
+
+			// verify Gemini.Token is encrypted in the raw DB row
+			var record struct {
+				Data string `db:"data"`
+			}
+			query := db.Adopt("SELECT data FROM config WHERE gid = ?")
+			err = db.GetContext(s.ctx, &record, query, db.GID())
+			s.Require().NoError(err)
+
+			var rawSettings struct {
+				Gemini struct {
+					Token string `json:"token"`
+				} `json:"gemini"`
+			}
+			err = json.Unmarshal([]byte(record.Data), &rawSettings)
+			s.Require().NoError(err)
+			s.True(strings.HasPrefix(rawSettings.Gemini.Token, EncryptPrefix),
+				"Gemini.Token should be stored with ENC: prefix, got %q", rawSettings.Gemini.Token)
+			s.True(IsEncrypted(rawSettings.Gemini.Token),
+				"Gemini.Token should be detected as encrypted in DB")
+
+			// reload through encrypted store
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+
+			// every new field must round-trip exactly
+			s.Equal(settings.Delete, loaded.Delete, "Delete group must round-trip")
+			s.Equal(settings.Meta.ContactOnly, loaded.Meta.ContactOnly)
+			s.Equal(settings.Meta.Giveaway, loaded.Meta.Giveaway)
+			s.Equal(settings.Gemini, loaded.Gemini, "Gemini group must round-trip including decrypted Token")
+			s.Equal(settings.LLM, loaded.LLM, "LLM group must round-trip")
+			s.Equal(settings.Duplicates, loaded.Duplicates, "Duplicates group must round-trip")
+			s.Equal(settings.Report, loaded.Report, "Report group must round-trip")
+			s.Equal(settings.AggressiveCleanup, loaded.AggressiveCleanup)
+			s.Equal(settings.AggressiveCleanupLimit, loaded.AggressiveCleanupLimit)
+
+			// explicit Gemini.Token plaintext check (decryption path)
+			s.Equal("super-secret-gemini-token", loaded.Gemini.Token,
+				"Gemini.Token should be decrypted to original plaintext on load")
+		})
+	}
+}
+
 func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
