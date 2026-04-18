@@ -94,6 +94,11 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 			Model:  "gpt-4",
 			Prompt: "public-prompt",
 		},
+		Gemini: GeminiSettings{
+			Token:  "gemini-token-secret",
+			Model:  "gemini-1.5-pro",
+			Prompt: "public-gemini-prompt",
+		},
 		Server: ServerSettings{
 			AuthHash: "server-auth-hash-secret",
 		},
@@ -106,12 +111,15 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 	// verify fields are encrypted
 	assert.True(t, IsEncrypted(settings.Telegram.Token))
 	assert.True(t, IsEncrypted(settings.OpenAI.Token))
+	assert.True(t, IsEncrypted(settings.Gemini.Token))
 	assert.True(t, IsEncrypted(settings.Server.AuthHash))
 
 	// verify non-sensitive fields are not encrypted
 	assert.Equal(t, "public-group-name", settings.Telegram.Group)
 	assert.Equal(t, "gpt-4", settings.OpenAI.Model)
 	assert.Equal(t, "public-prompt", settings.OpenAI.Prompt)
+	assert.Equal(t, "gemini-1.5-pro", settings.Gemini.Model)
+	assert.Equal(t, "public-gemini-prompt", settings.Gemini.Prompt)
 
 	// create a new crypter with the same key
 	decrypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
@@ -124,12 +132,33 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 	// verify original values are restored
 	assert.Equal(t, "telegram-token-secret", settings.Telegram.Token)
 	assert.Equal(t, "openai-token-secret", settings.OpenAI.Token)
+	assert.Equal(t, "gemini-token-secret", settings.Gemini.Token)
 	assert.Equal(t, "server-auth-hash-secret", settings.Server.AuthHash)
 
 	// verify non-sensitive fields are unchanged
 	assert.Equal(t, "public-group-name", settings.Telegram.Group)
 	assert.Equal(t, "gpt-4", settings.OpenAI.Model)
 	assert.Equal(t, "public-prompt", settings.OpenAI.Prompt)
+	assert.Equal(t, "gemini-1.5-pro", settings.Gemini.Model)
+	assert.Equal(t, "public-gemini-prompt", settings.Gemini.Prompt)
+}
+
+func TestCrypter_GeminiTokenRoundTrip(t *testing.T) {
+	crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+
+	settings := &Settings{
+		Gemini: GeminiSettings{Token: "gemini-secret-token"},
+	}
+
+	err = crypter.EncryptSensitiveFields(settings)
+	require.NoError(t, err)
+	assert.True(t, IsEncrypted(settings.Gemini.Token), "Gemini.Token should be encrypted with ENC: prefix")
+	assert.NotEqual(t, "gemini-secret-token", settings.Gemini.Token)
+
+	err = crypter.DecryptSensitiveFields(settings)
+	require.NoError(t, err)
+	assert.Equal(t, "gemini-secret-token", settings.Gemini.Token)
 }
 
 func TestCrypter_EncryptWithInvalidKey(t *testing.T) {

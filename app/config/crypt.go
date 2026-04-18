@@ -21,6 +21,7 @@ const EncryptPrefix = "ENC:"
 const (
 	FieldTelegramToken  = "telegram.token"
 	FieldOpenAIToken    = "openai.token"
+	FieldGeminiToken    = "gemini.token"
 	FieldServerAuthHash = "server.auth_hash"
 )
 
@@ -181,6 +182,14 @@ func (c *Crypter) EncryptSensitiveFields(settings *Settings, sensitiveFields ...
 				}
 				settings.OpenAI.Token = encrypted
 			}
+		case FieldGeminiToken:
+			if settings.Gemini.Token != "" && !IsEncrypted(settings.Gemini.Token) {
+				encrypted, err := c.Encrypt(settings.Gemini.Token)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt Gemini token: %w", err)
+				}
+				settings.Gemini.Token = encrypted
+			}
 		case FieldServerAuthHash:
 			if settings.Server.AuthHash != "" && !IsEncrypted(settings.Server.AuthHash) {
 				encrypted, err := c.Encrypt(settings.Server.AuthHash)
@@ -233,6 +242,16 @@ func (c *Crypter) DecryptSensitiveFields(settings *Settings, sensitiveFields ...
 					log.Printf("[WARN] failed to decrypt OpenAI token: %v", err)
 				} else {
 					settings.OpenAI.Token = decrypted
+				}
+			}
+		case FieldGeminiToken:
+			if IsEncrypted(settings.Gemini.Token) {
+				decrypted, err := c.Decrypt(settings.Gemini.Token)
+				if err != nil {
+					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt Gemini token: %w", err))
+					log.Printf("[WARN] failed to decrypt Gemini token: %v", err)
+				} else {
+					settings.Gemini.Token = decrypted
 				}
 			}
 		case FieldServerAuthHash:

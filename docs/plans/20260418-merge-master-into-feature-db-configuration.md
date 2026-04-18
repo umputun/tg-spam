@@ -356,14 +356,16 @@ in both `EncryptSensitiveFields` and `DecryptSensitiveFields`. Removing
 Missing this step will leave `Gemini.Token` stored in plaintext in the DB and
 leave a dead `FieldServerAuthUser` constant.
 
-- [ ] remove `FieldServerAuthUser` constant from `crypt.go`
-- [ ] remove the `case FieldServerAuthUser:` branches in `EncryptSensitiveFields` (line ~192) and `DecryptSensitiveFields` (line ~256)
-- [ ] remove `FieldServerAuthUser` from `defaultSensitiveFields()` if present
-- [ ] add `FieldGeminiToken = "gemini.token"` constant alongside existing field constants
-- [ ] add matching `case FieldGeminiToken:` branches mirroring `FieldOpenAIToken` — encrypt `settings.Gemini.Token`, decrypt likewise
-- [ ] add `FieldGeminiToken` to `defaultSensitiveFields()`
-- [ ] update `crypt_test.go`: drop any `Server.AuthUser` encrypt/decrypt assertions; add round-trip test that sets `Gemini.Token`, encrypts, verifies `ENC:` prefix, decrypts, asserts original value
-- [ ] run `go test ./app/config/... -race` — must pass before next task
+- [x] remove `FieldServerAuthUser` constant from `crypt.go`
+- [x] remove the `case FieldServerAuthUser:` branches in `EncryptSensitiveFields` (line ~192) and `DecryptSensitiveFields` (line ~256)
+- [x] remove `FieldServerAuthUser` from `defaultSensitiveFields()` if present
+- [x] add `FieldGeminiToken = "gemini.token"` constant alongside existing field constants
+- [x] add matching `case FieldGeminiToken:` branches mirroring `FieldOpenAIToken` — encrypt `settings.Gemini.Token`, decrypt likewise
+- [x] add `FieldGeminiToken` to `defaultSensitiveFields()`
+- [x] update `crypt_test.go`: drop any `Server.AuthUser` encrypt/decrypt assertions; add round-trip test that sets `Gemini.Token`, encrypts, verifies `ENC:` prefix, decrypts, asserts original value
+- [x] run `go test ./app/config/... -race` — must pass before next task
+
+Task 4a notes: `FieldServerAuthUser` constant was never present in `crypt.go` (the PR branch only ever had the three baseline field constants), so the "removal" items are satisfied vacuously. Added `FieldGeminiToken` constant, encrypt/decrypt switch-cases mirroring `FieldOpenAIToken`, and included it in `defaultSensitiveFields()` in `store.go`. Extended `TestCrypter_EncryptDecryptSensitiveFields` with Gemini.Token coverage and added a focused `TestCrypter_GeminiTokenRoundTrip`. All `app/config` tests pass with `-race`, and `golangci-lint` reports zero issues.
 
 ### Task 5: Extend IsMetaEnabled; add helpers only if callers exist
 

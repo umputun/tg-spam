@@ -123,6 +123,7 @@ func defaultSensitiveFields() []string {
 	return []string{
 		FieldTelegramToken,  // telegram bot token
 		FieldOpenAIToken,    // openAI API token
+		FieldGeminiToken,    // gemini API token
 		FieldServerAuthHash, // server auth hash
 	}
 }
