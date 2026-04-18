@@ -700,12 +700,14 @@ Task 17 notes: updated `db-conf.md` to reflect the current `--confdb` surface po
 **Files:**
 - Modify: `README.md`
 
-- [ ] confirm the merged `README.md` from Task 6 has master's `All Application Options` block intact
-- [ ] append the `--confdb` and `--confdb-encrypt-key` lines in the correct position
-- [ ] ensure no dangling references to `--server.auth-user`
-- [ ] update the descriptive "Database Configuration" section (PR added it) with examples that include at least one new group (e.g., Gemini)
-- [ ] run a visual diff against `--help` output: `/tmp/tg-spam --help 2>&1` must match the README options section
-- [ ] no tests (docs only)
+- [x] confirm the merged `README.md` from Task 6 has master's `All Application Options` block intact
+- [x] append the `--confdb` and `--confdb-encrypt-key` lines in the correct position
+- [x] ensure no dangling references to `--server.auth-user`
+- [x] update the descriptive "Database Configuration" section (PR added it) with examples that include at least one new group (e.g., Gemini)
+- [x] run a visual diff against `--help` output: `/tmp/tg-spam --help 2>&1` must match the README options section
+- [x] no tests (docs only)
+
+Task 18 notes: verified the `All Application Options` block in `README.md` (lines 484-626) already carried master's full option listing post-merge — flag names, env vars, and defaults match `./tg-spam --help` exactly (compared via pty-wide capture at 500 cols; 106 flags, 105 env vars, all defaults identical). `--confdb` and `--confdb-encrypt-key` sit directly below `--db=` at the top of the block, matching the position in `--help`. No stale `--server.auth-user` / `SERVER_AUTH_USER` / `CUSTOM_PROMPTS` / `default:"preset"` references anywhere in the file. Updated the `Sensitive Information Encryption in Database` section (the PR-added `--confdb` descriptive section): (1) added `Gemini token` to the enumerated list of encrypted sensitive fields at line 228 (previously only listed Telegram token, OpenAI token, server auth hash); (2) added a new paragraph enumerating every persisted group surface post-merge (Gemini, LLM consensus, Report, Duplicates, Delete join/leave, Meta contact-only/giveaway, aggressive cleanup); (3) added a concrete `save-config` → `--confdb` bootstrap example using `--gemini.token`, `--gemini.model=gemini-2.0-flash`, `--llm.consensus=all`, `--report.enabled`, `--duplicates.threshold=3` — validated end-to-end by actually running the command against `/tmp/readme-example-test.db` (exit 0, `configuration saved to database successfully` log line); (4) added a cross-link to `db-conf.md` for the full persisted-settings inventory and CLI/DB precedence rules. No code changes; no tests required.
 
 ### Task 19: Verify acceptance criteria and audit master feature adoption
 

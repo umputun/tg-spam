@@ -225,7 +225,20 @@ export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
 ./tg-spam --confdb-encrypt-key="your-secure-master-key-at-least-20-chars" --confdb ...
 ```
 
-When encryption is enabled, sensitive fields like Telegram token, OpenAI token, and server auth hash are automatically encrypted in the database and decrypted when loaded. This provides an extra layer of protection for your credentials, especially in shared database environments.
+When encryption is enabled, sensitive fields like Telegram token, OpenAI token, Gemini token, and server auth hash are automatically encrypted in the database and decrypted when loaded. This provides an extra layer of protection for your credentials, especially in shared database environments.
+
+Every settings group is persisted in `--confdb` mode, including the groups added with the master merge: Gemini, LLM consensus, Report, Duplicates, Delete join/leave messages, Meta contact-only and giveaway checks, and aggressive cleanup. For example, the `save-config` subcommand can bootstrap a database with Gemini enabled:
+
+```bash
+# Bootstrap a scratch DB with Gemini persisted, then run with --confdb
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam save-config --gemini.token=your-gemini-key --gemini.model=gemini-2.0-flash \
+    --llm.consensus=all --report.enabled --duplicates.threshold=3 \
+    --telegram.token=your-telegram-token --telegram.group=your-group
+./tg-spam --confdb --telegram.group=your-group
+```
+
+On subsequent `--confdb` starts the bot loads every persisted group from the database; transient flags (paths, server listen address, debug flags) still come from the CLI. See [db-conf.md](db-conf.md) for the full persisted settings inventory and the CLI/DB precedence rules.
 
 #### Security Details
 
