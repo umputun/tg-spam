@@ -607,14 +607,16 @@ Task 13 notes: `app/main_test.go` and `app/webapi/webapi_test.go` were already r
 
 **Files:** none (verification only)
 
-- [ ] `go build ./...` — must succeed
-- [ ] `go test -race ./...` — all green
-- [ ] `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0` — zero issues
-- [ ] `command -v unfuck-ai-comments >/dev/null && unfuck-ai-comments run --fmt --skip=mocks ./...` or fallback to `gofmt -s -w` and `goimports -w` per CLAUDE.md
-- [ ] if any failure: fix at root, do not suppress
-- [ ] record test coverage percentage in task notes
+- [x] `go build ./...` — must succeed
+- [x] `go test -race ./...` — all green
+- [x] `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0` — zero issues
+- [x] `command -v unfuck-ai-comments >/dev/null && unfuck-ai-comments run --fmt --skip=mocks ./...` or fallback to `gofmt -s -w` and `goimports -w` per CLAUDE.md
+- [x] if any failure: fix at root, do not suppress
+- [x] record test coverage percentage in task notes
 
 No new tests in this task (it is the test gate).
+
+Task 14 notes: `go build ./...` clean. First `golangci-lint` pass surfaced 177 issues across `app/main.go`, `app/main_test.go`, `app/webapi/webapi_test.go`, `lib/tgspam/detector_test.go` — all inherited from master's modernized testifylint/gocritic/unconvert conventions that PR-side files had not been updated for. `golangci-lint run --fix` auto-resolved 77 (testifylint `bool-compare`/`len`/`empty`/`encoded-compare`, gocritic `httpNoBody`, modernize `interface{}`→`any` and `t.Context`). Remaining 100 required manual fixes at the root: 22 gocritic `octalLiteral` (`0600`→`0o600` in `app/main_test.go` via perl batch), 66 testifylint `require-error` (`assert.NoError/Error`→`require.NoError/Error` on the 66 specific lines flagged, applied per-line via a perl script reading lint JSON so unflagged `assert.NoError` usages were preserved), 2 govet `shadow` (renamed `err`→`execErr`/`getErr` inside a goroutine and an `Eventually` callback in `app/main_test.go:310-318` — both shadows of an outer `err` declared for test-setup I/O, confined to lambdas so the rename is safe), 2 lll (split `warnMsg` format string in `app/main.go:552` and `makeSpamBot` signature in `app/main.go:841`), 1 float-compare (`assert.Equal` on `float64(123)` → `assert.InEpsilon` with 0.0001 tolerance at `app/main_test.go:74` — json.Unmarshal produces the exact `123.0` double, so any non-zero epsilon suffices), and 7 unconvert (dropped redundant `string(hashedPassword)` and `string(content)` conversions; removed redundant `http.HandlerFunc(server.downloadSampleHandler(...))` wraps since `downloadSampleHandler` already returns `http.HandlerFunc`). Final state: `go build ./...` clean, `go test -race ./...` fully green, `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0` reports `0 issues.`, and `unfuck-ai-comments run --fmt --skip=mocks ./...` reports `0 files updated, 0 total changes`. Coverage: `app/` 62.9%, `app/bot` 93.3%, `app/config` 78.3%, `app/events` 85.5%, `app/storage` 82.8%, `app/storage/engine` 76.7%, `app/webapi` 68.2%, `lib/approved` 100%, `lib/spamcheck` 100%, `lib/tgspam` 94.4%, `lib/tgspam/plugin` 88.0%.
 
 ### Task 15: Extend config DB round-trip integration test
 

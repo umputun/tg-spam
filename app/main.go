@@ -549,7 +549,8 @@ func checkVolumeMount(settings *config.Settings) (ok bool) {
 		return true
 	}
 	log.Printf("[DEBUG] running in docker")
-	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart", settings.Files.DynamicDataPath)
+	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart",
+		settings.Files.DynamicDataPath)
 
 	// check if dynamic files dir not present. This means it is not mounted
 	_, err := os.Stat(settings.Files.DynamicDataPath)
@@ -838,7 +839,8 @@ func initLuaPlugins(detector *tgspam.Detector, settings *config.Settings) {
 	}
 }
 
-func makeSpamBot(ctx context.Context, settings *config.Settings, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+func makeSpamBot(ctx context.Context, settings *config.Settings, dataDB *engine.SQL,
+	detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	if dataDB == nil || detector == nil {
 		return nil, errors.New("nil datadb or detector")
 	}

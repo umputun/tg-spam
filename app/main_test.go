@@ -65,26 +65,26 @@ func TestMakeSpamLogger(t *testing.T) {
 		line := scanner.Text()
 		t.Log(line)
 
-		var logEntry map[string]interface{}
+		var logEntry map[string]any
 		err = json.Unmarshal([]byte(line), &logEntry)
 		require.NoError(t, err)
 
 		assert.Equal(t, "Test User", logEntry["display_name"])
 		assert.Equal(t, "testuser", logEntry["user_name"])
-		assert.Equal(t, float64(123), logEntry["user_id"]) // json.Unmarshal converts numbers to float64
+		assert.InEpsilon(t, float64(123), logEntry["user_id"], 0.0001) // json.Unmarshal converts numbers to float64
 		assert.Equal(t, "Test message blah blah", logEntry["text"])
 	}
-	assert.NoError(t, scanner.Err())
+	require.NoError(t, scanner.Err())
 
 	// check that the message is saved to the database
 	savedMsgs := []storage.DetectedSpamInfo{}
 	err = db.Select(&savedMsgs, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam")
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(savedMsgs))
+	assert.Len(t, savedMsgs, 1)
 	assert.Equal(t, "Test message blah blah", savedMsgs[0].Text)
 	assert.Equal(t, "testuser", savedMsgs[0].UserName)
 	assert.Equal(t, int64(123), savedMsgs[0].UserID)
-	assert.Equal(t, `[{"name":"Check1","spam":true,"details":"Details 1"},{"name":"Check2","spam":false,"details":"Details 2"}]`,
+	assert.JSONEq(t, `[{"name":"Check1","spam":true,"details":"Details 1"},{"name":"Check2","spam":false,"details":"Details 2"}]`,
 		savedMsgs[0].ChecksJSON)
 
 }
@@ -126,15 +126,15 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = writer.Write([]byte("Test log entry\n"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = writer.Close()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		file, err = os.Open(file.Name())
 		require.NoError(t, err)
 
 		content, err := io.ReadAll(file)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "Test log entry\n", string(content))
 	})
 
@@ -146,7 +146,7 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		settings.Logger.MaxBackups = 1
 
 		writer, err := makeSpamLogWriter(settings)
-		assert.Error(t, err)
+		require.Error(t, err)
 		t.Log(err)
 		assert.Nil(t, writer)
 	})
@@ -159,7 +159,7 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		settings.Logger.MaxBackups = 1
 
 		writer, err := makeSpamLogWriter(settings)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
 	})
 }
@@ -181,7 +181,7 @@ func Test_makeDetector(t *testing.T) {
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 10, res.FirstMessagesCount)
-		assert.Equal(t, true, res.FirstMessageOnly)
+		assert.True(t, res.FirstMessageOnly)
 	})
 
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
@@ -195,7 +195,7 @@ func Test_makeDetector(t *testing.T) {
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
-		assert.Equal(t, false, res.FirstMessageOnly)
+		assert.False(t, res.FirstMessageOnly)
 	})
 }
 
@@ -244,8 +244,7 @@ func Test_initLuaPlugins(t *testing.T) {
 }
 
 func Test_makeSpamBot(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	t.Run("no settings", func(t *testing.T) {
 		settings := makeTestSettings()
@@ -274,7 +273,7 @@ func Test_makeSpamBot(t *testing.T) {
 		require.NoError(t, err)
 
 		res, err := makeSpamBot(ctx, settings, db, detector)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, res)
 	})
 }
@@ -309,15 +308,15 @@ func Test_activateServerOnly(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		err := execute(ctx, settings)
-		assert.NoError(t, err)
+		execErr := execute(ctx, settings)
+		assert.NoError(t, execErr)
 		close(done)
 	}()
 
 	// wait for server to be ready
 	require.Eventually(t, func() bool {
-		resp, err := http.Get("http://localhost:9988/ping")
-		if err != nil {
+		resp, getErr := http.Get("http://localhost:9988/ping")
+		if getErr != nil {
 			return false
 		}
 		defer resp.Body.Close()
@@ -480,17 +479,17 @@ func Test_migrateSamples(t *testing.T) {
 			[]byte("new dham1\nnew dham2"), 0o600))
 
 		err = migrateSamples(context.Background(), settings, store)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify all files migrated
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, samplesHamFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, dynamicSpamFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 
 		s, err := store.Stats(context.Background())
 		require.NoError(t, err)
@@ -499,7 +498,7 @@ func Test_migrateSamples(t *testing.T) {
 
 		res, err := store.Read(context.Background(), storage.SampleTypeSpam, storage.SampleOriginUser)
 		require.NoError(t, err)
-		assert.Equal(t, 3, len(res))
+		assert.Len(t, res, 3)
 		assert.Equal(t, "new dspam1", res[0])
 		assert.Equal(t, "new dspam2", res[1])
 		assert.Equal(t, "new dspam3", res[2])
@@ -524,7 +523,7 @@ func Test_migrateSamples(t *testing.T) {
 			[]byte("old ham"), 0o600))
 
 		err = migrateSamples(context.Background(), settings, store)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify old files untouched
 		data, err := os.ReadFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"))
@@ -548,13 +547,13 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte("new ham"), 0o600))
 
 		err = migrateSamples(context.Background(), settings, store)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify only unloaded files migrated
 		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
-		assert.Error(t, err, "unloaded file should be renamed")
+		require.Error(t, err, "unloaded file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile+".loaded"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		s, err := store.Stats(context.Background())
 		require.NoError(t, err)
@@ -569,8 +568,8 @@ func Test_migrateSamples(t *testing.T) {
 		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
-		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0o600))
 
 		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
@@ -597,23 +596,23 @@ func Test_migrateDicts(t *testing.T) {
 
 		// create new files for migration
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
-			[]byte("stop1\nstop2\nstop3"), 0600))
+			[]byte("stop1\nstop2\nstop3"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
-			[]byte("token1\ntoken2"), 0600))
+			[]byte("token1\ntoken2"), 0o600))
 
 		err = migrateDicts(context.Background(), settings, dict)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify files renamed and moved correctly
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
-		assert.Error(t, err, "original file should be renamed")
+		require.Error(t, err, "original file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify data imported correctly
 		s, err := dict.Stats(context.Background())
@@ -631,18 +630,18 @@ func Test_migrateDicts(t *testing.T) {
 
 		// create already loaded files
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
-			[]byte("old stop1\nold stop2"), 0600))
+			[]byte("old stop1\nold stop2"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"),
-			[]byte("old token1"), 0600))
+			[]byte("old token1"), 0o600))
 
 		// create new files
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
-			[]byte("new stop1\nnew stop2"), 0600))
+			[]byte("new stop1\nnew stop2"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
-			[]byte("new token1\nnew token2"), 0600))
+			[]byte("new token1\nnew token2"), 0o600))
 
 		err = migrateDicts(context.Background(), settings, dict)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify import happened correctly
 		s, err := dict.Stats(context.Background())
@@ -664,11 +663,11 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create empty files
-		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile), []byte(""), 0600))
-		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0o600))
 
 		err = migrateDicts(context.Background(), settings, dict)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify stats
 		s, err := dict.Stats(context.Background())
@@ -686,18 +685,18 @@ func Test_migrateDicts(t *testing.T) {
 
 		// create mix of loaded and unloaded files
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
-			[]byte("old stop1\nold stop2"), 0600))
+			[]byte("old stop1\nold stop2"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
-			[]byte("token1\ntoken2"), 0600))
+			[]byte("token1\ntoken2"), 0o600))
 
 		err = migrateDicts(context.Background(), settings, dict)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify only unloaded file migrated
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
-		assert.Error(t, err, "unloaded file should be renamed")
+		require.Error(t, err, "unloaded file should be renamed")
 		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// verify stats reflect only migrated data
 		s, err := dict.Stats(context.Background())
@@ -726,7 +725,7 @@ func TestBackupDB(t *testing.T) {
 	t.Run("no backup if max 0", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
-		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0o600))
 
 		err := backupDB(dbFile, "v1", 0)
 		require.NoError(t, err)
@@ -738,10 +737,10 @@ func TestBackupDB(t *testing.T) {
 	t.Run("skip existing backup", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
-		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0o600))
 
 		backupFile := dbFile + ".master-123-20250108T00:01:26"
-		require.NoError(t, os.WriteFile(backupFile, []byte("old backup"), 0600))
+		require.NoError(t, os.WriteFile(backupFile, []byte("old backup"), 0o600))
 		origSize := fileSize(t, backupFile)
 
 		err := backupDB(dbFile, "master-123-20250108T00:01:26", 1)
@@ -754,7 +753,7 @@ func TestBackupDB(t *testing.T) {
 	t.Run("make new backup and cleanup", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
-		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0o600))
 
 		// create some old backups
 		oldBackups := []string{
@@ -763,7 +762,7 @@ func TestBackupDB(t *testing.T) {
 			"master-333-20250108T00:03:26",
 		}
 		for _, v := range oldBackups {
-			require.NoError(t, os.WriteFile(dbFile+"."+v, []byte("old"), 0600))
+			require.NoError(t, os.WriteFile(dbFile+"."+v, []byte("old"), 0o600))
 		}
 
 		// make new backup with maxBackups=2
@@ -785,21 +784,21 @@ func TestBackupDB(t *testing.T) {
 		}
 
 		content := readFile(t, dbFile+"."+newVer)
-		require.Equal(t, "test data", string(content))
+		require.Equal(t, "test data", content)
 	})
 
 	t.Run("mixed_formats", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
-		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0o600))
 
 		// make older files with version suffix
-		require.NoError(t, os.WriteFile(dbFile+".master-aaa-20250101T12:00:00", []byte("1"), 0600))
-		require.NoError(t, os.WriteFile(dbFile+".master-bbb-20250101T13:00:00", []byte("2"), 0600))
+		require.NoError(t, os.WriteFile(dbFile+".master-aaa-20250101T12:00:00", []byte("1"), 0o600))
+		require.NoError(t, os.WriteFile(dbFile+".master-bbb-20250101T13:00:00", []byte("2"), 0o600))
 
 		// make normal files dated between versioned ones
 		testTime := time.Date(2025, 1, 1, 12, 30, 0, 0, time.Local)
-		require.NoError(t, os.WriteFile(dbFile+".backup1", []byte("3"), 0600))
+		require.NoError(t, os.WriteFile(dbFile+".backup1", []byte("3"), 0o600))
 		require.NoError(t, os.Chtimes(dbFile+".backup1", testTime, testTime))
 
 		// make new backup, should keep only 3 newest files
@@ -830,7 +829,7 @@ func TestBackupDB(t *testing.T) {
 	t.Run("version with dots", func(t *testing.T) {
 		dir := t.TempDir()
 		dbFile := filepath.Join(dir, "test.db")
-		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0600))
+		require.NoError(t, os.WriteFile(dbFile, []byte("test data"), 0o600))
 
 		version := "master-123-1.2.3-20250108T00:01:26"
 		err := backupDB(dbFile, version, 1)
@@ -841,7 +840,7 @@ func TestBackupDB(t *testing.T) {
 		require.NoError(t, err)
 
 		content := readFile(t, expectedBackup)
-		require.Equal(t, "test data", string(content))
+		require.Equal(t, "test data", content)
 
 		require.Contains(t, expectedBackup, "master-123-1_2_3-20250108T00:01:26")
 		require.NotContains(t, expectedBackup, "master-123-1.2.3-20250108T00:01:26")
@@ -1321,7 +1320,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		// verify original transient fields were NOT loaded
 		assert.Equal(t, dbFile, loadedSettings.Transient.DataBaseURL)
-		assert.Equal(t, true, loadedSettings.Transient.ConfigDB)
+		assert.True(t, loadedSettings.Transient.ConfigDB)
 		assert.Empty(t, loadedSettings.Transient.StorageTimeout)
 	})
 
@@ -1473,8 +1472,8 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		// now verify - CLI values should be preserved
 		assert.Equal(t, "test-instance", cliSettings.InstanceID)
-		assert.Equal(t, true, cliSettings.Transient.Dbg)
-		assert.Equal(t, true, cliSettings.Transient.TGDbg)
+		assert.True(t, cliSettings.Transient.Dbg)
+		assert.True(t, cliSettings.Transient.TGDbg)
 		assert.Equal(t, "cli-password", cliSettings.Transient.WebAuthPasswd)
 		assert.Equal(t, "cli-hash", cliSettings.Server.AuthHash)
 		assert.Equal(t, "cli-token", cliSettings.Telegram.Token)
@@ -1482,7 +1481,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		assert.Equal(t, 30*time.Second, cliSettings.Transient.StorageTimeout)
 
 		// DB values should be loaded for non-transient fields
-		assert.Equal(t, true, cliSettings.Dry)                      // from DB
+		assert.True(t, cliSettings.Dry)                             // from DB
 		assert.Equal(t, 5, cliSettings.MultiLangWords)              // from DB
 		assert.Equal(t, 48*time.Hour, cliSettings.History.Duration) // from DB
 		assert.Equal(t, "db-group", cliSettings.Telegram.Group)     // from DB
@@ -1506,7 +1505,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		ctx := context.Background()
 		err := saveConfigToDB(ctx, invalidSettings)
-		assert.Error(t, err, "Expected error when trying to save to invalid database path")
+		require.Error(t, err, "Expected error when trying to save to invalid database path")
 
 		err = loadConfigFromDB(ctx, invalidSettings)
 		assert.Error(t, err, "Expected error when trying to load from invalid database path")
@@ -1532,7 +1531,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		ctx := context.Background()
 		// try to load from a database with no config
 		err = loadConfigFromDB(ctx, emptySettings)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to load") // matches "failed to load settings from database"
 	})
 
