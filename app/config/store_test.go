@@ -180,7 +180,6 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 	}
 }
 
-// TestStore_SaveNilSettings tests Save with nil settings
 func (s *SettingsTestSuite) TestStore_SaveNilSettings() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
@@ -195,7 +194,6 @@ func (s *SettingsTestSuite) TestStore_SaveNilSettings() {
 	}
 }
 
-// TestStore_LoadError tests Load with error condition
 func (s *SettingsTestSuite) TestStore_LoadError() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
@@ -220,7 +218,6 @@ func (s *SettingsTestSuite) TestStore_LoadError() {
 	}
 }
 
-// TestStore_LastUpdatedError tests LastUpdated with error condition
 func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
@@ -235,7 +232,6 @@ func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
 	}
 }
 
-// TestStore_NewStoreErrors tests error conditions in NewStore
 func (s *SettingsTestSuite) TestStore_NewStoreErrors() {
 	// test nil db error
 	_, err := NewStore(s.ctx, nil)
@@ -449,17 +445,6 @@ func (s *SettingsTestSuite) TestStore_WithEncryption() {
 	}
 }
 
-// TestStore_NewMasterFeatureGroups_RoundTrip exercises every new domain group
-// added during the master merge (Delete, Gemini, LLM, Duplicates, Report,
-// AggressiveCleanup, Meta.ContactOnly, Meta.Giveaway). It saves a fully
-// populated *config.Settings through the encrypted store, reloads it, and
-// asserts deep equality of every new field. It also asserts that Gemini.Token
-// is stored with the ENC: prefix in the raw database row (mirrors the
-// pre-existing OpenAI/Telegram token guarantees).
-//
-// Test matrix: runs against every engine returned by getTestDB() — SQLite by
-// default, plus PostgreSQL when running without -short (matrix is unchanged
-// from the rest of the suite).
 func (s *SettingsTestSuite) TestStore_NewMasterFeatureGroups_RoundTrip() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {

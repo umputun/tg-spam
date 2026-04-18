@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,11 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/config"
+	"github.com/umputun/tg-spam/app/webapi/mocks"
 )
 
 func TestSaveConfigHandler(t *testing.T) {
 	t.Run("successful save", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
 				return nil
 			},
@@ -50,7 +50,7 @@ func TestSaveConfigHandler(t *testing.T) {
 	})
 
 	t.Run("successful save with HTMX request", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
 				return nil
 			},
@@ -82,7 +82,7 @@ func TestSaveConfigHandler(t *testing.T) {
 	})
 
 	t.Run("storage error", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
 				return errors.New("storage error")
 			},
@@ -144,7 +144,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return storedSettings, nil
 			},
@@ -164,7 +164,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", http.NoBody)
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
@@ -185,7 +185,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return storedSettings, nil
 			},
@@ -205,7 +205,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", http.NoBody)
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
 		req.Header.Set("HX-Request", "true")
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
@@ -216,7 +216,7 @@ func TestLoadConfigHandler(t *testing.T) {
 	})
 
 	t.Run("load error", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return nil, errors.New("load error")
 			},
@@ -236,7 +236,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", http.NoBody)
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
@@ -249,7 +249,7 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, "test-group", srv.AppSettings.Telegram.Group)
 	})
 
-	t.Run("preserve cli settings", func(t *testing.T) {
+	t.Run("db tokens win on reload, transient and cli auth preserved", func(t *testing.T) {
 		storedSettings := &config.Settings{
 			InstanceID: "stored-instance",
 			Telegram: config.TelegramSettings{
@@ -259,12 +259,18 @@ func TestLoadConfigHandler(t *testing.T) {
 			OpenAI: config.OpenAISettings{
 				Token: "stored-openai-token",
 			},
+			Gemini: config.GeminiSettings{
+				Token: "stored-gemini-token",
+			},
+			Server: config.ServerSettings{
+				AuthHash: "stored-auth-hash",
+			},
 			Transient: config.TransientSettings{
 				Dbg: true,
 			},
 		}
 
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
 				return storedSettings, nil
 			},
@@ -274,16 +280,23 @@ func TestLoadConfigHandler(t *testing.T) {
 			InstanceID: "test-instance",
 			Telegram: config.TelegramSettings{
 				Group: "test-group",
-				Token: "cli-token",
+				Token: "memory-token",
 			},
 			OpenAI: config.OpenAISettings{
-				Token: "cli-openai-token",
+				Token: "memory-openai-token",
+			},
+			Gemini: config.GeminiSettings{
+				Token: "memory-gemini-token",
+			},
+			Server: config.ServerSettings{
+				AuthHash: "cli-auth-hash",
 			},
 			Transient: config.TransientSettings{
-				Dbg: false,
-				// CLI-only settings
-				DataBaseURL: "db-url",
-				ConfigDB:    true,
+				Dbg:           false,
+				DataBaseURL:   "db-url",
+				ConfigDB:      true,
+				WebAuthPasswd: "cli-web-passwd",
+				AuthFromCLI:   true,
 			},
 		}
 
@@ -295,21 +308,110 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", http.NoBody)
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Len(t, settingsStore.LoadCalls(), 1)
 
-		// verify stored settings loaded but CLI settings preserved
+		// stored DB values win for tokens - in --confdb mode DB is authoritative
 		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
 		assert.Equal(t, "stored-group", srv.AppSettings.Telegram.Group)
-		assert.Equal(t, "cli-token", srv.AppSettings.Telegram.Token)
-		assert.Equal(t, "cli-openai-token", srv.AppSettings.OpenAI.Token)
+		assert.Equal(t, "stored-token", srv.AppSettings.Telegram.Token)
+		assert.Equal(t, "stored-openai-token", srv.AppSettings.OpenAI.Token)
+		assert.Equal(t, "stored-gemini-token", srv.AppSettings.Gemini.Token)
+
+		// CLI-overridable auth (hash/passwd) is preserved from in-memory state
+		// only when AuthFromCLI marks it as originating from applyCLIOverrides
+		assert.Equal(t, "cli-auth-hash", srv.AppSettings.Server.AuthHash)
+		assert.Equal(t, "cli-web-passwd", srv.AppSettings.Transient.WebAuthPasswd)
+
+		// transient settings always preserved from in-memory state
 		assert.False(t, srv.AppSettings.Transient.Dbg)
 		assert.Equal(t, "db-url", srv.AppSettings.Transient.DataBaseURL)
 		assert.True(t, srv.AppSettings.Transient.ConfigDB)
+		assert.True(t, srv.AppSettings.Transient.AuthFromCLI)
+	})
+
+	t.Run("db auth hash wins when not CLI-originated", func(t *testing.T) {
+		// simulates external DB hash rotation: in-memory hash was loaded from DB
+		// at startup (no CLI override), so reload must pick up the fresh DB value
+		// instead of preserving the stale in-memory one.
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
+			Server: config.ServerSettings{
+				AuthHash: "fresh-db-hash",
+			},
+		}
+
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return storedSettings, nil
+			},
+		}
+
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Server: config.ServerSettings{
+				AuthHash: "stale-in-memory-hash",
+			},
+			Transient: config.TransientSettings{
+				ConfigDB:    true,
+				AuthFromCLI: false,
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore: settingsStore,
+				AppSettings:   appSettings,
+			},
+		}
+
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "fresh-db-hash", srv.AppSettings.Server.AuthHash,
+			"DB hash must win when AuthFromCLI is false")
+	})
+
+	t.Run("empty in-memory passwd not restored when DB also empty", func(t *testing.T) {
+		// verifies that transient copy preserves WebAuthPasswd (always CLI-origin)
+		// but does not fabricate a value when both sides are empty.
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
+		}
+
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return storedSettings, nil
+			},
+		}
+
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				ConfigDB: true,
+			},
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore: settingsStore,
+				AppSettings:   appSettings,
+			},
+		}
+
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Empty(t, srv.AppSettings.Server.AuthHash)
+		assert.Empty(t, srv.AppSettings.Transient.WebAuthPasswd)
 	})
 
 	t.Run("no storage", func(t *testing.T) {
@@ -327,7 +429,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", http.NoBody)
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
@@ -361,7 +463,6 @@ func TestUpdateConfigHandler(t *testing.T) {
 		form := url.Values{}
 		form.Add("primaryGroup", "new-group")
 		form.Add("metaLinksLimit", "5")
-		form.Add("openAIEnabled", "on")
 		form.Add("similarityThreshold", "0.8")
 
 		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
@@ -412,7 +513,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 	})
 
 	t.Run("successful update with save to DB", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
 				return nil
 			},
@@ -469,7 +570,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 	})
 
 	t.Run("DB save error", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error {
 				return errors.New("save error")
 			},
@@ -538,7 +639,6 @@ func TestUpdateConfigHandler(t *testing.T) {
 		form.Add("metaImageOnly", "on")
 		form.Add("metaUsernameSymbols", "@#")
 		form.Add("casEnabled", "on")
-		form.Add("openAIEnabled", "on")
 		form.Add("openAIModel", "gpt-4")
 		form.Add("openAIHistorySize", "10")
 		form.Add("luaPluginsEnabled", "on")
@@ -587,7 +687,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 
 func TestDeleteConfigHandler(t *testing.T) {
 	t.Run("successful delete", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			DeleteFunc: func(ctx context.Context) error {
 				return nil
 			},
@@ -609,7 +709,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 	})
 
 	t.Run("successful delete with HTMX request", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			DeleteFunc: func(ctx context.Context) error {
 				return nil
 			},
@@ -632,7 +732,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 	})
 
 	t.Run("delete error", func(t *testing.T) {
-		settingsStore := &SettingsStoreMock{
+		settingsStore := &mocks.SettingsStoreMock{
 			DeleteFunc: func(ctx context.Context) error {
 				return errors.New("delete error")
 			},
@@ -747,6 +847,46 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, []string{"user2", "user3", "user4"}, settings.Admin.SuperUsers)
 	})
 
+	t.Run("super users empty clears list", func(t *testing.T) {
+		settings := &config.Settings{
+			Admin: config.AdminSettings{
+				SuperUsers: []string{"user1", "user2"},
+			},
+		}
+
+		form := url.Values{}
+		form.Add("superUsers", "")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Empty(t, settings.Admin.SuperUsers)
+	})
+
+	t.Run("super users omitted preserves list", func(t *testing.T) {
+		settings := &config.Settings{
+			Admin: config.AdminSettings{
+				SuperUsers: []string{"user1", "user2"},
+			},
+		}
+
+		form := url.Values{}
+		form.Add("primaryGroup", "unrelated")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Equal(t, []string{"user1", "user2"}, settings.Admin.SuperUsers)
+	})
+
 	t.Run("CAS API handling", func(t *testing.T) {
 		t.Run("enable CAS", func(t *testing.T) {
 			settings := &config.Settings{
@@ -831,7 +971,6 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		}
 
 		form := url.Values{}
-		form.Add("openAIEnabled", "on")
 		form.Add("openAIModel", "gpt-4")
 		form.Add("openAIHistorySize", "10")
 		form.Add("openAIVeto", "on")
@@ -846,6 +985,47 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, "gpt-4", settings.OpenAI.Model)
 		assert.Equal(t, 10, settings.OpenAI.HistorySize)
 		assert.True(t, settings.OpenAI.Veto)
+	})
+
+	t.Run("form never destroys OpenAI credentials", func(t *testing.T) {
+		// credential management is CLI-only; no UI path should be able to wipe
+		// aPIBase or Token regardless of what the form contains.
+		settings := &config.Settings{
+			OpenAI: config.OpenAISettings{
+				APIBase: "https://api.example.com/v1",
+				Token:   "sk-secret",
+				Model:   "gpt-4",
+			},
+		}
+
+		form := url.Values{}
+		form.Add("openAIModel", "gpt-4o")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		require.NoError(t, req.ParseForm())
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Equal(t, "https://api.example.com/v1", settings.OpenAI.APIBase)
+		assert.Equal(t, "sk-secret", settings.OpenAI.Token)
+		assert.True(t, settings.IsOpenAIEnabled())
+		assert.Equal(t, "gpt-4o", settings.OpenAI.Model)
+	})
+
+	t.Run("multi-lingual words form uses multiLangWords", func(t *testing.T) {
+		settings := &config.Settings{}
+
+		form := url.Values{}
+		form.Add("multiLangWords", "7")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		require.NoError(t, req.ParseForm())
+
+		updateSettingsFromForm(settings, req)
+
+		assert.Equal(t, 7, settings.MultiLangWords)
 	})
 
 	t.Run("Lua plugins settings", func(t *testing.T) {
@@ -939,7 +1119,11 @@ func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
 			},
 		},
 		{
-			name: "delete group omitted clears flags",
+			// fields not rendered in the ConfigDB UI form must not be silently
+			// reset to zero when the user saves unrelated changes. Starts at false
+			// here; the dedicated TestUpdateSettingsFromForm_PreservesUnrenderedFields
+			// test exercises the same path with non-zero initial state.
+			name: "delete group omitted preserves current values",
 			form: url.Values{},
 			assert: func(t *testing.T, s *config.Settings) {
 				assert.False(t, s.Delete.JoinMessages)
@@ -1057,7 +1241,6 @@ func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
 		{
 			name: "openai check-short-messages toggle",
 			form: url.Values{
-				"openAIEnabled":            []string{"on"},
 				"openAICheckShortMessages": []string{"on"},
 			},
 			assert: func(t *testing.T, s *config.Settings) {
@@ -1091,7 +1274,7 @@ func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
 func TestUpdateConfigHandler_RoundTrip_NewGroups(t *testing.T) {
 	// posts a form populating every new group, asserts in-memory settings reflect every value
 	// and that the optional saveToDb path persists the same struct end-to-end via the store mock
-	store := &SettingsStoreMock{
+	store := &mocks.SettingsStoreMock{
 		SaveFunc: func(_ context.Context, _ *config.Settings) error { return nil },
 	}
 
@@ -1164,34 +1347,63 @@ func TestUpdateConfigHandler_RoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, 99, saved.AggressiveCleanupLimit)
 }
 
-func TestUpdateConfigHandler_JSONRoundTrip_NewGroups(t *testing.T) {
-	// the JSON updateConfigHandler path inherits new fields for free via struct unmarshal
-	// this asserts every new group survives a JSON encode/decode (the mechanism PUT /config relies on
-	// when the client posts application/json), which protects against accidental tag-name regressions
-	original := &config.Settings{
-		Delete:                 config.DeleteSettings{JoinMessages: true, LeaveMessages: true},
-		Meta:                   config.MetaSettings{ContactOnly: true, Giveaway: true},
-		Gemini:                 config.GeminiSettings{Token: "k", Veto: true, CheckShortMessages: true, HistorySize: 7, Model: "m", Prompt: "p", MaxTokensResponse: 1024, MaxSymbolsRequest: 256, RetryCount: 4, CustomPrompts: []string{"a", "b"}},
-		LLM:                    config.LLMSettings{Consensus: "all", RequestTimeout: 20 * time.Second},
-		Duplicates:             config.DuplicatesSettings{Threshold: 3, Window: 90 * time.Second},
-		Report:                 config.ReportSettings{Enabled: true, Threshold: 2, AutoBanThreshold: 8, RateLimit: 4, RatePeriod: 5 * time.Minute},
-		AggressiveCleanup:      true,
-		AggressiveCleanupLimit: 75,
+func TestUpdateSettingsFromForm_PreservesUnrenderedFields(t *testing.T) {
+	// regression: the ConfigDB UI form does not render controls for these flags,
+	// but the handler previously overwrote them from absent form values, which
+	// silently wiped configuration on every unrelated save. Submitting a form
+	// that omits these fields must leave the current values intact.
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			ContactOnly:     true,
+			Giveaway:        true,
+			UsernameSymbols: "@#",
+		},
+		Delete: config.DeleteSettings{
+			JoinMessages:  true,
+			LeaveMessages: true,
+		},
+		Report: config.ReportSettings{
+			Enabled: true,
+		},
+		AggressiveCleanup: true,
 	}
 
-	encoded, err := json.Marshal(original)
-	require.NoError(t, err)
+	form := url.Values{}
+	form.Add("primaryGroup", "new-group") // simulate user saving an unrelated change
 
-	var decoded config.Settings
-	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
 
-	assert.Equal(t, original.Delete, decoded.Delete)
-	assert.Equal(t, original.Meta.ContactOnly, decoded.Meta.ContactOnly)
-	assert.Equal(t, original.Meta.Giveaway, decoded.Meta.Giveaway)
-	assert.Equal(t, original.Gemini, decoded.Gemini)
-	assert.Equal(t, original.LLM, decoded.LLM)
-	assert.Equal(t, original.Duplicates, decoded.Duplicates)
-	assert.Equal(t, original.Report, decoded.Report)
-	assert.Equal(t, original.AggressiveCleanup, decoded.AggressiveCleanup)
-	assert.Equal(t, original.AggressiveCleanupLimit, decoded.AggressiveCleanupLimit)
+	updateSettingsFromForm(settings, req)
+
+	assert.True(t, settings.Meta.ContactOnly, "Meta.ContactOnly must be preserved when form omits it")
+	assert.True(t, settings.Meta.Giveaway, "Meta.Giveaway must be preserved when form omits it")
+	assert.Equal(t, "@#", settings.Meta.UsernameSymbols, "Meta.UsernameSymbols must be preserved when form omits it")
+	assert.True(t, settings.Delete.JoinMessages, "Delete.JoinMessages must be preserved when form omits it")
+	assert.True(t, settings.Delete.LeaveMessages, "Delete.LeaveMessages must be preserved when form omits it")
+	assert.True(t, settings.Report.Enabled, "Report.Enabled must be preserved when form omits it")
+	assert.True(t, settings.AggressiveCleanup, "AggressiveCleanup must be preserved when form omits it")
+}
+
+func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
+	// the UI hint below the input says "leave empty to disable". Clearing the
+	// field in the form must clear the setting regardless of metaEnabled state.
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			UsernameSymbols: "@#",
+		},
+	}
+
+	form := url.Values{}
+	form.Add("metaEnabled", "on")
+	form.Add("metaUsernameSymbols", "")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Empty(t, settings.Meta.UsernameSymbols, "empty form value must clear the setting")
 }

@@ -33,14 +33,21 @@ func TestServer_Run(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	srv := NewServer(Config{ListenAddr: ":9876", Version: "dev", Detector: &mocks.DetectorMock{},
-		SpamFilter: &mocks.SpamFilterMock{}, AuthPasswd: "test"})
+		SpamFilter: &mocks.SpamFilterMock{}})
 	done := make(chan struct{})
 	go func() {
 		err := srv.Run(ctx)
 		assert.NoError(t, err)
 		close(done)
 	}()
-	time.Sleep(100 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9876/ping")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 2*time.Second, 50*time.Millisecond, "server did not start")
 	resp, err := http.Get("http://localhost:9876/ping")
 	require.NoError(t, err)
 	t.Log(resp)
@@ -171,6 +178,45 @@ func TestServer_RunAuth(t *testing.T) {
 	<-noAuthDone
 	<-authDone
 }
+
+func TestServer_checkBasicAuth(t *testing.T) {
+	startupHash, err := rest.GenerateBcryptHash("startup")
+	require.NoError(t, err)
+	rotatedHash, err := rest.GenerateBcryptHash("rotated")
+	require.NoError(t, err)
+
+	t.Run("wrong user rejected", func(t *testing.T) {
+		srv := &Server{Config: Config{AuthHash: startupHash, AppSettings: &config.Settings{}}}
+		assert.False(t, srv.checkBasicAuth("other", "startup"))
+	})
+
+	t.Run("startup hash wins when AppSettings empty", func(t *testing.T) {
+		srv := &Server{Config: Config{AuthHash: startupHash, AppSettings: &config.Settings{}}}
+		assert.True(t, srv.checkBasicAuth("tg-spam", "startup"))
+		assert.False(t, srv.checkBasicAuth("tg-spam", "rotated"))
+	})
+
+	t.Run("AppSettings hash wins when set - simulates DB rotation via reload", func(t *testing.T) {
+		srv := &Server{Config: Config{
+			AuthHash:    startupHash,
+			AppSettings: &config.Settings{Server: config.ServerSettings{AuthHash: rotatedHash}},
+		}}
+		assert.True(t, srv.checkBasicAuth("tg-spam", "rotated"), "new DB hash must be active")
+		assert.False(t, srv.checkBasicAuth("tg-spam", "startup"), "old startup hash must no longer work")
+	})
+
+	t.Run("nil AppSettings falls back to startup hash", func(t *testing.T) {
+		srv := &Server{Config: Config{AuthHash: startupHash}}
+		assert.True(t, srv.checkBasicAuth("tg-spam", "startup"))
+	})
+
+	t.Run("both empty rejects all", func(t *testing.T) {
+		srv := &Server{Config: Config{AppSettings: &config.Settings{}}}
+		assert.False(t, srv.checkBasicAuth("tg-spam", ""))
+		assert.False(t, srv.checkBasicAuth("tg-spam", "anything"))
+	})
+}
+
 func TestServer_routes(t *testing.T) {
 	detectorMock := &mocks.DetectorMock{
 		CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
@@ -1097,17 +1143,18 @@ func TestServer_getSettingsHandler(t *testing.T) {
 				return []string{"plugin1", "plugin2", "plugin3"}
 			},
 		}
-		server := NewServer(Config{
-			Version:  "1.0",
-			Detector: detectorMock,
-			AppSettings: &config.Settings{
-				InstanceID: "test",
-				LuaPlugins: config.LuaPluginsSettings{
-					Enabled:        true,
-					PluginsDir:     "/path/to/plugins",
-					EnabledPlugins: []string{"plugin1", "plugin2"},
-				},
+		appSettings := &config.Settings{
+			InstanceID: "test",
+			LuaPlugins: config.LuaPluginsSettings{
+				Enabled:        true,
+				PluginsDir:     "/path/to/plugins",
+				EnabledPlugins: []string{"plugin1", "plugin2"},
 			},
+		}
+		server := NewServer(Config{
+			Version:     "1.0",
+			Detector:    detectorMock,
+			AppSettings: appSettings,
 		})
 		rr := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/settings", http.NoBody)
@@ -1116,14 +1163,18 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
-		var respSettings config.Settings
-		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
+		var resp struct {
+			config.Settings
+			LuaAvailablePlugins []string `json:"lua_available_plugins"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
 		require.NoError(t, err)
-		assert.Equal(t, "test", respSettings.InstanceID)
-		assert.True(t, respSettings.LuaPlugins.Enabled)
-		assert.Equal(t, "/path/to/plugins", respSettings.LuaPlugins.PluginsDir)
-		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, respSettings.LuaPlugins.EnabledPlugins)
-		// AvailablePlugins field has been removed - Lua plugin info comes from EnabledPlugins now
+		assert.Equal(t, "test", resp.InstanceID)
+		assert.True(t, resp.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", resp.LuaPlugins.PluginsDir)
+		assert.Equal(t, []string{"plugin1", "plugin2"}, resp.LuaPlugins.EnabledPlugins, "response preserves user's enabled selection")
+		assert.Equal(t, []string{"plugin1", "plugin2", "plugin3"}, resp.LuaAvailablePlugins, "available plugins reported separately")
+		assert.Equal(t, []string{"plugin1", "plugin2"}, appSettings.LuaPlugins.EnabledPlugins, "live settings must not be mutated")
 		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1)
 	})
 	t.Run("with lua plugins disabled", func(t *testing.T) {
@@ -1149,13 +1200,60 @@ func TestServer_getSettingsHandler(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
-		var respSettings config.Settings
-		err = json.Unmarshal(rr.Body.Bytes(), &respSettings)
+		var resp struct {
+			config.Settings
+			LuaAvailablePlugins []string `json:"lua_available_plugins"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &resp)
 		require.NoError(t, err)
-		assert.Equal(t, "test", respSettings.InstanceID)
-		assert.False(t, respSettings.LuaPlugins.Enabled)
-		assert.Empty(t, respSettings.LuaPlugins.EnabledPlugins)
+		assert.Equal(t, "test", resp.InstanceID)
+		assert.False(t, resp.LuaPlugins.Enabled)
+		assert.Empty(t, resp.LuaPlugins.EnabledPlugins)
+		assert.Empty(t, resp.LuaAvailablePlugins)
 		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1)
+	})
+	t.Run("redacts credential fields", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string { return nil },
+		}
+		server := NewServer(Config{
+			Version:  "1.0",
+			Detector: detectorMock,
+			AppSettings: &config.Settings{
+				InstanceID: "test",
+				Telegram:   config.TelegramSettings{Token: "tg-secret"},
+				OpenAI:     config.OpenAISettings{Token: "openai-secret"},
+				Gemini:     config.GeminiSettings{Token: "gemini-secret"},
+				Server:     config.ServerSettings{AuthHash: "$2a$bcrypt-hash"},
+			},
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+		handler := http.HandlerFunc(server.getSettingsHandler)
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.NotContains(t, body, "tg-secret", "telegram token must be redacted")
+		assert.NotContains(t, body, "openai-secret", "openai token must be redacted")
+		assert.NotContains(t, body, "gemini-secret", "gemini token must be redacted")
+		assert.NotContains(t, body, "$2a$bcrypt-hash", "auth hash must be redacted")
+	})
+	t.Run("nil app settings does not panic", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string { return nil },
+		}
+		server := NewServer(Config{
+			Version:     "1.0",
+			Detector:    detectorMock,
+			AppSettings: nil,
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+		handler := http.HandlerFunc(server.getSettingsHandler)
+		require.NotPanics(t, func() { handler.ServeHTTP(rr, req) })
+		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 }
 func TestServer_htmlSettingsHandler(t *testing.T) {
@@ -2119,7 +2217,7 @@ func TestServer_RunCrossOriginProtection(t *testing.T) {
 		Detector: &mocks.DetectorMock{
 			CheckFunc: func(spamcheck.Request) (bool, []spamcheck.Response) { return false, nil },
 		},
-		SpamFilter: &mocks.SpamFilterMock{}, AuthPasswd: "test"})
+		SpamFilter: &mocks.SpamFilterMock{}})
 	done := make(chan struct{})
 	go func() {
 		err := srv.Run(ctx)

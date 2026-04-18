@@ -863,11 +863,12 @@ func TestApplyCLIOverrides(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		settings       config.Settings
-		opts           options
-		expectedPasswd string
-		expectedHash   string
+		name            string
+		settings        config.Settings
+		opts            options
+		expectedPasswd  string
+		expectedHash    string
+		expectedFromCLI bool
 	}{
 		{
 			name: "override auth password when not default",
@@ -875,9 +876,10 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "existing-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts:           makeOpts("new-password", ""),
-			expectedPasswd: "new-password",
-			expectedHash:   "", // hash should be cleared
+			opts:            makeOpts("new-password", ""),
+			expectedPasswd:  "new-password",
+			expectedHash:    "", // hash should be cleared
+			expectedFromCLI: true,
 		},
 		{
 			name: "override auth hash when explicitly provided",
@@ -885,9 +887,10 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "old-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "password"},
 			},
-			opts:           makeOpts("auto", "$2a$10$newHashFromCLI"),
-			expectedPasswd: "", // password should be cleared
-			expectedHash:   "$2a$10$newHashFromCLI",
+			opts:            makeOpts("auto", "$2a$10$newHashFromCLI"),
+			expectedPasswd:  "", // password should be cleared
+			expectedHash:    "$2a$10$newHashFromCLI",
+			expectedFromCLI: true,
 		},
 		{
 			name: "no override when using default values",
@@ -895,9 +898,10 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "existing-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "existing-password"},
 			},
-			opts:           makeOpts("auto", ""),
-			expectedPasswd: "existing-password",
-			expectedHash:   "existing-hash",
+			opts:            makeOpts("auto", ""),
+			expectedPasswd:  "existing-password",
+			expectedHash:    "existing-hash",
+			expectedFromCLI: false,
 		},
 		{
 			name: "hash takes precedence when both provided",
@@ -905,9 +909,10 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "old-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts:           makeOpts("cli-password", "$2a$10$cliHash"),
-			expectedPasswd: "", // password cleared because hash takes precedence
-			expectedHash:   "$2a$10$cliHash",
+			opts:            makeOpts("cli-password", "$2a$10$cliHash"),
+			expectedPasswd:  "", // password cleared because hash takes precedence
+			expectedHash:    "$2a$10$cliHash",
+			expectedFromCLI: true,
 		},
 	}
 
@@ -921,8 +926,63 @@ func TestApplyCLIOverrides(t *testing.T) {
 				"WebAuthPasswd should match expected value")
 			assert.Equal(t, tt.expectedHash, settingsCopy.Server.AuthHash,
 				"AuthHash should match expected value")
+			assert.Equal(t, tt.expectedFromCLI, settingsCopy.Transient.AuthFromCLI,
+				"AuthFromCLI should match expected value")
 		})
 	}
+
+	t.Run("dry flag preserves DB value when CLI default", func(t *testing.T) {
+		// dry=true persisted in DB must survive startup when --dry is not passed
+		settings := config.Settings{Dry: true}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		applyCLIOverrides(&settings, opts)
+		assert.True(t, settings.Dry, "DB Dry=true must not be clobbered by CLI default")
+	})
+
+	t.Run("dry flag CLI true overrides DB false", func(t *testing.T) {
+		settings := config.Settings{Dry: false}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		opts.Dry = true
+		applyCLIOverrides(&settings, opts)
+		assert.True(t, settings.Dry, "CLI --dry must override DB Dry=false")
+	})
+
+	t.Run("telegram token CLI overrides DB value", func(t *testing.T) {
+		settings := config.Settings{Telegram: config.TelegramSettings{Token: "db-token"}}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		opts.Telegram.Token = "cli-token"
+		applyCLIOverrides(&settings, opts)
+		assert.Equal(t, "cli-token", settings.Telegram.Token, "CLI telegram token must override DB value")
+	})
+
+	t.Run("empty telegram CLI token preserves DB value", func(t *testing.T) {
+		settings := config.Settings{Telegram: config.TelegramSettings{Token: "db-token"}}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		applyCLIOverrides(&settings, opts)
+		assert.Equal(t, "db-token", settings.Telegram.Token, "DB telegram token must survive when CLI is empty")
+	})
+
+	t.Run("openai token CLI overrides DB value", func(t *testing.T) {
+		settings := config.Settings{OpenAI: config.OpenAISettings{Token: "db-openai"}}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		opts.OpenAI.Token = "cli-openai"
+		applyCLIOverrides(&settings, opts)
+		assert.Equal(t, "cli-openai", settings.OpenAI.Token, "CLI openai token must override DB value")
+	})
+
+	t.Run("gemini token CLI overrides DB value", func(t *testing.T) {
+		settings := config.Settings{Gemini: config.GeminiSettings{Token: "db-gemini"}}
+		var opts options
+		opts.Server.AuthPasswd = "auto"
+		opts.Gemini.Token = "cli-gemini"
+		applyCLIOverrides(&settings, opts)
+		assert.Equal(t, "cli-gemini", settings.Gemini.Token, "CLI gemini token must override DB value")
+	})
 }
 
 func TestOptToSettings(t *testing.T) {

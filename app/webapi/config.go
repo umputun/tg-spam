@@ -14,7 +14,7 @@ import (
 	"github.com/umputun/tg-spam/app/config"
 )
 
-//go:generate moq --out config_store_mock.go --with-resets --skip-ensure . SettingsStore
+//go:generate moq --out mocks/settings_store.go --pkg mocks --with-resets --skip-ensure . SettingsStore
 
 // SettingsStore provides access to configuration stored in database
 type SettingsStore interface {
@@ -33,8 +33,11 @@ func (s *Server) saveConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// save current settings to database
+	// save current settings to database; hold the read lock across the call so
+	// concurrent mutations don't race with JSON encoding in the store
+	s.appSettingsMu.RLock()
 	err := s.SettingsStore.Save(r.Context(), s.AppSettings)
+	s.appSettingsMu.RUnlock()
 	if err != nil {
 		log.Printf("[ERROR] failed to save configuration: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
@@ -53,50 +56,41 @@ func (s *Server) saveConfigHandler(w http.ResponseWriter, r *http.Request) {
 	rest.RenderJSON(w, rest.JSON{"status": "ok", "message": "Configuration saved successfully"})
 }
 
-// loadConfigHandler handles GET /config request.
-// It loads configuration from the database.
+// loadConfigHandler handles POST /config/reload request.
+// It reloads configuration from the database, replacing in-memory settings.
+// This is a state-changing action so it must use a non-safe HTTP method:
+// Go's cross-origin protection middleware treats GET/HEAD/OPTIONS as safe
+// and lets them through unchecked, which would expose the reload to CSRF.
 func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if s.SettingsStore == nil {
 		http.Error(w, "Configuration storage not available", http.StatusInternalServerError)
 		return
 	}
 
-	// load settings from database
+	// hold the write lock across the DB read and memory swap so a concurrent
+	// updateConfigHandler can't commit a newer snapshot between our Load and
+	// the assignment below, which would leave memory stale relative to the DB.
+	s.appSettingsMu.Lock()
 	settings, err := s.SettingsStore.Load(r.Context())
 	if err != nil {
+		s.appSettingsMu.Unlock()
 		log.Printf("[ERROR] failed to load configuration: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to load configuration: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// preserve CLI-provided credentials and transient settings
-	// CLI credentials have precedence over database values if provided
-	transient := s.AppSettings.Transient
-	telegramToken := s.AppSettings.Telegram.Token
-	openAIToken := s.AppSettings.OpenAI.Token
-	webAuthHash := s.AppSettings.Server.AuthHash
-	webAuthPasswd := s.AppSettings.Transient.WebAuthPasswd
-
-	// restore transient values
-	settings.Transient = transient
-
-	// restore CLI-provided credentials if they were set
-	// these override database values because CLI parameters take precedence
-	if telegramToken != "" {
-		settings.Telegram.Token = telegramToken
+	// preserve transient settings (never stored in DB). Tokens are NOT preserved:
+	// in --confdb mode the DB is authoritative for Telegram/OpenAI/Gemini tokens,
+	// so reload must pick up fresh DB values. Auth hash is preserved only when
+	// transient.AuthFromCLI is set by applyCLIOverrides, marking an explicit CLI
+	// override that must survive reload. When auth originated from the DB, fresh
+	// DB values win so external hash rotations are picked up.
+	settings.Transient = s.AppSettings.Transient
+	if s.AppSettings.Transient.AuthFromCLI {
+		settings.Server.AuthHash = s.AppSettings.Server.AuthHash
 	}
-	if openAIToken != "" {
-		settings.OpenAI.Token = openAIToken
-	}
-	if webAuthHash != "" {
-		settings.Server.AuthHash = webAuthHash
-	}
-	if webAuthPasswd != "" {
-		settings.Transient.WebAuthPasswd = webAuthPasswd
-	}
-
-	// update current settings
 	s.AppSettings = settings
+	s.appSettingsMu.Unlock()
 
 	if r.Header.Get("HX-Request") == "true" {
 		// return a success message for HTMX with reload
@@ -121,20 +115,24 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[DEBUG] updateConfigHandler: saveToDb=%s, SettingsStore=%v", r.FormValue("saveToDb"), s.SettingsStore != nil)
 
-	// update settings based on form values - auth settings are never modified
+	// hold the write lock across form application and optional DB save so the
+	// settings struct can't be observed in a partially updated state and so a
+	// concurrent loadConfigHandler can't swap the pointer mid-save.
+	s.appSettingsMu.Lock()
 	updateSettingsFromForm(s.AppSettings, r)
 
-	// save changes to database if requested
-	if r.FormValue("saveToDb") == "true" && s.SettingsStore != nil {
+	saveToDB := r.FormValue("saveToDb") == "true" && s.SettingsStore != nil
+	if saveToDB {
 		log.Printf("[DEBUG] Saving settings to database")
-		err := s.SettingsStore.Save(r.Context(), s.AppSettings)
-		if err != nil {
+		if err := s.SettingsStore.Save(r.Context(), s.AppSettings); err != nil {
+			s.appSettingsMu.Unlock()
 			log.Printf("[ERROR] failed to save updated configuration: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
 			return
 		}
 		log.Printf("[DEBUG] Settings saved successfully")
 	}
+	s.appSettingsMu.Unlock()
 
 	if r.Header.Get("HX-Request") == "true" {
 		// return a success message for HTMX
@@ -197,14 +195,21 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		settings.CAS.API = ""
 	}
 
-	// parse super users from comma-separated string
-	if superUsers := r.FormValue("superUsers"); superUsers != "" {
-		users := strings.Split(superUsers, ",")
-		settings.Admin.SuperUsers = make([]string, 0, len(users))
-		for _, user := range users {
-			trimmed := strings.TrimSpace(user)
-			if trimmed != "" {
-				settings.Admin.SuperUsers = append(settings.Admin.SuperUsers, trimmed)
+	// parse super users from comma-separated string; only write when the form
+	// contains the field so unrelated saves preserve the list, but honor an
+	// explicit empty value as "clear all super users"
+	if _, ok := r.Form["superUsers"]; ok {
+		superUsers := r.FormValue("superUsers")
+		if superUsers == "" {
+			settings.Admin.SuperUsers = nil
+		} else {
+			users := strings.Split(superUsers, ",")
+			settings.Admin.SuperUsers = make([]string, 0, len(users))
+			for _, user := range users {
+				trimmed := strings.TrimSpace(user)
+				if trimmed != "" {
+					settings.Admin.SuperUsers = append(settings.Admin.SuperUsers, trimmed)
+				}
 			}
 		}
 	}
@@ -234,21 +239,27 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 	settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 	settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
-	settings.Meta.ContactOnly = r.FormValue("metaContactOnly") == "on"
-	settings.Meta.Giveaway = r.FormValue("metaGiveaway") == "on"
 
-	if val := r.FormValue("metaUsernameSymbols"); val != "" {
-		settings.Meta.UsernameSymbols = val
-	} else if !metaEnabled {
-		settings.Meta.UsernameSymbols = ""
+	// metaContactOnly and metaGiveaway are not currently rendered in the ConfigDB
+	// UI form. Gate them behind form presence so saving unrelated changes can't
+	// silently wipe values set via save-config CLI or external DB tooling.
+	if _, ok := r.Form["metaContactOnly"]; ok {
+		settings.Meta.ContactOnly = r.FormValue("metaContactOnly") == "on"
+	}
+	if _, ok := r.Form["metaGiveaway"]; ok {
+		settings.Meta.Giveaway = r.FormValue("metaGiveaway") == "on"
 	}
 
-	// openAI settings
-	openAIEnabled := r.FormValue("openAIEnabled") == "on"
-	if !openAIEnabled {
-		settings.OpenAI.APIBase = ""
+	// honor the "leave empty to disable" UI hint: clear the setting whenever
+	// the form posts an empty value. The field is only written when the form
+	// contains it, so unrelated saves preserve the existing value.
+	if _, ok := r.Form["metaUsernameSymbols"]; ok {
+		settings.Meta.UsernameSymbols = r.FormValue("metaUsernameSymbols")
 	}
 
+	// openAI settings. enablement (APIBase/Token) is managed via CLI and save-config
+	// to avoid destroying credentials through a UI toggle; only non-credential fields
+	// are accepted from the form here, mirroring Gemini's handling.
 	settings.OpenAI.Veto = r.FormValue("openAIVeto") == "on"
 	settings.OpenAI.CheckShortMessages = r.FormValue("openAICheckShortMessages") == "on"
 
@@ -322,8 +333,12 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
-	// user reports
-	settings.Report.Enabled = r.FormValue("reportEnabled") == "on"
+	// user reports. reportEnabled is not rendered in the ConfigDB UI form, so
+	// gate the write on form presence to avoid silently wiping values set via
+	// save-config or external DB tooling when saving unrelated changes.
+	if _, ok := r.Form["reportEnabled"]; ok {
+		settings.Report.Enabled = r.FormValue("reportEnabled") == "on"
+	}
 
 	if val := r.FormValue("reportThreshold"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
@@ -349,12 +364,20 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
-	// service-message deletion
-	settings.Delete.JoinMessages = r.FormValue("deleteJoinMessages") == "on"
-	settings.Delete.LeaveMessages = r.FormValue("deleteLeaveMessages") == "on"
+	// service-message deletion. These flags are not rendered in the ConfigDB UI
+	// form; gate the writes on form presence so unrelated saves don't wipe them.
+	if _, ok := r.Form["deleteJoinMessages"]; ok {
+		settings.Delete.JoinMessages = r.FormValue("deleteJoinMessages") == "on"
+	}
+	if _, ok := r.Form["deleteLeaveMessages"]; ok {
+		settings.Delete.LeaveMessages = r.FormValue("deleteLeaveMessages") == "on"
+	}
 
-	// aggressive cleanup
-	settings.AggressiveCleanup = r.FormValue("aggressiveCleanup") == "on"
+	// aggressive cleanup. Flag not rendered in the ConfigDB UI form; gate the
+	// write on form presence so unrelated saves don't wipe it.
+	if _, ok := r.Form["aggressiveCleanup"]; ok {
+		settings.AggressiveCleanup = r.FormValue("aggressiveCleanup") == "on"
+	}
 	if val := r.FormValue("aggressiveCleanupLimit"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			settings.AggressiveCleanupLimit = n
@@ -417,7 +440,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	settings.SoftBan = r.FormValue("softBanEnabled") == "on"
 	settings.AbnormalSpace.Enabled = r.FormValue("abnormalSpacingEnabled") == "on"
 
-	if val := r.FormValue("multiLangLimit"); val != "" {
+	if val := r.FormValue("multiLangWords"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
 			settings.MultiLangWords = limit
 		}
@@ -444,8 +467,8 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
-	// debug modes - they're primarily CLI settings but we still update them here
-	settings.Transient.Dbg = r.FormValue("debugModeEnabled") == "on"
+	// dry-run is a real persisted setting. Dbg/TGDbg are CLI-only and not accepted
+	// from the form because Transient is stripped by the store on save, so any value
+	// posted here would be silently dropped.
 	settings.Dry = r.FormValue("dryModeEnabled") == "on"
-	settings.Transient.TGDbg = r.FormValue("tgDebugModeEnabled") == "on"
 }

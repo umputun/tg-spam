@@ -631,8 +631,8 @@ message:
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
       --server.listen=                  listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                    basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
-      --server.auth-hash=               basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
+      --server.auth=                    basic auth password (default: auto) [$SERVER_AUTH]
+      --server.auth-hash=               basic auth password hash [$SERVER_AUTH_HASH]
 
 Help Options:
   -h, --help                            Show this help message

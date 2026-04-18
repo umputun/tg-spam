@@ -1,3 +1,7 @@
+// Package config provides the application settings domain model, a database-backed
+// store, and a field-level crypter for sensitive values. It is the single source
+// of truth for configuration consumed by the app regardless of whether values
+// originate from CLI flags, environment variables, or the database.
 package config
 
 import (
@@ -224,6 +228,12 @@ type TransientSettings struct {
 
 	// temporary auth password (used only to generate hash)
 	WebAuthPasswd string `json:"-" yaml:"-"`
+
+	// authFromCLI marks web auth (hash or password) as originating from CLI
+	// overrides rather than from the database. When true, loadConfigHandler
+	// preserves the in-memory auth state across reloads so CLI overrides
+	// survive; when false, reload picks up fresh DB values.
+	AuthFromCLI bool `json:"-" yaml:"-"`
 }
 
 // New creates a new settings instance

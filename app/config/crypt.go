@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -150,136 +149,80 @@ func IsEncrypted(value string) bool {
 	return strings.HasPrefix(value, EncryptPrefix)
 }
 
+// sensitiveFieldAccessors maps sensitive field names to accessors that return
+// a pointer to the backing string on a Settings instance plus a human-readable
+// label used in error messages. Adding a new sensitive field is a single-place
+// change here; defaultSensitiveFields derives its list from these keys.
+var sensitiveFieldAccessors = map[string]struct {
+	label string
+	get   func(*Settings) *string
+}{
+	FieldTelegramToken:  {"Telegram token", func(s *Settings) *string { return &s.Telegram.Token }},
+	FieldOpenAIToken:    {"OpenAI token", func(s *Settings) *string { return &s.OpenAI.Token }},
+	FieldGeminiToken:    {"Gemini token", func(s *Settings) *string { return &s.Gemini.Token }},
+	FieldServerAuthHash: {"Server auth hash", func(s *Settings) *string { return &s.Server.AuthHash }},
+}
+
 // EncryptSensitiveFields encrypts sensitive fields in a Settings object
-// It can encrypt default fields or custom fields specified in sensitiveFields
+// It can encrypt default fields or custom fields specified in sensitiveFields.
+// Returns an error on the first encryption failure or unknown field.
 func (c *Crypter) EncryptSensitiveFields(settings *Settings, sensitiveFields ...string) error {
 	if settings == nil {
 		return nil
 	}
 
-	// if no custom fields provided, use the defaults
 	fieldsToEncrypt := sensitiveFields
 	if len(fieldsToEncrypt) == 0 {
 		fieldsToEncrypt = defaultSensitiveFields()
 	}
 
-	// process each sensitive field
 	for _, field := range fieldsToEncrypt {
-		switch field {
-		case FieldTelegramToken:
-			if settings.Telegram.Token != "" && !IsEncrypted(settings.Telegram.Token) {
-				encrypted, err := c.Encrypt(settings.Telegram.Token)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt Telegram token: %w", err)
-				}
-				settings.Telegram.Token = encrypted
-			}
-		case FieldOpenAIToken:
-			if settings.OpenAI.Token != "" && !IsEncrypted(settings.OpenAI.Token) {
-				encrypted, err := c.Encrypt(settings.OpenAI.Token)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt OpenAI token: %w", err)
-				}
-				settings.OpenAI.Token = encrypted
-			}
-		case FieldGeminiToken:
-			if settings.Gemini.Token != "" && !IsEncrypted(settings.Gemini.Token) {
-				encrypted, err := c.Encrypt(settings.Gemini.Token)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt Gemini token: %w", err)
-				}
-				settings.Gemini.Token = encrypted
-			}
-		case FieldServerAuthHash:
-			if settings.Server.AuthHash != "" && !IsEncrypted(settings.Server.AuthHash) {
-				encrypted, err := c.Encrypt(settings.Server.AuthHash)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt Server auth hash: %w", err)
-				}
-				settings.Server.AuthHash = encrypted
-			}
-		default:
-			log.Printf("[WARN] unknown sensitive field: %s", field)
+		accessor, ok := sensitiveFieldAccessors[field]
+		if !ok {
+			return fmt.Errorf("unknown sensitive field: %s", field)
 		}
+		target := accessor.get(settings)
+		if *target == "" || IsEncrypted(*target) {
+			continue
+		}
+		encrypted, err := c.Encrypt(*target)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt %s: %w", accessor.label, err)
+		}
+		*target = encrypted
 	}
 
 	return nil
 }
 
-// DecryptSensitiveFields decrypts sensitive fields in a Settings object
-// It can decrypt default fields or custom fields specified in sensitiveFields
+// DecryptSensitiveFields decrypts sensitive fields in a Settings object.
+// It can decrypt default fields or custom fields specified in sensitiveFields.
+// Returns an error on the first decryption failure or unknown field; symmetric
+// with EncryptSensitiveFields.
 func (c *Crypter) DecryptSensitiveFields(settings *Settings, sensitiveFields ...string) error {
 	if settings == nil {
 		return nil
 	}
 
-	// if no custom fields provided, use the defaults
 	fieldsToDecrypt := sensitiveFields
 	if len(fieldsToDecrypt) == 0 {
 		fieldsToDecrypt = defaultSensitiveFields()
 	}
 
-	// process each sensitive field
-	var decryptErrs []error
-
 	for _, field := range fieldsToDecrypt {
-		switch field {
-		case FieldTelegramToken:
-			if IsEncrypted(settings.Telegram.Token) {
-				decrypted, err := c.Decrypt(settings.Telegram.Token)
-				if err != nil {
-					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt Telegram token: %w", err))
-					log.Printf("[WARN] failed to decrypt Telegram token: %v", err)
-				} else {
-					settings.Telegram.Token = decrypted
-				}
-			}
-		case FieldOpenAIToken:
-			if IsEncrypted(settings.OpenAI.Token) {
-				decrypted, err := c.Decrypt(settings.OpenAI.Token)
-				if err != nil {
-					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt OpenAI token: %w", err))
-					log.Printf("[WARN] failed to decrypt OpenAI token: %v", err)
-				} else {
-					settings.OpenAI.Token = decrypted
-				}
-			}
-		case FieldGeminiToken:
-			if IsEncrypted(settings.Gemini.Token) {
-				decrypted, err := c.Decrypt(settings.Gemini.Token)
-				if err != nil {
-					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt Gemini token: %w", err))
-					log.Printf("[WARN] failed to decrypt Gemini token: %v", err)
-				} else {
-					settings.Gemini.Token = decrypted
-				}
-			}
-		case FieldServerAuthHash:
-			if IsEncrypted(settings.Server.AuthHash) {
-				decrypted, err := c.Decrypt(settings.Server.AuthHash)
-				if err != nil {
-					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt Server auth hash: %w", err))
-					log.Printf("[WARN] failed to decrypt Server auth hash: %v", err)
-				} else {
-					settings.Server.AuthHash = decrypted
-				}
-			}
-		default:
-			log.Printf("[WARN] unknown sensitive field: %s", field)
+		accessor, ok := sensitiveFieldAccessors[field]
+		if !ok {
+			return fmt.Errorf("unknown sensitive field: %s", field)
 		}
-	}
-
-	// return a combined error if any decryption failures occurred
-	if len(decryptErrs) > 0 {
-		var combinedErr error
-		for _, err := range decryptErrs {
-			if combinedErr == nil {
-				combinedErr = err
-			} else {
-				combinedErr = fmt.Errorf("%v; %w", combinedErr, err)
-			}
+		target := accessor.get(settings)
+		if !IsEncrypted(*target) {
+			continue
 		}
-		return combinedErr
+		decrypted, err := c.Decrypt(*target)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt %s: %w", accessor.label, err)
+		}
+		*target = decrypted
 	}
 
 	return nil

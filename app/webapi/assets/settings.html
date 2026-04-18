@@ -94,6 +94,13 @@
         </div>
     </div>
     
+    {{if .ConfigDBMode}}
+    <div class="alert alert-warning py-2 mb-3 small">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Saved settings are persisted to the database but only take effect after a restart. The detector, spam bot, and auth middleware are constructed once at startup.
+    </div>
+    {{end}}
+
     <!-- Settings sections grouped by function -->
     <form id="settings-form" method="PUT" action="/config" hx-put="/config" hx-target="#update-result" hx-swap="outerHTML">
         {{if .ConfigDBMode}}
@@ -318,11 +325,11 @@
             {{if .ConfigDBMode}}
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="openAIEnabled" name="openAIEnabled" {{if .IsOpenAIEnabled}}checked{{end}}>
-                        <label class="form-check-label" for="openAIEnabled">OpenAI Enabled</label>
+                    <div class="alert alert-info py-2 mb-2 small">
+                        OpenAI enabled: <strong>{{.IsOpenAIEnabled}}</strong>.
+                        Token is managed via CLI (<code>--openai.token</code>) or <code>save-config</code>; it is not editable here.
                     </div>
-                    <div class="form-check form-switch mt-2">
+                    <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="openAIVeto" name="openAIVeto" {{if .OpenAI.Veto}}checked{{end}}>
                         <label class="form-check-label" for="openAIVeto">OpenAI Veto</label>
                     </div>
@@ -661,21 +668,17 @@
                         <input class="form-check-input" type="checkbox" id="loggerEnabled" name="loggerEnabled" {{if .Logger.Enabled}}checked{{end}}>
                         <label class="form-check-label" for="loggerEnabled">Logger Enabled</label>
                     </div>
-                    <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="debugModeEnabled" name="debugModeEnabled" {{if .Transient.Dbg}}checked{{end}}>
-                        <label class="form-check-label" for="debugModeEnabled">Debug Mode Enabled</label>
+                    <div class="alert alert-info py-2 mt-2 mb-0 small">
+                        Debug Mode: <strong>{{.Transient.Dbg}}</strong> &middot;
+                        TG Debug Mode: <strong>{{.Transient.TGDbg}}</strong>.
+                        Debug flags are CLI-only (<code>--dbg</code>, <code>--tg-dbg</code>); they are not persisted and cannot be toggled from this UI.
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="dryModeEnabled" name="dryModeEnabled" {{if .Dry}}checked{{end}}>
                         <label class="form-check-label" for="dryModeEnabled">Dry Mode Enabled</label>
-                        <div class="form-text">Run without making any actual changes</div>
-                    </div>
-                    <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="tgDebugModeEnabled" name="tgDebugModeEnabled" {{if .Transient.TGDbg}}checked{{end}}>
-                        <label class="form-check-label" for="tgDebugModeEnabled">TG Debug Mode Enabled</label>
-                        <div class="form-text">Enable Telegram API debug logging</div>
+                        <div class="form-text">Run without making any actual changes. Takes effect after restart.</div>
                     </div>
                 </div>
             </div>

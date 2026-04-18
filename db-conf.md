@@ -87,13 +87,14 @@ type Settings struct {
 
 // TransientSettings contains settings that should never be persisted
 type TransientSettings struct {
-    DataBaseURL        string `json:"-" yaml:"-"`
+    DataBaseURL        string        `json:"-" yaml:"-"`
     StorageTimeout     time.Duration `json:"-" yaml:"-"`
-    ConfigDB           bool `json:"-" yaml:"-"`
-    Dbg                bool `json:"-" yaml:"-"`
-    TGDbg              bool `json:"-" yaml:"-"`
-    ConfigDBEncryptKey string `json:"-" yaml:"-"`
-    WebAuthPasswd      string `json:"-" yaml:"-"`
+    ConfigDB           bool          `json:"-" yaml:"-"`
+    Dbg                bool          `json:"-" yaml:"-"`
+    TGDbg              bool          `json:"-" yaml:"-"`
+    ConfigDBEncryptKey string        `json:"-" yaml:"-"`
+    WebAuthPasswd      string        `json:"-" yaml:"-"`
+    AuthFromCLI        bool          `json:"-" yaml:"-"` // tracks whether auth came from --server.auth/-hash so startup logs reflect CLI override
 }
 ```
 
@@ -162,9 +163,8 @@ if opts.ConfigDB {
     // apply remaining transient values from CLI (these are never stored in DB)
     appSettings.Transient.Dbg = opts.Dbg
     appSettings.Transient.TGDbg = opts.TGDbg
-    appSettings.Dry = opts.Dry
 
-    // apply explicit CLI overrides for non-transient values (auth password / hash)
+    // apply explicit CLI overrides for non-transient values (auth, tokens, dry)
     applyCLIOverrides(appSettings, opts)
 } else {
     // traditional mode - CLI is source of truth
@@ -197,10 +197,10 @@ The web API provides full configuration management capabilities:
 // Configuration routes are added when ConfigDB mode is enabled
 if s.SettingsStore != nil && s.ConfigDBMode {
     webUI.Route(func(config *routegroup.Bundle) {
-        config.HandleFunc("POST /config", s.saveConfigHandler)     // Save to DB
-        config.HandleFunc("GET /config", s.loadConfigHandler)      // Load from DB
-        config.HandleFunc("PUT /config", s.updateConfigHandler)    // Update settings
-        config.HandleFunc("DELETE /config", s.deleteConfigHandler) // Delete from DB
+        config.HandleFunc("POST /config", s.saveConfigHandler)        // Save to DB
+        config.HandleFunc("POST /config/reload", s.loadConfigHandler) // Reload from DB (state-changing, non-safe method)
+        config.HandleFunc("PUT /config", s.updateConfigHandler)       // Update settings
+        config.HandleFunc("DELETE /config", s.deleteConfigHandler)    // Delete from DB
     })
 }
 
@@ -233,12 +233,14 @@ Sensitive information like API tokens and passwords needs proper handling. We've
 Settings resolve based on the run mode:
 
 - Without `--confdb`: CLI is the sole source of truth; `optToSettings` converts the flag struct to `*config.Settings`
-- With `--confdb`: the database is the source of truth for persisted fields, including API tokens (`Telegram.Token`, `OpenAI.Token`, `Gemini.Token`) — CLI values for these are ignored on load. This is why the `save-config` command exists: it is the bootstrap path that captures current CLI values into the DB
-- Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg`, `Dry` (marked transient, never persisted)
-- CLI override path in `--confdb` mode (handled by `applyCLIOverrides`): web auth password (`--server.auth-passwd`) and web auth hash (`--server.auth-hash`). The auth password/hash are overridable so an operator can recover UI access without touching the DB
+- With `--confdb`: the database is the source of truth for persisted fields; CLI-provided credentials (`--telegram.token`, `--openai.token`, `--gemini.token`), auth (`--server.auth`, `--server.auth-hash`), and `--dry` are overlaid on top via `applyCLIOverrides` so an operator can rotate secrets or toggle dry-run without touching the DB
+- Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg` (marked transient, never persisted)
+- `Dry` is persisted in the DB and one-way-overridable from CLI: `--dry` forces true, CLI default (unset) preserves the DB value. To disable dry-run after enabling it, use the settings UI or `save-config`
+- CLI override path in `--confdb` mode (handled by `applyCLIOverrides`):
+  - web auth password (`--server.auth`) and web auth hash (`--server.auth-hash`) — override-only so an operator can recover UI access
+  - API tokens `--telegram.token`, `--openai.token`, `--gemini.token` — non-empty CLI values overlay the DB; empty CLI values leave the DB-stored token in place
 
-`Gemini.Token` follows the same precedence model as `OpenAI.Token`: CLI in non-`--confdb` mode,
-database in `--confdb` mode, encrypted at rest with the same `ENC:` prefix scheme.
+`Gemini.Token` follows the same precedence model as `OpenAI.Token`: CLI overlays DB via `applyCLIOverrides`, encrypted at rest with the same `ENC:` prefix scheme.
 
 ### 3. Backward Compatibility
 
@@ -337,13 +339,13 @@ Note: Security-sensitive parameters (tokens, passwords) must still be provided v
 
 When running with `--confdb` and `--server.enabled`, the web UI provides configuration management at:
 - POST `/config` - Save current configuration to database
-- GET `/config` - Load configuration from database
+- POST `/config/reload` - Reload configuration from database (non-safe method so cross-origin CSRF protection applies)
 - PUT `/config` - Update specific settings
 - DELETE `/config` - Remove configuration from database
 
 ## Current Implementation Status
 
-### ✅ Completed Components
+### Completed Components
 
 1. **Config Package** (`app/config/`):
    - `Settings` struct with all configuration organized by domain
@@ -373,7 +375,7 @@ When running with `--confdb` and `--server.enabled`, the web UI provides configu
    - Web auth password/hash overridable from CLI even in `--confdb` mode (bootstrap recovery)
    - Bcrypt hash generation for web authentication
 
-### 🔄 Implementation Details
+### Implementation Details
 
 - The config package was chosen over "settings" to avoid confusion with the existing webapi Settings struct
 - Credentials are stored within their domain models (e.g., `Telegram.Token`, `OpenAI.Token`)
@@ -381,7 +383,7 @@ When running with `--confdb` and `--server.enabled`, the web UI provides configu
 - All sensitive fields are automatically encrypted when an encryption key is provided
 - The implementation uses JSON for storage, making it human-readable when not encrypted
 
-### 📊 Test Coverage
+### Test Coverage
 
 All components have been tested:
 - Config package tests pass for both SQLite and PostgreSQL

@@ -210,3 +210,40 @@ func TestCrypter_DifferentKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, original, decrypted)
 }
+
+func TestCrypter_UnknownFieldReturnsError(t *testing.T) {
+	crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+
+	settings := &Settings{Telegram: TelegramSettings{Token: "tg-secret"}}
+
+	err = crypter.EncryptSensitiveFields(settings, "not.a.real.field")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown sensitive field")
+	assert.Equal(t, "tg-secret", settings.Telegram.Token, "no field should be mutated when the list is invalid")
+
+	err = crypter.DecryptSensitiveFields(settings, "not.a.real.field")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown sensitive field")
+}
+
+func TestCrypter_DecryptFirstErrorShortCircuits(t *testing.T) {
+	crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+
+	// craft a settings object with one valid encrypted value and one corrupt encrypted value
+	validEncrypted, err := crypter.Encrypt("gemini-secret")
+	require.NoError(t, err)
+
+	settings := &Settings{
+		Telegram: TelegramSettings{Token: EncryptPrefix + "invalid-ciphertext-data"},
+		Gemini:   GeminiSettings{Token: validEncrypted},
+	}
+
+	// decrypt should return the first error; the valid field might or might not be processed depending
+	// on map-iteration order, but the error must be non-nil and wrap only one failure
+	err = crypter.DecryptSensitiveFields(settings)
+	require.Error(t, err)
+	// error message must reference the failing field, not accumulate multiple
+	assert.Contains(t, err.Error(), "failed to decrypt")
+}

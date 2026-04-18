@@ -268,10 +268,10 @@ func main() {
 			os.Exit(1) //nolint:gocritic // cancel is called before exit
 		}
 
-		// apply remaining transient values from CLI (these are never stored in DB)
+		// apply transient values from CLI (these are never stored in DB)
 		appSettings.Transient.Dbg = opts.Dbg
 		appSettings.Transient.TGDbg = opts.TGDbg
-		appSettings.Dry = opts.Dry
+		appSettings.Transient.StorageTimeout = opts.StorageTimeout
 
 		// apply explicit CLI overrides for non-transient values
 		applyCLIOverrides(appSettings, opts)
@@ -280,22 +280,11 @@ func main() {
 		appSettings = optToSettings(opts)
 	}
 
-	// handle save-config command
-	if p.Active != nil && p.Active.Name == "save-config" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		exitCode := 0
-		if err := saveConfigToDB(ctx, appSettings); err != nil {
-			log.Printf("[ERROR] failed to save configuration to database: %v", err)
-			exitCode = 1
-		}
-		cancel()
-		os.Exit(exitCode)
-	}
-
-	// setup logger with masked secrets, accessing them directly from domain models
+	// setup logger with masked secrets BEFORE any subcommand dispatch so any
+	// error wrapping inside saveConfigToDB or later stages benefits from the
+	// secret masker. Tokens come directly from the resolved domain settings.
 	masked := []string{}
 
-	// add tokens from domain models
 	if appSettings.Telegram.Token != "" {
 		masked = append(masked, appSettings.Telegram.Token)
 	}
@@ -317,7 +306,25 @@ func main() {
 		masked = append(masked, appSettings.Server.AuthHash)
 	}
 
+	// add config DB encryption master key - must be masked before the %+v settings dump below
+	if appSettings.Transient.ConfigDBEncryptKey != "" {
+		masked = append(masked, appSettings.Transient.ConfigDBEncryptKey)
+	}
+
 	setupLog(appSettings.Transient.Dbg, masked...)
+
+	// handle save-config command (after setupLog so any error output is masked)
+	if p.Active != nil && p.Active.Name == "save-config" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		exitCode := 0
+		if err := saveConfigToDB(ctx, appSettings); err != nil {
+			log.Printf("[ERROR] failed to save configuration to database: %v", err)
+			exitCode = 1
+		}
+		cancel()
+		os.Exit(exitCode)
+	}
+
 	log.Printf("[DEBUG] settings: %+v", appSettings)
 
 	// validate auto-ban threshold
@@ -611,7 +618,15 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 	// create settings store for database access if config DB mode is enabled
 	var settingsStore *config.Store
 	if settings.Transient.ConfigDB {
-		store, err := config.NewStore(ctx, db)
+		var storeOpts []config.StoreOption
+		if settings.Transient.ConfigDBEncryptKey != "" {
+			crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
+			if cryptErr != nil {
+				return fmt.Errorf("invalid encryption key for settings store: %w", cryptErr)
+			}
+			storeOpts = append(storeOpts, config.WithCrypter(crypter))
+		}
+		store, err := config.NewStore(ctx, db, storeOpts...)
 		if err != nil {
 			return fmt.Errorf("failed to create settings store: %w", err)
 		}
@@ -624,15 +639,14 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		return fmt.Errorf("can't make dictionary store, %w", dictErr)
 	}
 
-	srv := webapi.Server{Config: webapi.Config{
+	cfg := webapi.Config{
 		ListenAddr:      settings.Server.ListenAddr,
 		Detector:        sf.Detector,
 		SpamFilter:      sf,
 		Locator:         loc,
 		DetectedSpam:    detectedSpamStore,
 		Dictionary:      dictionaryStore,
-		StorageEngine:   db,            // add database engine for backup functionality
-		SettingsStore:   settingsStore, // may be nil if ConfigDB is false
+		StorageEngine:   db, // add database engine for backup functionality
 		DMUsersProvider: dmUsersProvider,
 		AuthHash:        authHash, // use the hash (either from options or generated)
 		Version:         revision,
@@ -640,7 +654,11 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		BotUsername:     botUsername,
 		AppSettings:     settings,
 		ConfigDBMode:    settings.Transient.ConfigDB, // indicate we're running with database config
-	}}
+	}
+	if settingsStore != nil {
+		cfg.SettingsStore = settingsStore // avoid nil-interface-wrapping-nil-pointer trap
+	}
+	srv := webapi.Server{Config: cfg}
 
 	go func() {
 		if err := srv.Run(ctx); err != nil {
@@ -1421,23 +1439,31 @@ func optToSettings(opts options) *config.Settings {
 	return settings
 }
 
-// applyCLIOverrides applies explicit CLI overrides to settings loaded from database
-// Only overrides values that were explicitly set on the command line (not defaults)
+// applyCLIOverrides applies explicit CLI overrides to settings loaded from database.
+// Only overrides values that differ from their zero/default values — the DB remains
+// the source of truth for any field the operator did not explicitly pass on the CLI.
 //
 // How to add new overrides:
 // 1. Check if the CLI option was explicitly provided (not using default value)
 // 2. Compare with the default value from the options struct definition
 // 3. Apply the override only if the value differs from the default
-//
-// Example for adding telegram token override:
-//
-//	if opts.Telegram.Token != "" {  // "" is the default
-//	    settings.Telegram.Token = opts.Telegram.Token
-//	}
 func applyCLIOverrides(settings *config.Settings, opts options) {
+	// override credentials if provided on CLI. This lets an operator rotate tokens
+	// without touching the DB — empty CLI value leaves the DB-stored token in place.
+	if opts.Telegram.Token != "" {
+		settings.Telegram.Token = opts.Telegram.Token
+	}
+	if opts.OpenAI.Token != "" {
+		settings.OpenAI.Token = opts.OpenAI.Token
+	}
+	if opts.Gemini.Token != "" {
+		settings.Gemini.Token = opts.Gemini.Token
+	}
+
 	// override auth password if explicitly provided (not using default "auto")
 	if opts.Server.AuthPasswd != "auto" {
 		settings.Transient.WebAuthPasswd = opts.Server.AuthPasswd
+		settings.Transient.AuthFromCLI = true
 		// clear auth hash since we have a new password
 		settings.Server.AuthHash = ""
 	}
@@ -1445,17 +1471,21 @@ func applyCLIOverrides(settings *config.Settings, opts options) {
 	// override auth hash if explicitly provided
 	if opts.Server.AuthHash != "" {
 		settings.Server.AuthHash = opts.Server.AuthHash
+		settings.Transient.AuthFromCLI = true
 		// clear password since hash takes precedence
 		settings.Transient.WebAuthPasswd = ""
+	}
+
+	// override dry-run if explicitly enabled via CLI (default is false).
+	// false never overrides the DB value; to disable dry-run after enabling it,
+	// use the settings UI or save-config.
+	if opts.Dry {
+		settings.Dry = true
 	}
 }
 
 // loadConfigFromDB loads configuration from the database
 func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
-	if !settings.Transient.ConfigDB {
-		return nil // skip if not enabled
-	}
-
 	log.Print("[INFO] loading configuration from database")
 
 	// create database connection using the same logic as main data DB
@@ -1463,13 +1493,18 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("[WARN] failed to close config database: %v", closeErr)
+		}
+	}()
 
 	// create settings store with encryption if key provided
 	var storeOpts []config.StoreOption
 	if settings.Transient.ConfigDBEncryptKey != "" {
 		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
 		if cryptErr != nil {
-			log.Fatalf("[FATAL] invalid encryption key: %v", cryptErr)
+			return fmt.Errorf("invalid encryption key: %w", cryptErr)
 		}
 		storeOpts = append(storeOpts, config.WithCrypter(crypter))
 		log.Print("[INFO] configuration encryption enabled for database access")
@@ -1508,13 +1543,18 @@ func saveConfigToDB(ctx context.Context, settings *config.Settings) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database for config: %w", err)
 	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("[WARN] failed to close config database: %v", closeErr)
+		}
+	}()
 
 	// create settings store with encryption if key provided
 	var storeOpts []config.StoreOption
 	if settings.Transient.ConfigDBEncryptKey != "" {
 		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
 		if cryptErr != nil {
-			log.Fatalf("[FATAL] invalid encryption key: %v", cryptErr)
+			return fmt.Errorf("invalid encryption key: %w", cryptErr)
 		}
 		storeOpts = append(storeOpts, config.WithCrypter(crypter))
 		log.Print("[INFO] configuration encryption enabled for database storage")

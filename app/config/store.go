@@ -2,9 +2,11 @@ package config
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"sort"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -118,14 +120,16 @@ func WithSensitiveFields(fields []string) StoreOption {
 	}
 }
 
-// defaultSensitiveFields returns the default list of sensitive fields
+// defaultSensitiveFields returns the default list of sensitive fields derived
+// from sensitiveFieldAccessors so adding a new field is a single-place change.
+// Order is stable across calls to keep error and log output deterministic.
 func defaultSensitiveFields() []string {
-	return []string{
-		FieldTelegramToken,  // telegram bot token
-		FieldOpenAIToken,    // openAI API token
-		FieldGeminiToken,    // gemini API token
-		FieldServerAuthHash, // server auth hash
+	fields := make([]string, 0, len(sensitiveFieldAccessors))
+	for k := range sensitiveFieldAccessors {
+		fields = append(fields, k)
 	}
+	sort.Strings(fields)
+	return fields
 }
 
 // Load retrieves the settings from the database
@@ -145,8 +149,8 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 	query = s.Adopt(query)
 	err = s.GetContext(ctx, &record, query, s.GID())
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return nil, fmt.Errorf("no settings found in database")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("no settings found in database: %w", err)
 		}
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}
@@ -168,9 +172,6 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 
 // Save stores the settings to the database
 func (s *Store) Save(ctx context.Context, settings *Settings) error {
-	if s == nil {
-		return fmt.Errorf("store is nil")
-	}
 	if settings == nil {
 		return fmt.Errorf("nil settings")
 	}
@@ -184,29 +185,17 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 	// clear transient fields that shouldn't be persisted
 	safeCopy.Transient = TransientSettings{}
 
-	// ensure credentials are properly saved in domain models
-	// they are already stored in the proper domain fields like:
-	// - Telegram.Token
-	// - OpenAI.Token
-	// - Server.AuthHash
-
-	// marshal the settings to JSON
-	data, err := json.Marshal(&safeCopy)
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
-	}
-
 	// encrypt sensitive fields if crypter is configured
 	if s.crypter != nil {
 		if encErr := s.crypter.EncryptSensitiveFields(&safeCopy, s.sensitiveFields...); encErr != nil {
 			return fmt.Errorf("failed to encrypt sensitive fields: %w", encErr)
 		}
+	}
 
-		// re-marshal after encryption
-		data, err = json.Marshal(&safeCopy)
-		if err != nil {
-			return fmt.Errorf("failed to marshal settings after encryption: %w", err)
-		}
+	// marshal the settings to JSON after optional encryption
+	data, err := json.Marshal(&safeCopy)
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
 	query, err := configQueries.Pick(s.Type(), CmdUpsertConfig)
@@ -225,9 +214,6 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 
 // Delete removes the settings from the database
 func (s *Store) Delete(ctx context.Context) error {
-	if s == nil {
-		return fmt.Errorf("store is nil")
-	}
 	s.Lock()
 	defer s.Unlock()
 
@@ -247,9 +233,6 @@ func (s *Store) Delete(ctx context.Context) error {
 
 // LastUpdated returns the last update time of the settings
 func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
-	if s == nil {
-		return time.Time{}, fmt.Errorf("store is nil")
-	}
 	s.RLock()
 	defer s.RUnlock()
 
@@ -265,8 +248,8 @@ func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
 	query = s.Adopt(query)
 	err = s.GetContext(ctx, &record, query, s.GID())
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
-			return time.Time{}, fmt.Errorf("no settings found in database")
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, fmt.Errorf("no settings found in database: %w", err)
 		}
 		return time.Time{}, fmt.Errorf("failed to get settings update time: %w", err)
 	}
@@ -276,9 +259,6 @@ func (s *Store) LastUpdated(ctx context.Context) (time.Time, error) {
 
 // Exists checks if settings exist in the database
 func (s *Store) Exists(ctx context.Context) (bool, error) {
-	if s == nil {
-		return false, fmt.Errorf("store is nil")
-	}
 	s.RLock()
 	defer s.RUnlock()
 
@@ -300,6 +280,5 @@ func (s *Store) Exists(ctx context.Context) (bool, error) {
 // noopMigrate is a no-op migration function for the config table
 // since there's no need for migrations currently
 func noopMigrate(_ context.Context, _ *sqlx.Tx, _ string) error {
-	log.Printf("[DEBUG] no migration needed for config table")
 	return nil
 }

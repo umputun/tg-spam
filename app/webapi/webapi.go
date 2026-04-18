@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1" //nolint
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/didip/tollbooth/v8"
@@ -26,6 +28,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/events"
@@ -53,9 +56,12 @@ var startTime = time.Now()
 // Server is a web API server.
 type Server struct {
 	Config
+	// appSettingsMu guards AppSettings against data races between the config
+	// handlers (load/update/save) and read paths (settings pages, /settings API).
+	appSettingsMu sync.RWMutex
 }
 
-// Config defines  server parameters
+// Config defines server parameters
 type Config struct {
 	Version         string           // version to show in /ping
 	ListenAddr      string           // listen address
@@ -67,8 +73,7 @@ type Config struct {
 	StorageEngine   StorageEngine    // database engine access for backups
 	DMUsersProvider DMUsersProvider  // provider for recent DM users
 	SettingsStore   SettingsStore    // configuration storage interface
-	AuthPasswd      string           // basic auth password for user "tg-spam"
-	AuthHash        string           // basic auth bcrypt hash for user "tg-spam", takes precedence over AuthPasswd
+	AuthHash        string           // basic auth bcrypt hash for user "tg-spam"
 	Dbg             bool             // debug mode
 	BotUsername     string           // resolved telegram bot username
 	AppSettings     *config.Settings // application settings (domain model)
@@ -144,10 +149,15 @@ func (s *Server) Run(ctx context.Context) error {
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
 	router.Use(http.NewCrossOriginProtection().Handler)
 
-	// hash-based authentication for maximum security
+	// hash-based authentication for maximum security. The middleware reads the
+	// current hash from AppSettings under the same mutex used by the config
+	// handlers so DB-sourced rotations via POST /config/reload take effect
+	// immediately without restarting the server. Startup AuthHash is used as
+	// a safety fallback if AppSettings hash is empty so a DB that lost the
+	// hash can't silently unlock the API.
 	if s.AuthHash != "" {
 		log.Printf("[INFO] basic auth enabled for webapi server (user: tg-spam)")
-		router.Use(rest.BasicAuthWithBcryptHashAndPrompt("tg-spam", s.AuthHash))
+		router.Use(s.basicAuthMiddleware)
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
@@ -171,12 +181,46 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
-	// auth api routes
-	router.Route(func(authApi *routegroup.Bundle) {
-		if s.AuthHash != "" {
-			authApi.Use(s.authMiddleware(rest.BasicAuthWithBcryptHashAndPrompt("tg-spam", s.AuthHash)))
+// basicAuthMiddleware validates basic auth credentials against the current
+// hash in AppSettings, falling back to the startup hash when AppSettings has
+// no hash. Reading under RLock keeps it consistent with POST /config/reload
+// swaps, so DB hash rotations take effect without restarting. Mirrors
+// rest.BasicAuthWithBcryptHashAndPrompt's WWW-Authenticate prompt behavior.
+func (s *Server) basicAuthMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if ok && s.checkBasicAuth(u, p) {
+			h.ServeHTTP(w, r)
+			return
 		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	})
+}
+
+// checkBasicAuth returns true when user is "tg-spam" and passwd matches the
+// currently active bcrypt hash. The active hash is AppSettings.Server.AuthHash
+// when non-empty, else the startup AuthHash; startup serves as a safety
+// fallback so reloads that drop the DB hash can't unlock the server.
+func (s *Server) checkBasicAuth(user, passwd string) bool {
+	if user != "tg-spam" {
+		return false
+	}
+	hash := s.AuthHash
+	s.appSettingsMu.RLock()
+	if s.AppSettings != nil && s.AppSettings.Server.AuthHash != "" {
+		hash = s.AppSettings.Server.AuthHash
+	}
+	s.appSettingsMu.RUnlock()
+	if hash == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(passwd)) == nil
+}
+
+func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
+	// auth api routes; auth is applied globally by router.Use in Run, so no per-subrouter auth here
+	router.Route(func(authApi *routegroup.Bundle) {
 		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
 		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
 
@@ -229,9 +273,6 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 	})
 
 	router.Route(func(webUI *routegroup.Bundle) {
-		if s.AuthHash != "" {
-			webUI.Use(s.authMiddleware(rest.BasicAuthWithBcryptHashAndPrompt("tg-spam", s.AuthHash)))
-		}
 		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
 		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
 		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
@@ -244,8 +285,9 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 		// configuration management endpoints
 		if s.SettingsStore != nil && s.ConfigDBMode {
 			webUI.Route(func(config *routegroup.Bundle) {
-				config.HandleFunc("POST /config", s.saveConfigHandler)     // save current configuration to database
-				config.HandleFunc("GET /config", s.loadConfigHandler)      // load configuration from database
+				config.HandleFunc("POST /config", s.saveConfigHandler) // save current configuration to database
+				// reload uses POST because it mutates state; GET would bypass cross-origin protection (safe methods are always allowed)
+				config.HandleFunc("POST /config/reload", s.loadConfigHandler)
 				config.HandleFunc("PUT /config", s.updateConfigHandler)    // update configuration
 				config.HandleFunc("DELETE /config", s.deleteConfigHandler) // delete configuration
 			})
@@ -531,13 +573,30 @@ func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request)
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.Detector.ApprovedUsers()})
 }
 
-// getSettingsHandler returns application settings, including the list of available Lua plugins
+// getSettingsHandler returns application settings, including the list of available Lua plugins.
+// Sensitive credential fields (tokens, auth hash) are redacted in the response; the list of
+// available Lua plugins is exposed separately from the user-selected enabled plugins.
 func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
-	// get available Lua plugins and store them directly in AppSettings
-	s.AppSettings.LuaPlugins.EnabledPlugins = s.Detector.GetLuaPluginNames()
+	// shallow copy so we can redact sensitive fields without mutating the live settings
+	s.appSettingsMu.RLock()
+	var safe config.Settings
+	if s.AppSettings != nil {
+		safe = *s.AppSettings
+	}
+	s.appSettingsMu.RUnlock()
+	safe.Telegram.Token = ""
+	safe.OpenAI.Token = ""
+	safe.Gemini.Token = ""
+	safe.Server.AuthHash = ""
 
-	// return the application settings directly - sensitive info is protected by json tags
-	rest.RenderJSON(w, s.AppSettings)
+	resp := struct {
+		*config.Settings
+		LuaAvailablePlugins []string `json:"lua_available_plugins"`
+	}{
+		Settings:            &safe,
+		LuaAvailablePlugins: s.Detector.GetLuaPluginNames(),
+	}
+	rest.RenderJSON(w, resp)
 }
 
 // getDictionaryEntriesHandler handles GET /dictionary request. It returns stop phrases and ignored words.
@@ -782,6 +841,11 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		filteredDS = ds
 	}
 
+	s.appSettingsMu.RLock()
+	openAIEnabled := s.AppSettings != nil && s.AppSettings.IsOpenAIEnabled()
+	geminiEnabled := s.AppSettings != nil && s.AppSettings.Gemini.Token != ""
+	s.appSettingsMu.RUnlock()
+
 	tmplData := struct {
 		DetectedSpamEntries []storage.DetectedSpamInfo
 		TotalDetectedSpam   int
@@ -794,8 +858,8 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request)
 		TotalDetectedSpam:   len(ds),
 		FilteredCount:       len(filteredDS),
 		Filter:              filter,
-		OpenAIEnabled:       s.AppSettings != nil && s.AppSettings.IsOpenAIEnabled(),
-		GeminiEnabled:       s.AppSettings != nil && s.AppSettings.Gemini.Token != "",
+		OpenAIEnabled:       openAIEnabled,
+		GeminiEnabled:       geminiEnabled,
 	}
 
 	// if it's an HTMX request, render both content and count display for OOB swap
@@ -901,10 +965,22 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		configAvailable = true
 		if lu, err := s.SettingsStore.LastUpdated(r.Context()); err == nil {
 			lastUpdated = lu
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("[WARN] failed to get last config update time: %v", err)
 		}
 	}
 
-	geminiEnabled := s.AppSettings != nil && s.AppSettings.Gemini.Token != ""
+	// snapshot AppSettings under the read lock so template rendering sees a
+	// consistent view even if a config handler mutates or swaps the pointer.
+	s.appSettingsMu.RLock()
+	var settingsSnapshot *config.Settings
+	if s.AppSettings != nil {
+		cp := *s.AppSettings
+		settingsSnapshot = &cp
+	}
+	s.appSettingsMu.RUnlock()
+
+	geminiEnabled := settingsSnapshot != nil && settingsSnapshot.Gemini.Token != ""
 
 	data := struct {
 		*config.Settings
@@ -928,7 +1004,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		BotUsername     string
 		GeminiEnabled   bool
 	}{
-		Settings:            s.AppSettings,
+		Settings:            settingsSnapshot,
 		LuaAvailablePlugins: luaPlugins,
 		Version:             s.Version,
 		Database: struct {
@@ -1243,18 +1319,6 @@ func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
 		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
-	}
-}
-
-func (s *Server) authMiddleware(mw func(next http.Handler) http.Handler) func(next http.Handler) http.Handler {
-	if s.AuthHash == "" {
-		// if no hash is provided, authentication is disabled
-		return func(next http.Handler) http.Handler {
-			return next
-		}
-	}
-	return func(next http.Handler) http.Handler {
-		return mw(next)
 	}
 }
 
