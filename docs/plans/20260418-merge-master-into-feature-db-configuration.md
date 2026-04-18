@@ -720,30 +720,49 @@ preservation — this task is the safety net.
 
 **Adoption audit (deep):**
 
-- [ ] list every master commit in the merge range: `git log --oneline 6d70bc55..origin/master` → save as a checklist
-- [ ] for each commit that touched `app/`, `lib/`, `app/webapi/assets/`, `completions/`, `README.md`, open it with `git show <sha>` and verify the feature/fix is present in the merged working tree:
+- [x] list every master commit in the merge range: `git log --oneline 6d70bc55..origin/master` → save as a checklist
+- [x] for each commit that touched `app/`, `lib/`, `app/webapi/assets/`, `completions/`, `README.md`, open it with `git show <sha>` and verify the feature/fix is present in the merged working tree:
   - follow symbols: if commit added a function `X`, `rg -n 'func X\b'` on current tree; if it added a CLI flag, `./tg-spam --help | grep <flag>`; if it added a template section, `rg -n <sentinel>` in `app/webapi/assets/settings.html`
   - mark each commit OK/MISSING/BROKEN in the checklist
   - any MISSING/BROKEN entry blocks acceptance until fixed
-- [ ] run `git diff origin/master -- app/ lib/ app/webapi/assets/ completions/ README.md db-conf.md Dockerfile Makefile .github/` and review hunk-by-hunk. Every `-` hunk (removed from master in our tree) must have a justification: either a PR-intended replacement or the "drop decision" documented in this plan (e.g., `Server.AuthUser`). Any unexplained removal is a regression and blocks acceptance.
-- [ ] cross-check every new CLI flag from master against `./tg-spam --help` output: build the binary, run `./tg-spam --help > /tmp/help.txt`, `git show origin/master:app/main.go | rg 'long:"[^"]+"' -o | sort -u > /tmp/master-flags.txt`, `rg 'long:"[^"]+"' -o app/main.go | sort -u > /tmp/merged-flags.txt`, `diff /tmp/master-flags.txt /tmp/merged-flags.txt` — expected differences: +`--confdb`, +`--confdb-encrypt-key`, -`--server.auth-user` (intentional drops/adds); no other differences allowed
-- [ ] cross-check every new env var: repeat the diff above with `env:"[^"]+"` — same expected-delta rule
-- [ ] cross-check template surfaces: for each of Gemini tab, LLM Consensus row, Meta.ContactOnly, Meta.Giveaway, Report section, Duplicates section, Delete Join/Leave, AggressiveCleanup, BotUsername, render the settings page manually (Task 16 smoke) and visually confirm each section appears and is editable
-- [ ] cross-check listener wiring: for `Report.Enabled`, `Delete.JoinMessages`, `Delete.LeaveMessages`, `AggressiveCleanup`, `Message.Startup`, `Duplicates.Threshold/Window`, grep for the field name in `app/events/listener.go` and `app/main.go` — must appear in both options→config→listener path
-- [ ] cross-check new packages are actually referenced: `rg -l 'app/events/reports|app/events/dm_users|app/storage/reports|lib/tgspam/gemini|lib/tgspam/llm|lib/tgspam/duplicate' app/ lib/` — each new master-added package must be imported from the main binary wiring, not just sitting as orphan code
-- [ ] cross-check tests: `go test -race -count=1 ./...` — count the total test pass rate; to get master's baseline for comparison, use a worktree instead of checkout: `git worktree add /tmp/tg-spam-master origin/master && (cd /tmp/tg-spam-master && go test -race -count=1 ./... | tail -5) && git worktree remove /tmp/tg-spam-master --force`. **Never** `git checkout master` or `git checkout origin/master` from the working directory.
-- [ ] run `golangci-lint run` and compare output to pre-merge PR branch — no new lint issues should appear from master code we adopted
+- [x] run `git diff origin/master -- app/ lib/ app/webapi/assets/ completions/ README.md db-conf.md Dockerfile Makefile .github/` and review hunk-by-hunk. Every `-` hunk (removed from master in our tree) must have a justification: either a PR-intended replacement or the "drop decision" documented in this plan (e.g., `Server.AuthUser`). Any unexplained removal is a regression and blocks acceptance.
+- [x] cross-check every new CLI flag from master against `./tg-spam --help` output: build the binary, run `./tg-spam --help > /tmp/help.txt`, `git show origin/master:app/main.go | rg 'long:"[^"]+"' -o | sort -u > /tmp/master-flags.txt`, `rg 'long:"[^"]+"' -o app/main.go | sort -u > /tmp/merged-flags.txt`, `diff /tmp/master-flags.txt /tmp/merged-flags.txt` — expected differences: +`--confdb`, +`--confdb-encrypt-key`, -`--server.auth-user` (intentional drops/adds); no other differences allowed
+- [x] cross-check every new env var: repeat the diff above with `env:"[^"]+"` — same expected-delta rule
+- [x] cross-check template surfaces: for each of Gemini tab, LLM Consensus row, Meta.ContactOnly, Meta.Giveaway, Report section, Duplicates section, Delete Join/Leave, AggressiveCleanup, BotUsername, render the settings page manually (Task 16 smoke) and visually confirm each section appears and is editable
+- [x] cross-check listener wiring: for `Report.Enabled`, `Delete.JoinMessages`, `Delete.LeaveMessages`, `AggressiveCleanup`, `Message.Startup`, `Duplicates.Threshold/Window`, grep for the field name in `app/events/listener.go` and `app/main.go` — must appear in both options→config→listener path
+- [x] cross-check new packages are actually referenced: `rg -l 'app/events/reports|app/events/dm_users|app/storage/reports|lib/tgspam/gemini|lib/tgspam/llm|lib/tgspam/duplicate' app/ lib/` — each new master-added package must be imported from the main binary wiring, not just sitting as orphan code
+- [x] cross-check tests: `go test -race -count=1 ./...` — count the total test pass rate; to get master's baseline for comparison, use a worktree instead of checkout: `git worktree add /tmp/tg-spam-master origin/master && (cd /tmp/tg-spam-master && go test -race -count=1 ./... | tail -5) && git worktree remove /tmp/tg-spam-master --force`. **Never** `git checkout master` or `git checkout origin/master` from the working directory.
+- [x] run `golangci-lint run` and compare output to pre-merge PR branch — no new lint issues should appear from master code we adopted
 
 **Standard acceptance:**
 
-- [ ] every item under `## Overview` is implemented
-- [ ] `go test -race ./...` green
-- [ ] `golangci-lint run` green
-- [ ] `coverage.html` is not in the repo (`git ls-files | grep coverage.html` returns nothing)
-- [ ] manual smoke (Task 16) passed
-- [ ] `git log --oneline origin/master..HEAD` shows the commit chain is coherent (Pass 0 housekeeping → Pass 1 domain extension → Pass 2 merge → Pass 3 tests → Pass 4 docs)
-- [ ] force-push the branch (PR 294 will refresh): `git push --force-with-lease origin feature-db-configuration` — **ask the user before pushing**
-- [ ] run full project test command one last time: `go test -race ./...`
+- [x] every item under `## Overview` is implemented
+- [x] `go test -race ./...` green
+- [x] `golangci-lint run` green
+- [x] `coverage.html` is not in the repo (`git ls-files | grep coverage.html` returns nothing)
+- [x] manual smoke (Task 16) passed
+- [x] `git log --oneline origin/master..HEAD` shows the commit chain is coherent (Pass 0 housekeeping → Pass 1 domain extension → Pass 2 merge → Pass 3 tests → Pass 4 docs)
+- [ ] force-push the branch (PR 294 will refresh): `git push --force-with-lease origin feature-db-configuration` — **ask the user before pushing** (⚠️ awaiting user approval — agent cannot autonomously force-push per operator policy)
+- [x] run full project test command one last time: `go test -race ./...`
+
+Task 19 notes: audit surfaced two regressions introduced earlier in the merge that the plan's "textual resolution ≠ behavioral preservation" guardrail was designed to catch; both are now fixed.
+
+Fix 1 — duplicated edited-message handler in `app/events/listener.go`. The original master block (lines 210-222 with the explanatory comment "we need to process an edited message as a new message...") was followed by a second, identical block (lines 224-233) with the comment stripped. Would have double-processed every edit, silently inflating duplicate-detector windows and spam-checker call counts. Removed the second block so the file is now byte-identical to master (`git diff origin/master -- app/events/listener.go` is empty).
+
+Fix 2 — eleven master-added tests missing from `app/webapi/webapi_test.go`. Diff of test function names showed master has these, our tree dropped them during Task 13's "take master + re-add PR tests" resolution: `TestServer_RunCrossOriginProtection`, `TestServer_getDictionaryEntriesHandler`, `TestServer_addDictionaryEntryHandler`, `TestServer_deleteDictionaryEntryHandler`, `TestServer_ErrorResponseContentType`, `TestDMUsers_getDMUsersHandlerJSON`/`HTMX`/`HTMX_Empty`/`HTMX_ValidHTML`, `TestDMUsers_relativeTime`, `TestDMUsers_settingsPageContainsDMUsersSection`. The handlers being tested (cross-origin middleware, dictionary CRUD, content-type fix, DM users provider) all exist in our merged `webapi.go`, so the tests were restorable without code changes. Extracted tests verbatim from `origin/master:app/webapi/webapi_test.go` by line range, appended to the file, ran `goimports` to bring in `events` import, adjusted one Config-literal that used master's dropped flat `Settings{SuperUsers: []}` to our nested `AppSettings: &config.Settings{Admin: config.AdminSettings{SuperUsers: []}}`. All 11 tests pass under race detector.
+
+Audit findings (full):
+- CLI flag diff against master: +`confdb`, +`confdb-encrypt-key` only (both intentional additions; no master flag missing; `--server.auth-user` was PR-only and correctly removed).
+- Env var diff: +`CONFDB`, +`CONFDB_ENCRYPT_KEY` only (same pattern).
+- Template surfaces: Gemini tab, LLM Consensus row, Meta.ContactOnly/Giveaway rows, BotUsername rendering — all present. Report/Duplicates/Delete/AggressiveCleanup — not surfaced in master's template either (verified by grep on `origin/master:app/webapi/assets/settings.html`), so their absence is not a regression.
+- Listener wiring: all new field paths (`Report.Enabled`, `Delete.Join/LeaveMessages`, `Duplicates.Threshold/Window`, `AggressiveCleanup(+Limit)`, `Message.Startup`) present in `optToSettings`, settings-to-listener-config struct at `main.go:455+`, and `listener.go` runtime branches.
+- New master packages referenced: `storage.Reports` wired in `main.go:408`; `events.userReports` constructed in `listener.go:135`; `events.dmUsers` field on `TelegramListener`; `tgspam.geminiChecker` wired via `Detector.WithGeminiChecker` at `detector.go:468`; `tgspam.duplicateDetector` constructed in `NewDetector` at `detector.go:182`. No orphan packages.
+- Test baseline: both merged tree and `origin/master` worktree run `go test -race -count=1 ./...` fully green. Merged tree has strictly more tests (+ `app/config` suite which master lacks entirely).
+- Lint: `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0` reports `0 issues.` — zero regression vs pre-merge, zero regression vs master baseline.
+- Formatter: `unfuck-ai-comments run --fmt --skip=mocks ./...` applied comment-case fixes to `app/config/store_test.go` (5 changes: lowercase-sentence comment rule).
+- `coverage.html` not in repo; commit chain matches plan's five-phase ordering.
+
+Force-push deliberately not executed: operator rule "NEVER push without AskUserQuestion approval" + plan's explicit "ask the user before pushing". Remaining acceptance steps after user approval: run `git push --force-with-lease origin feature-db-configuration`, then Task 20 finalization (plan move to `docs/plans/completed/`).
 
 ### Task 20: Finalize plan
 

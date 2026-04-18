@@ -7,16 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-pkgz/rest"
-	"github.com/go-pkgz/routegroup"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/umputun/tg-spam/app/config"
-	"github.com/umputun/tg-spam/app/storage"
-	"github.com/umputun/tg-spam/app/storage/engine"
-	"github.com/umputun/tg-spam/app/webapi/mocks"
-	"github.com/umputun/tg-spam/lib/approved"
-	"github.com/umputun/tg-spam/lib/spamcheck"
 	"html/template"
 	"io"
 	"net/http"
@@ -25,6 +15,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-pkgz/rest"
+	"github.com/go-pkgz/routegroup"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/umputun/tg-spam/app/config"
+	"github.com/umputun/tg-spam/app/events"
+	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
+	"github.com/umputun/tg-spam/app/webapi/mocks"
+	"github.com/umputun/tg-spam/lib/approved"
+	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
 func TestServer_Run(t *testing.T) {
@@ -2108,4 +2110,983 @@ func TestTemplateRendering(t *testing.T) {
 			assert.NotEmpty(t, buf.String(), "template should render content")
 		})
 	}
+}
+func TestServer_RunCrossOriginProtection(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv := NewServer(Config{ListenAddr: ":9879", Version: "dev",
+		Detector: &mocks.DetectorMock{
+			CheckFunc: func(spamcheck.Request) (bool, []spamcheck.Response) { return false, nil },
+		},
+		SpamFilter: &mocks.SpamFilterMock{}, AuthPasswd: "test"})
+	done := make(chan struct{})
+	go func() {
+		err := srv.Run(ctx)
+		assert.NoError(t, err)
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9879/ping")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 2*time.Second, 50*time.Millisecond, "server did not start")
+
+	tests := []struct {
+		name          string
+		method        string
+		path          string
+		secFetchSite  string
+		origin        string
+		wantForbidden bool
+	}{
+		{name: "GET ping allowed without headers", method: "GET", path: "/ping"},
+		{name: "POST same-origin allowed", method: "POST", path: "/check", secFetchSite: "same-origin"},
+		{name: "POST none allowed (direct nav)", method: "POST", path: "/check", secFetchSite: "none"},
+		{name: "POST cross-site rejected", method: "POST", path: "/check",
+			secFetchSite: "cross-site", wantForbidden: true},
+		{name: "POST same-site rejected (subdomain)", method: "POST", path: "/check",
+			secFetchSite: "same-site", wantForbidden: true},
+		{name: "POST origin mismatch rejected", method: "POST", path: "/check",
+			origin: "http://evil.com", wantForbidden: true},
+		{name: "POST no headers (non-browser) allowed", method: "POST", path: "/check"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := bytes.NewBufferString(`{"msg":"x"}`)
+			req, err := http.NewRequest(tt.method, "http://localhost:9879"+tt.path, body)
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.SetBasicAuth("tg-spam", "test")
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			if tt.wantForbidden {
+				assert.Equal(t, http.StatusForbidden, resp.StatusCode, "should be rejected as cross-origin")
+				return
+			}
+			assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, "should not be rejected as cross-origin")
+		})
+	}
+}
+
+func TestServer_getDictionaryEntriesHandler(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			ReadFunc: func(ctx context.Context, t storage.DictionaryType) ([]string, error) {
+				if t == storage.DictionaryTypeStopPhrase {
+					return []string{"spam word", "bad phrase"}, nil
+				}
+				return []string{"ignored1", "ignored2"}, nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict})
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getDictionaryEntriesHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "spam word")
+		assert.Contains(t, string(body), "ignored1")
+	})
+
+	t.Run("error reading stop phrases", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			ReadFunc: func(ctx context.Context, t storage.DictionaryType) ([]string, error) {
+				if t == storage.DictionaryTypeStopPhrase {
+					return nil, errors.New("db error")
+				}
+				return []string{}, nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict})
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getDictionaryEntriesHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "can't get stop phrases")
+	})
+
+	t.Run("error reading ignored words", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			ReadFunc: func(ctx context.Context, t storage.DictionaryType) ([]string, error) {
+				if t == storage.DictionaryTypeStopPhrase {
+					return []string{"spam word"}, nil
+				}
+				return nil, errors.New("db error")
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict})
+		req := httptest.NewRequest("GET", "/dictionary", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getDictionaryEntriesHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "can't get ignored words")
+	})
+}
+
+func TestServer_addDictionaryEntryHandler(t *testing.T) {
+	t.Run("success json", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			AddFunc: func(ctx context.Context, t storage.DictionaryType, data string) error {
+				return nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"type": "stop_phrase", "data": "test phrase"}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "test phrase")
+		require.Len(t, mockDict.AddCalls(), 1)
+		assert.Equal(t, storage.DictionaryTypeStopPhrase, mockDict.AddCalls()[0].T)
+		assert.Equal(t, "test phrase", mockDict.AddCalls()[0].Data)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("empty data", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		srv := NewServer(Config{Dictionary: mockDict})
+		reqBody := `{"type": "stop_phrase", "data": ""}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, string(body), "data cannot be empty")
+		assert.Empty(t, mockDict.AddCalls())
+	})
+
+	t.Run("invalid type", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		srv := NewServer(Config{Dictionary: mockDict})
+		reqBody := `{"type": "invalid_type", "data": "test"}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, string(body), "invalid type")
+		assert.Empty(t, mockDict.AddCalls())
+	})
+
+	t.Run("json decode error", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"type": "stop_phrase", "data": malformed json}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, string(body), "can't decode request")
+		assert.Empty(t, mockDict.AddCalls())
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls())
+	})
+
+	t.Run("error adding entry", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			AddFunc: func(ctx context.Context, t storage.DictionaryType, data string) error {
+				return errors.New("database error")
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"type": "stop_phrase", "data": "test phrase"}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "can't add entry")
+		assert.Len(t, mockDict.AddCalls(), 1)
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls()) // reload should NOT be called when add fails
+	})
+
+	t.Run("success htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			AddFunc: func(ctx context.Context, t storage.DictionaryType, data string) error {
+				return nil
+			},
+			ReadWithIDsFunc: func(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error) {
+				return []storage.DictionaryEntry{{ID: 1, Data: "test phrase"}}, nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		form := url.Values{}
+		form.Set("type", "stop_phrase")
+		form.Set("data", "test phrase")
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "test phrase")
+		require.Len(t, mockDict.AddCalls(), 1)
+		assert.Equal(t, storage.DictionaryTypeStopPhrase, mockDict.AddCalls()[0].T)
+		assert.Equal(t, "test phrase", mockDict.AddCalls()[0].Data)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("empty data htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		srv := NewServer(Config{Dictionary: mockDict})
+		form := url.Values{}
+		form.Set("type", "stop_phrase")
+		form.Set("data", "")
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "Data cannot be empty")
+		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
+		assert.Empty(t, mockDict.AddCalls())
+	})
+
+	t.Run("invalid type htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		srv := NewServer(Config{Dictionary: mockDict})
+		form := url.Values{}
+		form.Set("type", "invalid_type")
+		form.Set("data", "test")
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "Invalid type")
+		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
+		assert.Empty(t, mockDict.AddCalls())
+	})
+
+	t.Run("reload error json", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			AddFunc: func(ctx context.Context, t storage.DictionaryType, data string) error {
+				return nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return errors.New("reload failed")
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"type": "stop_phrase", "data": "test phrase"}`
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "entry added but reload failed")
+		assert.Len(t, mockDict.AddCalls(), 1)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("reload error htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			AddFunc: func(ctx context.Context, t storage.DictionaryType, data string) error {
+				return nil
+			},
+			ReadWithIDsFunc: func(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error) {
+				return []storage.DictionaryEntry{{ID: 1, Data: "test phrase"}}, nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return errors.New("reload failed")
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		form := url.Values{}
+		form.Set("type", "stop_phrase")
+		form.Set("data", "test phrase")
+		req := httptest.NewRequest("POST", "/dictionary/add", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.addDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// htmx continues rendering even with reload error
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "test phrase")
+		assert.Len(t, mockDict.AddCalls(), 1)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+}
+
+func TestServer_deleteDictionaryEntryHandler(t *testing.T) {
+	t.Run("success json", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			DeleteFunc: func(ctx context.Context, id int64) error {
+				return nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"id": 123}`
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "123")
+		assert.Len(t, mockDict.DeleteCalls(), 1)
+		assert.Equal(t, int64(123), mockDict.DeleteCalls()[0].ID)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("error deleting", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			DeleteFunc: func(ctx context.Context, id int64) error {
+				return errors.New("not found")
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"id": 999}`
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "can't delete entry")
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls()) // reload should NOT be called when delete fails
+	})
+
+	t.Run("json decode error", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"id": malformed json}`
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, string(body), "can't decode request")
+		assert.Empty(t, mockDict.DeleteCalls())
+		assert.Empty(t, mockSpamFilter.ReloadSamplesCalls())
+	})
+
+	t.Run("success htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			DeleteFunc: func(ctx context.Context, id int64) error {
+				return nil
+			},
+			ReadWithIDsFunc: func(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error) {
+				return []storage.DictionaryEntry{{ID: 2, Data: "remaining phrase"}}, nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return nil
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		form := url.Values{}
+		form.Set("id", "123")
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "remaining phrase")
+		assert.Len(t, mockDict.DeleteCalls(), 1)
+		assert.Equal(t, int64(123), mockDict.DeleteCalls()[0].ID)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("invalid id htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		srv := NewServer(Config{Dictionary: mockDict})
+		form := url.Values{}
+		form.Set("id", "not-a-number")
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "Invalid ID")
+		assert.Equal(t, "#error-message", resp.Header.Get("HX-Retarget"))
+		assert.Empty(t, mockDict.DeleteCalls())
+	})
+
+	t.Run("reload error json", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			DeleteFunc: func(ctx context.Context, id int64) error {
+				return nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return errors.New("reload failed")
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		reqBody := `{"id": 123}`
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, string(body), "entry deleted but reload failed")
+		assert.Len(t, mockDict.DeleteCalls(), 1)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+
+	t.Run("reload error htmx", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{
+			DeleteFunc: func(ctx context.Context, id int64) error {
+				return nil
+			},
+			ReadWithIDsFunc: func(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error) {
+				return []storage.DictionaryEntry{{ID: 2, Data: "remaining phrase"}}, nil
+			},
+		}
+		mockSpamFilter := &mocks.SpamFilterMock{
+			ReloadSamplesFunc: func() error {
+				return errors.New("reload failed")
+			},
+		}
+
+		srv := NewServer(Config{Dictionary: mockDict, SpamFilter: mockSpamFilter})
+		form := url.Values{}
+		form.Set("id", "123")
+		req := httptest.NewRequest("POST", "/dictionary/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.deleteDictionaryEntryHandler(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// htmx continues rendering even with reload error
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, string(body), "remaining phrase")
+		assert.Len(t, mockDict.DeleteCalls(), 1)
+		assert.Len(t, mockSpamFilter.ReloadSamplesCalls(), 1)
+	})
+}
+
+func TestServer_ErrorResponseContentType(t *testing.T) {
+	// tests verify that error responses return correct Content-Type header (application/json)
+	// this was broken when using WriteHeader() + RenderJSON() pattern
+
+	t.Run("check handler bad request", func(t *testing.T) {
+		server := NewServer(Config{})
+		req := httptest.NewRequest("POST", "/check", bytes.NewBuffer([]byte("invalid json")))
+		rr := httptest.NewRecorder()
+
+		server.checkMsgHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("check id handler bad request", func(t *testing.T) {
+		server := NewServer(Config{})
+		req := httptest.NewRequest("GET", "/check/invalid", http.NoBody)
+		req.SetPathValue("user_id", "invalid")
+		rr := httptest.NewRecorder()
+
+		server.checkIDHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("check id handler internal error", func(t *testing.T) {
+		mockDetectedSpam := &mocks.DetectedSpamMock{
+			FindByUserIDFunc: func(_ context.Context, _ int64) (*storage.DetectedSpamInfo, error) {
+				return nil, assert.AnError
+			},
+		}
+		server := NewServer(Config{DetectedSpam: mockDetectedSpam})
+		req := httptest.NewRequest("GET", "/check/123", http.NoBody)
+		req.SetPathValue("user_id", "123")
+		rr := httptest.NewRecorder()
+
+		server.checkIDHandler(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("update sample handler bad request", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(_ string) error { return nil },
+		}
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		req := httptest.NewRequest("POST", "/update/spam", bytes.NewBuffer([]byte("invalid json")))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateSampleHandler(mockSpamFilter.UpdateSpam)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("update sample handler internal error", func(t *testing.T) {
+		mockSpamFilter := &mocks.SpamFilterMock{
+			UpdateSpamFunc: func(_ string) error { return assert.AnError },
+		}
+		server := NewServer(Config{SpamFilter: mockSpamFilter})
+		reqBody, _ := json.Marshal(map[string]string{"msg": "test"})
+		req := httptest.NewRequest("POST", "/update/spam", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateSampleHandler(mockSpamFilter.UpdateSpam)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("add dictionary entry bad request empty data", func(t *testing.T) {
+		mockDict := &mocks.DictionaryMock{}
+		server := NewServer(Config{Dictionary: mockDict})
+		reqBody, _ := json.Marshal(map[string]string{"type": "stop_phrase", "data": ""})
+		req := httptest.NewRequest("POST", "/dictionary/add", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		server.addDictionaryEntryHandler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("add approved user bad request no id", func(t *testing.T) {
+		mockDetector := &mocks.DetectorMock{}
+		mockLocator := &mocks.LocatorMock{
+			UserIDByNameFunc: func(_ context.Context, _ string) int64 { return 0 },
+		}
+		server := NewServer(Config{Detector: mockDetector, Locator: mockLocator})
+		reqBody, _ := json.Marshal(map[string]string{"user_name": ""})
+		req := httptest.NewRequest("POST", "/users/add", bytes.NewBuffer(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := server.updateApprovedUsersHandler(mockDetector.AddApprovedUser)
+		handler(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, "application/json; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+}
+
+func TestDMUsers_getDMUsersHandlerJSON(t *testing.T) {
+	ts := time.Date(2026, 3, 31, 10, 30, 0, 0, time.UTC)
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: ts},
+				{UserID: 87654321, UserName: "alice", DisplayName: "Alice", Timestamp: ts.Add(-15 * time.Minute)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+
+	t.Run("json response", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		handler := http.HandlerFunc(server.getDMUsersHandler)
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "application/json")
+
+		var result []struct {
+			UserID      int64     `json:"user_id"`
+			UserName    string    `json:"user_name"`
+			DisplayName string    `json:"display_name"`
+			Timestamp   time.Time `json:"timestamp"`
+		}
+		err := json.Unmarshal(rr.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.Equal(t, int64(12345678), result[0].UserID)
+		assert.Equal(t, "dkrm", result[0].UserName)
+		assert.Equal(t, "Dmitry K.", result[0].DisplayName)
+		assert.Equal(t, ts, result[0].Timestamp)
+		assert.Equal(t, int64(87654321), result[1].UserID)
+		assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		emptyProvider := &mocks.DMUsersProviderMock{
+			GetDMUsersFunc: func() []events.DMUser { return nil },
+		}
+		srv := NewServer(Config{DMUsersProvider: emptyProvider})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "[]")
+	})
+
+	t.Run("nil provider returns 503", func(t *testing.T) {
+		srv := NewServer(Config{})
+		req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+		rr := httptest.NewRecorder()
+		http.HandlerFunc(srv.getDMUsersHandler).ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	})
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 12345678, UserName: "dkrm", DisplayName: "Dmitry K.", Timestamp: time.Now().Add(-2 * time.Minute)},
+				{UserID: 87654321, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-1 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "12345678")
+	assert.Contains(t, body, "Dmitry K.")
+	assert.Contains(t, body, "@dkrm")
+	assert.Contains(t, body, "87654321")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2m ago")
+	assert.Contains(t, body, "1h ago")
+	assert.Contains(t, body, "copyUserID")
+	assert.Len(t, mockProvider.GetDMUsersCalls(), 1)
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_Empty(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser { return nil },
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	assert.Contains(t, body, "No recent DM users")
+}
+
+func TestDMUsers_relativeTime(t *testing.T) {
+	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"just now", 30 * time.Second, "just now"},
+		{"1 minute", 1 * time.Minute, "1m ago"},
+		{"5 minutes", 5 * time.Minute, "5m ago"},
+		{"1 hour", 1 * time.Hour, "1h ago"},
+		{"3 hours", 3 * time.Hour, "3h ago"},
+		{"1 day", 25 * time.Hour, "1d ago"},
+		{"5 days", 5 * 24 * time.Hour, "5d ago"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := now.Add(-tc.d)
+			assert.Equal(t, tc.want, relativeTime(ts, now))
+		})
+	}
+}
+
+func TestDMUsers_getDMUsersHandlerHTMX_ValidHTML(t *testing.T) {
+	mockProvider := &mocks.DMUsersProviderMock{
+		GetDMUsersFunc: func() []events.DMUser {
+			return []events.DMUser{
+				{UserID: 111, UserName: "bob", DisplayName: "Bob Smith", Timestamp: time.Now().Add(-5 * time.Minute)},
+				{UserID: 222, UserName: "", DisplayName: "Alice", Timestamp: time.Now().Add(-2 * time.Hour)},
+			}
+		},
+	}
+
+	server := NewServer(Config{DMUsersProvider: mockProvider})
+	req := httptest.NewRequest("GET", "/dm-users", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	http.HandlerFunc(server.getDMUsersHandler).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify valid table structure
+	assert.Contains(t, body, "<table")
+	assert.Contains(t, body, "<thead>")
+	assert.Contains(t, body, "<tbody>")
+	assert.Contains(t, body, "</table>")
+
+	// verify user data is rendered
+	assert.Contains(t, body, "111")
+	assert.Contains(t, body, "Bob Smith")
+	assert.Contains(t, body, "@bob")
+	assert.Contains(t, body, "5m ago")
+	assert.Contains(t, body, "222")
+	assert.Contains(t, body, "Alice")
+	assert.Contains(t, body, "2h ago")
+
+	// verify Copy ID buttons with copyUserID calls (Go templates insert spaces around integer args)
+	assert.Contains(t, body, "copyUserID( 111 , this)")
+	assert.Contains(t, body, "copyUserID( 222 , this)")
+	assert.Contains(t, body, "Copy ID")
+
+	// verify refresh button is present
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.Contains(t, body, `hx-target="#dm-users-container"`)
+	assert.Contains(t, body, "Refresh")
+}
+
+func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{
+		GetLuaPluginNamesFunc: func() []string { return nil },
+	}
+
+	server := NewServer(Config{
+		Version:     "1.0",
+		Detector:    detectorMock,
+		AppSettings: &config.Settings{Admin: config.AdminSettings{SuperUsers: []string{"admin1"}}},
+	})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+
+	handler := http.HandlerFunc(server.htmlSettingsHandler)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	// verify collapsible section exists with guide button
+	assert.Contains(t, body, `id="dm-users-panel"`)
+	assert.Contains(t, body, "Don't know your ID? Message the bot!")
+	assert.Contains(t, body, `data-bs-toggle="collapse"`)
+	assert.Contains(t, body, `data-bs-target="#dm-users-panel"`)
+
+	// verify step-by-step instructions
+	assert.Contains(t, body, "How to find your Telegram User ID")
+	assert.Contains(t, body, "Open a chat with the bot")
+	assert.Contains(t, body, "Send any message")
+	assert.Contains(t, body, "your ID will appear in the table")
+
+	// verify HTMX lazy-load trigger for DM users; SSE attributes are in dm_users.html,
+	// loaded only when the panel is opened (not eagerly on page load)
+	assert.Contains(t, body, `hx-get="/dm-users"`)
+	assert.NotContains(t, body, `sse-connect="/dm-users/stream"`, "SSE should not be in settings page")
+
+	// verify copyUserID JS function
+	assert.Contains(t, body, "function copyUserID(userId, btn)")
+	assert.Contains(t, body, "navigator.clipboard")
 }

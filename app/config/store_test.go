@@ -473,15 +473,15 @@ func (s *SettingsTestSuite) TestStore_NewMasterFeatureGroups_RoundTrip() {
 			settings := New()
 			settings.InstanceID = "new-groups-roundtrip"
 
-			// Delete group
+			// delete group
 			settings.Delete.JoinMessages = true
 			settings.Delete.LeaveMessages = true
 
-			// Meta extensions added on master
+			// meta extensions added on master
 			settings.Meta.ContactOnly = true
 			settings.Meta.Giveaway = true
 
-			// Gemini group (Token gets encrypted at rest)
+			// gemini group (Token gets encrypted at rest)
 			settings.Gemini.Token = "super-secret-gemini-token"
 			settings.Gemini.Veto = true
 			settings.Gemini.Prompt = "gemini prompt"
@@ -497,11 +497,11 @@ func (s *SettingsTestSuite) TestStore_NewMasterFeatureGroups_RoundTrip() {
 			settings.LLM.Consensus = "all"
 			settings.LLM.RequestTimeout = 45 * time.Second
 
-			// Duplicates
+			// duplicates
 			settings.Duplicates.Threshold = 4
 			settings.Duplicates.Window = 2 * time.Minute
 
-			// Report
+			// report
 			settings.Report.Enabled = true
 			settings.Report.Threshold = 5
 			settings.Report.AutoBanThreshold = 10
