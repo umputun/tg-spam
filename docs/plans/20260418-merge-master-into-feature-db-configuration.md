@@ -373,11 +373,13 @@ Task 4a notes: `FieldServerAuthUser` constant was never present in `crypt.go` (t
 - Modify: `app/config/settings.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] extend `IsMetaEnabled()` to include `s.Meta.ContactOnly || s.Meta.Giveaway` (unambiguously needed: existing helper; callers depend on it)
-- [ ] update `IsMetaEnabled` test with cases for Giveaway-only and ContactOnly-only
-- [ ] grep master for `GeminiEnabled`, `ReportEnabled`, `DuplicatesEnabled` usage locations; if they are only used inside `webapi` handlers (computed via bools, not called as methods), **skip the helper methods** and compute equivalents in the handler to keep master-identical semantics
-- [ ] only if a non-webapi caller needs one: add the corresponding helper (`IsGeminiEnabled`, `IsReportEnabled`, `IsDuplicatesEnabled`) with a table-driven test covering true/false
-- [ ] run `go test ./app/config/...` — must pass before next task
+- [x] extend `IsMetaEnabled()` to include `s.Meta.ContactOnly || s.Meta.Giveaway` (unambiguously needed: existing helper; callers depend on it)
+- [x] update `IsMetaEnabled` test with cases for Giveaway-only and ContactOnly-only
+- [x] grep master for `GeminiEnabled`, `ReportEnabled`, `DuplicatesEnabled` usage locations; if they are only used inside `webapi` handlers (computed via bools, not called as methods), **skip the helper methods** and compute equivalents in the handler to keep master-identical semantics
+- [x] only if a non-webapi caller needs one: add the corresponding helper (`IsGeminiEnabled`, `IsReportEnabled`, `IsDuplicatesEnabled`) with a table-driven test covering true/false
+- [x] run `go test ./app/config/...` — must pass before next task
+
+Task 5 notes: audited master — `GeminiEnabled` appears only as a field on the flat `webapi.Settings` (master's `webapi.go:105`) computed in `app/main.go:568` as `opts.Gemini.Token != ""` and consumed only in the settings template. `ReportEnabled` and `DuplicatesEnabled` do not exist as named booleans on master; master references `opts.Report.Enabled` and `opts.Duplicates.Threshold > 0` directly at the call sites. The PR branch has zero callers for any of these names. Conclusion: no non-webapi callers exist, so no new helper methods added — Task 11 will compute these booleans inline on the template data struct per the plan's "Helper methods" guidance. Only `IsMetaEnabled` was extended.
 
 ---
 

@@ -246,7 +246,9 @@ func (s *Settings) IsMetaEnabled() bool {
 		s.Meta.AudiosOnly ||
 		s.Meta.Forward ||
 		s.Meta.Keyboard ||
-		s.Meta.UsernameSymbols != ""
+		s.Meta.UsernameSymbols != "" ||
+		s.Meta.ContactOnly ||
+		s.Meta.Giveaway
 }
 
 // IsCASEnabled returns true if CAS integration is enabled
