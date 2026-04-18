@@ -47,3 +47,4 @@ docs/prompts/
 issue.md
 *.bak
 *.local
+.DS_Store
