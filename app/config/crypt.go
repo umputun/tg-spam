@@ -49,7 +49,8 @@ func NewCrypter(masterKey, instanceID string) (*Crypter, error) {
 	}
 
 	if len(masterKey) < MinKeyLength {
-		return nil, fmt.Errorf("encryption key too short, minimum length is %d characters (use a high-entropy random value)", MinKeyLength)
+		return nil, fmt.Errorf("encryption key too short, minimum length is %d characters (use a high-entropy random value)",
+			MinKeyLength)
 	}
 
 	if instanceID == "" {

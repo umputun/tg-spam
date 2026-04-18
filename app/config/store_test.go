@@ -76,7 +76,7 @@ func (s *SettingsTestSuite) TearDownSuite() {
 
 // getTestDB returns all the test databases to use for testing
 func (s *SettingsTestSuite) getTestDB() []*engine.SQL {
-	var result []*engine.SQL
+	result := make([]*engine.SQL, 0, len(s.dbs))
 	for _, db := range s.dbs {
 		result = append(result, db)
 	}
@@ -149,7 +149,7 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 
 			// check loaded settings
 			s.Equal("test-store", loaded.InstanceID)
-			s.Equal(0.8, loaded.SimilarityThreshold)
+			s.InEpsilon(0.8, loaded.SimilarityThreshold, 0.0001)
 			s.Equal("test-group", loaded.Telegram.Group)
 			s.Equal(45*time.Second, loaded.Telegram.Timeout)
 			s.True(loaded.Server.Enabled)
@@ -174,7 +174,7 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 
 			// try loading deleted settings
 			_, err = store.Load(s.ctx)
-			s.Error(err)
+			s.Require().Error(err)
 			s.Contains(err.Error(), "no settings found in database")
 		})
 	}
@@ -189,7 +189,7 @@ func (s *SettingsTestSuite) TestStore_SaveNilSettings() {
 
 			// try saving nil settings
 			err = store.Save(s.ctx, nil)
-			s.Error(err)
+			s.Require().Error(err)
 			s.Contains(err.Error(), "nil settings")
 		})
 	}
@@ -204,7 +204,7 @@ func (s *SettingsTestSuite) TestStore_LoadError() {
 
 			// try loading from empty table
 			_, err = store.Load(s.ctx)
-			s.Error(err)
+			s.Require().Error(err)
 			s.Contains(err.Error(), "no settings found in database")
 
 			// insert invalid JSON
@@ -214,7 +214,7 @@ func (s *SettingsTestSuite) TestStore_LoadError() {
 
 			// try loading invalid JSON
 			_, err = store.Load(s.ctx)
-			s.Error(err)
+			s.Require().Error(err)
 			s.Contains(err.Error(), "failed to unmarshal settings")
 		})
 	}
@@ -229,7 +229,7 @@ func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
 
 			// try getting last updated time from empty table
 			_, err = store.LastUpdated(s.ctx)
-			s.Error(err)
+			s.Require().Error(err)
 			s.Contains(err.Error(), "no settings found in database")
 		})
 	}
@@ -239,7 +239,7 @@ func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
 func (s *SettingsTestSuite) TestStore_NewStoreErrors() {
 	// test nil db error
 	_, err := NewStore(s.ctx, nil)
-	s.Error(err)
+	s.Require().Error(err)
 	s.Contains(err.Error(), "no db provided")
 }
 
@@ -349,7 +349,7 @@ func (s *SettingsTestSuite) TestStore_ComplexSettings() {
 
 			// verify all fields were correctly saved and loaded
 			s.Equal("complex-test", loaded.InstanceID)
-			s.Equal(0.75, loaded.SimilarityThreshold)
+			s.InEpsilon(0.75, loaded.SimilarityThreshold, 0.0001)
 			s.Equal(100, loaded.MinMsgLen)
 			s.Equal(5, loaded.MaxEmoji)
 			s.Equal("@testgroup", loaded.Telegram.Group)
@@ -396,8 +396,7 @@ func (s *SettingsTestSuite) TestStore_WithEncryption() {
 			s.Require().NoError(err)
 
 			// check that the JSON contains encrypted values
-			s.True(strings.Contains(record.Data, EncryptPrefix),
-				"Database should contain encrypted values")
+			s.Contains(record.Data, EncryptPrefix, "Database should contain encrypted values")
 
 			// test accessing the data with a direct load query
 			var rawSettings struct {

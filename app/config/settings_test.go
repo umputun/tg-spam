@@ -53,7 +53,7 @@ func TestSettings_JSON(t *testing.T) {
 	assert.Equal(t, ":9000", s2.Server.ListenAddr)
 	assert.Equal(t, "test spam message", s2.Message.Spam)
 	assert.True(t, s2.Server.Enabled)
-	assert.Equal(t, 0.75, s2.SimilarityThreshold)
+	assert.InEpsilon(t, 0.75, s2.SimilarityThreshold, 0.0001)
 
 	// credentials should be preserved in unmarshaled object
 	assert.Equal(t, "secret-token", s2.Telegram.Token)

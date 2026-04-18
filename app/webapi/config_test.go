@@ -37,13 +37,13 @@ func TestSaveConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("POST", "/config", nil)
+		req := httptest.NewRequest("POST", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.saveConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
-		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Len(t, settingsStore.SaveCalls(), 1)
 		assert.Equal(t, appSettings, settingsStore.SaveCalls()[0].Settings)
 	})
 
@@ -68,14 +68,14 @@ func TestSaveConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("POST", "/config", nil)
+		req := httptest.NewRequest("POST", "/config", http.NoBody)
 		req.Header.Set("HX-Request", "true")
 		w := httptest.NewRecorder()
 		srv.saveConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration saved successfully")
-		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Len(t, settingsStore.SaveCalls(), 1)
 		assert.Equal(t, appSettings, settingsStore.SaveCalls()[0].Settings)
 	})
 
@@ -100,13 +100,13 @@ func TestSaveConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("POST", "/config", nil)
+		req := httptest.NewRequest("POST", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.saveConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Failed to save configuration")
-		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Len(t, settingsStore.SaveCalls(), 1)
 	})
 
 	t.Run("no storage", func(t *testing.T) {
@@ -124,7 +124,7 @@ func TestSaveConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("POST", "/config", nil)
+		req := httptest.NewRequest("POST", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.saveConfigHandler(w, req)
 
@@ -162,13 +162,13 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", nil)
+		req := httptest.NewRequest("GET", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
-		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
+		assert.Len(t, settingsStore.LoadCalls(), 1)
 
 		// verify the current settings have been updated
 		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
@@ -203,14 +203,14 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", nil)
+		req := httptest.NewRequest("GET", "/config", http.NoBody)
 		req.Header.Set("HX-Request", "true")
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration loaded successfully")
-		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
+		assert.Len(t, settingsStore.LoadCalls(), 1)
 	})
 
 	t.Run("load error", func(t *testing.T) {
@@ -234,13 +234,13 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", nil)
+		req := httptest.NewRequest("GET", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Failed to load configuration")
-		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
+		assert.Len(t, settingsStore.LoadCalls(), 1)
 
 		// verify the current settings haven't changed
 		assert.Equal(t, "test-instance", srv.AppSettings.InstanceID)
@@ -293,21 +293,21 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", nil)
+		req := httptest.NewRequest("GET", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 1, len(settingsStore.LoadCalls()))
+		assert.Len(t, settingsStore.LoadCalls(), 1)
 
 		// verify stored settings loaded but CLI settings preserved
 		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
 		assert.Equal(t, "stored-group", srv.AppSettings.Telegram.Group)
 		assert.Equal(t, "cli-token", srv.AppSettings.Telegram.Token)
 		assert.Equal(t, "cli-openai-token", srv.AppSettings.OpenAI.Token)
-		assert.Equal(t, false, srv.AppSettings.Transient.Dbg)
+		assert.False(t, srv.AppSettings.Transient.Dbg)
 		assert.Equal(t, "db-url", srv.AppSettings.Transient.DataBaseURL)
-		assert.Equal(t, true, srv.AppSettings.Transient.ConfigDB)
+		assert.True(t, srv.AppSettings.Transient.ConfigDB)
 	})
 
 	t.Run("no storage", func(t *testing.T) {
@@ -325,7 +325,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("GET", "/config", nil)
+		req := httptest.NewRequest("GET", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, req)
 
@@ -373,7 +373,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		// verify the settings were updated
 		assert.Equal(t, "new-group", srv.AppSettings.Telegram.Group)
 		assert.Equal(t, 5, srv.AppSettings.Meta.LinksLimit)
-		assert.Equal(t, 0.8, srv.AppSettings.SimilarityThreshold)
+		assert.InEpsilon(t, 0.8, srv.AppSettings.SimilarityThreshold, 0.0001)
 	})
 
 	t.Run("successful update with HTMX request", func(t *testing.T) {
@@ -444,7 +444,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
 
 		// verify the settings were saved to DB
-		assert.Equal(t, 1, len(settingsStore.SaveCalls()))
+		assert.Len(t, settingsStore.SaveCalls(), 1)
 		assert.Equal(t, appSettings, settingsStore.SaveCalls()[0].Settings)
 	})
 
@@ -573,10 +573,10 @@ func TestUpdateConfigHandler(t *testing.T) {
 		assert.Equal(t, "/plugins", settings.LuaPlugins.PluginsDir)
 		assert.Equal(t, []string{"plugin1", "plugin2"}, settings.LuaPlugins.EnabledPlugins)
 		assert.Equal(t, []string{"user1", "user2", "user3"}, settings.Admin.SuperUsers)
-		assert.Equal(t, 0.75, settings.SimilarityThreshold)
+		assert.InEpsilon(t, 0.75, settings.SimilarityThreshold, 0.0001)
 		assert.Equal(t, 10, settings.MinMsgLen)
 		assert.Equal(t, 5, settings.MaxEmoji)
-		assert.Equal(t, 65.0, settings.MinSpamProbability)
+		assert.InEpsilon(t, 65.0, settings.MinSpamProbability, 0.0001)
 		assert.Equal(t, 20, settings.History.Size)
 		assert.Equal(t, 30, settings.Files.WatchInterval)
 		assert.Equal(t, "Bot started", settings.Message.Startup)
@@ -597,13 +597,13 @@ func TestDeleteConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("DELETE", "/config", nil)
+		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.deleteConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ok"`)
-		assert.Equal(t, 1, len(settingsStore.DeleteCalls()))
+		assert.Len(t, settingsStore.DeleteCalls(), 1)
 	})
 
 	t.Run("successful delete with HTMX request", func(t *testing.T) {
@@ -619,14 +619,14 @@ func TestDeleteConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("DELETE", "/config", nil)
+		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
 		req.Header.Set("HX-Request", "true")
 		w := httptest.NewRecorder()
 		srv.deleteConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration deleted successfully")
-		assert.Equal(t, 1, len(settingsStore.DeleteCalls()))
+		assert.Len(t, settingsStore.DeleteCalls(), 1)
 	})
 
 	t.Run("delete error", func(t *testing.T) {
@@ -642,13 +642,13 @@ func TestDeleteConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("DELETE", "/config", nil)
+		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.deleteConfigHandler(w, req)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Failed to delete configuration")
-		assert.Equal(t, 1, len(settingsStore.DeleteCalls()))
+		assert.Len(t, settingsStore.DeleteCalls(), 1)
 	})
 
 	t.Run("no storage", func(t *testing.T) {
@@ -658,7 +658,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest("DELETE", "/config", nil)
+		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
 		w := httptest.NewRecorder()
 		srv.deleteConfigHandler(w, req)
 
@@ -718,10 +718,10 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 		updateSettingsFromForm(settings, req)
 
-		assert.Equal(t, 0.75, settings.SimilarityThreshold)
+		assert.InEpsilon(t, 0.75, settings.SimilarityThreshold, 0.0001)
 		assert.Equal(t, 10, settings.MinMsgLen)
 		assert.Equal(t, 15, settings.MaxEmoji)
-		assert.Equal(t, 60.0, settings.MinSpamProbability)
+		assert.InEpsilon(t, 60.0, settings.MinSpamProbability, 0.0001)
 		assert.Equal(t, 5, settings.FirstMessagesCount)
 	})
 
@@ -783,7 +783,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 			updateSettingsFromForm(settings, req)
 
-			assert.Equal(t, "", settings.CAS.API)
+			assert.Empty(t, settings.CAS.API)
 		})
 	})
 
@@ -914,7 +914,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 			updateSettingsFromForm(settings, req)
 
-			assert.Equal(t, "", settings.Message.Startup)
+			assert.Empty(t, settings.Message.Startup)
 		})
 	})
 }

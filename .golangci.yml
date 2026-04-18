@@ -1,6 +1,9 @@
 version: "2"
 run:
-  tests: false
+  concurrency: 4
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 linters:
   default: none
   enable:
@@ -21,7 +24,8 @@ linters:
     - unused
     - testifylint
     - wrapcheck
-#    - nestif
+    - modernize
+    - lll
   settings:
     goconst:
       min-len: 2
@@ -41,7 +45,7 @@ linters:
       enable:
         - shadow
     lll:
-      line-length: 140
+      line-length: 130
     misspell:
       locale: US
   exclusions:
@@ -54,9 +58,36 @@ linters:
           - revive
         text: should have a package comment
       - linters:
+          - revive
+          - unparam
+          - unused
+        path: _test\.go$
+        text: unused-parameter
+      - linters:
+          - revive
+        path: lib/tgspam/plugin/
+        text: avoid package names that conflict with Go standard library package names
+      - linters:
           - dupl
           - gosec
-        path: _test\.go
+          - unparam
+          - wrapcheck
+        path: _test\.go$
+      - linters:
+          - lll
+        source: "`.*`"
+      - linters:
+          - lll
+        path: _test\.go$
+      - linters:
+          - gosec
+        text: "G705:|G706:|G704:|G118:|G120:"
+      - linters:
+          - staticcheck
+        text: "QF1012:"
+      - linters:
+          - revive
+        text: "var-naming: avoid package names"
     paths:
       - vendor
       - third_party$

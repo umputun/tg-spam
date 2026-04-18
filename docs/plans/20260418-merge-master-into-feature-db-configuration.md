@@ -301,10 +301,12 @@ No tests needed for this task (housekeeping only), but verify `go build ./...` s
 **Files:**
 - Modify: `.golangci.yml`
 
-- [ ] copy `.golangci.yml` wholesale from `origin/master`
-- [ ] run `golangci-lint run` on the current PR tree (pre-merge). If new issues surface on PR-only files (`app/config/`, `app/webapi/config.go`) — e.g. `revive`, `gocyclo`, `nestif` — capture them as a task-list note; fix in-place only if trivial, otherwise add a `➕ follow-up` entry to this plan
-- [ ] if the PR branch had a `nestif` disable, re-disable only if lint output confirms real issues; do not carry it over blindly
-- [ ] commit with message `chore: upgrade golangci-lint config to v2 format from master`
+- [x] copy `.golangci.yml` wholesale from `origin/master`
+- [x] run `golangci-lint run` on the current PR tree (pre-merge). If new issues surface on PR-only files (`app/config/`, `app/webapi/config.go`) — e.g. `revive`, `gocyclo`, `nestif` — capture them as a task-list note; fix in-place only if trivial, otherwise add a `➕ follow-up` entry to this plan
+- [x] if the PR branch had a `nestif` disable, re-disable only if lint output confirms real issues; do not carry it over blindly
+- [x] commit with message `chore: upgrade golangci-lint config to v2 format from master`
+
+Task 2 notes: master's tree lints cleanly (0 issues) under the new config, so all issues against the PR tree live on files that will be replaced by the upcoming merge (Tasks 6-13). PR-only files (`app/config/*`, `app/webapi/config*.go`) produced 50 trivial issues — 13 `gocritic` (http.NoBody), 34 `testifylint` (assert.Len, require.Error, InEpsilon, Empty, Contains), 1 `gofmt`, 1 `lll`, 1 `prealloc` — all fixed in-place. The PR branch had `# - nestif` commented out, which matches master (nestif not enabled), so nothing to carry over. Total lint dropped from 838 to 788; remaining 788 are all in master-overlapping files and will disappear with the Task 6 merge.
 
 No tests. Lint must exit zero.
 

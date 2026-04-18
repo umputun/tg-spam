@@ -138,15 +138,15 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 func TestCrypter_EncryptWithInvalidKey(t *testing.T) {
 	// test with empty key
 	_, err := NewCrypter("", "test-instance")
-	assert.Error(t, err)
-	
+	require.Error(t, err)
+
 	// test with empty instance ID
 	_, err = NewCrypter("test-master-key-with-sufficient-length", "")
-	assert.Error(t, err)
-	
+	require.Error(t, err)
+
 	// test with key too short
 	_, err = NewCrypter("short", "test-instance")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestCrypter_DecryptInvalidData(t *testing.T) {
@@ -155,11 +155,11 @@ func TestCrypter_DecryptInvalidData(t *testing.T) {
 
 	// test with invalid base64
 	_, err = crypter.Decrypt(EncryptPrefix + "invalid-base64")
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// test with valid base64 but invalid ciphertext
 	_, err = crypter.Decrypt(EncryptPrefix + "aW52YWxpZC1jaXBoZXJ0ZXh0") // "invalid-ciphertext" in base64
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestCrypter_DifferentKeys(t *testing.T) {
@@ -177,7 +177,7 @@ func TestCrypter_DifferentKeys(t *testing.T) {
 
 	// try to decrypt with second key (should fail)
 	_, err = crypter2.Decrypt(encrypted)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// decrypt with correct key (should succeed)
 	decrypted, err := crypter1.Decrypt(encrypted)
