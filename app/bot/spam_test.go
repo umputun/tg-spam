@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,6 +144,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			message: Message{
 				Text: "message https://example.com/path?param=1 http://test.com http://test.com/another",
 				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 8, Length: 32},
+					{Type: "url", Offset: 41, Length: 15},
+					{Type: "url", Offset: 57, Length: 23},
+				},
 			},
 			wantResponse: Response{
 				Text:          `detected: "user1" (1)`,
@@ -179,6 +185,341 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 				UserName: "user1",
 			},
 		},
+		{
+			name: "with text mention entities",
+			message: Message{
+				Text: "spam message @someone",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "mention", Offset: 13, Length: 8},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message @someone",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Mentions: 1},
+			},
+		},
+		{
+			name: "with image caption mention entities",
+			message: Message{
+				Text: "Пишите - @zhanna_live23",
+				From: User{ID: 1, Username: "user1"},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "Пишите - @zhanna_live23",
+					Entities: &[]Entity{
+						{Type: "mention", Offset: 9, Length: 14},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Пишите - @zhanna_live23",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Mentions: 1},
+			},
+		},
+		{
+			name: "with both text and image caption mentions",
+			message: Message{
+				Text: "@user1 check this",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "mention", Offset: 0, Length: 6},
+				},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "contact @someone",
+					Entities: &[]Entity{
+						{Type: "mention", Offset: 8, Length: 8},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "@user1 check this",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Mentions: 2},
+			},
+		},
+		{
+			name: "with url entity in text",
+			message: Message{
+				Text: "check example.com for details",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 6, Length: 11},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "check example.com for details",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Links: 1},
+			},
+		},
+		{
+			name: "with text_link entity in image caption",
+			message: Message{
+				Text: "Click here for details",
+				From: User{ID: 1, Username: "user1"},
+				Image: &Image{
+					FileID:  "123",
+					Caption: "Click here for details",
+					Entities: &[]Entity{
+						{Type: "text_link", Offset: 0, Length: 10, URL: "https://example.com"},
+					},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Click here for details",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Images: 1, Links: 1},
+			},
+		},
+		{
+			name: "with multiple link types",
+			message: Message{
+				Text: "visit https://site.com or click here",
+				From: User{ID: 1, Username: "user1"},
+				Entities: &[]Entity{
+					{Type: "url", Offset: 6, Length: 16},
+					{Type: "text_link", Offset: 26, Length: 10, URL: "https://other.com"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "visit https://site.com or click here",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{Links: 2}, // 2 from entities (url + text_link)
+			},
+		},
+		{
+			name: "spam in quoted/reply-to text from external channel",
+			message: Message{
+				Text: "Есть в наличии",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "Мефедрон VHQ Кристалл 1г",
+					From: User{ID: 999, Username: "spammer_channel"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Есть в наличии\nМефедрон VHQ Кристалл 1г",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "message with empty reply-to text",
+			message: Message{
+				Text: "spam message",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "",
+					From: User{ID: 999, Username: "other_user"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "empty main text with spam in reply-to",
+			message: Message{
+				Text: "",
+				From: User{ID: 1, Username: "user1"},
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "spam in quoted message",
+					From: User{ID: 999, Username: "spammer_channel"},
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "\nspam in quoted message",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "spam in Quote field (telegram TextQuote)",
+			message: Message{
+				Text:  "Мяу в наличии!",
+				From:  User{ID: 1, Username: "user1"},
+				Quote: "Мефедрон VHQ Кристалл 1г",
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "Мяу в наличии!\nМефедрон VHQ Кристалл 1г",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
+		{
+			name: "spam with user first/last name and premium",
+			message: Message{
+				Text: "spam message",
+				From: User{ID: 1, Username: "user1", DisplayName: "John Doe",
+					FirstName: "John", LastName: "Doe", IsPremium: true},
+			},
+			wantResponse: Response{
+				Text:          `detected: "John Doe" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1", DisplayName: "John Doe"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg: "spam message", UserID: "1", UserName: "user1",
+				FirstName: "John", LastName: "Doe", IsPremium: true,
+			},
+		},
+		{
+			name: "spam detected from channel message",
+			message: Message{
+				Text:       "spam message",
+				From:       User{ID: 136817688, Username: "Channel_Bot", FirstName: "Channel_Bot"},
+				SenderChat: SenderChat{ID: 12345, UserName: "spam_channel"},
+			},
+			wantResponse: Response{
+				Text:          `detected: "Channel_Bot" (136817688)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 136817688, Username: "Channel_Bot"},
+				ChannelID:     12345,
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{Msg: "spam message", UserID: "12345", UserName: "spam_channel"},
+		},
+		{
+			name: "both Quote and ReplyTo.Text present - Quote takes precedence",
+			message: Message{
+				Text:  "check this",
+				From:  User{ID: 1, Username: "user1"},
+				Quote: "spam quote text",
+				ReplyTo: struct {
+					From       User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "full reply text",
+				},
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "check this\nspam quote text",
+				UserID:   "1",
+				UserName: "user1",
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -207,7 +548,7 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			if tc.message.From.ID == 0 {
 				assert.Empty(t, det.CheckCalls())
 			} else {
-				assert.Equal(t, 1, len(det.CheckCalls()))
+				assert.Len(t, det.CheckCalls(), 1)
 			}
 		})
 	}
@@ -257,8 +598,8 @@ func TestSpamFilter_UpdateSpam(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, 1, len(det.UpdateSpamCalls()))
+			require.NoError(t, err)
+			assert.Len(t, det.UpdateSpamCalls(), 1)
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateSpamCalls()[0].Msg)
 		})
 	}
@@ -308,8 +649,8 @@ func TestSpamFilter_UpdateHam(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, 1, len(det.UpdateHamCalls()))
+			require.NoError(t, err)
+			assert.Len(t, det.UpdateHamCalls(), 1)
 			assert.Equal(t, strings.ReplaceAll(tc.message, "\n", " "), det.UpdateHamCalls()[0].Msg)
 		})
 	}
@@ -410,7 +751,7 @@ func TestSpamFilter_ApprovedUsers(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// check IsApprovedUser
 			result := s.IsApprovedUser(tc.userID)
@@ -505,12 +846,12 @@ func TestSpamFilter_ReloadSamples(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// verify all required methods were called
-			assert.Equal(t, 1, len(det.LoadSamplesCalls()))
-			assert.Equal(t, 1, len(det.LoadStopWordsCalls()))
-			assert.Equal(t, 1, len(samplesStore.StatsCalls()))
+			assert.Len(t, det.LoadSamplesCalls(), 1)
+			assert.Len(t, det.LoadStopWordsCalls(), 1)
+			assert.Len(t, samplesStore.StatsCalls(), 1)
 		})
 	}
 }
@@ -573,7 +914,7 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Len(t, det.RemoveSpamCalls(), 1)
 			assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)
 		})
@@ -613,7 +954,7 @@ func TestSpamFilter_IsApprovedUser(t *testing.T) {
 			s := NewSpamFilter(det, SpamConfig{})
 			got := s.IsApprovedUser(tc.userID)
 			assert.Equal(t, tc.want, got)
-			assert.Equal(t, 1, len(det.IsApprovedUserCalls()))
+			assert.Len(t, det.IsApprovedUserCalls(), 1)
 		})
 	}
 }
@@ -751,7 +1092,7 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if tc.sampleType == "spam" {
 				assert.Len(t, det.RemoveSpamCalls(), 1)
 				assert.Equal(t, tc.sample, det.RemoveSpamCalls()[0].Msg)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 //go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
+//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -49,6 +51,17 @@ type Locator interface {
 	Spam(ctx context.Context, userID int64) (storage.SpamData, bool)
 	MsgHash(msg string) string
 	UserNameByID(ctx context.Context, userID int64) string
+	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
+}
+
+// Reports is an interface for user spam reports storage
+type Reports interface {
+	Add(ctx context.Context, report storage.Report) error
+	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
+	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
 }
 
 // Bot is an interface for bot events.
@@ -61,12 +74,27 @@ type Bot interface {
 	IsApprovedUser(userID int64) bool
 }
 
+// escapeMarkDownV1Text escapes special characters used in Telegram's MarkdownV1 parse mode.
+// It escapes: _ (underscore), * (asterisk), ` (backtick), [ (left bracket)
+// This is used when re-parsing already rendered text to prevent markdown parsing errors.
 func escapeMarkDownV1Text(text string) string {
 	escSymbols := []string{"_", "*", "`", "["}
 	for _, esc := range escSymbols {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
+// this is safe for multi-byte UTF-8 characters (emoji, cyrillic, etc.)
+//
+//nolint:unparam // maxRunes may vary in future uses
+func truncateString(s string, maxRunes int, suffix string) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + suffix
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text
@@ -170,7 +198,25 @@ func banUserOrChannel(r banRequest) error {
 		r.duration = 1 * time.Minute
 	}
 
-	if r.restrict { // soft ban mode
+	// channel ban takes precedence over soft ban - channels can't be "restricted",
+	// they must be banned/unbanned via BanChatSenderChatConfig/UnbanChatSenderChatConfig
+	if r.channelID != 0 {
+		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
+			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
+			SenderChatID: r.channelID,
+			UntilDate:    int(time.Now().Add(r.duration).Unix()),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to ban channel: %w", err)
+		}
+		if !resp.Ok {
+			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
+		}
+		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
+		return nil
+	}
+
+	if r.restrict { // soft ban mode - restrict user permissions
 		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
 			ChatMemberConfig: tbapi.ChatMemberConfig{
 				ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
@@ -198,22 +244,6 @@ func banUserOrChannel(r banRequest) error {
 			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
 		}
 		log.Printf("[INFO] %s restricted by bot for %v", r.userName, r.duration)
-		return nil
-	}
-
-	if r.channelID != 0 {
-		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
-			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
-			SenderChatID: r.channelID,
-			UntilDate:    int(time.Now().Add(r.duration).Unix()),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to ban channel: %w", err)
-		}
-		if !resp.Ok {
-			return fmt.Errorf("response is not Ok: %v", string(resp.Result))
-		}
-		log.Printf("[INFO] channel %s banned by bot for %v", r.userName, r.duration)
 		return nil
 	}
 
@@ -255,9 +285,17 @@ func transform(msg *tbapi.Message) *bot.Message {
 			}
 			if entity.User != nil {
 				e.User = &bot.User{
-					ID:          entity.User.ID,
-					Username:    entity.User.UserName,
-					DisplayName: entity.User.FirstName + " " + entity.User.LastName,
+					ID:        entity.User.ID,
+					Username:  entity.User.UserName,
+					FirstName: strings.TrimSpace(entity.User.FirstName),
+					LastName:  strings.TrimSpace(entity.User.LastName),
+					IsPremium: entity.User.IsPremium,
+				}
+				if e.User.FirstName != "" {
+					e.User.DisplayName = e.User.FirstName
+				}
+				if e.User.LastName != "" {
+					e.User.DisplayName += " " + e.User.LastName
 				}
 			}
 			result = append(result, e)
@@ -276,15 +314,18 @@ func transform(msg *tbapi.Message) *bot.Message {
 	// set sender info
 	if msg.From != nil {
 		message.From = bot.User{
-			ID:       msg.From.ID,
-			Username: msg.From.UserName,
+			ID:        msg.From.ID,
+			Username:  msg.From.UserName,
+			FirstName: strings.TrimSpace(msg.From.FirstName),
+			LastName:  strings.TrimSpace(msg.From.LastName),
+			IsPremium: msg.From.IsPremium,
 		}
 		// combine first and last name for display name if present
-		if firstName := strings.TrimSpace(msg.From.FirstName); firstName != "" {
-			message.From.DisplayName = firstName
+		if message.From.FirstName != "" {
+			message.From.DisplayName = message.From.FirstName
 		}
-		if lastName := strings.TrimSpace(msg.From.LastName); lastName != "" {
-			message.From.DisplayName += " " + lastName
+		if message.From.LastName != "" {
+			message.From.DisplayName += " " + message.From.LastName
 		}
 	}
 
@@ -332,6 +373,12 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
 		message.WithKeyboard = true
 	}
+	if msg.Contact != nil {
+		message.WithContact = true
+	}
+	if msg.Giveaway != nil || msg.GiveawayCreated != nil || msg.GiveawayWinners != nil || msg.GiveawayCompleted != nil {
+		message.WithGiveaway = true
+	}
 
 	// handle reply-to message if present
 	if msg.ReplyToMessage != nil {
@@ -339,9 +386,17 @@ func transform(msg *tbapi.Message) *bot.Message {
 		message.ReplyTo.Sent = msg.ReplyToMessage.Time()
 		if msg.ReplyToMessage.From != nil {
 			message.ReplyTo.From = bot.User{
-				ID:          msg.ReplyToMessage.From.ID,
-				Username:    msg.ReplyToMessage.From.UserName,
-				DisplayName: msg.ReplyToMessage.From.FirstName + " " + msg.ReplyToMessage.From.LastName,
+				ID:        msg.ReplyToMessage.From.ID,
+				Username:  msg.ReplyToMessage.From.UserName,
+				FirstName: strings.TrimSpace(msg.ReplyToMessage.From.FirstName),
+				LastName:  strings.TrimSpace(msg.ReplyToMessage.From.LastName),
+				IsPremium: msg.ReplyToMessage.From.IsPremium,
+			}
+			if message.ReplyTo.From.FirstName != "" {
+				message.ReplyTo.From.DisplayName = message.ReplyTo.From.FirstName
+			}
+			if message.ReplyTo.From.LastName != "" {
+				message.ReplyTo.From.DisplayName += " " + message.ReplyTo.From.LastName
 			}
 		}
 		if msg.ReplyToMessage.SenderChat != nil {
@@ -350,6 +405,11 @@ func transform(msg *tbapi.Message) *bot.Message {
 				UserName: msg.ReplyToMessage.SenderChat.UserName,
 			}
 		}
+	}
+
+	// handle quoted text (TextQuote) - this is the specific text portion quoted by the user
+	if msg.Quote != nil && msg.Quote.Text != "" {
+		message.Quote = msg.Quote.Text
 	}
 
 	// handle caption - either as main text if no text present, or append to existing text
@@ -364,4 +424,51 @@ func transform(msg *tbapi.Message) *bot.Message {
 	}
 
 	return &message
+}
+
+// parseCallbackData parses callback data format: [prefix]userID:msgID
+// prefix can be: ?, +, !, or two-char report prefixes (R+, R-, R?, R!, RX)
+func parseCallbackData(data string) (userID int64, msgID int, err error) {
+	if len(data) < 3 {
+		return 0, 0, fmt.Errorf("unexpected callback data, too short %q", data)
+	}
+
+	// remove prefix if present from the parsed data
+	// check for two-char report prefixes first (R+, R-, R?, R!, RX)
+	if len(data) >= 3 && data[:1] == "R" {
+		// two-char report prefix
+		data = data[2:]
+	} else if data[:1] == "?" || data[:1] == "+" || data[:1] == "!" {
+		// single-char prefix
+		data = data[1:]
+	}
+
+	parts := strings.Split(data, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected callback data, should have both ids %q", data)
+	}
+	if userID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse userID %q: %w", parts[0], err)
+	}
+	if msgID, err = strconv.Atoi(parts[1]); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse msgID %q: %w", parts[1], err)
+	}
+
+	return userID, msgID, nil
+}
+
+// channelIDFromCallback returns the channel ID if the parsed callback ID is negative (channel),
+// otherwise returns 0. Telegram channel IDs are negative, user IDs are positive.
+func channelIDFromCallback(id int64) int64 {
+	if id < 0 {
+		return id
+	}
+	return 0
+}
+
+// sinceQuery calculates time elapsed since callback query message was sent
+func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
+	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	// negative duration possible if clock is not in sync with tg times and a message is from the future
+	return max(res, 0)
 }

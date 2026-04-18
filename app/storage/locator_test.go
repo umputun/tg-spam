@@ -25,6 +25,63 @@ func (s *StorageTestSuite) TestNewLocator() {
 	}
 }
 
+func (s *StorageTestSuite) TestLocator_GetUserMessageIDs() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			locator, err := NewLocator(ctx, time.Hour, 1000, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE messages")
+			defer db.Exec("DROP TABLE spam")
+
+			userID := int64(100)
+
+			// add multiple messages for the same user
+			msgIDs := []int{10, 20, 30, 40, 50}
+			for i, msgID := range msgIDs {
+				msg := fmt.Sprintf("message%d", i)
+				s.Require().NoError(locator.AddMessage(ctx, msg, 123, userID, "user1", msgID))
+				time.Sleep(10 * time.Millisecond) // ensure different timestamps
+			}
+
+			// add message for different user
+			s.Require().NoError(locator.AddMessage(ctx, "other message", 123, 200, "user2", 60))
+
+			// get all message IDs for user
+			ids, err := locator.GetUserMessageIDs(ctx, userID, 100)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 5)
+
+			// should be in reverse chronological order (newest first)
+			s.Equal(50, ids[0])
+			s.Equal(40, ids[1])
+			s.Equal(30, ids[2])
+			s.Equal(20, ids[3])
+			s.Equal(10, ids[4])
+
+			// test with limit
+			ids, err = locator.GetUserMessageIDs(ctx, userID, 3)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 3)
+			s.Equal(50, ids[0])
+			s.Equal(40, ids[1])
+			s.Equal(30, ids[2])
+
+			// test different user
+			ids, err = locator.GetUserMessageIDs(ctx, 200, 100)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 1)
+			s.Equal(60, ids[0])
+
+			// test non-existent user
+			ids, err = locator.GetUserMessageIDs(ctx, 999, 100)
+			s.Require().NoError(err)
+			s.Empty(ids)
+		})
+	}
+}
+
 func (s *StorageTestSuite) TestLocator_AddAndRetrieveMessage() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
@@ -51,7 +108,7 @@ func (s *StorageTestSuite) TestLocator_AddAndRetrieveMessage() {
 			s.Equal(userName, res)
 
 			res = locator.UserNameByID(ctx, 123456)
-			s.Equal("", res)
+			s.Empty(res)
 
 			id := locator.UserIDByName(ctx, userName)
 			s.Equal(userID, id)
@@ -73,12 +130,12 @@ func (s *StorageTestSuite) TestLocator_AddAndRetrieveManyMessage() {
 			defer db.Exec("DROP TABLE spam")
 
 			// add 100 messages for 10 users
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				userID := int64(i%10 + 1)
 				s.Require().NoError(locator.AddMessage(ctx, fmt.Sprintf("test message %d", i), 1234, userID, "name"+strconv.Itoa(int(userID)), i))
 			}
 
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				retrievedMsg, found := locator.Message(ctx, fmt.Sprintf("test message %d", i))
 				s.Require().True(found)
 				s.Equal(MsgMeta{Time: retrievedMsg.Time, ChatID: int64(1234), UserID: int64(i%10 + 1), UserName: "name" + strconv.Itoa(i%10+1), MsgID: i}, retrievedMsg)
@@ -306,23 +363,23 @@ func (s *StorageTestSuite) TestLocator_Migration() {
 				for _, col := range msgCols {
 					msgColMap[col.Name] = col.Type
 				}
-				s.Assert().Equal("TEXT", msgColMap["gid"])
+				s.Equal("TEXT", msgColMap["gid"])
 
 				spamColMap := make(map[string]string)
 				for _, col := range spamCols {
 					spamColMap[col.Name] = col.Type
 				}
-				s.Assert().Equal("TEXT", spamColMap["gid"])
+				s.Equal("TEXT", spamColMap["gid"])
 
 				// verify data migrated correctly
 				var msgGID, spamGID string
 				err = db.Get(&msgGID, "SELECT gid FROM messages WHERE hash = 'hash1'")
 				s.Require().NoError(err)
-				s.Assert().Equal("gr1", msgGID)
+				s.Equal("gr1", msgGID)
 
 				err = db.Get(&spamGID, "SELECT gid FROM spam WHERE user_id = 100")
 				s.Require().NoError(err)
-				s.Assert().Equal("gr1", spamGID)
+				s.Equal("gr1", spamGID)
 			})
 
 			s.Run("migration idempotency", func() {
@@ -363,7 +420,7 @@ func (s *StorageTestSuite) TestLocator_Migration() {
 						gidColCount++
 					}
 				}
-				s.Assert().Equal(1, gidColCount, "should have exactly one gid column")
+				s.Equal(1, gidColCount, "should have exactly one gid column")
 			})
 		})
 	}
@@ -397,13 +454,13 @@ func (s *StorageTestSuite) TestLocator_GIDIsolation() {
 	// verify messages are isolated
 	meta1, found := locator1.Message(ctx, msg)
 	s.Require().True(found)
-	s.Assert().Equal(int64(100), meta1.ChatID)
-	s.Assert().Equal("user1", meta1.UserName)
+	s.Equal(int64(100), meta1.ChatID)
+	s.Equal("user1", meta1.UserName)
 
 	meta2, found := locator2.Message(ctx, msg)
 	s.Require().True(found)
-	s.Assert().Equal(int64(200), meta2.ChatID)
-	s.Assert().Equal("user2", meta2.UserName)
+	s.Equal(int64(200), meta2.ChatID)
+	s.Equal("user2", meta2.UserName)
 
 	// verify spam data isolation
 	checks1 := []spamcheck.Response{{Name: "test1", Spam: true}}
@@ -417,9 +474,9 @@ func (s *StorageTestSuite) TestLocator_GIDIsolation() {
 	// verify spam data is isolated
 	spam1, found := locator1.Spam(ctx, 1)
 	s.Require().True(found)
-	s.Assert().True(spam1.Checks[0].Spam)
+	s.True(spam1.Checks[0].Spam)
 
 	spam2, found := locator2.Spam(ctx, 1)
 	s.Require().True(found)
-	s.Assert().False(spam2.Checks[0].Spam)
+	s.False(spam2.Checks[0].Spam)
 }

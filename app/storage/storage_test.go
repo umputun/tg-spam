@@ -73,10 +73,10 @@ func (s *StorageTestSuite) getTestDB() []struct {
 	DB   *engine.SQL
 	Type engine.Type
 } {
-	var res []struct {
+	res := make([]struct {
 		DB   *engine.SQL
 		Type engine.Type
-	}
+	}, 0, len(s.dbs))
 	for name, db := range s.dbs {
 		res = append(res, struct {
 			DB   *engine.SQL
@@ -293,12 +293,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			msgs1, err := samples1.Read(ctx, SampleTypeHam, SampleOriginUser)
 			s.Require().NoError(err)
-			s.Equal(1, len(msgs1))
+			s.Len(msgs1, 1)
 			s.Equal("test1 message", msgs1[0])
 
 			msgs2, err := samples2.Read(ctx, SampleTypeHam, SampleOriginUser)
 			s.Require().NoError(err)
-			s.Equal(1, len(msgs2))
+			s.Len(msgs2, 1)
 			s.Equal("test2 message", msgs2[0])
 		})
 
@@ -316,12 +316,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			phrases1, err := dict1.Read(ctx, DictionaryTypeStopPhrase)
 			s.Require().NoError(err)
-			s.Equal(1, len(phrases1))
+			s.Len(phrases1, 1)
 			s.Equal("test1 phrase", phrases1[0])
 
 			phrases2, err := dict2.Read(ctx, DictionaryTypeStopPhrase)
 			s.Require().NoError(err)
-			s.Equal(1, len(phrases2))
+			s.Len(phrases2, 1)
 			s.Equal("test2 phrase", phrases2[0])
 		})
 
@@ -355,12 +355,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			entries1, err := spam1.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(entries1))
+			s.Len(entries1, 1)
 			s.Equal("spam1", entries1[0].Text)
 
 			entries2, err := spam2.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(entries2))
+			s.Len(entries2, 1)
 			s.Equal("spam2", entries2[0].Text)
 		})
 
@@ -381,12 +381,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			users1, err := au1.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(users1))
+			s.Len(users1, 1)
 			s.Equal("user1", users1[0].UserName)
 
 			users2, err := au2.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(users2))
+			s.Len(users2, 1)
 			s.Equal("user2", users2[0].UserName)
 		})
 
@@ -462,12 +462,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			msgs1, err := samples1.Read(ctx, SampleTypeHam, SampleOriginUser)
 			s.Require().NoError(err)
-			s.Equal(1, len(msgs1))
+			s.Len(msgs1, 1)
 			s.Equal("test1 message", msgs1[0])
 
 			msgs2, err := samples2.Read(ctx, SampleTypeHam, SampleOriginUser)
 			s.Require().NoError(err)
-			s.Equal(1, len(msgs2))
+			s.Len(msgs2, 1)
 			s.Equal("test2 message", msgs2[0])
 		})
 
@@ -484,12 +484,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			phrases1, err := dict1.Read(ctx, DictionaryTypeStopPhrase)
 			s.Require().NoError(err)
-			s.Equal(1, len(phrases1))
+			s.Len(phrases1, 1)
 			s.Equal("test1 phrase", phrases1[0])
 
 			phrases2, err := dict2.Read(ctx, DictionaryTypeStopPhrase)
 			s.Require().NoError(err)
-			s.Equal(1, len(phrases2))
+			s.Len(phrases2, 1)
 			s.Equal("test2 phrase", phrases2[0])
 		})
 
@@ -522,12 +522,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			entries1, err := spam1.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(entries1))
+			s.Len(entries1, 1)
 			s.Equal("spam1", entries1[0].Text)
 
 			entries2, err := spam2.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(entries2))
+			s.Len(entries2, 1)
 			s.Equal("spam2", entries2[0].Text)
 		})
 
@@ -547,12 +547,12 @@ func (s *StorageTestSuite) TestIsolation() {
 
 			users1, err := au1.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(users1))
+			s.Len(users1, 1)
 			s.Equal("user1", users1[0].UserName)
 
 			users2, err := au2.Read(ctx)
 			s.Require().NoError(err)
-			s.Equal(1, len(users2))
+			s.Len(users2, 1)
 			s.Equal("user2", users2[0].UserName)
 		})
 

@@ -145,6 +145,9 @@ func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 		reqTable.RawSetString("msg", lua.LString(req.Msg))
 		reqTable.RawSetString("user_id", lua.LString(req.UserID))
 		reqTable.RawSetString("user_name", lua.LString(req.UserName))
+		reqTable.RawSetString("first_name", lua.LString(req.FirstName))
+		reqTable.RawSetString("last_name", lua.LString(req.LastName))
+		reqTable.RawSetString("is_premium", lua.LBool(req.IsPremium))
 
 		// add metadata
 		metaTable := c.vm.NewTable()
@@ -155,6 +158,9 @@ func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 		metaTable.RawSetString("has_audio", lua.LBool(req.Meta.HasAudio))
 		metaTable.RawSetString("has_forward", lua.LBool(req.Meta.HasForward))
 		metaTable.RawSetString("has_keyboard", lua.LBool(req.Meta.HasKeyboard))
+		metaTable.RawSetString("has_giveaway", lua.LBool(req.Meta.HasGiveaway))
+		metaTable.RawSetString("has_contact", lua.LBool(req.Meta.HasContact))
+		metaTable.RawSetString("message_id", lua.LNumber(req.Meta.MessageID))
 		reqTable.RawSetString("meta", metaTable)
 
 		// call the Lua function

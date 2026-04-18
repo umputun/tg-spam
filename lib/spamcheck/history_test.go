@@ -19,7 +19,7 @@ func TestLastRequestsBasicOps(t *testing.T) {
 	h.Push(req3)
 
 	res := h.Last(3)
-	require.Equal(t, 3, len(res))
+	require.Len(t, res, 3)
 	assert.Equal(t, req1, res[0])
 	assert.Equal(t, req2, res[1])
 	assert.Equal(t, req3, res[2])
@@ -36,7 +36,7 @@ func TestLastRequestsOverflow(t *testing.T) {
 	h.Push(req3)
 
 	res := h.Last(3)
-	require.Equal(t, 2, len(res))
+	require.Len(t, res, 2)
 	assert.Equal(t, req2, res[0])
 	assert.Equal(t, req3, res[1])
 }
@@ -55,7 +55,7 @@ func TestLastRequestsSmallerRequest(t *testing.T) {
 	h.Push(req2)
 
 	res := h.Last(1)
-	require.Equal(t, 1, len(res))
+	require.Len(t, res, 1)
 	assert.Equal(t, req1, res[0])
 }
 
@@ -64,14 +64,14 @@ func TestLastRequestsConcurrent(t *testing.T) {
 	done := make(chan bool)
 
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			h.Push(Request{Msg: "msg", UserID: "1"})
 		}
 		done <- true
 	}()
 
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			h.Last(5)
 		}
 		done <- true
@@ -95,7 +95,7 @@ func TestLastRequestsZeroSize(t *testing.T) {
 	req := Request{Msg: "msg1", UserID: "1"}
 	h.Push(req)
 	res := h.Last(1)
-	require.Equal(t, 1, len(res))
+	require.Len(t, res, 1)
 	assert.Equal(t, req, res[0])
 }
 
@@ -106,7 +106,7 @@ func TestLastRequestsNilValues(t *testing.T) {
 	req := Request{Msg: "msg1", UserID: "1"}
 	h.Push(req)
 	res := h.Last(2)
-	require.Equal(t, 1, len(res))
+	require.Len(t, res, 1)
 	assert.Equal(t, req, res[0])
 }
 

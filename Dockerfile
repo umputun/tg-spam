@@ -1,4 +1,4 @@
-FROM ghcr.io/umputun/baseimage/buildgo:v1.15.0 AS build
+FROM ghcr.io/umputun/baseimage/buildgo:v1.17.0 AS build
 
 ARG GIT_BRANCH
 ARG GITHUB_SHA
@@ -11,13 +11,18 @@ RUN go version
 
 RUN \
  if [ -z "$CI" ] ; then \
- echo "runs outside of CI" && version=$(git rev-parse --abbrev-ref HEAD)-$(git log -1 --format=%h)-$(date +%Y%m%dT%H:%M:%S); \
+   echo "runs outside of CI"; \
+   if git rev-parse --git-dir > /dev/null 2>&1; then \
+     version=$(git rev-parse --abbrev-ref HEAD)-$(git log -1 --format=%h)-$(date +%Y%m%dT%H:%M:%S); \
+   else \
+     version=local-$(date +%Y%m%dT%H:%M:%S); \
+   fi; \
  else version=${GIT_BRANCH}-${GITHUB_SHA:0:7}-$(date +%Y%m%dT%H:%M:%S); fi && \
  echo "version=$version" && \
  cd app && go build -o /build/tg-spam -ldflags "-X main.revision=${version} -s -w"
 
 
-FROM alpine:3.21
+FROM alpine:3.22
 # enables automatic changelog generation by tools like Dependabot
 LABEL org.opencontainers.image.source="https://github.com/umputun/tg-spam"
 ENV TGSPAM_IN_DOCKER=1

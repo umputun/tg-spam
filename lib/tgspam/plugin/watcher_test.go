@@ -25,11 +25,11 @@ func TestWatcher_Start(t *testing.T) {
 
 	// test starting the watcher
 	err = watcher.Start()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// test that starting twice doesn't cause an error
 	err = watcher.Start()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// stop the watcher
 	watcher.Stop()
@@ -44,7 +44,7 @@ func TestWatcher_NonExistentDirectory(t *testing.T) {
 
 	// starting the watcher should fail
 	err = watcher.Start()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
 }
 
@@ -58,7 +58,7 @@ func TestWatcher_FileReload(t *testing.T) {
 function check(request)
 	return false, "initial version"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -87,7 +87,7 @@ end
 function check(request)
 	return true, "updated version"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// manually add event to the watcher's event queue

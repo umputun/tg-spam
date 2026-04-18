@@ -1,3 +1,4 @@
+// Package engine provides database engine abstraction for different SQL databases.
 package engine
 
 import (
@@ -6,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -110,7 +112,7 @@ func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
 			return nil, fmt.Errorf("failed to create database: %w", err)
 		}
 	}
-	log.Printf("[INFO] created database %s", dbName)
+	log.Printf("[INFO] created database %s", dbName) //nolint:gosec // dbName from internal config, not user input
 
 	// connect to the new database
 	db, err = sqlx.ConnectContext(ctx, "postgres", connURL)
@@ -172,27 +174,28 @@ func (e *SQL) Adopt(q string) string {
 	}
 
 	placeholderCount := 1
-	result := ""
+	var result strings.Builder
+	result.Grow(len(q))
 	inQuotes := false
 
 	for _, r := range q {
 		switch r {
 		case '\'':
 			inQuotes = !inQuotes
-			result += string(r)
+			result.WriteRune(r)
 		case '?':
 			if inQuotes {
-				result += string(r)
+				result.WriteRune(r)
 			} else {
-				result += fmt.Sprintf("$%d", placeholderCount)
+				result.WriteString("$" + strconv.Itoa(placeholderCount))
 				placeholderCount++
 			}
 		default:
-			result += string(r)
+			result.WriteRune(r)
 		}
 	}
 
-	return result
+	return result.String()
 }
 
 func setSqlitePragma(db *sqlx.DB) error {
@@ -376,7 +379,7 @@ func (e *SQL) writeSqliteTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer
 
 // writeSqliteRow writes a single row as an INSERT statement
 func (e *SQL) writeSqliteRow(w io.Writer, rows *sqlx.Rows, table string, columns []string) error {
-	row := make(map[string]interface{})
+	row := make(map[string]any)
 	if err := rows.MapScan(row); err != nil {
 		return fmt.Errorf("failed to scan row: %w", err)
 	}
@@ -408,7 +411,7 @@ func (e *SQL) writeSqliteRow(w io.Writer, rows *sqlx.Rows, table string, columns
 }
 
 // formatSqliteValue formats a value for SQLite INSERT statement
-func (e *SQL) formatSqliteValue(value interface{}) string {
+func (e *SQL) formatSqliteValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "NULL"
@@ -491,9 +494,9 @@ func (e *SQL) writePostgresHeader(ctx context.Context, tx *sqlx.Tx, w io.Writer)
 func (e *SQL) getPostgresTables(ctx context.Context, tx *sqlx.Tx) ([]string, error) {
 	var tables []string
 	query := `
-		SELECT tablename 
-		FROM pg_catalog.pg_tables 
-		WHERE schemaname != 'pg_catalog' 
+		SELECT tablename
+		FROM pg_catalog.pg_tables
+		WHERE schemaname != 'pg_catalog'
 		AND schemaname != 'information_schema'
 	`
 	if err := tx.SelectContext(ctx, &tables, query); err != nil {
@@ -516,7 +519,7 @@ func (e *SQL) backupPostgresTable(ctx context.Context, tx *sqlx.Tx, w io.Writer,
 	}
 
 	// write table data
-	if err := e.writePostgresTableData(ctx, tx, w, table, columns, hasGID); err != nil {
+	if err := e.writePgTableData(ctx, tx, w, table, columns, hasGID); err != nil {
 		// skip table data if there are no rows
 		if !strings.Contains(err.Error(), "no rows in result set") {
 			return err
@@ -535,17 +538,17 @@ func (e *SQL) backupPostgresTable(ctx context.Context, tx *sqlx.Tx, w io.Writer,
 func (e *SQL) writePostgresTableSchema(ctx context.Context, tx *sqlx.Tx, w io.Writer, table string) error {
 	var createStmt string
 	query := fmt.Sprintf(`
-		SELECT 
+		SELECT
 			'CREATE TABLE ' || table_name || ' (' ||
 			array_to_string(
 				array_agg(
-					column_name || ' ' || 
-					data_type || 
-					CASE 
+					column_name || ' ' ||
+					data_type ||
+					CASE
 						WHEN character_maximum_length IS NOT NULL THEN '(' || character_maximum_length || ')'
 						ELSE ''
 					END ||
-					CASE 
+					CASE
 						WHEN is_nullable = 'NO' THEN ' NOT NULL'
 						ELSE ''
 					END
@@ -597,12 +600,12 @@ func (e *SQL) getPostgresTableInfo(ctx context.Context, tx *sqlx.Tx, table strin
 	return hasGID, columns, nil
 }
 
-// writePostgresTableData writes the data rows for a PostgreSQL table
-func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer, table string, columns []string, hasGID bool) error {
+// writePgTableData writes the data rows for a PostgreSQL table
+func (e *SQL) writePgTableData(ctx context.Context, tx *sqlx.Tx, w io.Writer, tbl string, cols []string, hasGID bool) error {
 	// build query to get data
-	dataQuery := fmt.Sprintf("SELECT * FROM %s", table)
+	dataQuery := fmt.Sprintf("SELECT * FROM %s", tbl)
 	if hasGID {
-		dataQuery = fmt.Sprintf("SELECT * FROM %s WHERE gid = $1", table)
+		dataQuery = fmt.Sprintf("SELECT * FROM %s WHERE gid = $1", tbl)
 	}
 
 	// check if there are any rows first
@@ -615,7 +618,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 		err = tx.GetContext(ctx, &count, countQuery)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to check row count for table %s: %w", table, err)
+		return fmt.Errorf("failed to check row count for table %s: %w", tbl, err)
 	}
 
 	if count == 0 {
@@ -624,13 +627,12 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 	}
 
 	// write data comment
-	if _, commentErr := fmt.Fprintf(w, "-- Data for table %s\n", table); commentErr != nil {
+	if _, commentErr := fmt.Fprintf(w, "-- Data for table %s\n", tbl); commentErr != nil {
 		return fmt.Errorf("failed to write comment: %w", commentErr)
 	}
 
 	// start COPY statement
-	if _, copyErr := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n",
-		table, strings.Join(columns, ", ")); copyErr != nil {
+	if _, copyErr := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n", tbl, strings.Join(cols, ", ")); copyErr != nil {
 		return fmt.Errorf("failed to write COPY statement: %w", copyErr)
 	}
 
@@ -642,7 +644,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 		rows, err = tx.QueryxContext(ctx, dataQuery)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to query data from table %s: %w", table, err)
+		return fmt.Errorf("failed to query data from table %s: %w", tbl, err)
 	}
 
 	// important: use a function to properly close rows at the end
@@ -655,7 +657,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 
 	// process rows
 	for rows.Next() {
-		if writeErr := e.writePostgresRow(w, rows, columns); writeErr != nil {
+		if writeErr := e.writePostgresRow(w, rows, cols); writeErr != nil {
 			return writeErr
 		}
 	}
@@ -674,7 +676,7 @@ func (e *SQL) writePostgresTableData(ctx context.Context, tx *sqlx.Tx, w io.Writ
 
 // writePostgresRow formats and writes a single row in PostgreSQL COPY format
 func (e *SQL) writePostgresRow(w io.Writer, rows *sqlx.Rows, columns []string) error {
-	row := make(map[string]interface{})
+	row := make(map[string]any)
 	if err := rows.MapScan(row); err != nil {
 		return fmt.Errorf("failed to scan row: %w", err)
 	}
@@ -698,7 +700,7 @@ func (e *SQL) writePostgresRow(w io.Writer, rows *sqlx.Rows, columns []string) e
 }
 
 // formatPostgresValue formats a value for PostgreSQL COPY format
-func (e *SQL) formatPostgresValue(value interface{}) string {
+func (e *SQL) formatPostgresValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "\\N"

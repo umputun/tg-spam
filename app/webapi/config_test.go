@@ -2,12 +2,14 @@ package webapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -917,4 +919,279 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 			assert.Empty(t, settings.Message.Startup)
 		})
 	})
+}
+
+func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
+	tests := []struct {
+		name   string
+		form   url.Values
+		assert func(t *testing.T, s *config.Settings)
+	}{
+		{
+			name: "delete group toggles on",
+			form: url.Values{
+				"deleteJoinMessages":  []string{"on"},
+				"deleteLeaveMessages": []string{"on"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.Delete.JoinMessages)
+				assert.True(t, s.Delete.LeaveMessages)
+			},
+		},
+		{
+			name: "delete group omitted clears flags",
+			form: url.Values{},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.False(t, s.Delete.JoinMessages)
+				assert.False(t, s.Delete.LeaveMessages)
+			},
+		},
+		{
+			name: "meta contact-only and giveaway",
+			form: url.Values{
+				"metaContactOnly": []string{"on"},
+				"metaGiveaway":    []string{"on"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.Meta.ContactOnly)
+				assert.True(t, s.Meta.Giveaway)
+			},
+		},
+		{
+			name: "gemini full payload",
+			form: url.Values{
+				"geminiVeto":               []string{"on"},
+				"geminiCheckShortMessages": []string{"on"},
+				"geminiHistorySize":        []string{"7"},
+				"geminiModel":              []string{"gemini-2.0-flash"},
+				"geminiPrompt":             []string{"detect spam"},
+				"geminiMaxTokensResponse":  []string{"512"},
+				"geminiMaxSymbolsRequest":  []string{"4096"},
+				"geminiRetryCount":         []string{"3"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.Gemini.Veto)
+				assert.True(t, s.Gemini.CheckShortMessages)
+				assert.Equal(t, 7, s.Gemini.HistorySize)
+				assert.Equal(t, "gemini-2.0-flash", s.Gemini.Model)
+				assert.Equal(t, "detect spam", s.Gemini.Prompt)
+				assert.Equal(t, int32(512), s.Gemini.MaxTokensResponse)
+				assert.Equal(t, 4096, s.Gemini.MaxSymbolsRequest)
+				assert.Equal(t, 3, s.Gemini.RetryCount)
+			},
+		},
+		{
+			name: "gemini token never read from form",
+			form: url.Values{
+				"geminiToken": []string{"hijacked"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.Empty(t, s.Gemini.Token, "Gemini.Token must not be writable via form")
+			},
+		},
+		{
+			name: "gemini malformed numeric values are ignored",
+			form: url.Values{
+				"geminiHistorySize":       []string{"oops"},
+				"geminiMaxTokensResponse": []string{"oops"},
+				"geminiMaxSymbolsRequest": []string{"oops"},
+				"geminiRetryCount":        []string{"oops"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.Equal(t, 1, s.Gemini.HistorySize, "preserved when input invalid")
+				assert.Equal(t, int32(2), s.Gemini.MaxTokensResponse, "preserved when input invalid")
+				assert.Equal(t, 3, s.Gemini.MaxSymbolsRequest, "preserved when input invalid")
+				assert.Equal(t, 4, s.Gemini.RetryCount, "preserved when input invalid")
+			},
+		},
+		{
+			name: "llm orchestration",
+			form: url.Values{
+				"llmConsensus":      []string{"all"},
+				"llmRequestTimeout": []string{"45s"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.Equal(t, "all", s.LLM.Consensus)
+				assert.Equal(t, 45*time.Second, s.LLM.RequestTimeout)
+			},
+		},
+		{
+			name: "duplicates detector",
+			form: url.Values{
+				"duplicatesThreshold": []string{"4"},
+				"duplicatesWindow":    []string{"30s"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.Equal(t, 4, s.Duplicates.Threshold)
+				assert.Equal(t, 30*time.Second, s.Duplicates.Window)
+			},
+		},
+		{
+			name: "report enabled with thresholds",
+			form: url.Values{
+				"reportEnabled":          []string{"on"},
+				"reportThreshold":        []string{"3"},
+				"reportAutoBanThreshold": []string{"10"},
+				"reportRateLimit":        []string{"5"},
+				"reportRatePeriod":       []string{"2m"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.Report.Enabled)
+				assert.Equal(t, 3, s.Report.Threshold)
+				assert.Equal(t, 10, s.Report.AutoBanThreshold)
+				assert.Equal(t, 5, s.Report.RateLimit)
+				assert.Equal(t, 2*time.Minute, s.Report.RatePeriod)
+			},
+		},
+		{
+			name: "aggressive cleanup with limit",
+			form: url.Values{
+				"aggressiveCleanup":      []string{"on"},
+				"aggressiveCleanupLimit": []string{"50"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.AggressiveCleanup)
+				assert.Equal(t, 50, s.AggressiveCleanupLimit)
+			},
+		},
+		{
+			name: "openai check-short-messages toggle",
+			form: url.Values{
+				"openAIEnabled":            []string{"on"},
+				"openAICheckShortMessages": []string{"on"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.True(t, s.OpenAI.CheckShortMessages)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := &config.Settings{
+				Gemini: config.GeminiSettings{
+					HistorySize:       1,
+					MaxTokensResponse: 2,
+					MaxSymbolsRequest: 3,
+					RetryCount:        4,
+				},
+			}
+
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(tc.form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			require.NoError(t, req.ParseForm())
+
+			updateSettingsFromForm(settings, req)
+
+			tc.assert(t, settings)
+		})
+	}
+}
+
+func TestUpdateConfigHandler_RoundTrip_NewGroups(t *testing.T) {
+	// posts a form populating every new group, asserts in-memory settings reflect every value
+	// and that the optional saveToDb path persists the same struct end-to-end via the store mock
+	store := &SettingsStoreMock{
+		SaveFunc: func(_ context.Context, _ *config.Settings) error { return nil },
+	}
+
+	appSettings := &config.Settings{
+		Gemini: config.GeminiSettings{HistorySize: 0, MaxTokensResponse: 0},
+	}
+	srv := Server{Config: Config{SettingsStore: store, AppSettings: appSettings}}
+
+	form := url.Values{
+		"saveToDb":                 []string{"true"},
+		"deleteJoinMessages":       []string{"on"},
+		"deleteLeaveMessages":      []string{"on"},
+		"metaContactOnly":          []string{"on"},
+		"metaGiveaway":             []string{"on"},
+		"geminiVeto":               []string{"on"},
+		"geminiCheckShortMessages": []string{"on"},
+		"geminiHistorySize":        []string{"6"},
+		"geminiModel":              []string{"gemini-pro"},
+		"geminiPrompt":             []string{"prompt-text"},
+		"geminiMaxTokensResponse":  []string{"800"},
+		"geminiMaxSymbolsRequest":  []string{"5000"},
+		"geminiRetryCount":         []string{"2"},
+		"llmConsensus":             []string{"any"},
+		"llmRequestTimeout":        []string{"15s"},
+		"duplicatesThreshold":      []string{"5"},
+		"duplicatesWindow":         []string{"1m"},
+		"reportEnabled":            []string{"on"},
+		"reportThreshold":          []string{"4"},
+		"reportAutoBanThreshold":   []string{"12"},
+		"reportRateLimit":          []string{"6"},
+		"reportRatePeriod":         []string{"3m"},
+		"aggressiveCleanup":        []string{"on"},
+		"aggressiveCleanupLimit":   []string{"99"},
+	}
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, store.SaveCalls(), 1, "saveToDb=true must trigger a single Save call")
+
+	saved := store.SaveCalls()[0].Settings
+	assert.Same(t, appSettings, saved, "store receives the same in-memory settings pointer")
+
+	// every new group is persisted
+	assert.True(t, saved.Delete.JoinMessages)
+	assert.True(t, saved.Delete.LeaveMessages)
+	assert.True(t, saved.Meta.ContactOnly)
+	assert.True(t, saved.Meta.Giveaway)
+	assert.True(t, saved.Gemini.Veto)
+	assert.True(t, saved.Gemini.CheckShortMessages)
+	assert.Equal(t, 6, saved.Gemini.HistorySize)
+	assert.Equal(t, "gemini-pro", saved.Gemini.Model)
+	assert.Equal(t, "prompt-text", saved.Gemini.Prompt)
+	assert.Equal(t, int32(800), saved.Gemini.MaxTokensResponse)
+	assert.Equal(t, 5000, saved.Gemini.MaxSymbolsRequest)
+	assert.Equal(t, 2, saved.Gemini.RetryCount)
+	assert.Equal(t, "any", saved.LLM.Consensus)
+	assert.Equal(t, 15*time.Second, saved.LLM.RequestTimeout)
+	assert.Equal(t, 5, saved.Duplicates.Threshold)
+	assert.Equal(t, time.Minute, saved.Duplicates.Window)
+	assert.True(t, saved.Report.Enabled)
+	assert.Equal(t, 4, saved.Report.Threshold)
+	assert.Equal(t, 12, saved.Report.AutoBanThreshold)
+	assert.Equal(t, 6, saved.Report.RateLimit)
+	assert.Equal(t, 3*time.Minute, saved.Report.RatePeriod)
+	assert.True(t, saved.AggressiveCleanup)
+	assert.Equal(t, 99, saved.AggressiveCleanupLimit)
+}
+
+func TestUpdateConfigHandler_JSONRoundTrip_NewGroups(t *testing.T) {
+	// the JSON updateConfigHandler path inherits new fields for free via struct unmarshal
+	// this asserts every new group survives a JSON encode/decode (the mechanism PUT /config relies on
+	// when the client posts application/json), which protects against accidental tag-name regressions
+	original := &config.Settings{
+		Delete:                 config.DeleteSettings{JoinMessages: true, LeaveMessages: true},
+		Meta:                   config.MetaSettings{ContactOnly: true, Giveaway: true},
+		Gemini:                 config.GeminiSettings{Token: "k", Veto: true, CheckShortMessages: true, HistorySize: 7, Model: "m", Prompt: "p", MaxTokensResponse: 1024, MaxSymbolsRequest: 256, RetryCount: 4, CustomPrompts: []string{"a", "b"}},
+		LLM:                    config.LLMSettings{Consensus: "all", RequestTimeout: 20 * time.Second},
+		Duplicates:             config.DuplicatesSettings{Threshold: 3, Window: 90 * time.Second},
+		Report:                 config.ReportSettings{Enabled: true, Threshold: 2, AutoBanThreshold: 8, RateLimit: 4, RatePeriod: 5 * time.Minute},
+		AggressiveCleanup:      true,
+		AggressiveCleanupLimit: 75,
+	}
+
+	encoded, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded config.Settings
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+
+	assert.Equal(t, original.Delete, decoded.Delete)
+	assert.Equal(t, original.Meta.ContactOnly, decoded.Meta.ContactOnly)
+	assert.Equal(t, original.Meta.Giveaway, decoded.Meta.Giveaway)
+	assert.Equal(t, original.Gemini, decoded.Gemini)
+	assert.Equal(t, original.LLM, decoded.LLM)
+	assert.Equal(t, original.Duplicates, decoded.Duplicates)
+	assert.Equal(t, original.Report, decoded.Report)
+	assert.Equal(t, original.AggressiveCleanup, decoded.AggressiveCleanup)
+	assert.Equal(t, original.AggressiveCleanupLimit, decoded.AggressiveCleanupLimit)
 }

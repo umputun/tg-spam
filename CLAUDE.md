@@ -15,9 +15,12 @@
 - Go version: 1.24+
 - Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
 - Do not include "Test plan" sections in PR descriptions
-- Do not add comments that describe changes, progress, or historical modifications. Avoid comments like “new function,” “added test,” “now we changed this,” or “previously used X, now using Y.” Comments should only describe the current state and purpose of the code, not its history or evolution.
+- Do not add comments that describe changes, progress, or historical modifications. Avoid comments like "new function," "added test," "now we changed this," or "previously used X, now using Y." Comments should only describe the current state and purpose of the code, not its history or evolution.
 - Use `go:generate` for generating mocks, never modify generated files manually. Mocks are generated with `moq` and stored in the `mocks` package.
 - After important functionality added, update README.md accordingly
+- When adding new CLI parameters or environment variables, update BOTH:
+  1. The "All Application Options" section in README.md (should match `--help` output exactly)
+  2. The appropriate descriptive section in README.md (e.g., spam detection modules, OpenAI integration, etc.)
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
 - Don't add "Test plan" section to PRs
 
@@ -41,7 +44,8 @@
 - Start server: `srv := &http.Server{Addr: addr, Handler: router}; srv.ListenAndServe()`
 
 ## Code Style
-- Format: Use `gofmt` (enforced by linter)
+- Format: Use `gofmt` (enforced by linter) - exclude mocks: `gofmt -s -w $(find . -type f -name "*.go" -not -path "./vendor/*" -not -path "*/mocks/*")`
+- goimports: `goimports -w $(find . -type f -name "*.go" -not -path "./vendor/*" -not -path "*/mocks/*")`
 - Line length: Maximum 140 characters
 - Error handling: Return errors with context, use multierror for aggregation
 - Naming: CamelCase for variables, PascalCase for exported types/functions
@@ -50,3 +54,45 @@
 - Documentation: All exported functions and types must be documented with standard Go comments
 - Interfaces: Define interfaces in consumer packages
 - Mocks: Generate with github.com/matryer/moq and store in mocks package
+
+## Spam Detection Architecture
+
+### Quoted/Reply-to Text Handling
+- When checking messages for spam, quoted text is concatenated with the main message text
+- This catches spammers who quote spam content from external channels
+- `Quote` (from Telegram's TextQuote) takes precedence over `ReplyTo.Text`
+- The concatenation uses newline separator: `msg.Text + "\n" + msg.Quote`
+- Empty quote/reply-to text is ignored (no extra newline added)
+- All three paths apply the same Quote concatenation: auto-detection (`app/bot/spam.go:OnMessage`), admin `/spam` (`app/events/admin.go:directReport`), and user `/report` (`app/events/reports.go:DirectUserReport`)
+- Quote concatenation is placed AFTER the transform fallback block so image-only messages with quotes get both caption text and quote text
+
+### Channel Message Handling
+- When a channel posts in a group, Telegram uses a shared fake user `Channel_Bot` (ID `136817688`) in `msg.From`
+- The actual channel identity is in `msg.SenderChat` with unique ID and username
+- `SenderChat.ID` is used for locator tracking (`AddMessage`, `AddSpam`), and for banning via `BanChatSenderChatConfig`
+- `bot.OnMessage` sets `Response.ChannelID = msg.SenderChat.ID` when SenderChat is present
+- Admin `/spam` command (`directReport`) detects `origMsg.SenderChat` and passes channel ID for ban and cleanup
+- Anonymous admin posts (where `SenderChat.ID == group chat ID`) skip spam check entirely
+- Linked channel (resolved via `ChatFullInfo.LinkedChatID` at startup) is treated as superuser for `/ban`, `/spam`, `/warn` commands
+- Linked channel messages also skip spam checking (same as anonymous admin posts)
+- `isLinkedChannel(msg)` helper checks `l.linkedChannelID != 0 && msg.SenderChat != nil && msg.SenderChat.ID == l.linkedChannelID`
+- `channelDisplayName` resolves display name from `*tbapi.Chat`: UserName > Title > `channel_<ID>`
+- `ReportBan` uses `https://t.me/<username>` links for channels (not `tg://user` which doesn't resolve negative IDs); plain name+ID for channels without username
+- Admin `/warn` command (`DirectWarnReport`) targets the channel display name instead of `@Channel_Bot`
+- Admin notification text in `directReport` shows channel display name and channel ID instead of Channel_Bot identity
+- `extractUsername` supports `tg://user` links, `t.me` channel links, plain channel name+ID, and `{id name...}` formats
+
+### ExtraDeleteIDs Feature
+- `spamcheck.Response` includes `ExtraDeleteIDs []int` field for additional message IDs to delete when spam is detected
+- Any spam checker can populate this field to request deletion of related messages
+- Currently used by duplicate detector to delete all previous duplicates when threshold is reached
+- The listener handles these deletions with rate limiting (35ms between deletions) to respect Telegram API limits
+- Deletion errors are logged but don't fail the operation (messages might be already deleted or too old)
+- Design principle: When a spammer is detected, aggressively clean up ALL their spam messages, not just the triggering one
+
+### LLM Checker Structure
+- Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`
+- Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc
+- Common behavior such as history formatting, retry handling, and response detail formatting should be implemented once in `llm.go` to avoid `dupl` violations
+- Shared behavior belongs in `lib/tgspam/llm_test.go`; provider tests should focus on API-specific behavior such as request shape, model options, truncation, and safety settings
+- `context.Context` is threaded from `Detector.collectLLMCheck` → `check()` → `runLLMProviderCheck` → `sendRequest()` → API call; the detector creates a per-request context with `LLMRequestTimeout` (default 30s)

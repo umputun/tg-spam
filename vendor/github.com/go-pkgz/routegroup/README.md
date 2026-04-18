@@ -12,6 +12,11 @@
 - Fully compatible with the `http.Handler` interface and can be used as a drop-in replacement for `http.ServeMux`.
 - No external dependencies.
 
+## Requirements
+
+- Go 1.23 or higher
+  *(This library uses `http.Request.Pattern` to make route patterns available to global middlewares and relies on the enhanced `http.ServeMux` routing behavior introduced in Go 1.22/1.23)*
+
 ## Install and update
 
 `go get -u github.com/go-pkgz/routegroup`
@@ -105,25 +110,24 @@ You can also use the `Route` method to add routes and middleware in a single fun
 
 ```go
 router := routegroup.New(http.NewServeMux())
-router.Group().Route(func(b *routegroup.Bundle) {
+router.Route(func(b *routegroup.Bundle) {
     b.Use(loggingMiddleware, corsMiddleware)
     b.Handle("GET /hello", helloHandler)
     b.Handle("GET /bye", byeHandler)
 })
-http.ListenAndServe(":8080", group)
+http.ListenAndServe(":8080", router)
 ```
 
-Important: The `Route` method does not create a new group by itself; it merely applies middleware and routes to the current group in a functional style. In the example provided, this is technically equivalent to sequentially calling the `Use` and `Handle` methods for the caller's group. While this may not seem intuitive, it is crucial to understand, as using the `Route` method might mistakenly appear to be a way to create a new (sub)group, which it is not. In 99% of cases, `Route` should be called after the creation of a sub-group, either by the `Mount` or `Group` methods.
+When called on the root bundle, `Route` automatically creates a new group to avoid accidentally modifying the root bundle's middleware stack. This means the middleware and routes defined inside the `Route` function are isolated from other routes on the root bundle.
 
-For example, using `Route` in this manner is likely a mistake, as it will apply middleware to the root group, not to the newly created sub-group.
+The `Route` method can also be chained after `Mount` or `Group` for a more functional style:
 
 ```go
-group := routegroup.New(http.NewServeMux())
-group.Route(func(b *routegroup.Bundle) {
+router := routegroup.New(http.NewServeMux())
+router.Group().Route(func(b *routegroup.Bundle) {
     b.Use(loggingMiddleware, corsMiddleware)
-    b.Route(func(sub *routegroup.Bundle) {
-        sub.Handle("GET /hello", helloHandler)
-    })
+    b.Handle("GET /hello", helloHandler)
+    b.Handle("GET /bye", byeHandler)
 })
 ```
 
@@ -137,7 +141,78 @@ group.NotFoundHandler(func(w http.ResponseWriter, _ *http.Request) {
 }
 ```
 
-If a custom `NotFoundHandler` is not configured, `routegroup` will default to using a handler from the standard library (`http.NotFoundHandler()`). It is important to note that the `NotFoundHandler` serves as a catch-all route, which influences "Method Not Allowed"  (405) responses. Consequently, if an incorrect method is called, the response will be 404 (or the custom status specified by the `NotFoundHandler`) rather than 405. This behavior aligns with the standard `http.ServeMux` and [may be improved](https://github.com/golang/go/issues/65648) in future versions of Go.
+If a custom `NotFoundHandler` is not configured, `routegroup` will default to using the standard library behavior.
+
+Note on 405: In the current design, `routegroup` applies root-level middlewares to all requests at the top level without installing a catch‑all route. This preserves native `405 Method Not Allowed` responses from `http.ServeMux` when a path exists but a wrong method is used. A configured `NotFoundHandler` is only invoked when no route matches; it does not interfere with 405 handling. The custom `NotFoundHandler` will have the root bundle's global middlewares applied to it.
+
+Legacy note: `DisableNotFoundHandler()` is now a no‑op and preserved only for API compatibility.
+
+### Middleware Ordering
+
+- Call `Use(...)` before registering routes on the same bundle. Calling `Use` after any handler has been registered on that bundle will panic with a descriptive error.
+- Root bundle middlewares (added via `router.Use(...)`) are applied globally to all requests at serve time.
+- Group/bundle middlewares (added via `group.Use(...)`) apply to the routes registered on that bundle and its descendants, provided they are added before those routes.
+- `With(...)` returns a new bundle; you can add middlewares there first, then register routes. This is the preferred way to add scoped middlewares without affecting previously defined routes.
+
+**Important**: Route registration (HandleFunc, Handle, HandleFiles, etc.) should be done during initialization and not performed concurrently. The library is designed for typical usage where routes are registered at startup time in a single goroutine.
+
+Examples
+
+Incorrect: calling `Use` after routes on the same bundle (will panic)
+
+```go
+mux := http.NewServeMux()
+router := routegroup.New(mux)
+
+router.HandleFunc("/r", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+// This will panic: Use called after routes were registered on this bundle
+router.Use(func(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // global header
+        w.Header().Set("X-Global", "true")
+        next.ServeHTTP(w, r)
+    })
+})
+```
+
+Allowed: parent/root `Use` after child bundle routes
+
+```go
+mux := http.NewServeMux()
+router := routegroup.New(mux)
+
+child := router.Group()
+child.HandleFunc("/child", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
+
+// Parent has not registered its own routes yet; this is allowed and will apply globally
+router.Use(func(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("X-Parent", "true")
+        next.ServeHTTP(w, r)
+    })
+})
+```
+
+Preferred: use `With` (or `Group`+`Use`) to attach scoped middleware before routes
+
+```go
+mux := http.NewServeMux()
+router := routegroup.New(mux)
+
+// Global middleware (optional), add before any root routes
+router.Use(loggingMiddleware)
+
+// Scoped middleware using With: returns a new bundle on which we can add routes
+api := router.With(authMiddleware)
+api.HandleFunc("GET /items", itemsHandler)
+api.HandleFunc("POST /items", createItem)
+
+// Or using Group + Use before routes
+admin := router.Group()
+admin.Use(adminOnly)
+admin.HandleFunc("GET /dashboard", dashboardHandler)
+```
 
 
 **Handling Root Paths Without Trailing Slashes**
@@ -208,11 +283,13 @@ mux.HandleFunc("/hello", routegroup.Wrap(helloHandler, loggingMiddleware, corsMi
 http.ListenAndServe(":8080", mux)
 ```
 
-### Automatic registration of `NotFoundHandler` as catch-all route
+### 404 and 405 behavior
 
-`routegroup` automatically registers a `NotFoundHandler` as a catch-all route, which is invoked when no other route matches the request. This handler is wrapped with all the middlewares that are associated with the group. This functionality is beneficial for applying middleware to all routes, including those that are unknown. It practically enables the use of middlewares that should operate across all routes, such as logging.
+`routegroup` applies the root bundle's middlewares to all requests at the top level. This keeps the standard library's matching logic intact:
+- Wrong method on an existing path returns `405 Method Not Allowed` (with an `Allow` header).
+- Unknown path returns `404 Not Found`.
 
-In case you want to disable this behavior, you can use the `DisableNotFoundHandler()` function.
+You can optionally configure a custom 404 handler with `NotFoundHandler(fn)`. It will run only when no route matches and does not affect 405 handling. The custom handler will have global middlewares applied to it. The legacy `DisableNotFoundHandler()` is now a no‑op and kept only for compatibility.
 
 ### HandleFiles helper
 

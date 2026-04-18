@@ -16,7 +16,7 @@ func TestNoopLocker(t *testing.T) {
 	go func() {
 		l.Lock()
 		l.RLock()
-		l.RUnlock()
+		l.RUnlock() //nolint:staticcheck,gocritic // testing NoopLocker which intentionally has no-op lock/unlock
 		l.Unlock()
 		done <- true
 	}()

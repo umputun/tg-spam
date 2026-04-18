@@ -1,3 +1,4 @@
+// Package storage provides a factory function to create a storage engine based on the connection URL.
 package storage
 
 import (

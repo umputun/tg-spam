@@ -621,7 +621,7 @@ type Message struct {
 	// Quote for replies that quote part of the original message, the quoted part of the message
 	//
 	// optional
-	Quote *TextQuote `json:"text_quote,omitempty"`
+	Quote *TextQuote `json:"quote,omitempty"`
 	// ReplyToStory for replies to a story, the original story
 	//
 	// ReplyToStory
@@ -1038,7 +1038,7 @@ type MessageEntity struct {
 	//  "pre" (monowidth block),
 	//  "text_link" (for clickable text URLs),
 	//  "text_mention" (for users without usernames)
-	//  "text_mention" (for inline custom emoji stickers)
+	//  "custom_emoji" (for inline custom emoji stickers)
 	Type string `json:"type"`
 	// Offset in UTF-16 code units to the start of the entity
 	Offset int `json:"offset"`
@@ -1484,6 +1484,16 @@ type Video struct {
 	//
 	// optional
 	Thumbnail *PhotoSize `json:"thumbnail,omitempty"`
+	// Cover is an array of available sizes of the cover
+	// of the video in the message
+	//
+	// optional
+	Cover []PhotoSize `json:"cover,omitempty"`
+	// StartTimestamp is the timestamp in seconds from
+	// which the video will play in the message
+	//
+	// optional
+	StartTimestamp int64 `json:"start_timestamp,omitempty"`
 	// FileName is the original filename as defined by sender
 	//
 	// optional
@@ -2512,6 +2522,10 @@ type InlineKeyboardButton struct {
 	//
 	//optional
 	SwitchInlineQueryChosenChat *SwitchInlineQueryChosenChat `json:"switch_inline_query_chosen_chat,omitempty"`
+	//CopyText is the description of the button that copies the specified text to the clipboard.
+	//
+	//optional
+	CopyText *CopyTextButton `json:"copy_text,omitempty"`
 	// CallbackGame description of the game that will be launched when the user presses the button.
 	//
 	// optional
@@ -2557,6 +2571,12 @@ type LoginURL struct {
 	//
 	// optional
 	RequestWriteAccess bool `json:"request_write_access,omitempty"`
+}
+
+// CopyTextButton represents an inline keyboard button that
+// copies specified text to the clipboard.
+type CopyTextButton struct {
+	Text string `json:"text"`
 }
 
 // CallbackQuery represents an incoming callback query from a callback button in
@@ -3216,6 +3236,38 @@ type ForumTopic struct {
 	IconCustomEmojiID string `json:"icon_custom_emoji_id,omitempty"`
 }
 
+// Gift object represents a gift that can be sent by the bot.
+type Gift struct {
+	// ID is an unique identifier of the gift
+	ID string `json:"id"`
+	// Sticker is the sticker that represents the gift
+	Sticker Sticker `json:"sticker"`
+	// StarCount is the number of Telegram Stars that
+	// must be paid to send the sticker
+	StarCount int `json:"star_count"`
+	// UpgradeStarCount is the number of Telegram Stars that
+	// must be paid to upgrade the gift to a unique one
+	//
+	// optional
+	UpgradeStarCount int `json:"upgrade_star_count,omitempty"`
+	// TotalCount is the total number of the gifts of this type that
+	// can be sent; for limited gifts only
+	//
+	// optional
+	TotalCount int `json:"total_count,omitempty"`
+	// RemainingCount is the number of remaining gifts of this type that
+	// can be sent; for limited gifts only
+	//
+	// optional
+	RemainingCount int `json:"remaining_count,omitempty"`
+}
+
+// Gifts object represents a list of gifts.
+type Gifts struct {
+	// Gifts is the list of gifts
+	Gifts []Gift `json:"gifts"`
+}
+
 // BotCommand represents a bot command.
 type BotCommand struct {
 	// Command text of the command, 1-32 characters.
@@ -3572,6 +3624,14 @@ type InputMediaVideo struct {
 	//
 	// optional
 	Thumb RequestFileData `json:"thumbnail,omitempty"`
+	// Cover for the video in the message.
+	//
+	// optional
+	Cover string `json:"cover,omitempty"`
+	// StartTimestamp is the timestamp for the video in the message
+	//
+	// optional
+	StartTimestamp int64 `json:"start_timestamp,omitempty"`
 	// Width video width
 	//
 	// optional
@@ -3680,6 +3740,16 @@ type InputPaidMedia struct {
 	//
 	// optional
 	Thumb RequestFileData `json:"thumbnail"`
+	// InputPaidMediaVideo only.
+	// Cover for the video in the message.
+	//
+	// optional
+	Cover string `json:"cover,omitempty"`
+	// InputPaidMediaVideo only.
+	// StartTimestamp is the timestamp for the video in the message
+	//
+	// optional
+	StartTimestamp int64 `json:"start_timestamp,omitempty"`
 	// InputPaidMediaVideo only.
 	// Video width
 	//
@@ -3981,6 +4051,33 @@ type InlineQuery struct {
 	//
 	// optional
 	Location *Location `json:"location,omitempty"`
+}
+
+// InlineQueryResults defines a type constraint interface that includes all valid
+// inline query result types supported by the Telegram Bot API. This interface
+// allows methods to accept any of these result types, enabling strict type checking
+// and ensuring only supported inline query results are used.
+type InlineQueryResults interface {
+	InlineQueryResultCachedAudio |
+	InlineQueryResultCachedDocument |
+	InlineQueryResultCachedGIF |
+	InlineQueryResultCachedMPEG4GIF |
+	InlineQueryResultCachedPhoto |
+	InlineQueryResultCachedSticker |
+	InlineQueryResultCachedVideo |
+	InlineQueryResultCachedVoice |
+	InlineQueryResultArticle |
+	InlineQueryResultAudio |
+	InlineQueryResultContact |
+	InlineQueryResultGame |
+	InlineQueryResultDocument |
+	InlineQueryResultGIF |
+	InlineQueryResultLocation |
+	InlineQueryResultMPEG4GIF |
+	InlineQueryResultPhoto |
+	InlineQueryResultVenue |
+	InlineQueryResultVideo |
+	InlineQueryResultVoice
 }
 
 // InlineQueryResultCachedAudio is an inline query response with cached audio.
@@ -4305,6 +4402,7 @@ type InlineQueryResultArticle struct {
 	// HideURL pass True, if you don't want the URL to be shown in the message.
 	//
 	// optional
+	// Deprecated in 8.2: Pass an empty string as url instead.
 	HideURL bool `json:"hide_url,omitempty"`
 	// Description short description of the result.
 	//
@@ -4852,6 +4950,15 @@ type SentWebAppMessage struct {
 	InlineMessageID string `json:"inline_message_id,omitempty"`
 }
 
+// PreparedInlineMessage describes an inline message to be sent by a user of a Mini App.
+type PreparedInlineMessage struct {
+	// ID is a unique identifier of the prepared message
+	ID string `json:"id"`
+	// ExpirationDate of the prepared message, in Unix time.
+	// Expired prepared messages can no longer be used
+	ExpirationDate int64 `json:"expiration_date"`
+}
+
 // InputTextMessageContent contains text for displaying
 // as an inline query result.
 type InputTextMessageContent struct {
@@ -5128,6 +5235,19 @@ type SuccessfulPayment struct {
 	TotalAmount int `json:"total_amount"`
 	// InvoicePayload bot specified invoice payload
 	InvoicePayload string `json:"invoice_payload"`
+	// SubscriptionExpirationDate is an expiration date of the subscription,
+	// in Unix time; for recurring payments only
+	//
+	// optional
+	SubscriptionExpirationDate int64 `json:"subscription_expiration_date,omitempty"`
+	// IsRecurring is True, if the payment is a recurring payment for a subscription
+	//
+	// optional
+	IsRecurring bool `json:"is_recurring,omitempty"`
+	// IsFirstRecurring is True, if the payment is the first payment for a subscription
+	//
+	// optional
+	IsFirstRecurring bool `json:"is_first_recurring,omitempty"`
 	// ShippingOptionID identifier of the shipping option chosen by the user
 	//
 	// optional
@@ -5229,37 +5349,131 @@ type RevenueWithdrawalState struct {
 	URL string `json:"url,omitempty"`
 }
 
+// AffiliateInfo contains information about the affiliate that
+// received a commission via this transaction.
+type AffiliateInfo struct {
+	// AffiliateUser is the bot or the user that received an
+	// affiliate commission if it was received by a bot or a user
+	//
+	// optional
+	AffiliateUser *User `json:"affiliate_user,omitempty"`
+	// AffiliateChat is the chat that received an affiliate commission
+	// if it was received by a chat
+	//
+	// optional
+	AffiliateChat *Chat `json:"affiliate_chat,omitempty"`
+	// CommissionPerMile is the number of Telegram Stars received by
+	// the affiliate for each 1000 Telegram Stars received by
+	// the bot from referred users
+	CommissionPerMile int `json:"commission_per_mille"`
+	// Amount is the integer amount of Telegram Stars received by
+	// the affiliate from the transaction, rounded to 0;
+	// can be negative for refunds
+	Amount int64 `json:"amount"`
+	// NanostarAmount is the number of 1/1000000000 shares of Telegram Stars
+	// received by the affiliate; from -999999999 to 999999999;
+	// can be negative for refunds
+	//
+	// optional
+	NanostarAmount int64 `json:"nanostar_amount,omitempty"`
+}
+
 // TransactionPartner describes the source of a transaction, or its recipient for outgoing transactions. Currently, it can be one of
 //   - TransactionPartnerUser
+//   - TransactionPartnerAffiliateProgram
 //   - TransactionPartnerFragment
 //   - TransactionPartnerTelegramAds
+//   - TransactionPartnerTelegramApi
 //   - TransactionPartnerOther
 type TransactionPartner struct {
 	// Type of the transaction partner. Must be one of:
-	//	- fragment
 	//	- user
-	//  - other
+	//  - chat
+	//  - affiliate_program
+	//	- fragment
 	//  - telegram_ads
+	//	- telegram_api
+	//  - other
 	Type string `json:"type"`
-	// State of the transaction if the transaction is outgoing.
-	// Represent only in "fragment" state
+	// Gift is the gift sent to the user by the bot;
+	// for “gift_purchase” transactions only
+	// Represent in "user" and "chat" state
 	//
 	// optional
-	WithdrawalState *RevenueWithdrawalState `json:"withdrawal_state,omitempty"`
+	Gift *Gift `json:"gift,omitempty"`
+	// TransactionPartnerUser payload for "user" type of transaction partner
+	TransactionPartnerUser
+	// TransactionPartnerChat payload for "chat" type of transaction partner
+	TransactionPartnerChat
+	// TransactionPartnerAffiliateProgram payload for "affiliate_program" type of transaction partner
+	TransactionPartnerAffiliateProgram
+	// TransactionPartnerFragment payload for "fragment" type of transaction partner
+	TransactionPartnerFragment
+	// TransactionPartnerTelegramAPI payload for "telegram_api" type of transaction partner
+	TransactionPartnerTelegramAPI
+}
+
+type TransactionPartnerUser struct {
 	// Information about the user.
-	// Represent only in "user" state
-	User *User `json:"user,omitempty"`
+	User User `json:"user"`
+	// Affiliate is the information about the affiliate that
+	// received a commission via this transaction.
+	// Can be available only for “invoice_payment” and “paid_media_payment” transactions.
+	//
+	// optional
+	Affiliate *AffiliateInfo `json:"affiliate,omitempty"`
 	// TransactionPartnerUser only.
 	// Bot-specified invoice payload
 	//
 	// optional
 	InvoicePayload string `json:"invoice_payload,omitempty"`
+	// SubscriptionPeriod is the duration of the paid subscription.
+	// Can be available only for “invoice_payment” transactions.
+	// Represent only in "user" state
+	//
+	// optional
+	SubscriptionPeriod int64 `json:"subscription_period,omitempty"`
 	// PaidMedia is the nformation about the paid media
 	// bought by the user
 	// Represent only in "user" state
 	//
 	// optional
 	PaidMedia []PaidMedia `json:"paid_media,omitempty"`
+}
+
+// TransactionPartnerChat describes a transaction with a chat.
+type TransactionPartnerChat struct {
+	// Chat is the information about the chat.
+	Chat Chat `json:"chat"`
+}
+
+// TransactionPartnerAffiliateProgram describes the affiliate program that
+// issued the affiliate commission received via this transaction.
+type TransactionPartnerAffiliateProgram struct {
+	// SponsorUser is the information about the bot that
+	// sponsored the affiliate program
+	//
+	// optional
+	SponsorUser *User `json:"sponsor_user,omitempty"`
+	// CommissionPerMile is the number of Telegram Stars received by the bot
+	// for each 1000 Telegram Stars received by
+	// the affiliate program sponsor from referred users
+	CommissionPerMile int `json:"commission_per_mille"`
+}
+
+// TransactionPartnerFragment describes a withdrawal transaction with Fragment.
+type TransactionPartnerFragment struct {
+	// State of the transaction if the transaction is outgoing.
+	//
+	// optional
+	WithdrawalState *RevenueWithdrawalState `json:"withdrawal_state,omitempty"`
+}
+
+// TransactionPartnerTelegramAPI describes a transaction with payment for paid broadcasting.
+type TransactionPartnerTelegramAPI struct {
+	// RequestCount is the number of successful requests that
+	// exceeded regular limits and were therefore billed
+	RequestCount int `json:"request_count"`
 }
 
 // StarTransaction describes a Telegram Star transaction.
@@ -5270,6 +5484,12 @@ type StarTransaction struct {
 	ID string `json:"id"`
 	// Number of Telegram Stars transferred by the transaction
 	Amount int64 `json:"amount"`
+	// NanostarAmount is the number of 1/1000000000 shares of
+	// Telegram Stars transferred by the transaction;
+	// from 0 to 999999999
+	//
+	// optional
+	NanostarAmount int64 `json:"nanostar_amount,omitempty"`
 	// Date the transaction was created in Unix time
 	Date int64 `json:"date"`
 	// Source of an incoming transaction (e.g., a user purchasing goods or services, Fragment refunding a failed withdrawal).
@@ -5281,7 +5501,7 @@ type StarTransaction struct {
 	// Only for outgoing transactions
 	//
 	// optional
-	Reciever *TransactionPartner `json:"reciever,omitempty"`
+	Receiver *TransactionPartner `json:"receiver,omitempty"`
 }
 
 // StarTransactions contains a list of Telegram Star transactions.

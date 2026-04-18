@@ -856,6 +856,13 @@ func TestBackupDB(t *testing.T) {
 }
 
 func TestApplyCLIOverrides(t *testing.T) {
+	makeOpts := func(passwd, hash string) options {
+		var o options
+		o.Server.AuthPasswd = passwd
+		o.Server.AuthHash = hash
+		return o
+	}
+
 	tests := []struct {
 		name           string
 		settings       config.Settings
@@ -866,99 +873,40 @@ func TestApplyCLIOverrides(t *testing.T) {
 		{
 			name: "override auth password when not default",
 			settings: config.Settings{
-				Server: config.ServerSettings{
-					AuthHash: "existing-hash",
-				},
-				Transient: config.TransientSettings{
-					WebAuthPasswd: "old-password",
-				},
+				Server:    config.ServerSettings{AuthHash: "existing-hash"},
+				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts: options{
-				Server: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-				}{
-					AuthPasswd: "new-password",
-				},
-			},
+			opts:           makeOpts("new-password", ""),
 			expectedPasswd: "new-password",
 			expectedHash:   "", // hash should be cleared
 		},
 		{
 			name: "override auth hash when explicitly provided",
 			settings: config.Settings{
-				Server: config.ServerSettings{
-					AuthHash: "old-hash",
-				},
-				Transient: config.TransientSettings{
-					WebAuthPasswd: "password",
-				},
+				Server:    config.ServerSettings{AuthHash: "old-hash"},
+				Transient: config.TransientSettings{WebAuthPasswd: "password"},
 			},
-			opts: options{
-				Server: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-				}{
-					AuthPasswd: "auto", // default value
-					AuthHash:   "$2a$10$newHashFromCLI",
-				},
-			},
+			opts:           makeOpts("auto", "$2a$10$newHashFromCLI"),
 			expectedPasswd: "", // password should be cleared
 			expectedHash:   "$2a$10$newHashFromCLI",
 		},
 		{
 			name: "no override when using default values",
 			settings: config.Settings{
-				Server: config.ServerSettings{
-					AuthHash: "existing-hash",
-				},
-				Transient: config.TransientSettings{
-					WebAuthPasswd: "existing-password",
-				},
+				Server:    config.ServerSettings{AuthHash: "existing-hash"},
+				Transient: config.TransientSettings{WebAuthPasswd: "existing-password"},
 			},
-			opts: options{
-				Server: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-				}{
-					AuthPasswd: "auto", // default value
-					AuthHash:   "",     // empty hash
-				},
-			},
+			opts:           makeOpts("auto", ""),
 			expectedPasswd: "existing-password",
 			expectedHash:   "existing-hash",
 		},
 		{
 			name: "hash takes precedence when both provided",
 			settings: config.Settings{
-				Server: config.ServerSettings{
-					AuthHash: "old-hash",
-				},
-				Transient: config.TransientSettings{
-					WebAuthPasswd: "old-password",
-				},
+				Server:    config.ServerSettings{AuthHash: "old-hash"},
+				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts: options{
-				Server: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-				}{
-					AuthPasswd: "cli-password", // not default
-					AuthHash:   "$2a$10$cliHash",
-				},
-			},
+			opts:           makeOpts("cli-password", "$2a$10$cliHash"),
 			expectedPasswd: "", // password cleared because hash takes precedence
 			expectedHash:   "$2a$10$cliHash",
 		},
@@ -979,6 +927,135 @@ func TestApplyCLIOverrides(t *testing.T) {
 }
 
 func TestOptToSettings(t *testing.T) {
+	// build a fully-populated options struct via field assignment to avoid
+	// brittle inline struct-type literals that drift with tag changes
+	makeFullOpts := func() options {
+		var o options
+		o.InstanceID = "test-instance"
+		o.MinMsgLen = 100
+		o.MaxEmoji = 5
+		o.MinSpamProbability = 0.8
+		o.SimilarityThreshold = 0.9
+		o.MultiLangWords = 3
+		o.NoSpamReply = true
+		o.SuppressJoinMessage = true
+		o.ParanoidMode = true
+		o.FirstMessagesCount = 10
+		o.Training = true
+		o.SoftBan = true
+		o.Convert = "enabled"
+		o.MaxBackups = 5
+		o.Dry = true
+		o.DataBaseURL = "sqlite://test.db"
+		o.StorageTimeout = 30 * time.Second
+		o.ConfigDB = true
+		o.ConfigDBEncryptKey = "test-key"
+		o.Dbg = true
+		o.TGDbg = true
+		o.AdminGroup = "123456"
+		o.DisableAdminSpamForward = true
+		o.TestingIDs = []int64{1, 2, 3}
+		o.SuperUsers = []string{"user1", "user2"}
+		o.HistoryDuration = 24 * time.Hour
+		o.HistoryMinSize = 100
+		o.HistorySize = 1000
+		o.AggressiveCleanup = true
+		o.AggressiveCleanupLimit = 200
+
+		o.Telegram.Token = "bot-token"
+		o.Telegram.Group = "test-group"
+		o.Telegram.IdleDuration = 5 * time.Minute
+		o.Telegram.Timeout = 30 * time.Second
+
+		o.Logger.Enabled = true
+		o.Logger.FileName = "test.log"
+		o.Logger.MaxSize = "50M"
+		o.Logger.MaxBackups = 5
+
+		o.CAS.API = "https://cas.example.com"
+		o.CAS.Timeout = 10 * time.Second
+		o.CAS.UserAgent = "test-agent"
+
+		o.Meta.LinksLimit = 2
+		o.Meta.MentionsLimit = 3
+		o.Meta.ImageOnly = true
+		o.Meta.LinksOnly = true
+		o.Meta.VideosOnly = true
+		o.Meta.AudiosOnly = true
+		o.Meta.Forward = true
+		o.Meta.Keyboard = true
+		o.Meta.UsernameSymbols = "@#$"
+		o.Meta.ContactOnly = true
+		o.Meta.Giveaway = true
+
+		o.OpenAI.Token = "openai-token"
+		o.OpenAI.APIBase = "https://custom.api.com"
+		o.OpenAI.Veto = true
+		o.OpenAI.Prompt = "custom prompt"
+		o.OpenAI.CustomPrompts = []string{"/path/to/prompts"}
+		o.OpenAI.Model = "gpt-4"
+		o.OpenAI.MaxTokensResponse = 2048
+		o.OpenAI.MaxTokensRequest = 32000
+		o.OpenAI.MaxSymbolsRequest = 5000
+		o.OpenAI.RetryCount = 3
+		o.OpenAI.HistorySize = 5
+		o.OpenAI.ReasoningEffort = "high"
+		o.OpenAI.CheckShortMessages = true
+
+		o.Gemini.Token = "gemini-token"
+		o.Gemini.Veto = true
+		o.Gemini.Prompt = "gemini prompt"
+		o.Gemini.CustomPrompts = []string{"/path/to/gprompts"}
+		o.Gemini.Model = "gemma-4"
+		o.Gemini.MaxTokensResponse = 1500
+		o.Gemini.MaxSymbolsRequest = 4096
+		o.Gemini.RetryCount = 2
+		o.Gemini.HistorySize = 3
+		o.Gemini.CheckShortMessages = true
+
+		o.LLM.Consensus = "all"
+		o.LLM.RequestTimeout = 45 * time.Second
+
+		o.Delete.JoinMessages = true
+		o.Delete.LeaveMessages = true
+
+		o.Duplicates.Threshold = 3
+		o.Duplicates.Window = 2 * time.Hour
+
+		o.Report.Enabled = true
+		o.Report.Threshold = 4
+		o.Report.AutoBanThreshold = 6
+		o.Report.RateLimit = 20
+		o.Report.RatePeriod = 30 * time.Minute
+
+		o.LuaPlugins.Enabled = true
+		o.LuaPlugins.PluginsDir = "/custom/plugins"
+		o.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
+		o.LuaPlugins.DynamicReload = true
+
+		o.AbnormalSpacing.Enabled = true
+		o.AbnormalSpacing.SpaceRatioThreshold = 0.4
+		o.AbnormalSpacing.ShortWordRatioThreshold = 0.8
+		o.AbnormalSpacing.ShortWordLen = 2
+		o.AbnormalSpacing.MinWords = 10
+
+		o.Files.SamplesDataPath = "/samples"
+		o.Files.DynamicDataPath = "/dynamic"
+		o.Files.WatchInterval = 10 * time.Minute
+
+		o.Message.Startup = "Bot started"
+		o.Message.Spam = "Spam detected for %s"
+		o.Message.Dry = "Spam detected for %s (dry)"
+		o.Message.Warn = "Warning for %s"
+
+		o.Server.Enabled = true
+		o.Server.ListenAddr = ":9090"
+		o.Server.AuthPasswd = "secret"
+		o.Server.AuthHash = "$2a$10$test"
+
+		return o
+	}
+
 	tests := []struct {
 		name     string
 		opts     options
@@ -986,180 +1063,14 @@ func TestOptToSettings(t *testing.T) {
 	}{
 		{
 			name: "all options converted",
-			opts: options{
-				InstanceID:          "test-instance",
-				MinMsgLen:           100,
-				MaxEmoji:            5,
-				MinSpamProbability:  0.8,
-				SimilarityThreshold: 0.9,
-				MultiLangWords:      3,
-				NoSpamReply:         true,
-				SuppressJoinMessage: true,
-				ParanoidMode:        true,
-				FirstMessagesCount:  10,
-				Training:            true,
-				SoftBan:             true,
-				Convert:             "enabled",
-				MaxBackups:          5,
-				Dry:                 true,
-				DataBaseURL:         "sqlite://test.db",
-				StorageTimeout:      30 * time.Second,
-				ConfigDB:            true,
-				ConfigDBEncryptKey:  "test-key",
-				Dbg:                 true,
-				TGDbg:               true,
-				AdminGroup:          "123456",
-				DisableAdminSpamForward: true,
-				TestingIDs:          []int64{1, 2, 3},
-				SuperUsers:          []string{"user1", "user2"},
-				HistoryDuration:     24 * time.Hour,
-				HistoryMinSize:      100,
-				HistorySize:         1000,
-				Telegram: struct {
-					Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
-					Group        string        `long:"group" env:"GROUP" description:"group name/id"`
-					Timeout      time.Duration `long:"timeout" env:"TIMEOUT" default:"30s" description:"http client timeout for telegram" `
-					IdleDuration time.Duration `long:"idle" env:"IDLE" default:"30s" description:"idle duration"`
-				}{
-					Token:        "bot-token",
-					Group:        "test-group",
-					IdleDuration: 5 * time.Minute,
-					Timeout:      30 * time.Second,
-				},
-				Logger: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable spam rotated logs"`
-					FileName   string `long:"file" env:"FILE"  default:"tg-spam.log" description:"location of spam log"`
-					MaxSize    string `long:"max-size" env:"MAX_SIZE" default:"100M" description:"maximum size before it gets rotated"`
-					MaxBackups int    `long:"max-backups" env:"MAX_BACKUPS" default:"10" description:"maximum number of old log files to retain"`
-				}{
-					Enabled:    true,
-					FileName:   "test.log",
-					MaxSize:    "50M",
-					MaxBackups: 5,
-				},
-				CAS: struct {
-					API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
-					Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
-					UserAgent string        `long:"user-agent" env:"USER_AGENT" description:"User-Agent header for CAS API requests"`
-				}{
-					API:       "https://cas.example.com",
-					Timeout:   10 * time.Second,
-					UserAgent: "test-agent",
-				},
-				Meta: struct {
-					LinksLimit      int    `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
-					MentionsLimit   int    `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
-					ImageOnly       bool   `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
-					LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
-					VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
-					AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
-					Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
-					Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
-					UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
-				}{
-					LinksLimit:      2,
-					MentionsLimit:   3,
-					ImageOnly:       true,
-					LinksOnly:       true,
-					VideosOnly:      true,
-					AudiosOnly:      true,
-					Forward:         true,
-					Keyboard:        true,
-					UsernameSymbols: "@#$",
-				},
-				OpenAI: struct {
-					Token             string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
-					APIBase           string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
-					Veto              bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
-					Prompt            string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-					CustomPrompts     []string `long:"custom-prompt" env:"CUSTOM_PROMPTS" env-delim:"," description:"custom prompts for special cases"`
-					ReasoningEffort   string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"" description:"reasoning effort level (low, medium, high)"`
-					Model             string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
-					MaxTokensResponse int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
-					MaxTokensRequest  int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
-					MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
-					RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
-					HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-					CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
-				}{
-					Token:             "openai-token",
-					APIBase:           "https://custom.api.com",
-					Veto:              true,
-					Prompt:            "custom prompt",
-					CustomPrompts:     []string{"/path/to/prompts"},
-					Model:             "gpt-4",
-					MaxTokensResponse: 2048,
-					MaxTokensRequest:  32000,
-					MaxSymbolsRequest: 5000,
-					RetryCount:        3,
-					HistorySize:       5,
-					ReasoningEffort:   "high",
-				},
-				LuaPlugins: struct {
-					Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
-					PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
-					EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
-					DynamicReload  bool     `long:"dynamic-reload" env:"DYNAMIC_RELOAD" description:"dynamically reload plugins when they change"`
-				}{
-					Enabled:        true,
-					PluginsDir:     "/custom/plugins",
-					EnabledPlugins: []string{"plugin1", "plugin2"},
-					DynamicReload:  true,
-				},
-				AbnormalSpacing: struct {
-					Enabled                 bool    `long:"enabled" env:"ENABLED" description:"enable abnormal words check"`
-					SpaceRatioThreshold     float64 `long:"ratio" env:"RATIO" default:"0.3" description:"the ratio of spaces to all characters in the message"`
-					ShortWordRatioThreshold float64 `long:"short-ratio" env:"SHORT_RATIO" default:"0.7" description:"the ratio of short words to all words in the message"`
-					ShortWordLen            int     `long:"short-word" env:"SHORT_WORD" default:"3" description:"the length of the word to be considered short"`
-					MinWords                int     `long:"min-words" env:"MIN_WORDS" default:"5" description:"the minimum number of words in the message to check"`
-				}{
-					Enabled:                 true,
-					SpaceRatioThreshold:     0.4,
-					ShortWordRatioThreshold: 0.8,
-					ShortWordLen:            2,
-					MinWords:                10,
-				},
-				Files: struct {
-					SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
-					DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
-					WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
-				}{
-					SamplesDataPath: "/samples",
-					DynamicDataPath: "/dynamic",
-					WatchInterval:   10 * time.Minute,
-				},
-				Message: struct {
-					Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
-					Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
-					Dry     string `long:"dry" env:"DRY" default:"this is spam (dry mode)" description:"spam dry message"`
-					Warn    string `long:"warn" env:"WARN" default:"You've violated our rules and this is your first and last warning. Further violations will lead to permanent access denial. Stay compliant or face the consequences!" description:"warning message"`
-				}{
-					Startup: "Bot started",
-					Spam:    "Spam detected for %s",
-					Dry:     "Spam detected for %s (dry)",
-					Warn:    "Warning for %s",
-				},
-				Server: struct {
-					Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-					ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-					AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-					AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-					AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-				}{
-					Enabled:    true,
-					ListenAddr: ":9090",
-					AuthUser:   "admin",
-					AuthPasswd: "secret",
-					AuthHash:   "$2a$10$test",
-				},
-			},
+			opts: makeFullOpts(),
 			validate: func(t *testing.T, settings *config.Settings) {
 				// verify all fields are correctly mapped
 				assert.Equal(t, "test-instance", settings.InstanceID)
 				assert.Equal(t, 100, settings.MinMsgLen)
 				assert.Equal(t, 5, settings.MaxEmoji)
-				assert.Equal(t, 0.8, settings.MinSpamProbability)
-				assert.Equal(t, 0.9, settings.SimilarityThreshold)
+				assert.InEpsilon(t, 0.8, settings.MinSpamProbability, 0.0001)
+				assert.InEpsilon(t, 0.9, settings.SimilarityThreshold, 0.0001)
 				assert.Equal(t, 3, settings.MultiLangWords)
 				assert.True(t, settings.NoSpamReply)
 				assert.True(t, settings.SuppressJoinMessage)
@@ -1170,6 +1081,8 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "enabled", settings.Convert)
 				assert.Equal(t, 5, settings.MaxBackups)
 				assert.True(t, settings.Dry)
+				assert.True(t, settings.AggressiveCleanup)
+				assert.Equal(t, 200, settings.AggressiveCleanupLimit)
 
 				// telegram settings
 				assert.Equal(t, "bot-token", settings.Telegram.Token)
@@ -1209,6 +1122,8 @@ func TestOptToSettings(t *testing.T) {
 				assert.True(t, settings.Meta.Forward)
 				assert.True(t, settings.Meta.Keyboard)
 				assert.Equal(t, "@#$", settings.Meta.UsernameSymbols)
+				assert.True(t, settings.Meta.ContactOnly)
+				assert.True(t, settings.Meta.Giveaway)
 
 				// openai settings
 				assert.Equal(t, "openai-token", settings.OpenAI.Token)
@@ -1223,6 +1138,38 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, 3, settings.OpenAI.RetryCount)
 				assert.Equal(t, 5, settings.OpenAI.HistorySize)
 				assert.Equal(t, "high", settings.OpenAI.ReasoningEffort)
+				assert.True(t, settings.OpenAI.CheckShortMessages)
+
+				// gemini settings
+				assert.Equal(t, "gemini-token", settings.Gemini.Token)
+				assert.True(t, settings.Gemini.Veto)
+				assert.Equal(t, "gemini prompt", settings.Gemini.Prompt)
+				assert.Equal(t, []string{"/path/to/gprompts"}, settings.Gemini.CustomPrompts)
+				assert.Equal(t, "gemma-4", settings.Gemini.Model)
+				assert.Equal(t, int32(1500), settings.Gemini.MaxTokensResponse)
+				assert.Equal(t, 4096, settings.Gemini.MaxSymbolsRequest)
+				assert.Equal(t, 2, settings.Gemini.RetryCount)
+				assert.Equal(t, 3, settings.Gemini.HistorySize)
+				assert.True(t, settings.Gemini.CheckShortMessages)
+
+				// llm settings
+				assert.Equal(t, "all", settings.LLM.Consensus)
+				assert.Equal(t, 45*time.Second, settings.LLM.RequestTimeout)
+
+				// delete settings
+				assert.True(t, settings.Delete.JoinMessages)
+				assert.True(t, settings.Delete.LeaveMessages)
+
+				// duplicates settings
+				assert.Equal(t, 3, settings.Duplicates.Threshold)
+				assert.Equal(t, 2*time.Hour, settings.Duplicates.Window)
+
+				// report settings
+				assert.True(t, settings.Report.Enabled)
+				assert.Equal(t, 4, settings.Report.Threshold)
+				assert.Equal(t, 6, settings.Report.AutoBanThreshold)
+				assert.Equal(t, 20, settings.Report.RateLimit)
+				assert.Equal(t, 30*time.Minute, settings.Report.RatePeriod)
 
 				// lua plugins settings
 				assert.True(t, settings.LuaPlugins.Enabled)
@@ -1232,8 +1179,8 @@ func TestOptToSettings(t *testing.T) {
 
 				// abnormal space settings
 				assert.True(t, settings.AbnormalSpace.Enabled)
-				assert.Equal(t, 0.4, settings.AbnormalSpace.SpaceRatioThreshold)
-				assert.Equal(t, 0.8, settings.AbnormalSpace.ShortWordRatioThreshold)
+				assert.InEpsilon(t, 0.4, settings.AbnormalSpace.SpaceRatioThreshold, 0.0001)
+				assert.InEpsilon(t, 0.8, settings.AbnormalSpace.ShortWordRatioThreshold, 0.0001)
 				assert.Equal(t, 2, settings.AbnormalSpace.ShortWordLen)
 				assert.Equal(t, 10, settings.AbnormalSpace.MinWords)
 
@@ -1248,10 +1195,9 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "Spam detected for %s (dry)", settings.Message.Dry)
 				assert.Equal(t, "Warning for %s", settings.Message.Warn)
 
-				// server settings
+				// server settings (AuthUser removed in this merge; hardcoded to tg-spam elsewhere)
 				assert.True(t, settings.Server.Enabled)
 				assert.Equal(t, ":9090", settings.Server.ListenAddr)
-				assert.Equal(t, "admin", settings.Server.AuthUser)
 				assert.Equal(t, "$2a$10$test", settings.Server.AuthHash)
 
 				// transient settings
@@ -1277,6 +1223,13 @@ func TestOptToSettings(t *testing.T) {
 				assert.False(t, settings.NoSpamReply)
 				assert.False(t, settings.ParanoidMode)
 				assert.Empty(t, settings.Telegram.Token)
+				assert.Empty(t, settings.Gemini.Token)
+				assert.False(t, settings.Report.Enabled)
+				assert.Equal(t, 0, settings.Duplicates.Threshold)
+				assert.False(t, settings.Delete.JoinMessages)
+				assert.False(t, settings.AggressiveCleanup)
+				assert.False(t, settings.Meta.ContactOnly)
+				assert.False(t, settings.Meta.Giveaway)
 			},
 		},
 	}
@@ -1417,7 +1370,6 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			InstanceID: "test-instance",
 			Server: config.ServerSettings{
 				Enabled:  true,
-				AuthUser: "test-user",
 				AuthHash: "", // no hash provided
 			},
 			Transient: config.TransientSettings{
@@ -1442,9 +1394,6 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		err = loadConfigFromDB(ctx, loadedSettings)
 		require.NoError(t, err)
-
-		// verify auth settings
-		assert.Equal(t, "test-user", loadedSettings.Server.AuthUser)
 
 		// verify hash in original settings was set
 		assert.NotEmpty(t, settings.Server.AuthHash, "Auth hash should be generated in original settings")
@@ -1651,7 +1600,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	t.Run("save and load with CLI overrides", func(t *testing.T) {
 		// simulate the flow in main.go where CLI values override database values
-		
+
 		// first, save initial config to database
 		dbSettings := &config.Settings{
 			InstanceID: "test-instance",
@@ -1661,7 +1610,6 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			},
 			Server: config.ServerSettings{
 				Enabled:  true,
-				AuthUser: "db-user",
 				AuthHash: "$2a$10$dbhash",
 			},
 			Transient: config.TransientSettings{
@@ -1674,19 +1622,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		err := saveConfigToDB(ctx, dbSettings)
 		require.NoError(t, err)
 
-		// create CLI options with overrides
-		cliOpts := options{
-			InstanceID: "test-instance",
-			Server: struct {
-				Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
-				ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-				AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
-				AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
-				AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
-			}{
-				AuthPasswd: "cli-password", // explicit CLI override
-			},
-		}
+		// create CLI options with explicit password override
+		var cliOpts options
+		cliOpts.InstanceID = "test-instance"
+		cliOpts.Server.AuthPasswd = "cli-password"
 
 		// load settings from database
 		loadedSettings := &config.Settings{
@@ -1706,10 +1645,85 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		// verify database values were loaded
 		assert.Equal(t, "db-group", loadedSettings.Telegram.Group)
 		assert.Equal(t, "db-token", loadedSettings.Telegram.Token)
-		assert.Equal(t, "db-user", loadedSettings.Server.AuthUser)
 
 		// verify CLI override was applied
 		assert.Equal(t, "cli-password", loadedSettings.Transient.WebAuthPasswd)
 		assert.Empty(t, loadedSettings.Server.AuthHash) // hash cleared when password provided
+	})
+
+	t.Run("round-trip all new master feature groups", func(t *testing.T) {
+		// use a fresh DB file and encryption key so Gemini.Token round-trips via ENC: prefix
+		freshDBFile := filepath.Join(tmpDir, "all-groups.db")
+		encryptKey := "test-encryption-key-32-chars-long"
+
+		settings := &config.Settings{
+			InstanceID: "test-instance",
+			Delete: config.DeleteSettings{
+				JoinMessages:  true,
+				LeaveMessages: true,
+			},
+			Meta: config.MetaSettings{
+				ContactOnly: true,
+				Giveaway:    true,
+			},
+			Gemini: config.GeminiSettings{
+				Token:              "gemini-secret-token",
+				Veto:               true,
+				Prompt:             "gemini prompt",
+				CustomPrompts:      []string{"cp1", "cp2"},
+				Model:              "gemini-2.5-flash",
+				MaxTokensResponse:  1024,
+				MaxSymbolsRequest:  9000,
+				RetryCount:         2,
+				HistorySize:        5,
+				CheckShortMessages: true,
+			},
+			LLM: config.LLMSettings{
+				Consensus:      "all",
+				RequestTimeout: 45 * time.Second,
+			},
+			Duplicates: config.DuplicatesSettings{
+				Threshold: 3,
+				Window:    2 * time.Minute,
+			},
+			Report: config.ReportSettings{
+				Enabled:          true,
+				Threshold:        5,
+				AutoBanThreshold: 10,
+				RateLimit:        7,
+				RatePeriod:       15 * time.Minute,
+			},
+			AggressiveCleanup:      true,
+			AggressiveCleanupLimit: 50,
+			Transient: config.TransientSettings{
+				DataBaseURL:        freshDBFile,
+				ConfigDBEncryptKey: encryptKey,
+			},
+		}
+
+		ctx := context.Background()
+		err := saveConfigToDB(ctx, settings)
+		require.NoError(t, err)
+
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient: config.TransientSettings{
+				DataBaseURL:        freshDBFile,
+				ConfigDB:           true,
+				ConfigDBEncryptKey: encryptKey,
+			},
+		}
+		err = loadConfigFromDB(ctx, loaded)
+		require.NoError(t, err)
+
+		assert.Equal(t, settings.Delete, loaded.Delete, "Delete group round-trip")
+		assert.Equal(t, settings.Meta.ContactOnly, loaded.Meta.ContactOnly)
+		assert.Equal(t, settings.Meta.Giveaway, loaded.Meta.Giveaway)
+		assert.Equal(t, settings.Gemini, loaded.Gemini, "Gemini group round-trip incl. encrypted token")
+		assert.Equal(t, settings.LLM, loaded.LLM, "LLM group round-trip")
+		assert.Equal(t, settings.Duplicates, loaded.Duplicates, "Duplicates group round-trip")
+		assert.Equal(t, settings.Report, loaded.Report, "Report group round-trip")
+		assert.Equal(t, settings.AggressiveCleanup, loaded.AggressiveCleanup)
+		assert.Equal(t, settings.AggressiveCleanupLimit, loaded.AggressiveCleanupLimit)
 	})
 }

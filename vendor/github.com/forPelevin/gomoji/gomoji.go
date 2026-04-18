@@ -1,7 +1,6 @@
 package gomoji
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"unicode"
@@ -71,38 +70,35 @@ type replacerFn func(e Emoji) string
 
 // ReplaceEmojisWithFunc replaces all emojis from the s string with the result of the replacerFn function and returns a new string.
 func ReplaceEmojisWithFunc(s string, replacer replacerFn) string {
-	cleanBuf := bytes.Buffer{}
+	var buf strings.Builder
 
 	gr := uniseg.NewGraphemes(s)
 	for gr.Next() {
-		em, ok := emojiMap[gr.Str()]
-		if !ok {
-			cleanBuf.Write(gr.Bytes())
+		cluster := gr.Str()
+
+		lookup := strings.Map(func(r rune) rune {
+			if unicode.In(r, unicode.Variation_Selector) {
+				return -1
+			}
+			return r
+		}, cluster)
+
+		if em, ok := emojiMap[lookup]; ok {
+			if replacer != nil {
+				buf.WriteString(replacer(em))
+			}
 			continue
 		}
 
-		if replacer != nil {
-			cleanBuf.WriteString(replacer(em))
-		}
+		buf.WriteString(cluster)
 	}
 
-	res := cleanBuf
-	res.Reset()
-	for _, r := range cleanBuf.String() {
-		em, ok := emojiMap[string(r)]
-		if !ok {
-			res.WriteRune(r)
-			continue
+	return strings.Map(func(r rune) rune {
+		if unicode.In(r, unicode.Variation_Selector) {
+			return -1
 		}
-
-		if replacer != nil {
-			res.WriteString(replacer(em))
-		}
-	}
-
-	return strings.TrimFunc(res.String(), func(r rune) bool {
-		return !unicode.IsGraphic(r) || !unicode.IsPrint(r) || unicode.In(r, unicode.Variation_Selector)
-	})
+		return r
+	}, buf.String())
 }
 
 // GetInfo returns a gomoji.Emoji model representation of provided emoji.

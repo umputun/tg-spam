@@ -78,21 +78,19 @@ func TestClassifier_Classify(t *testing.T) {
 }
 
 func TestClassifier_Unlearn(t *testing.T) {
-	assert := require.New(t)
-
 	t.Run("basic unlearn", func(t *testing.T) {
 		c := newClassifier()
 		doc := newDocument("spam", "bad", "words")
 
 		c.learn(doc)
-		assert.Equal(1, c.nAllDocument)
-		assert.Equal(1, c.nDocumentByClass["spam"])
+		assert.Equal(t, 1, c.nAllDocument)
+		assert.Equal(t, 1, c.nDocumentByClass["spam"])
 
 		err := c.unlearn(doc)
-		assert.NoError(err)
-		assert.Equal(0, c.nAllDocument)
-		assert.Empty(c.nDocumentByClass)
-		assert.Empty(c.learningResults)
+		require.NoError(t, err)
+		assert.Equal(t, 0, c.nAllDocument)
+		assert.Empty(t, c.nDocumentByClass)
+		assert.Empty(t, c.learningResults)
 	})
 
 	t.Run("unlearn with multiple docs", func(t *testing.T) {
@@ -104,10 +102,10 @@ func TestClassifier_Unlearn(t *testing.T) {
 
 		c.learn(docs...)
 		err := c.unlearn(docs[0])
-		assert.NoError(err)
-		assert.Equal(1, c.nAllDocument)
-		assert.Equal(1, c.nDocumentByClass["ham"])
-		assert.Empty(c.nDocumentByClass["spam"])
+		require.NoError(t, err)
+		assert.Equal(t, 1, c.nAllDocument)
+		assert.Equal(t, 1, c.nDocumentByClass["ham"])
+		assert.Empty(t, c.nDocumentByClass["spam"])
 	})
 
 	t.Run("errors", func(t *testing.T) {
@@ -115,17 +113,15 @@ func TestClassifier_Unlearn(t *testing.T) {
 		doc := newDocument("spam", "bad", "words")
 
 		err := c.unlearn(doc)
-		assert.Error(err)
+		require.Error(t, err)
 
 		c.learn(doc)
 		err = c.unlearn(doc, doc) // try to unlearn same doc twice
-		assert.Error(err)
+		require.Error(t, err)
 	})
 }
 
 func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
-	assert := require.New(t)
-
 	t.Run("learn unlearn learn sequence", func(t *testing.T) {
 		c := newClassifier()
 		doc1 := newDocument(good, "nice", "friendly")
@@ -136,32 +132,32 @@ func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
 
 		// verify good class
 		class, prob, certain := c.classify("nice", "friendly")
-		assert.Equal(good, class)
-		assert.True(certain)
-		assert.InDelta(80., prob, 0.01)
+		assert.Equal(t, good, class)
+		assert.True(t, certain)
+		assert.InDelta(t, 80., prob, 0.01)
 
 		// verify bad class
 		class, prob, certain = c.classify("mean", "unfriendly")
-		assert.Equal(bad, class)
-		assert.True(certain)
-		assert.InDelta(80., prob, 0.01)
+		assert.Equal(t, bad, class)
+		assert.True(t, certain)
+		assert.InDelta(t, 80., prob, 0.01)
 
 		// unlearn good class
 		err := c.unlearn(doc1)
-		assert.NoError(err)
+		require.NoError(t, err)
 
 		// verify only bad class remains
 		class, prob, certain = c.classify("nice", "friendly")
-		assert.Equal(bad, class)
-		assert.True(certain)
-		assert.InDelta(100., prob, 0.01)
+		assert.Equal(t, bad, class)
+		assert.True(t, certain)
+		assert.InDelta(t, 100., prob, 0.01)
 
 		// learn good class again
 		c.learn(doc1)
 		class, prob, certain = c.classify("nice", "friendly")
-		assert.Equal(good, class)
-		assert.True(certain)
-		assert.InDelta(80., prob, 0.01)
+		assert.Equal(t, good, class)
+		assert.True(t, certain)
+		assert.InDelta(t, 80., prob, 0.01)
 	})
 
 	t.Run("unlearn with duplicate tokens", func(t *testing.T) {
@@ -170,8 +166,8 @@ func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
 
 		c.learn(doc)
 		err := c.unlearn(doc)
-		assert.NoError(err)
-		assert.Empty(c.learningResults)
+		require.NoError(t, err)
+		assert.Empty(t, c.learningResults)
 	})
 
 	t.Run("learn unlearn with empty tokens", func(t *testing.T) {
@@ -179,13 +175,13 @@ func TestClassifier_LearnUnlearnIntegration(t *testing.T) {
 		doc := newDocument(good)
 
 		c.learn(doc)
-		assert.Equal(1, c.nAllDocument)
-		assert.Equal(1, c.nDocumentByClass[good])
-		assert.Empty(c.learningResults) // no tokens to learn
+		assert.Equal(t, 1, c.nAllDocument)
+		assert.Equal(t, 1, c.nDocumentByClass[good])
+		assert.Empty(t, c.learningResults) // no tokens to learn
 
 		err := c.unlearn(doc)
-		assert.NoError(err)
-		assert.Empty(c.nDocumentByClass)
+		require.NoError(t, err)
+		assert.Empty(t, c.nDocumentByClass)
 	})
 }
 
@@ -318,7 +314,7 @@ func TestSoftmax(t *testing.T) {
 			}
 
 			// check result has same keys
-			assert.Equal(t, len(tt.expected), len(result), "Number of classes should match")
+			assert.Len(t, result, len(tt.expected), "Number of classes should match")
 
 			// for each expected class/value pair
 			for class, expected := range tt.expected {

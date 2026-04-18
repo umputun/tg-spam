@@ -234,6 +234,8 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 	settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 	settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
+	settings.Meta.ContactOnly = r.FormValue("metaContactOnly") == "on"
+	settings.Meta.Giveaway = r.FormValue("metaGiveaway") == "on"
 
 	if val := r.FormValue("metaUsernameSymbols"); val != "" {
 		settings.Meta.UsernameSymbols = val
@@ -248,6 +250,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	}
 
 	settings.OpenAI.Veto = r.FormValue("openAIVeto") == "on"
+	settings.OpenAI.CheckShortMessages = r.FormValue("openAICheckShortMessages") == "on"
 
 	if val := r.FormValue("openAIHistorySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
@@ -257,6 +260,105 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 
 	if val := r.FormValue("openAIModel"); val != "" {
 		settings.OpenAI.Model = val
+	}
+
+	// gemini settings (mirror openAI handling; do not touch Gemini.Token from form — credential lives in CLI/DB only)
+	settings.Gemini.Veto = r.FormValue("geminiVeto") == "on"
+	settings.Gemini.CheckShortMessages = r.FormValue("geminiCheckShortMessages") == "on"
+
+	if val := r.FormValue("geminiHistorySize"); val != "" {
+		if size, err := strconv.Atoi(val); err == nil {
+			settings.Gemini.HistorySize = size
+		}
+	}
+
+	if val := r.FormValue("geminiModel"); val != "" {
+		settings.Gemini.Model = val
+	}
+
+	if val := r.FormValue("geminiPrompt"); val != "" {
+		settings.Gemini.Prompt = val
+	}
+
+	if val := r.FormValue("geminiMaxTokensResponse"); val != "" {
+		if n, err := strconv.ParseInt(val, 10, 32); err == nil {
+			settings.Gemini.MaxTokensResponse = int32(n)
+		}
+	}
+
+	if val := r.FormValue("geminiMaxSymbolsRequest"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Gemini.MaxSymbolsRequest = n
+		}
+	}
+
+	if val := r.FormValue("geminiRetryCount"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Gemini.RetryCount = n
+		}
+	}
+
+	// llm orchestration settings
+	if val := r.FormValue("llmConsensus"); val != "" {
+		settings.LLM.Consensus = val
+	}
+
+	if val := r.FormValue("llmRequestTimeout"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			settings.LLM.RequestTimeout = d
+		}
+	}
+
+	// duplicates detector
+	if val := r.FormValue("duplicatesThreshold"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Duplicates.Threshold = n
+		}
+	}
+
+	if val := r.FormValue("duplicatesWindow"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			settings.Duplicates.Window = d
+		}
+	}
+
+	// user reports
+	settings.Report.Enabled = r.FormValue("reportEnabled") == "on"
+
+	if val := r.FormValue("reportThreshold"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Report.Threshold = n
+		}
+	}
+
+	if val := r.FormValue("reportAutoBanThreshold"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Report.AutoBanThreshold = n
+		}
+	}
+
+	if val := r.FormValue("reportRateLimit"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Report.RateLimit = n
+		}
+	}
+
+	if val := r.FormValue("reportRatePeriod"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			settings.Report.RatePeriod = d
+		}
+	}
+
+	// service-message deletion
+	settings.Delete.JoinMessages = r.FormValue("deleteJoinMessages") == "on"
+	settings.Delete.LeaveMessages = r.FormValue("deleteLeaveMessages") == "on"
+
+	// aggressive cleanup
+	settings.AggressiveCleanup = r.FormValue("aggressiveCleanup") == "on"
+	if val := r.FormValue("aggressiveCleanupLimit"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.AggressiveCleanupLimit = n
+		}
 	}
 
 	// lua plugins

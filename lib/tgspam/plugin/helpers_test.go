@@ -30,7 +30,7 @@ func TestChecker_BasicHelpers(t *testing.T) {
 			
 			return false, "no pattern detected"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -104,7 +104,7 @@ func TestChecker_AdvancedHelpers(t *testing.T) {
 
 			return false, "message passed all checks"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -203,7 +203,7 @@ func TestChecker_EdgeCaseHelpers(t *testing.T) {
 				"multi-arg join: " .. tostring(result.multi_arg_join)
 			}, ", ")
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -270,8 +270,8 @@ func TestHTTPRequest(t *testing.T) {
 		L.Push(lua.LString(server.URL + "/ok"))
 		ret := httpRequest(L)
 		assert.Equal(t, 3, ret)
-		assert.Equal(t, lua.LString(`{"status":"ok"}`), L.Get(-3))
-		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.JSONEq(t, `{"status":"ok"}`, string(L.Get(-3).(lua.LString)))
+		assert.InDelta(t, float64(200), float64(L.Get(-2).(lua.LNumber)), 0.001)
 		assert.Equal(t, lua.LNil, L.Get(-1))
 		L.Pop(3)
 	})
@@ -289,7 +289,7 @@ func TestHTTPRequest(t *testing.T) {
 		ret := httpRequest(L)
 		assert.Equal(t, 3, ret)
 		assert.Equal(t, lua.LString("test-value"), L.Get(-3))
-		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.InDelta(t, float64(200), float64(L.Get(-2).(lua.LNumber)), 0.001)
 		assert.Equal(t, lua.LNil, L.Get(-1))
 		L.Pop(3)
 	})
@@ -305,8 +305,8 @@ func TestHTTPRequest(t *testing.T) {
 		L.Push(lua.LString(`{"test":"data"}`))
 		ret := httpRequest(L)
 		assert.Equal(t, 3, ret)
-		assert.Equal(t, lua.LString(`{"received":true}`), L.Get(-3))
-		assert.Equal(t, lua.LNumber(200), L.Get(-2))
+		assert.JSONEq(t, `{"received":true}`, string(L.Get(-3).(lua.LString)))
+		assert.InDelta(t, float64(200), float64(L.Get(-2).(lua.LNumber)), 0.001)
 		assert.Equal(t, lua.LNil, L.Get(-1))
 		L.Pop(3)
 	})
@@ -319,7 +319,7 @@ func TestHTTPRequest(t *testing.T) {
 		L.Push(lua.LString(server.URL + "/not-found"))
 		ret := httpRequest(L)
 		assert.Equal(t, 3, ret)
-		assert.Equal(t, lua.LNumber(404), L.Get(-2))
+		assert.InDelta(t, float64(404), float64(L.Get(-2).(lua.LNumber)), 0.001)
 		L.Pop(3)
 	})
 
@@ -332,7 +332,7 @@ func TestHTTPRequest(t *testing.T) {
 		ret := httpRequest(L)
 		assert.Equal(t, 3, ret)
 		assert.Equal(t, lua.LNil, L.Get(-3))
-		assert.Equal(t, lua.LNumber(0), L.Get(-2))
+		assert.InDelta(t, float64(0), float64(L.Get(-2).(lua.LNumber)), 0.001)
 		assert.NotEqual(t, lua.LNil, L.Get(-1)) // should have error message
 		L.Pop(3)
 	})
@@ -386,7 +386,7 @@ func TestJSONEncodeDecode(t *testing.T) {
 		// check the decoded table
 		decoded := L2.Get(-2).(*lua.LTable)
 		assert.Equal(t, lua.LString("value"), decoded.RawGetString("string"))
-		assert.Equal(t, lua.LNumber(42), decoded.RawGetString("number"))
+		assert.InDelta(t, float64(42), float64(decoded.RawGetString("number").(lua.LNumber)), 0.001)
 		assert.Equal(t, lua.LBool(true), decoded.RawGetString("bool"))
 
 		// check nested objects

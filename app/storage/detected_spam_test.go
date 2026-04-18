@@ -92,7 +92,7 @@ func (s *StorageTestSuite) TestNewDetectedSpam() {
 				s.Contains(err.Error(), "db connection is nil")
 			})
 
-			s.Run("with cancelled context", func() {
+			s.Run("with canceled context", func() {
 				defer db.Exec("DROP TABLE detected_spam")
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
@@ -228,7 +228,7 @@ func (s *StorageTestSuite) TestDetectedSpam_Read_LimitExceeded() {
 			defer db.Exec("DROP TABLE detected_spam")
 
 			// add maxDetectedSpamEntries + 10 entries
-			for i := 0; i < maxDetectedSpamEntries+10; i++ {
+			for i := range maxDetectedSpamEntries + 10 {
 				spamEntry := DetectedSpamInfo{
 					GID:       "gr1", // use the correct GID
 					Text:      "spam message",
@@ -367,7 +367,7 @@ func (s *StorageTestSuite) TestDetectedSpam_FindByUserID() {
 
 			s.Run("multiple entries", func() {
 				// write two entries for same user
-				for i := 0; i < 2; i++ {
+				for i := range 2 {
 					entry := DetectedSpamInfo{
 						GID:       db.GID(),
 						Text:      fmt.Sprintf("spam %d", i),

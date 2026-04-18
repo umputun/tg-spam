@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manage Dictionary - TG-Spam</title>
+    {{template "heads.html"}}
+</head>
+<body>
+{{template "navbar.html"}}
+
+<div class="container mt-4">
+    <h2>Manage Dictionary</h2>
+
+    <div id="error-message"></div>
+
+    <!-- Forms for Adding New Entries -->
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <form hx-post="/dictionary/add" hx-target="#dictionary-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
+                <input type="hidden" name="type" value="stop_phrase">
+                <textarea name="data" class="form-control mb-2" placeholder="Enter stop phrase"></textarea>
+                <button type="submit" class="btn btn-danger">Add Stop Phrase</button>
+            </form>
+        </div>
+        <div class="col-md-6">
+            <form hx-post="/dictionary/add" hx-target="#dictionary-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
+                <input type="hidden" name="type" value="ignored_word">
+                <textarea name="data" class="form-control mb-2" placeholder="Enter ignored word"></textarea>
+                <button type="submit" class="btn btn-success">Add Ignored Word</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Include the dictionary list template -->
+    {{template "dictionary_list" .}}
+</div>
+
+</body>
+</html>
+
+
+<!-- list of dictionary entries, both stop phrases and ignored words -->
+{{define "dictionary_list"}}
+    <div class="row" id="dictionary-list">
+        <div class="col-md-6">
+            <h4>Stop Phrases ({{.TotalStopPhrases}})</h4>
+            <ul class="list-group" id="stop-phrases-list">
+                {{range .StopPhrases}}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span id="loading-stop-{{.ID}}">{{.Data}} <img class="htmx-indicator" src="/spinner.svg"/></span>
+                        <form method="POST" hx-post="/dictionary/delete" hx-target="#dictionary-list" hx-swap="outerHTML" hx-indicator="#loading-stop-{{.ID}}">
+                            <input type="hidden" name="id" value="{{.ID}}">
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </li>
+                {{else}}
+                    <li class="list-group-item">No stop phrases found</li>
+                {{end}}
+            </ul>
+        </div>
+
+        <div class="col-md-6">
+            <h4>Ignored Words ({{.TotalIgnoredWords}})</h4>
+            <ul class="list-group" id="ignored-words-list">
+                {{range .IgnoredWords}}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span id="loading-ignored-{{.ID}}">{{.Data}} <img class="htmx-indicator" src="/spinner.svg"/></span>
+                        <form method="POST" hx-post="/dictionary/delete" hx-target="#dictionary-list" hx-swap="outerHTML" hx-indicator="#loading-ignored-{{.ID}}">
+                            <input type="hidden" name="id" value="{{.ID}}">
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </li>
+                {{else}}
+                    <li class="list-group-item">No ignored words found</li>
+                {{end}}
+            </ul>
+        </div>
+    </div>
+{{end}}

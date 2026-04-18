@@ -48,13 +48,13 @@ func TestDetector_WithLuaEngine(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// check if mock was called correctly
-	assert.Equal(t, 1, len(mockLuaEngine.LoadDirectoryCalls()))
-	assert.Equal(t, 2, len(mockLuaEngine.GetCheckCalls()))
-	assert.Equal(t, 2, len(detector.luaChecks))
-	assert.Equal(t, 0, len(detector.metaChecks))
+	assert.Len(t, mockLuaEngine.LoadDirectoryCalls(), 1)
+	assert.Len(t, mockLuaEngine.GetCheckCalls(), 2)
+	assert.Len(t, detector.luaChecks, 2)
+	assert.Empty(t, detector.metaChecks)
 }
 
 func TestDetector_WithLuaEngine_Disabled(t *testing.T) {
@@ -72,10 +72,10 @@ func TestDetector_WithLuaEngine_Disabled(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// check that LoadDirectory was not called
-	assert.Equal(t, 0, len(mockLuaEngine.LoadDirectoryCalls()))
+	assert.Empty(t, mockLuaEngine.LoadDirectoryCalls())
 }
 
 func TestDetector_WithLuaEngine_NoDirectory(t *testing.T) {
@@ -94,10 +94,10 @@ func TestDetector_WithLuaEngine_NoDirectory(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// check that LoadDirectory was not called
-	assert.Equal(t, 0, len(mockLuaEngine.LoadDirectoryCalls()))
+	assert.Empty(t, mockLuaEngine.LoadDirectoryCalls())
 }
 
 func TestDetector_WithLuaEngine_LoadError(t *testing.T) {
@@ -119,7 +119,7 @@ func TestDetector_WithLuaEngine_LoadError(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load Lua plugins")
 }
 
@@ -146,7 +146,7 @@ func TestDetector_WithLuaEngine_GetCheckError(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get Lua check")
 }
 
@@ -180,13 +180,13 @@ func TestDetector_WithLuaEngine_AllChecks(t *testing.T) {
 
 	// apply the mock engine
 	err := detector.WithLuaEngine(mockLuaEngine)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// check if mock was called correctly
-	assert.Equal(t, 1, len(mockLuaEngine.LoadDirectoryCalls()))
-	assert.Equal(t, 1, len(mockLuaEngine.GetAllChecksCalls()))
-	assert.Equal(t, 2, len(detector.luaChecks))
-	assert.Equal(t, 0, len(detector.metaChecks))
+	assert.Len(t, mockLuaEngine.LoadDirectoryCalls(), 1)
+	assert.Len(t, mockLuaEngine.GetAllChecksCalls(), 1)
+	assert.Len(t, detector.luaChecks, 2)
+	assert.Empty(t, detector.metaChecks)
 }
 
 func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
@@ -205,7 +205,7 @@ func TestDetector_Reset_ClosesLuaEngine(t *testing.T) {
 	detector.Reset()
 
 	// check that Close was called and luaChecks are cleared
-	assert.Equal(t, 1, len(mockLuaEngine.CloseCalls()))
+	assert.Len(t, mockLuaEngine.CloseCalls(), 1)
 	assert.Nil(t, detector.luaEngine)
 	assert.Empty(t, detector.luaChecks)
 }
@@ -233,7 +233,7 @@ func TestDetector_GetLuaPluginNames(t *testing.T) {
 
 		detector.luaEngine = mockLuaEngine
 		assert.Empty(t, detector.GetLuaPluginNames())
-		assert.Equal(t, 0, len(mockLuaEngine.GetAllChecksCalls()))
+		assert.Empty(t, mockLuaEngine.GetAllChecksCalls())
 	})
 
 	t.Run("with plugins", func(t *testing.T) {
@@ -261,7 +261,7 @@ func TestDetector_GetLuaPluginNames(t *testing.T) {
 		detector.luaEngine = mockLuaEngine
 		pluginNames := detector.GetLuaPluginNames()
 
-		assert.Equal(t, 1, len(mockLuaEngine.GetAllChecksCalls()))
+		assert.Len(t, mockLuaEngine.GetAllChecksCalls(), 1)
 		assert.Len(t, pluginNames, 3)
 
 		// make sure the names are sorted
@@ -384,54 +384,52 @@ func TestDetector_WithAPICheckLuaPlugin(t *testing.T) {
 	// create a mock HTTP server that simulates a spam detection API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// verify request method and headers
-		require.Equal(t, "POST", r.Method, "request method should be POST")
-		require.Equal(t, "application/json", r.Header.Get("Content-Type"), "Content-Type header should be set")
-		require.Equal(t, "application/json", r.Header.Get("Accept"), "Accept header should be set")
+		assert.Equal(t, "POST", r.Method, "request method should be POST")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"), "Content-Type header should be set")
+		assert.Equal(t, "application/json", r.Header.Get("Accept"), "Accept header should be set")
 
 		// parse the request body
-		var requestData map[string]interface{}
+		var requestData map[string]any
 		err := json.NewDecoder(r.Body).Decode(&requestData)
-		require.NoError(t, err, "should be able to decode request JSON")
+		assert.NoError(t, err, "should be able to decode request JSON")
 		defer r.Body.Close()
 
 		// verify the request structure
-		require.Contains(t, requestData, "message", "request should contain message field")
-		require.Contains(t, requestData, "user_id", "request should contain user_id field")
-		require.Contains(t, requestData, "user_name", "request should contain user_name field")
+		assert.Contains(t, requestData, "message", "request should contain message field")
+		assert.Contains(t, requestData, "user_id", "request should contain user_id field")
+		assert.Contains(t, requestData, "user_name", "request should contain user_name field")
 
 		// prepare different responses based on the message content
 		message, ok := requestData["message"].(string)
-		require.True(t, ok, "message should be a string")
+		assert.True(t, ok, "message should be a string")
 
 		// different API responses for different message types
-		if message == "This message contains spam from API" {
+		switch message {
+		case "This message contains spam from API":
 			// respond with a spam detection
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"is_spam":    true,
 				"confidence": 0.95,
 				"reason":     "API spam pattern detected",
 			})
-			return
-		} else if message == "This causes an error response" {
+		case "This causes an error response":
 			// simulate an API error
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"error": "Internal server error",
 			})
-			return
-		} else if message == "This causes invalid JSON" {
+		case "This causes invalid JSON":
 			// simulate invalid JSON response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("{invalid json"))
-			return
-		} else {
+		default:
 			// normal clean message response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"is_spam":    false,
 				"confidence": 0.1,
 				"reason":     "No spam patterns detected",
@@ -441,10 +439,10 @@ func TestDetector_WithAPICheckLuaPlugin(t *testing.T) {
 	defer server.Close()
 
 	// create a new Lua engine for our test
-	modifiedApiCheck := plugin.NewChecker()
+	modifiedAPICheck := plugin.NewChecker()
 
 	// get the path to the testdata directory where we can create a temporary file
-	tmpScript := filepath.Join("./testdata", "api_check_test.lua")
+	tmpScript := filepath.Join("testdata", "api_check_test.lua")
 
 	// write a modified version of the script with the test server URL
 	luaCode := fmt.Sprintf(`
@@ -514,11 +512,11 @@ function check(req)
 end
 `, server.URL)
 
-	err := os.WriteFile(tmpScript, []byte(luaCode), 0644)
+	err := os.WriteFile(tmpScript, []byte(luaCode), 0o644)
 	require.NoError(t, err, "should load modified api_check.lua")
 
 	// load the modified script
-	err = modifiedApiCheck.LoadScript(tmpScript)
+	err = modifiedAPICheck.LoadScript(tmpScript)
 	require.NoError(t, err, "should load the script")
 
 	// create detector with API check plugin
@@ -528,12 +526,12 @@ end
 	config.LuaPlugins.PluginsDir = ""
 
 	// print the available checks
-	allChecks := modifiedApiCheck.GetAllChecks()
+	allChecks := modifiedAPICheck.GetAllChecks()
 	t.Logf("Available Lua checks: %v", allChecks)
 
 	// create detector
 	detector := NewDetector(config)
-	err = detector.WithLuaEngine(modifiedApiCheck)
+	err = detector.WithLuaEngine(modifiedAPICheck)
 	require.NoError(t, err, "should initialize detector with Lua engine")
 
 	// add the Lua checks directly
@@ -654,7 +652,7 @@ end
 	})
 
 	// clean up temporary file
-	defer os.Remove(tmpScript)
+	os.Remove(tmpScript)
 }
 
 func TestDetector_WithLuaEngine_DynamicReload(t *testing.T) {
@@ -667,7 +665,7 @@ func TestDetector_WithLuaEngine_DynamicReload(t *testing.T) {
 function check(request)
 	return false, "original plugin"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// set up configuration with dynamic reload enabled

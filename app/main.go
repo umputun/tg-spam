@@ -26,6 +26,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
 	"github.com/sashabaranov/go-openai"
+	"google.golang.org/genai"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"
@@ -71,6 +72,11 @@ type options struct {
 	NoSpamReply         bool              `long:"no-spam-reply" env:"NO_SPAM_REPLY" description:"do not reply to spam messages"`
 	SuppressJoinMessage bool              `long:"suppress-join-message" env:"SUPPRESS_JOIN_MESSAGE" description:"delete join message if user is kicked out"`
 
+	Delete struct {
+		JoinMessages  bool `long:"join-messages" env:"JOIN_MESSAGES" description:"delete join messages immediately"`
+		LeaveMessages bool `long:"leave-messages" env:"LEAVE_MESSAGES" description:"delete leave messages immediately"`
+	} `group:"delete" namespace:"delete" env-namespace:"DELETE"`
+
 	CAS struct {
 		API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
 		Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
@@ -84,9 +90,11 @@ type options struct {
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 		AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
+		ContactOnly     bool   `long:"contact-only" env:"CONTACT_ONLY" description:"enable contact only check"`
 		Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
 		Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 		UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
+		Giveaway        bool   `long:"giveaway" env:"GIVEAWAY" description:"enable giveaway check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -94,16 +102,34 @@ type options struct {
 		APIBase            string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
-		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPTS" env-delim:"," description:"custom prompts for special cases"`
-		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"" description:"reasoning effort level (low, medium, high)"`
+		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
 		Model              string   `long:"model" env:"MODEL" default:"gpt-4o-mini" description:"openai model"`
 		MaxTokensResponse  int      `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"openai max tokens in response"`
 		MaxTokensRequest   int      `long:"max-tokens-request" env:"MAX_TOKENS_REQUEST" default:"2048" description:"openai max tokens in request"`
 		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
+		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+
+	Gemini struct {
+		Token              string   `long:"token" env:"TOKEN" description:"gemini token, disabled if not set"`
+		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"gemini system prompt, if empty uses builtin default"`
+		CustomPrompts      []string `long:"custom-prompt" env:"CUSTOM_PROMPT" env-delim:"," description:"additional custom prompts for specific spam patterns"`
+		Model              string   `long:"model" env:"MODEL" default:"gemma-4-31b-it" description:"gemini model"`
+		MaxTokensResponse  int32    `long:"max-tokens-response" env:"MAX_TOKENS_RESPONSE" default:"1024" description:"gemini max tokens in response"`
+		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"8192" description:"gemini max symbols in request"`
+		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"gemini retry count"`
+		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"gemini history size"`
+		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with Gemini"`
+	} `group:"gemini" namespace:"gemini" env-namespace:"GEMINI"`
+
+	LLM struct {
+		Consensus      string        `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
+		RequestTimeout time.Duration `long:"request-timeout" env:"REQUEST_TIMEOUT" default:"30s" description:"timeout for individual LLM requests"`
+	} `group:"llm" namespace:"llm" env-namespace:"LLM"`
 
 	LuaPlugins struct {
 		Enabled        bool     `long:"enabled" env:"ENABLED" description:"enable Lua plugins"`
@@ -120,8 +146,21 @@ type options struct {
 		MinWords                int     `long:"min-words" env:"MIN_WORDS" default:"5" description:"the minimum number of words in the message to check"`
 	} `group:"space" namespace:"space" env-namespace:"SPACE"`
 
+	Duplicates struct {
+		Threshold int           `long:"threshold" env:"THRESHOLD" default:"0" description:"duplicate messages to trigger spam (0=disabled)"`
+		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
+	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
+
+	Report struct {
+		Enabled          bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
+		Threshold        int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
+		AutoBanThreshold int           `long:"auto-ban-threshold" env:"AUTO_BAN_THRESHOLD" default:"0" description:"auto-ban after N reports (0=disabled, must be >= threshold)"`
+		RateLimit        int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
+		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
+	} `group:"report" namespace:"report" env-namespace:"REPORT"`
+
 	Files struct {
-		SamplesDataPath string        `long:"samples" env:"SAMPLES" default:"preset" description:"samples data path, deprecated"`
+		SamplesDataPath string        `long:"samples" env:"SAMPLES" description:"samples data path, defaults to dynamic data path"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
 		WatchInterval   time.Duration `long:"watch-interval" env:"WATCH_INTERVAL" default:"5s" description:"watch interval for dynamic files, deprecated"`
 	} `group:"files" namespace:"files" env-namespace:"FILES"`
@@ -135,6 +174,9 @@ type options struct {
 	ParanoidMode       bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 	FirstMessagesCount int  `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
 
+	AggressiveCleanup      bool `long:"aggressive-cleanup" env:"AGGRESSIVE_CLEANUP" description:"delete all messages from user when banned via /spam command"`
+	AggressiveCleanupLimit int  `long:"aggressive-cleanup-limit" env:"AGGRESSIVE_CLEANUP_LIMIT" default:"100" description:"max messages to delete in aggressive cleanup mode"`
+
 	Message struct {
 		Startup string `long:"startup" env:"STARTUP" default:"" description:"startup message"`
 		Spam    string `long:"spam" env:"SPAM" default:"this is spam" description:"spam message"`
@@ -145,7 +187,6 @@ type options struct {
 	Server struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-		AuthUser   string `long:"auth-user" env:"AUTH_USER" default:"tg-spam" description:"basic auth username"`
 		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
 		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
@@ -177,7 +218,9 @@ const (
 var revision = "local"
 
 func main() {
-	fmt.Printf("tg-spam %s\n", revision)
+	if os.Getenv("GO_FLAGS_COMPLETION") == "" {
+		fmt.Printf("tg-spam %s\n", revision)
+	}
 	var opts options
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
@@ -259,6 +302,9 @@ func main() {
 	if appSettings.OpenAI.Token != "" {
 		masked = append(masked, appSettings.OpenAI.Token)
 	}
+	if appSettings.Gemini.Token != "" {
+		masked = append(masked, appSettings.Gemini.Token)
+	}
 
 	// add temporary web password if not "auto"
 	if appSettings.Transient.WebAuthPasswd != "auto" && appSettings.Transient.WebAuthPasswd != "" {
@@ -274,6 +320,12 @@ func main() {
 	setupLog(appSettings.Transient.Dbg, masked...)
 	log.Printf("[DEBUG] settings: %+v", appSettings)
 
+	// validate auto-ban threshold
+	if appSettings.Report.AutoBanThreshold > 0 && appSettings.Report.AutoBanThreshold < appSettings.Report.Threshold {
+		log.Fatalf("[ERROR] auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
+			appSettings.Report.AutoBanThreshold, appSettings.Report.Threshold)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
@@ -287,7 +339,11 @@ func main() {
 
 	// expand, make absolute paths
 	appSettings.Files.DynamicDataPath = expandPath(appSettings.Files.DynamicDataPath)
-	appSettings.Files.SamplesDataPath = expandPath(appSettings.Files.SamplesDataPath)
+	if appSettings.Files.SamplesDataPath == "" {
+		appSettings.Files.SamplesDataPath = appSettings.Files.DynamicDataPath
+	} else {
+		appSettings.Files.SamplesDataPath = expandPath(appSettings.Files.SamplesDataPath)
+	}
 
 	if err := execute(ctx, appSettings); err != nil {
 		log.Printf("[ERROR] %v", err)
@@ -348,18 +404,24 @@ func execute(ctx context.Context, settings *config.Settings) error {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
 
-	// activate web server if enabled
-	if settings.Server.Enabled {
-		// server starts in background goroutine
-		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB); srvErr != nil {
+	// make reports storage if feature is enabled
+	var reportsStore *storage.Reports
+	if settings.Report.Enabled {
+		reportsStore, err = storage.NewReports(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make reports store, %w", err)
+		}
+	}
+
+	// activate web server if enabled, server-only mode (no telegram token)
+	if settings.Server.Enabled && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
+		// server starts in background goroutine without DM users provider
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, nil, ""); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
-		// if no telegram token and group set, just run the server
-		if settings.Telegram.Token == "" || settings.Telegram.Group == "" {
-			log.Printf("[WARN] no telegram token and group set, web server only mode")
-			<-ctx.Done()
-			return nil
-		}
+		log.Printf("[WARN] no telegram token and group set, web server only mode")
+		<-ctx.Done()
+		return nil
 	}
 
 	// make telegram bot
@@ -384,32 +446,60 @@ func execute(ctx context.Context, settings *config.Settings) error {
 
 	// make telegram listener
 	tgListener := events.TelegramListener{
-		TbAPI:                   tbAPI,
-		Group:                   settings.Telegram.Group,
-		IdleDuration:            settings.Telegram.IdleDuration,
-		SuperUsers:              settings.Admin.SuperUsers,
-		Bot:                     spamBot,
-		StartupMsg:              settings.Message.Startup,
-		WarnMsg:                 settings.Message.Warn,
-		NoSpamReply:             settings.NoSpamReply,
-		SuppressJoinMessage:     settings.SuppressJoinMessage,
-		SpamLogger:              spamLogger,
-		AdminGroup:              settings.Admin.AdminGroup,
-		TestingIDs:              settings.Admin.TestingIDs,
-		Locator:                 locator,
+		TbAPI:               tbAPI,
+		BotUsername:         tbAPI.Self.UserName,
+		Group:               settings.Telegram.Group,
+		IdleDuration:        settings.Telegram.IdleDuration,
+		SuperUsers:          settings.Admin.SuperUsers,
+		Bot:                 spamBot,
+		StartupMsg:          settings.Message.Startup,
+		WarnMsg:             settings.Message.Warn,
+		NoSpamReply:         settings.NoSpamReply,
+		SuppressJoinMessage: settings.SuppressJoinMessage,
+		DeleteJoinMessages:  settings.Delete.JoinMessages,
+		DeleteLeaveMessages: settings.Delete.LeaveMessages,
+		SpamLogger:          spamLogger,
+		AdminGroup:          settings.Admin.AdminGroup,
+		TestingIDs:          settings.Admin.TestingIDs,
+		Locator:             locator,
+		ReportConfig: events.ReportConfig{
+			Storage:          reportsStore,
+			Enabled:          settings.Report.Enabled,
+			Threshold:        settings.Report.Threshold,
+			AutoBanThreshold: settings.Report.AutoBanThreshold,
+			RateLimit:        settings.Report.RateLimit,
+			RatePeriod:       settings.Report.RatePeriod,
+		},
 		TrainingMode:            settings.Training,
 		SoftBanMode:             settings.SoftBan,
 		DisableAdminSpamForward: settings.Admin.DisableAdminSpamForward,
 		Dry:                     settings.Dry,
+		AggressiveCleanup:       settings.AggressiveCleanup,
+		AggressiveCleanupLimit:  settings.AggressiveCleanupLimit,
 	}
 
-	log.Printf("[DEBUG] telegram listener config: {group: %s, idle: %v, super: %v, admin: %s, testing: %v, no-reply: %v,"+
-		" suppress: %v, dry: %v, training: %v}", tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
-		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage, tgListener.Dry,
-		tgListener.TrainingMode)
+	if settings.Delete.JoinMessages {
+		log.Print("[INFO] delete join messages enabled")
+	}
+	if settings.Delete.LeaveMessages {
+		log.Print("[INFO] delete leave messages enabled")
+	}
+
+	log.Printf("[DEBUG] telegram listener config: {bot: %s, group: %s, idle: %v, super: %v, admin: %s, "+
+		"testing: %v, no-reply: %v, suppress: %v, dry: %v, training: %v}",
+		tgListener.BotUsername, tgListener.Group, tgListener.IdleDuration, tgListener.SuperUsers,
+		tgListener.AdminGroup, tgListener.TestingIDs, tgListener.NoSpamReply, tgListener.SuppressJoinMessage,
+		tgListener.Dry, tgListener.TrainingMode)
+
+	// activate web server if enabled, with DM users provider from the telegram listener
+	if settings.Server.Enabled {
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, &tgListener, tgListener.BotUsername); srvErr != nil {
+			return fmt.Errorf("can't activate web server, %w", srvErr)
+		}
+	}
 
 	// run telegram listener and event processor loop
-	if err := tgListener.Do(ctx); err != nil {
+	if err := tgListener.Do(ctx); err != nil { //nolint:staticcheck // do() runs infinite loop, always returns error on exit
 		return fmt.Errorf("telegram listener failed, %w", err)
 	}
 	return nil
@@ -481,7 +571,7 @@ func checkVolumeMount(settings *config.Settings) (ok bool) {
 		return true
 	}
 	// check if the output contains the specified directory
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.Contains(line, settings.Files.DynamicDataPath) {
 			return true
 		}
@@ -491,7 +581,8 @@ func checkVolumeMount(settings *config.Settings) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, settings *config.Settings, sf *bot.SpamFilter, loc *storage.Locator, db *engine.SQL) (err error) {
+func activateServer(ctx context.Context, settings *config.Settings, sf *bot.SpamFilter, loc *storage.Locator,
+	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
 	// handle authentication - always use bcrypt hash for security
 	authPasswd := settings.Transient.WebAuthPasswd
 	authHash := settings.Server.AuthHash
@@ -526,20 +617,28 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		settingsStore = store
 	}
 
+	// make dictionary store for webapi
+	dictionaryStore, dictErr := storage.NewDictionary(ctx, db)
+	if dictErr != nil {
+		return fmt.Errorf("can't make dictionary store, %w", dictErr)
+	}
+
 	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:    settings.Server.ListenAddr,
-		Detector:      sf.Detector,
-		SpamFilter:    sf,
-		Locator:       loc,
-		DetectedSpam:  detectedSpamStore,
-		StorageEngine: db,            // add database engine for backup functionality
-		SettingsStore: settingsStore, // may be nil if ConfigDB is false
-		AuthUser:      settings.Server.AuthUser,
-		AuthHash:      authHash, // use the hash (either from options or generated)
-		Version:       revision,
-		Dbg:           settings.Transient.Dbg,
-		AppSettings:   settings,
-		ConfigDBMode:  settings.Transient.ConfigDB, // indicate we're running with database config
+		ListenAddr:      settings.Server.ListenAddr,
+		Detector:        sf.Detector,
+		SpamFilter:      sf,
+		Locator:         loc,
+		DetectedSpam:    detectedSpamStore,
+		Dictionary:      dictionaryStore,
+		StorageEngine:   db,            // add database engine for backup functionality
+		SettingsStore:   settingsStore, // may be nil if ConfigDB is false
+		DMUsersProvider: dmUsersProvider,
+		AuthHash:        authHash, // use the hash (either from options or generated)
+		Version:         revision,
+		Dbg:             settings.Transient.Dbg,
+		BotUsername:     botUsername,
+		AppSettings:     settings,
+		ConfigDBMode:    settings.Transient.ConfigDB, // indicate we're running with database config
 	}}
 
 	go func() {
@@ -565,6 +664,10 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		FirstMessagesCount:  settings.FirstMessagesCount,
 		OpenAIVeto:          settings.OpenAI.Veto,
 		OpenAIHistorySize:   settings.OpenAI.HistorySize, // how many last requests sent to openai
+		GeminiVeto:          settings.Gemini.Veto,
+		GeminiHistorySize:   settings.Gemini.HistorySize, // how many last requests sent to gemini
+		LLMConsensus:        tgspam.LLMConsensusMode(settings.LLM.Consensus),
+		LLMRequestTimeout:   settings.LLM.RequestTimeout,
 		MultiLangWords:      settings.MultiLangWords,
 		HistorySize:         settings.History.Size, // how many last request stored in memory
 	}
@@ -582,6 +685,14 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		detectorConfig.StorageTimeout = settings.Transient.StorageTimeout
 	}
 
+	// set duplicate detection config
+	detectorConfig.DuplicateDetection.Threshold = settings.Duplicates.Threshold
+	detectorConfig.DuplicateDetection.Window = settings.Duplicates.Window
+	if settings.Duplicates.Threshold > 0 {
+		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v",
+			settings.Duplicates.Threshold, settings.Duplicates.Window)
+	}
+
 	detector := tgspam.NewDetector(detectorConfig)
 
 	if settings.IsOpenAIEnabled() {
@@ -589,12 +700,12 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		openAIConfig := tgspam.OpenAIConfig{
 			SystemPrompt:                 settings.OpenAI.Prompt,
 			CustomPrompts:                settings.OpenAI.CustomPrompts,
-			ReasoningEffort:              settings.OpenAI.ReasoningEffort,
 			Model:                        settings.OpenAI.Model,
 			MaxTokensResponse:            settings.OpenAI.MaxTokensResponse,
 			MaxTokensRequest:             settings.OpenAI.MaxTokensRequest,
 			MaxSymbolsRequest:            settings.OpenAI.MaxSymbolsRequest,
 			RetryCount:                   settings.OpenAI.RetryCount,
+			ReasoningEffort:              settings.OpenAI.ReasoningEffort,
 			CheckShortMessagesWithOpenAI: settings.OpenAI.CheckShortMessages,
 		}
 
@@ -605,6 +716,29 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
 		detector.WithOpenAIChecker(openai.NewClientWithConfig(openaiConfig), openAIConfig)
+	}
+
+	if settings.Gemini.Token != "" {
+		log.Printf("[WARN] gemini enabled")
+		geminiConfig := tgspam.GeminiConfig{
+			SystemPrompt:       settings.Gemini.Prompt,
+			CustomPrompts:      settings.Gemini.CustomPrompts,
+			Model:              settings.Gemini.Model,
+			MaxOutputTokens:    settings.Gemini.MaxTokensResponse,
+			MaxSymbolsRequest:  settings.Gemini.MaxSymbolsRequest,
+			RetryCount:         settings.Gemini.RetryCount,
+			CheckShortMessages: settings.Gemini.CheckShortMessages,
+		}
+
+		client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+			APIKey:  settings.Gemini.Token,
+			Backend: genai.BackendGeminiAPI,
+		})
+		if err != nil {
+			log.Fatalf("[ERROR] failed to create gemini client: %v", err)
+		}
+		log.Printf("[DEBUG] gemini config: %+v", geminiConfig)
+		detector.WithGeminiChecker(client.Models, geminiConfig)
 	}
 
 	if settings.AbnormalSpace.Enabled {
@@ -618,12 +752,16 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 
 	metaChecks := []tgspam.MetaCheck{}
 	if settings.Meta.ImageOnly {
-		log.Printf("[INFO] image only check enabled")
-		metaChecks = append(metaChecks, tgspam.ImagesCheck())
+		log.Printf("[INFO] image only check enabled, min text len: %d", settings.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.ImagesCheck(settings.MinMsgLen))
 	}
 	if settings.Meta.VideosOnly {
-		log.Printf("[INFO] videos only check enabled")
-		metaChecks = append(metaChecks, tgspam.VideosCheck())
+		log.Printf("[INFO] videos only check enabled, min text len: %d", settings.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.VideosCheck(settings.MinMsgLen))
+	}
+	if settings.Meta.AudiosOnly {
+		log.Printf("[INFO] audio only check enabled, min text len: %d", settings.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.AudioCheck(settings.MinMsgLen))
 	}
 	if settings.Meta.LinksLimit >= 0 {
 		log.Printf("[INFO] links check enabled, limit: %d", settings.Meta.LinksLimit)
@@ -645,9 +783,17 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		log.Printf("[INFO] keyboard check enabled")
 		metaChecks = append(metaChecks, tgspam.KeyboardCheck())
 	}
+	if settings.Meta.ContactOnly {
+		log.Printf("[INFO] contact only check enabled")
+		metaChecks = append(metaChecks, tgspam.ContactCheck())
+	}
 	if settings.Meta.UsernameSymbols != "" {
 		log.Printf("[INFO] username symbols check enabled, prohibited symbols: %q", settings.Meta.UsernameSymbols)
 		metaChecks = append(metaChecks, tgspam.UsernameSymbolsCheck(settings.Meta.UsernameSymbols))
+	}
+	if settings.Meta.Giveaway {
+		log.Printf("[INFO] giveaway check enabled")
+		metaChecks = append(metaChecks, tgspam.GiveawayCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 
@@ -1148,20 +1294,58 @@ func optToSettings(opts options) *config.Settings {
 			Forward:         opts.Meta.Forward,
 			Keyboard:        opts.Meta.Keyboard,
 			UsernameSymbols: opts.Meta.UsernameSymbols,
+			ContactOnly:     opts.Meta.ContactOnly,
+			Giveaway:        opts.Meta.Giveaway,
 		},
 
 		OpenAI: config.OpenAISettings{
-			APIBase:           opts.OpenAI.APIBase,
-			Veto:              opts.OpenAI.Veto,
-			Prompt:            opts.OpenAI.Prompt,
-			CustomPrompts:     opts.OpenAI.CustomPrompts,
-			Model:             opts.OpenAI.Model,
-			MaxTokensResponse: opts.OpenAI.MaxTokensResponse,
-			MaxTokensRequest:  opts.OpenAI.MaxTokensRequest,
-			MaxSymbolsRequest: opts.OpenAI.MaxSymbolsRequest,
-			RetryCount:        opts.OpenAI.RetryCount,
-			HistorySize:       opts.OpenAI.HistorySize,
-			ReasoningEffort:   opts.OpenAI.ReasoningEffort,
+			APIBase:            opts.OpenAI.APIBase,
+			Veto:               opts.OpenAI.Veto,
+			Prompt:             opts.OpenAI.Prompt,
+			CustomPrompts:      opts.OpenAI.CustomPrompts,
+			Model:              opts.OpenAI.Model,
+			MaxTokensResponse:  opts.OpenAI.MaxTokensResponse,
+			MaxTokensRequest:   opts.OpenAI.MaxTokensRequest,
+			MaxSymbolsRequest:  opts.OpenAI.MaxSymbolsRequest,
+			RetryCount:         opts.OpenAI.RetryCount,
+			HistorySize:        opts.OpenAI.HistorySize,
+			ReasoningEffort:    opts.OpenAI.ReasoningEffort,
+			CheckShortMessages: opts.OpenAI.CheckShortMessages,
+		},
+
+		Gemini: config.GeminiSettings{
+			Veto:               opts.Gemini.Veto,
+			Prompt:             opts.Gemini.Prompt,
+			CustomPrompts:      opts.Gemini.CustomPrompts,
+			Model:              opts.Gemini.Model,
+			MaxTokensResponse:  opts.Gemini.MaxTokensResponse,
+			MaxSymbolsRequest:  opts.Gemini.MaxSymbolsRequest,
+			RetryCount:         opts.Gemini.RetryCount,
+			HistorySize:        opts.Gemini.HistorySize,
+			CheckShortMessages: opts.Gemini.CheckShortMessages,
+		},
+
+		LLM: config.LLMSettings{
+			Consensus:      opts.LLM.Consensus,
+			RequestTimeout: opts.LLM.RequestTimeout,
+		},
+
+		Delete: config.DeleteSettings{
+			JoinMessages:  opts.Delete.JoinMessages,
+			LeaveMessages: opts.Delete.LeaveMessages,
+		},
+
+		Duplicates: config.DuplicatesSettings{
+			Threshold: opts.Duplicates.Threshold,
+			Window:    opts.Duplicates.Window,
+		},
+
+		Report: config.ReportSettings{
+			Enabled:          opts.Report.Enabled,
+			Threshold:        opts.Report.Threshold,
+			AutoBanThreshold: opts.Report.AutoBanThreshold,
+			RateLimit:        opts.Report.RateLimit,
+			RatePeriod:       opts.Report.RatePeriod,
 		},
 
 		LuaPlugins: config.LuaPluginsSettings{
@@ -1195,23 +1379,24 @@ func optToSettings(opts options) *config.Settings {
 		Server: config.ServerSettings{
 			Enabled:    opts.Server.Enabled,
 			ListenAddr: opts.Server.ListenAddr,
-			AuthUser:   opts.Server.AuthUser,
 		},
 
-		SimilarityThreshold: opts.SimilarityThreshold,
-		MinMsgLen:           opts.MinMsgLen,
-		MaxEmoji:            opts.MaxEmoji,
-		MinSpamProbability:  opts.MinSpamProbability,
-		MultiLangWords:      opts.MultiLangWords,
-		NoSpamReply:         opts.NoSpamReply,
-		SuppressJoinMessage: opts.SuppressJoinMessage,
-		ParanoidMode:        opts.ParanoidMode,
-		FirstMessagesCount:  opts.FirstMessagesCount,
-		Training:            opts.Training,
-		SoftBan:             opts.SoftBan,
-		Convert:             opts.Convert,
-		MaxBackups:          opts.MaxBackups,
-		Dry:                 opts.Dry,
+		SimilarityThreshold:    opts.SimilarityThreshold,
+		MinMsgLen:              opts.MinMsgLen,
+		MaxEmoji:               opts.MaxEmoji,
+		MinSpamProbability:     opts.MinSpamProbability,
+		MultiLangWords:         opts.MultiLangWords,
+		NoSpamReply:            opts.NoSpamReply,
+		SuppressJoinMessage:    opts.SuppressJoinMessage,
+		AggressiveCleanup:      opts.AggressiveCleanup,
+		AggressiveCleanupLimit: opts.AggressiveCleanupLimit,
+		ParanoidMode:           opts.ParanoidMode,
+		FirstMessagesCount:     opts.FirstMessagesCount,
+		Training:               opts.Training,
+		SoftBan:                opts.SoftBan,
+		Convert:                opts.Convert,
+		MaxBackups:             opts.MaxBackups,
+		Dry:                    opts.Dry,
 	}
 
 	// set transient settings (not persisted to database)
@@ -1228,6 +1413,7 @@ func optToSettings(opts options) *config.Settings {
 	// set credentials in their respective domain structures
 	settings.Telegram.Token = opts.Telegram.Token
 	settings.OpenAI.Token = opts.OpenAI.Token
+	settings.Gemini.Token = opts.Gemini.Token
 	settings.Server.AuthHash = opts.Server.AuthHash
 
 	return settings

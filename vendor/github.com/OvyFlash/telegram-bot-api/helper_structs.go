@@ -24,6 +24,7 @@ type BaseChat struct {
 	ProtectContent       bool
 	ReplyMarkup          interface{}
 	DisableNotification  bool
+	AllowPaidBroadcast   bool
 	MessageEffectID      string // for private chats only
 	ReplyParameters      ReplyParameters
 }
@@ -41,6 +42,7 @@ func (chat *BaseChat) params() (Params, error) {
 
 	params.AddNonZero("message_thread_id", chat.MessageThreadID)
 	params.AddBool("disable_notification", chat.DisableNotification)
+	params.AddBool("allow_paid_broadcast", chat.AllowPaidBroadcast)
 	params.AddBool("protect_content", chat.ProtectContent)
 	params.AddNonEmpty("message_effect_id", chat.MessageEffectID)
 
@@ -65,8 +67,8 @@ func (file BaseFile) params() (Params, error) {
 // BaseEdit is base type of all chat edits.
 type BaseEdit struct {
 	BaseChatMessage
-	InlineMessageID      string
-	ReplyMarkup          *InlineKeyboardMarkup
+	InlineMessageID string
+	ReplyMarkup     *InlineKeyboardMarkup
 }
 
 func (edit BaseEdit) params() (Params, error) {
@@ -127,7 +129,8 @@ func (base BaseChatMessage) params() (Params, error) {
 // BaseChatMessages is a base type for all messages in chats.
 type BaseChatMessages struct {
 	ChatConfig
-	MessageIDs []int
+	MessageIDs           []int
+	BusinessConnectionID BusinessConnectionID
 }
 
 func (base BaseChatMessages) params() (Params, error) {
@@ -135,6 +138,11 @@ func (base BaseChatMessages) params() (Params, error) {
 	if err != nil {
 		return params, err
 	}
+	p1, err := base.BusinessConnectionID.params()
+	if err != nil {
+		return params, err
+	}
+	params.Merge(p1)
 	err = params.AddInterface("message_ids", base.MessageIDs)
 
 	return params, err

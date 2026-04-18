@@ -19,7 +19,7 @@ func TestChecker_LoadScript(t *testing.T) {
 		function check(req)
 			return true, "test details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -44,13 +44,99 @@ func TestChecker_LoadScript(t *testing.T) {
 	assert.Equal(t, "test details", resp.Details)
 }
 
+func TestChecker_UserFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "user_fields.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+		function check(req)
+			if req.first_name == "John" and req.last_name == "Doe" and req.is_premium then
+				return true, "premium user John Doe"
+			end
+			return false, "not matched"
+		end
+	`), 0o666)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	checkFunc, err := checker.GetCheck("user_fields")
+	require.NoError(t, err)
+
+	t.Run("all fields set", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "1", UserName: "johndoe",
+			FirstName: "John", LastName: "Doe", IsPremium: true,
+		})
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "premium user John Doe", resp.Details)
+	})
+
+	t.Run("fields not matching", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "2", UserName: "jane",
+			FirstName: "Jane", LastName: "Smith", IsPremium: false,
+		})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+
+	t.Run("empty fields", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{Msg: "test", UserID: "3", UserName: "anon"})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+}
+
+func TestChecker_MetaFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "meta_fields.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+		function check(req)
+			if req.meta.has_contact and req.meta.message_id == 42 and req.meta.has_giveaway then
+				return true, "meta matched"
+			end
+			return false, "not matched"
+		end
+	`), 0o666)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	err = checker.LoadScript(scriptPath)
+	require.NoError(t, err)
+
+	checkFunc, err := checker.GetCheck("meta_fields")
+	require.NoError(t, err)
+
+	t.Run("all meta fields set", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "1", UserName: "user",
+			Meta: spamcheck.MetaData{HasContact: true, MessageID: 42, HasGiveaway: true},
+		})
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "meta matched", resp.Details)
+	})
+
+	t.Run("meta fields not matching", func(t *testing.T) {
+		resp := checkFunc(spamcheck.Request{
+			Msg: "test", UserID: "2", UserName: "user",
+			Meta: spamcheck.MetaData{HasContact: false, MessageID: 10},
+		})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "not matched", resp.Details)
+	})
+}
+
 func TestChecker_LoadInvalidScript(t *testing.T) {
 	// create a temporary script with invalid Lua
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "invalid.lua")
 	err := os.WriteFile(scriptPath, []byte(`
 		this is not valid lua code
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and try to load the script
@@ -69,7 +155,7 @@ func TestChecker_LoadScriptWithoutCheckFunction(t *testing.T) {
 		function some_other_function()
 			return true, "test details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and try to load the script
@@ -90,7 +176,7 @@ func TestChecker_LoadDirectory(t *testing.T) {
 		function check(req)
 			return true, "script1 details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	script2Path := filepath.Join(tmpDir, "script2.lua")
@@ -98,7 +184,7 @@ func TestChecker_LoadDirectory(t *testing.T) {
 		function check(req)
 			return false, "script2 details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the directory
@@ -133,7 +219,7 @@ func TestChecker_GetAllChecks(t *testing.T) {
 		function check(req)
 			return true, "script1 details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	script2Path := filepath.Join(tmpDir, "script2.lua")
@@ -141,7 +227,7 @@ func TestChecker_GetAllChecks(t *testing.T) {
 		function check(req)
 			return false, "script2 details"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the directory
@@ -168,7 +254,7 @@ func TestChecker_InvalidLuaExecution(t *testing.T) {
 			local x = req.does_not_exist.something
 			return true, "never reached"
 		end
-	`), 0666)
+	`), 0o666)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -185,7 +271,7 @@ func TestChecker_InvalidLuaExecution(t *testing.T) {
 	resp := checkFunc(spamcheck.Request{Msg: "test message"})
 	assert.False(t, resp.Spam) // default to not spam on error
 	assert.Contains(t, resp.Details, "error executing lua checker")
-	assert.NotNil(t, resp.Error)
+	assert.Error(t, resp.Error)
 }
 
 func TestChecker_ReloadScript(t *testing.T) {
@@ -198,7 +284,7 @@ func TestChecker_ReloadScript(t *testing.T) {
 function check(request)
 	return false, "original version"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -223,7 +309,7 @@ end
 function check(request)
 	return true, "reloaded version"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// reload the script
@@ -248,7 +334,7 @@ func TestChecker_ReloadNonExistentScript(t *testing.T) {
 
 	// try to reload a non-existent script
 	err := checker.ReloadScript("/path/to/nonexistent/script.lua")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load Lua script")
 }
 
@@ -262,7 +348,7 @@ func TestChecker_ConcurrentAccess(t *testing.T) {
 function check(request)
 	return false, "concurrent test"
 end
-	`), 0644)
+	`), 0o644)
 	require.NoError(t, err)
 
 	// create a checker and load the script
@@ -279,7 +365,7 @@ end
 	done := make(chan bool)
 	go func() {
 		// access the checker from a goroutine
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			resp := check(spamcheck.Request{Msg: "test"})
 			assert.Equal(t, "concurrent test", resp.Details)
 		}
@@ -287,7 +373,7 @@ end
 	}()
 
 	// reload the script multiple times
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		err = checker.ReloadScript(scriptPath)
 		assert.NoError(t, err)
 	}

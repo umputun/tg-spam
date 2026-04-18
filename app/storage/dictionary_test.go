@@ -22,7 +22,7 @@ func (s *StorageTestSuite) TestNewDictionary() {
 
 			s.Run("nil db connection", func() {
 				d, err := NewDictionary(ctx, nil)
-				s.Error(err)
+				s.Require().Error(err)
 				s.Nil(d)
 			})
 		})
@@ -108,7 +108,7 @@ func (s *StorageTestSuite) TestDictionary_Read() {
 
 			s.Run("read stop phrases gr1", func() {
 				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
-				s.NoError(err)
+				s.Require().NoError(err)
 				s.Len(phrases, 2)
 				s.Contains(phrases, "stop1")
 				s.Contains(phrases, "stop2")
@@ -116,14 +116,14 @@ func (s *StorageTestSuite) TestDictionary_Read() {
 
 			s.Run("read ignored words group1", func() {
 				phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord)
-				s.NoError(err)
+				s.Require().NoError(err)
 				s.Len(phrases, 1)
 				s.Contains(phrases, "ignored1")
 			})
 
 			s.Run("read with invalid type", func() {
 				phrases, err := d.Read(ctx, "invalid")
-				s.Error(err)
+				s.Require().Error(err)
 				s.Nil(phrases)
 			})
 		})
@@ -151,7 +151,7 @@ func (s *StorageTestSuite) TestDictionary_Iterator() {
 				iter, err := d.Iterator(ctx, DictionaryTypeStopPhrase)
 				s.Require().NoError(err)
 
-				var phrases []string
+				phrases := make([]string, 0, 3) //nolint:prealloc // iterator size unknown at compile time
 				for phrase := range iter {
 					phrases = append(phrases, phrase)
 				}
@@ -163,7 +163,7 @@ func (s *StorageTestSuite) TestDictionary_Iterator() {
 
 			s.Run("iterate with invalid type", func() {
 				iter, err := d.Iterator(ctx, "invalid")
-				s.Error(err)
+				s.Require().Error(err)
 				s.Nil(iter)
 			})
 		})
@@ -217,7 +217,7 @@ func (s *StorageTestSuite) TestDictionary_Import() {
 
 				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
 				s.Require().NoError(err)
-				s.Equal(3, len(phrases))
+				s.Len(phrases, 3)
 				s.Contains(phrases, "phrase1")
 				s.Contains(phrases, "phrase2")
 				s.Contains(phrases, "phrase 3, with comma")
@@ -239,17 +239,41 @@ func (s *StorageTestSuite) TestDictionary_Import() {
 
 				phrases, err := d.Read(ctx, DictionaryTypeIgnoredWord)
 				s.Require().NoError(err)
-				s.Equal(4, len(phrases))
+				s.Len(phrases, 4)
 			})
 
-			s.Run("import with invalid input", func() {
+			s.Run("import with bare double quotes", func() {
 				d, err := NewDictionary(ctx, db)
 				s.Require().NoError(err)
 				defer db.Exec("DROP TABLE dictionary")
 
 				input := strings.NewReader(`this is "bad csv`)
-				_, err = d.Import(ctx, DictionaryTypeStopPhrase, input, true)
-				s.Error(err)
+				stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+				s.Require().NoError(err)
+				s.Require().NotNil(stats)
+
+				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+				s.Require().NoError(err)
+				s.Len(phrases, 1)
+				s.Contains(phrases, `this is "bad csv`)
+			})
+
+			s.Run("import with cyrillic and unmatched quotes", func() {
+				d, err := NewDictionary(ctx, db)
+				s.Require().NoError(err)
+				defer db.Exec("DROP TABLE dictionary")
+
+				input := strings.NewReader("\"++\" в лс\nв ЛС \"+\"\nобычная фраза")
+				stats, err := d.Import(ctx, DictionaryTypeStopPhrase, input, true)
+				s.Require().NoError(err)
+				s.Require().NotNil(stats)
+
+				phrases, err := d.Read(ctx, DictionaryTypeStopPhrase)
+				s.Require().NoError(err)
+				s.Len(phrases, 3)
+				s.Contains(phrases, "\"++\" в лс")
+				s.Contains(phrases, "в ЛС \"+\"")
+				s.Contains(phrases, "обычная фраза")
 			})
 
 			s.Run("quoted strings and special chars", func() {
@@ -303,9 +327,9 @@ func (s *StorageTestSuite) TestDictionaryType_Validate() {
 		s.Run(tt.name, func() {
 			err := tt.dType.Validate()
 			if tt.wantErr {
-				s.Assert().Error(err)
+				s.Error(err)
 			} else {
-				s.Assert().NoError(err)
+				s.NoError(err)
 			}
 		})
 	}
@@ -354,7 +378,7 @@ func (s *StorageTestSuite) TestDictionary_Reader() {
 				defer db.Exec("DROP TABLE dictionary")
 
 				r, err := d.Reader(ctx, "invalid")
-				s.Error(err)
+				s.Require().Error(err)
 				s.Nil(r)
 			})
 
@@ -402,14 +426,14 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 			errCh := make(chan error, numWorkers*2)
 
 			// start readers
-			for i := 0; i < numWorkers; i++ {
+			for i := range numWorkers {
 				wg.Add(1)
 				go func(workerID int) {
 					defer wg.Done()
-					for j := 0; j < numOps; j++ {
-						if _, err := d.Read(ctx, DictionaryTypeStopPhrase); err != nil {
+					for range numOps {
+						if _, readErr := d.Read(ctx, DictionaryTypeStopPhrase); readErr != nil {
 							select {
-							case errCh <- fmt.Errorf("reader %d failed: %w", workerID, err):
+							case errCh <- fmt.Errorf("reader %d failed: %w", workerID, readErr):
 							default:
 							}
 							return
@@ -419,19 +443,19 @@ func (s *StorageTestSuite) TestDictionary_Concurrent() {
 			}
 
 			// start writers
-			for i := 0; i < numWorkers; i++ {
+			for i := range numWorkers {
 				wg.Add(1)
 				go func(workerID int) {
 					defer wg.Done()
-					for j := 0; j < numOps; j++ {
+					for j := range numOps {
 						phrase := fmt.Sprintf("test phrase %d-%d", workerID, j)
 						dType := DictionaryTypeStopPhrase
 						if j%2 == 0 {
 							dType = DictionaryTypeIgnoredWord
 						}
-						if err := d.Add(ctx, dType, phrase); err != nil {
+						if addErr := d.Add(ctx, dType, phrase); addErr != nil {
 							select {
-							case errCh <- fmt.Errorf("writer %d failed: %w", workerID, err):
+							case errCh <- fmt.Errorf("writer %d failed: %w", workerID, addErr):
 							default:
 							}
 							return

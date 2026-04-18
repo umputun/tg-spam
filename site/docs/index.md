@@ -99,6 +99,9 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
 -  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
 -  Optionally, the OpenAI check can evaluate the message within the context of previous messages. This is beneficial for identifying spam patterns that may not be evident in the message itself or for avoiding false positives when the context provides additional insights, indicating that the message is not an isolated spam but rather a legitimate part of an ongoing conversation. To activate this feature, set `--openai.history-size=, [$OPENAI_HISTORY_SIZE]` to a positive integer, specifying the number of preceding messages to include. A range of 5-10 should suffice for most scenarios. By default, this feature is disabled.
+-  For models that support "thinking mode" (like Gemini 2.5 Flash), you can control the model's reasoning behavior by setting `--openai.reasoning-effort=` to one of the following values: `none` (disables thinking, default), `low`, `medium`, or `high`. This parameter is particularly useful for controlling how much effort the model puts into its reasoning process. For most spam detection cases, setting this to `none` is recommended for faster responses. TG-Spam also automatically strips all `<thought></thought>` tags from responses, ensuring clean output regardless of the model's reasoning behavior.
+- You can specify additional custom prompts to better detect certain spam patterns by using the `--openai.custom-prompt=[$OPENAI_CUSTOM_PROMPT]` parameter. This parameter can be repeated multiple times to add different spam patterns to check for. For example, to detect messages following the pattern "will perform <action> - $1,234", you can add `--openai.custom-prompt="Check if message follows pattern: 'will perform [action] - $[amount]' which is a common spam format"`. Custom prompts are appended to the base system prompt and help guide the AI in identifying specific spam patterns that might be difficult to detect with other methods.
+-  Messages shorter than `--min-msg-len` are typically skipped by most checks because short messages often lack sufficient context to accurately determine if they are spam. However, you can enable OpenAI checks for short messages by setting `--openai.check-short-messages`. This can be useful when dealing with concise spam patterns that OpenAI might be able to detect through its more sophisticated analysis, even with limited text. **Note**: Enabling this feature may increase API costs, especially in high-volume environments with many short messages.
 
 
 **Emoji Count**
@@ -108,6 +111,8 @@ If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJ
 **Minimum message length**
 
 This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. This check is needed to avoid false positives on short messages.
+
+**Note**: Messages shorter than `--min-msg-len` will not count towards user approval when `--first-messages-count` is configured. This prevents users from becoming approved by sending multiple short messages (like "hi", "ok", "yes") that bypass meaningful spam detection. Only messages that meet the minimum length requirement will increment the user's message count for approval purposes.
 
 **Maximum links in message**
 
@@ -119,19 +124,19 @@ This option is disabled by default. If set to a positive number, the bot will ch
 
 **Links only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.links-only` set or `env:META_LINKS_ONLY` is `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
 
 **Image only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images but no text, it will be marked as spam.
 
 **Video only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos but no text, it will be marked as spam.
 
 **Audio only check**
 
-This option is disabled by default. If set to `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files but no text, it will be marked as spam.
 
 **Forward check**
 
@@ -148,6 +153,16 @@ This option is disabled by default. If `--meta.username-symbols` set or `env:MET
 **Multi-language words**
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
+
+**Duplicate message detection**
+
+This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly.
+
+**Important**: Duplicate detection is a behavioral check that runs for **all users**, including approved users. This differs from content-based checks (similarity, classifier, OpenAI) which are skipped for approved users for performance reasons. The rationale is that approved users can still exhibit spam behavior by sending duplicate messages, and this pattern should be detected regardless of trust status.
+
+Configure with:
+- `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
+- `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 
 **Abnormal spacing check**
 
@@ -196,7 +211,7 @@ If you encounter errors like `no persistent spam or ham samples found in the sto
 
 **For standalone installations:**
 1. Download sample data files from [this repository](https://github.com/umputun/tg-spam/tree/master/data) and place them in your data directory
-2. Run tg-spam specifying both `--files.dynamic=/path/to/data` and `--files.samples=/path/to/data` parameters for the first run
+2. Run tg-spam specifying `--files.dynamic=/path/to/data` for the first run (`--files.samples` defaults to the same path)
 3. After successful migration, the bot will rename files to `*.loaded` and store their content in the database
 4. For subsequent runs, you can omit these parameters as data is already in the database
 
@@ -234,6 +249,17 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 * Replying to the message with the text `warn` or `/warn` will remove the original message, and send a warning message to the user who sent the message. This is useful for post-moderation purposes. The warning message is defined by `--message.warn=, [$MESSAGE_WARN]` parameter.
 
+**aggressive cleanup**
+
+When admins use `/spam` or `/ban` commands, the bot can optionally delete all recent messages from the banned user. This feature is disabled by default and can be configured with:
+- `--aggressive-cleanup` - Enable deletion of spammer's recent messages when banned
+- `--aggressive-cleanup-limit=` (default: 100) - Maximum number of messages to delete per user
+
+When enabled, the bot will:
+1. Ban the user as usual
+2. Asynchronously delete up to the specified number of recent messages from that user
+3. Send a notification to the admin chat showing how many messages were deleted
+4. Apply rate limiting (30 messages/second) to respect Telegram API limits
 
 ### Updating spam and ham samples dynamically
 
@@ -242,6 +268,24 @@ The bot can be configured to update spam samples dynamically. To enable this fea
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples, reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
 All samples are stored in the database, which can be specified using the `--db=, [$DB]` parameter.
+
+### User Spam Reporting
+
+Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report` or `report`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
+
+To enable user spam reporting, set `--report.enabled` to `true` and configure an admin chat using `--admin.group=`. When enabled:
+
+1. Users reply to suspicious messages with `/report` to flag them for review
+2. The bot tracks all reports for each message
+3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat
+4. Admins can review the reported message and take action using inline buttons:
+   - **Approve Ban**: Immediately ban the reported user and delete the reported message
+   - **Reject**: Reject this report without taking action
+   - **Ban Reporter**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+
+The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The `/report` command message is automatically deleted to keep the chat clean.
+
+All reports are stored in the database for audit purposes and can help identify patterns of spam or abuse over time.
 
 ### Lua Plugins Support
 
@@ -382,6 +426,8 @@ Success! The new status is: DISABLED. /help
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
       --paranoid                        paranoid mode, check all messages [$PARANOID]
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
+      --aggressive-cleanup              delete all messages from user when banned via /spam command [$AGGRESSIVE_CLEANUP]
+      --aggressive-cleanup-limit=       max messages to delete in aggressive cleanup mode (default: 100) [$AGGRESSIVE_CLEANUP_LIMIT]
       --training                        training mode, passive spam detection only [$TRAINING]
       --soft-ban                        soft ban mode, restrict user actions but not ban [$SOFT_BAN]
       --history-size=                   history size (default: 100) [$LAST_MSGS_HISTORY_SIZE]
@@ -390,6 +436,10 @@ Success! The new status is: DISABLED. /help
       --dry                             dry mode, no bans [$DRY]
       --dbg                             debug mode [$DEBUG]
       --tg-dbg                          telegram debug mode [$TG_DEBUG]
+
+delete:
+      --delete.join-messages            delete join messages immediately [$DELETE_JOIN_MESSAGES]
+      --delete.leave-messages           delete leave messages immediately [$DELETE_LEAVE_MESSAGES]
 
 telegram:
       --telegram.token=                 telegram bot token [$TELEGRAM_TOKEN]
@@ -424,12 +474,15 @@ openai:
       --openai.apibase=                 custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                     veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=                  openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
+      --openai.custom-prompt=           additional custom prompts for specific spam patterns [$OPENAI_CUSTOM_PROMPT]
       --openai.model=                   openai model (default: gpt-4o-mini) [$OPENAI_MODEL]
       --openai.max-tokens-response=     openai max tokens in response (default: 1024) [$OPENAI_MAX_TOKENS_RESPONSE]
       --openai.max-tokens-request=      openai max tokens in request (default: 2048) [$OPENAI_MAX_TOKENS_REQUEST]
       --openai.max-symbols-request=     openai max symbols in request, failback if tokenizer failed (default: 16000) [$OPENAI_MAX_SYMBOLS_REQUEST]
       --openai.retry-count=             openai retry count (default: 1) [$OPENAI_RETRY_COUNT]
       --openai.history-size=            openai history size (default: 0) [$OPENAI_HISTORY_SIZE]
+      --openai.reasoning-effort=[none|low|medium|high] reasoning effort for thinking models, none disables thinking (default: none) [$OPENAI_REASONING_EFFORT]
+      --openai.check-short-messages     check messages shorter than min-msg-len with OpenAI [$OPENAI_CHECK_SHORT_MESSAGES]
 
 lua-plugins:
       --lua-plugins.enabled             enable Lua plugins [$LUA_PLUGINS_ENABLED]
@@ -444,8 +497,18 @@ space:
       --space.short-word=               the length of the word to be considered short (default: 3) [$SPACE_SHORT_WORD]
       --space.min-words=                the minimum number of words in the message to check (default: 5) [$SPACE_MIN_WORDS]
 
+duplicates:
+      --duplicates.threshold=           duplicate messages to trigger spam (0=disabled) (default: 0) [$DUPLICATES_THRESHOLD]
+      --duplicates.window=              time window for duplicate detection (default: 1h) [$DUPLICATES_WINDOW]
+
+report:
+      --report.enabled                  enable user spam reporting [$REPORT_ENABLED]
+      --report.threshold=               number of reports to trigger admin notification (default: 2) [$REPORT_THRESHOLD]
+      --report.rate-limit=              max reports per user per period (default: 10) [$REPORT_RATE_LIMIT]
+      --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
+
 files:
-      --files.samples=                  samples data path, deprecated (default: preset) [$FILES_SAMPLES]
+      --files.samples=                  samples data path, defaults to dynamic data path [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]
       --files.watch-interval=           watch interval for dynamic files, deprecated (default: 5s) [$FILES_WATCH_INTERVAL]
 
@@ -467,14 +530,16 @@ Help Options:
 
 ### Application Options in details
 
-- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default.
+- `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default. Additionally, anonymous admin posts (when admins post "as the group" itself) are automatically excluded from spam checks, though linked channel auto-forwards are still checked for spam.
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
 - `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
-- `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out. This is useful to keep the group clean from spam messages.
+- `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out (for detected spammers only). This tracks join messages in the locator and removes them when a user is banned. This is useful to keep the group clean after removing spammers.
+- `delete.join-messages` - if set to `true`, the bot will immediately delete all join messages ("User joined the group"). This keeps the chat clean by preventing join message clutter, regardless of whether users turn out to be spammers. Can be used together with `suppress-join-message` for maximum cleanup.
+- `delete.leave-messages` - if set to `true`, the bot will immediately delete all leave messages ("User left the group" or "User was removed"). This keeps the chat clean by preventing leave message clutter.
 - `--testing-id` - this is needed to debug things if something unusual is going on. All it does is adding any chat ID to the list of chats bots will listen to. This is useful for debugging purposes only, but should not be used in production.
 - `--paranoid` - if set to `true`, the bot will check all the messages for spam, not just the first one. This is useful for testing and training purposes.
-- `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled.
+- `--first-messages-count` - defines how many messages to check for spam. By default, the bot checks only the first message from a given user. However, in some cases, it is useful to check more than one message. For example, if the observed spam starts with a few non-spam messages, the bot will not be able to detect it. Setting this parameter to a higher value will allow the bot to detect such spam. Note: this parameter is ignored if `--paranoid` mode is enabled. Also note that only messages meeting the minimum length requirement (`--min-msg-len`) count towards this limit, preventing users from bypassing detection by sending multiple short messages.
 - `--training` - if set, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
 - `--soft-ban` - if set, the bot will restrict user actions but won't ban. This is useful for chats where the false-positive is hard or costly to recover from. With soft ban, the user won't be removed from the chat but will be restricted in actions. Practically, it means the user won't be able to send messages, but the recovery is easy - just unban the user, and they won't need to rejoin the chat.
 - `--disable-admin-spam-forward` - if set to `true`, the bot will not treat messages forwarded to the admin chat as spam.
@@ -488,7 +553,7 @@ The provided preset set of samples is just an example collected by the bot autho
 
 To do so, several conditions must be met:
 
-- For first-time setup, specify both `--files.dynamic [$FILES_DYNAMIC]` and `--files.samples [$FILES_SAMPLES]` parameters pointing to the directory with your data files
+- For first-time setup, specify `--files.dynamic [$FILES_DYNAMIC]` parameter pointing to the directory with your data files. The `--files.samples [$FILES_SAMPLES]` parameter defaults to the same path and usually doesn't need to be set separately
 - For custom database storage, set `--db` to your database URL
 - Admin chat should be enabled, see [Admin chat/group](#admin-chatgroup) section above
 - Admin name(s) should be set with `--super [$SUPER_USER]` parameter
@@ -597,7 +662,14 @@ See also [examples](https://github.com/umputun/tg-spam/tree/master/_examples/) f
 
 ### WEB UI
 
-If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. It is a basic UI to check a message for spam, manage samples and handle approved users. It is protected by basic auth the same way as webapi server.
+If webapi server enabled (see [Running with webapi server](#running-with-webapi-server) section above), the bot will serve a simple web UI on the root path. The UI provides several management interfaces:
+
+- **Message Checker**: Test messages for spam detection in real-time
+- **Manage Samples**: Add, view, and delete spam/ham training samples
+- **Dictionary Management**: Manage stop phrases (words that trigger spam detection) and ignored words (tokens excluded from analysis)
+- **Manage Users**: View and control the approved users list
+
+All pages are protected by basic auth the same way as webapi server.
 
 
 <details markdown>
@@ -640,6 +712,10 @@ services:
       - FILES_DYNAMIC=/srv/var
       - NO_SPAM_REPLY=true
       - DEBUG=true
+      - REPORT_ENABLED=true # enable user spam reporting
+      - REPORT_THRESHOLD=2 # number of reports to trigger admin notification
+      - REPORT_RATE_LIMIT=10 # max reports per user per period
+      - REPORT_RATE_PERIOD=1h # rate limit time period
     volumes:
       - ./log/tg-spam:/srv/log
       - ./var/tg-spam:/srv/var

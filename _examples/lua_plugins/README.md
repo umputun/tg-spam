@@ -20,7 +20,10 @@ Your Lua plugin receives a `request` object with the following fields:
 
 - `msg`: The message text
 - `user_id`: The user ID
-- `user_name`: The username 
+- `user_name`: The username
+- `first_name`: The user's first name
+- `last_name`: The user's last name
+- `is_premium`: Boolean indicating if the user has Telegram Premium
 - `meta`: A table with metadata:
   - `images`: Number of images in the message
   - `links`: Number of links in the message
@@ -29,6 +32,9 @@ Your Lua plugin receives a `request` object with the following fields:
   - `has_audio`: Boolean indicating if the message has audio
   - `has_forward`: Boolean indicating if the message is forwarded
   - `has_keyboard`: Boolean indicating if the message has a keyboard
+  - `has_giveaway`: Boolean indicating if the message is a giveaway
+  - `has_contact`: Boolean indicating if the message has a shared contact
+  - `message_id`: The Telegram message ID
 
 ### Helper Functions
 

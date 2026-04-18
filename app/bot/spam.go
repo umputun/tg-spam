@@ -78,8 +78,30 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	displayUsername := DisplayName(msg)
 
-	spamReq := spamcheck.Request{Msg: msg.Text, CheckOnly: checkOnly,
-		UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
+	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion
+	msgText := msg.Text
+	switch {
+	case msg.Quote != "":
+		msgText = msg.Text + "\n" + msg.Quote
+	case msg.ReplyTo.Text != "":
+		msgText = msg.Text + "\n" + msg.ReplyTo.Text
+	}
+
+	// use channel identity for spam check when message is from a channel,
+	// so that approved/banned status is tracked per-channel, not for the shared Channel_Bot user
+	checkUserID := msg.From.ID
+	checkUserName := msg.From.Username
+	firstName, lastName, isPremium := msg.From.FirstName, msg.From.LastName, msg.From.IsPremium
+	if msg.SenderChat.ID != 0 {
+		checkUserID = msg.SenderChat.ID
+		checkUserName = msg.SenderChat.UserName
+		firstName, lastName, isPremium = "", "", false // channels don't have personal user fields
+	}
+
+	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
+		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName,
+		FirstName: firstName, LastName: lastName, IsPremium: isPremium}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
 	}
@@ -95,24 +117,44 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithKeyboard {
 		spamReq.Meta.HasKeyboard = true
 	}
-	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
+	if msg.WithContact {
+		spamReq.Meta.HasContact = true
+	}
+	if msg.WithGiveaway {
+		spamReq.Meta.HasGiveaway = true
+	}
+	spamReq.Meta.MessageID = msg.ID
 
-	// count mentions from entities
+	// count mentions and links from entities (both regular and caption entities)
+	// links are counted from entities only - telegram provides url/text_link entities for all links
 	if msg.Entities != nil {
 		for _, entity := range *msg.Entities {
-			if entity.Type == "mention" || entity.Type == "text_mention" {
+			switch entity.Type {
+			case "mention", "text_mention":
 				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
+			}
+		}
+	}
+	if msg.Image != nil && msg.Image.Entities != nil {
+		for _, entity := range *msg.Image.Entities {
+			switch entity.Type {
+			case "mention", "text_mention":
+				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
 			}
 		}
 	}
 	isSpam, checkResults := s.Check(spamReq)
-	crs := []string{}
+	crs := make([]string, 0, len(checkResults))
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
 	}
 	checkResultStr := strings.Join(crs, ", ")
 	if isSpam {
-		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text)
+		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msgText)
 		msgPrefix := s.params.SpamMsg
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
@@ -120,6 +162,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
 		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration, CheckResults: checkResults,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
+			ChannelID: msg.SenderChat.ID,
 		}
 	}
 	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)

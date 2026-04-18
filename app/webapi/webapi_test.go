@@ -1276,6 +1276,68 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		assert.Equal(t, 1, len(detectorMock.GetLuaPluginNamesCalls()), "GetLuaPluginNames should be called")
 	})
 }
+
+func TestHtmlSettingsHandler_RendersAllNewSections(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{
+		GetLuaPluginNamesFunc: func() []string { return []string{} },
+	}
+
+	appSettings := &config.Settings{
+		Meta: config.MetaSettings{
+			LinksLimit:      2,
+			MentionsLimit:   3,
+			UsernameSymbols: "!",
+			ContactOnly:     true,
+			Giveaway:        true,
+		},
+		Gemini: config.GeminiSettings{
+			Token:              "g-token",
+			Veto:               true,
+			Model:              "gemini-2.5-pro",
+			HistorySize:        7,
+			CheckShortMessages: true,
+			CustomPrompts:      []string{"gprompt-a", "gprompt-b"},
+		},
+		LLM:        config.LLMSettings{Consensus: "all", RequestTimeout: 45 * time.Second},
+		Duplicates: config.DuplicatesSettings{Threshold: 3, Window: 2 * time.Minute},
+		Report:     config.ReportSettings{Enabled: true, Threshold: 5, AutoBanThreshold: 10, RateLimit: 20, RatePeriod: time.Hour},
+		Delete:     config.DeleteSettings{JoinMessages: true, LeaveMessages: true},
+
+		AggressiveCleanup:      true,
+		AggressiveCleanupLimit: 50,
+	}
+
+	server := NewServer(Config{
+		Version:     "1.0",
+		Detector:    detectorMock,
+		BotUsername: "tg_spam_bot",
+		AppSettings: appSettings,
+	})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(server.htmlSettingsHandler).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code, "template must render without error")
+	body := rr.Body.String()
+
+	// new sections/groups surfaced by master that must appear after the merge
+	sentinels := []string{
+		"Gemini Integration Settings", // gemini tab heading
+		"gemini-2.5-pro",              // promoted Gemini.Model value
+		"gprompt-a",                   // promoted Gemini.CustomPrompts entry
+		"LLM Consensus",               // LLM row label
+		"Meta Contact Only",           // meta.ContactOnly row label
+		"Meta Giveaway",               // meta.Giveaway row label
+		"tg_spam_bot",                 // BotUsername in dm-users panel
+		"Don't know your ID?",         // dm-users panel anchor
+	}
+	for _, s := range sentinels {
+		assert.Contains(t, body, s, "rendered settings page must contain %q", s)
+	}
+}
+
 func TestServer_StaticFiles(t *testing.T) {
 	// setup necessary mocks
 	mockDetector := &mocks.DetectorMock{
@@ -1917,6 +1979,8 @@ func TestTemplateRendering(t *testing.T) {
 				ConfigAvailable bool
 				LastUpdated     time.Time
 				ConfigDBMode    bool
+				BotUsername     string
+				GeminiEnabled   bool
 			}{
 				Settings: &config.Settings{
 					InstanceID:          "test-instance",
@@ -1960,6 +2024,8 @@ func TestTemplateRendering(t *testing.T) {
 				ConfigAvailable: true,
 				LastUpdated:     time.Now(),
 				ConfigDBMode:    true,
+				BotUsername:     "tg_spam_bot",
+				GeminiEnabled:   true,
 			},
 		},
 		{
@@ -1971,6 +2037,7 @@ func TestTemplateRendering(t *testing.T) {
 				FilteredCount       int
 				Filter              string
 				OpenAIEnabled       bool
+				GeminiEnabled       bool
 			}{
 				DetectedSpamEntries: []storage.DetectedSpamInfo{
 					{
@@ -1988,6 +2055,7 @@ func TestTemplateRendering(t *testing.T) {
 				FilteredCount:     1,
 				Filter:            "all",
 				OpenAIEnabled:     true,
+				GeminiEnabled:     false,
 			},
 		},
 		{

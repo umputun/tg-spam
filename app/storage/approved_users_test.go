@@ -61,11 +61,11 @@ func (s *StorageTestSuite) TestApprovedUsers_NewApprovedUsers() {
 				s.Contains(err.Error(), "db connection is nil")
 			})
 
-			s.Run("context cancelled", func() {
-				ctx, cancel := context.WithCancel(context.Background())
+			s.Run("context canceled", func() {
+				canceledCtx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := NewApprovedUsers(ctx, db)
+				_, err := NewApprovedUsers(canceledCtx, db)
 				s.Require().Error(err)
 				defer db.Exec("DROP TABLE approved_users")
 			})
@@ -192,15 +192,15 @@ func (s *StorageTestSuite) TestApprovedUsers_Read() {
 				{UserID: "456", UserName: "Jane", Timestamp: testTime},
 			}
 			for _, u := range users {
-				err := au.Write(ctx, u)
-				s.Require().NoError(err)
+				writeErr := au.Write(ctx, u)
+				s.Require().NoError(writeErr)
 			}
 
 			// read users with group id
 			users, err = au.Read(ctx)
 			s.Require().NoError(err)
 			s.Require().Len(users, 2)
-			s.Equal(users[0].UserID, "123")
+			s.Equal("123", users[0].UserID)
 		})
 	}
 }
@@ -284,7 +284,7 @@ func (s *StorageTestSuite) TestApprovedUsers_StoreAndRead() {
 
 					res, err := au.Read(ctx)
 					s.Require().NoError(err)
-					s.Equal(len(tt.expected), len(res))
+					s.Len(res, len(tt.expected))
 				})
 			}
 		})
@@ -301,15 +301,15 @@ func (s *StorageTestSuite) TestApprovedUsers_ContextCancellation() {
 			au, err := NewApprovedUsers(ctx, db)
 			s.Require().NoError(err)
 
-			s.Run("new with cancelled context", func() {
-				ctx, cancel := context.WithCancel(context.Background())
+			s.Run("new with canceled context", func() {
+				canceledCtx, cancel := context.WithCancel(context.Background())
 				cancel()
-				_, err := NewApprovedUsers(ctx, db)
+				_, err := NewApprovedUsers(canceledCtx, db)
 				s.Require().Error(err)
 				s.Contains(err.Error(), "context canceled")
 			})
 
-			s.Run("read with cancelled context", func() {
+			s.Run("read with canceled context", func() {
 				// prepare data
 				err := au.Write(ctx, approved.UserInfo{UserID: "123", UserName: "test"})
 				s.Require().NoError(err)
@@ -322,7 +322,7 @@ func (s *StorageTestSuite) TestApprovedUsers_ContextCancellation() {
 				s.Contains(err.Error(), "context canceled")
 			})
 
-			s.Run("write with cancelled context", func() {
+			s.Run("write with canceled context", func() {
 				ctxCanceled, cancel := context.WithCancel(context.Background())
 				cancel()
 
@@ -331,7 +331,7 @@ func (s *StorageTestSuite) TestApprovedUsers_ContextCancellation() {
 				s.Contains(err.Error(), "context canceled")
 			})
 
-			s.Run("delete with cancelled context", func() {
+			s.Run("delete with canceled context", func() {
 				// prepare data
 				err := au.Write(ctx, approved.UserInfo{UserID: "789", UserName: "test"})
 				s.Require().NoError(err)
@@ -414,14 +414,12 @@ func (s *StorageTestSuite) TestApprovedUsers_ErrorCases() {
 				var wg sync.WaitGroup
 				errCh := make(chan error, 2)
 
-				for i := 0; i < 2; i++ {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+				for range 2 {
+					wg.Go(func() {
 						if err := au.Write(ctx, user); err != nil {
 							errCh <- err
 						}
-					}()
+					})
 				}
 
 				wg.Wait()
@@ -519,15 +517,15 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 
 		// add test data
 		for _, tc := range testData {
-			_, err := db.Exec("INSERT INTO approved_users (id, name) VALUES (?, ?)", tc.id, tc.name)
-			s.Require().NoError(err)
+			_, execErr := db.Exec("INSERT INTO approved_users (id, name) VALUES (?, ?)", tc.id, tc.name)
+			s.Require().NoError(execErr)
 		}
 
 		// verify initial data
 		var count int
 		err = db.Get(&count, "SELECT COUNT(*) FROM approved_users")
 		s.Require().NoError(err)
-		s.Assert().Equal(2, count)
+		s.Equal(2, count)
 
 		// run migration via NewApprovedUsers
 		au, err := NewApprovedUsers(ctx, db)
@@ -536,13 +534,13 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 		// verify migrated data
 		users, err := au.Read(ctx)
 		s.Require().NoError(err)
-		s.Assert().Equal(2, len(users))
+		s.Len(users, 2)
 
 		// check data preserved and moved correctly
-		s.Assert().Equal("test1", users[0].UserName)
-		s.Assert().Equal("123", users[0].UserID)
-		s.Assert().Equal("test2", users[1].UserName)
-		s.Assert().Equal("456", users[1].UserID)
+		s.Equal("test1", users[0].UserName)
+		s.Equal("123", users[0].UserID)
+		s.Equal("test2", users[1].UserName)
+		s.Equal("456", users[1].UserID)
 
 		// verify table structure
 		var cols []string
@@ -555,7 +553,7 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 		// check all needed columns exist
 		expected := []string{"id", "uid", "gid", "name", "timestamp"}
 		for _, col := range expected {
-			s.Assert().Contains(cols, col)
+			s.Contains(cols, col)
 		}
 	})
 
@@ -577,9 +575,9 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 
 		users, err := au2.Read(ctx)
 		s.Require().NoError(err)
-		s.Assert().Equal(1, len(users))
-		s.Assert().Equal("test", users[0].UserName)
-		s.Assert().Equal("123", users[0].UserID)
+		s.Len(users, 1)
+		s.Equal("test", users[0].UserName)
+		s.Equal("123", users[0].UserID)
 	})
 
 	s.Run("double migration attempt", func() {
@@ -612,9 +610,9 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 		// verify data preserved
 		users, err := au2.Read(ctx)
 		s.Require().NoError(err)
-		s.Assert().Equal(1, len(users))
-		s.Assert().Equal("test", users[0].UserName)
-		s.Assert().Equal("123", users[0].UserID)
+		s.Len(users, 1)
+		s.Equal("test", users[0].UserName)
+		s.Equal("123", users[0].UserID)
 	})
 
 	s.Run("migration preserves indices", func() {
@@ -646,7 +644,7 @@ func (s *StorageTestSuite) TestApprovedUsers_Migrate() {
 					break
 				}
 			}
-			s.Assert().True(found, "index %s not found", expected)
+			s.True(found, "index %s not found", expected)
 		}
 	})
 }

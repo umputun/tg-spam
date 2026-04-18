@@ -3,9 +3,11 @@ package tgspam
 import (
 	"context"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
@@ -40,7 +42,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.True(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -57,7 +59,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -70,7 +72,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, assert.AnError
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -87,7 +89,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 				}},
 			}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -102,7 +104,7 @@ func TestOpenAIChecker_Check(t *testing.T) {
 			contextMoqParam context.Context, chatCompletionRequest openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{}, nil
 		}
-		spam, details := checker.check("some text", nil)
+		spam, details := checker.check(context.Background(), "some text", nil)
 		t.Logf("spam: %v, details: %+v", spam, details)
 		assert.False(t, spam)
 		assert.Equal(t, "openai", details.Name)
@@ -134,13 +136,13 @@ func TestOpenAIChecker_CheckWithHistory(t *testing.T) {
 		{Msg: "third message", UserName: "user1"},
 	}
 
-	spam, details := checker.check("current message", history)
+	spam, details := checker.check(context.Background(), "current message", history)
 	t.Logf("spam: %v, details: %+v", spam, details)
 	assert.True(t, spam)
 	assert.Equal(t, "openai", details.Name)
 	assert.Equal(t, "suspicious pattern in history, confidence: 90%", details.Details)
-	assert.NoError(t, details.Error)
-	assert.Equal(t, 1, len(clientMock.CreateChatCompletionCalls()))
+	require.NoError(t, details.Error)
+	assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 }
 
 func TestOpenAIChecker_FormatMessage(t *testing.T) {
@@ -204,9 +206,343 @@ History:
 		t.Run(tt.name, func(t *testing.T) {
 			clientMock.ResetCalls() // reset mock before each test case
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{Model: "gpt-4o-mini"})
-			checker.check(tt.currentMsg, tt.history)
+			checker.check(context.Background(), tt.currentMsg, tt.history)
 			assert.Equal(t, tt.expectedMessage, capturedMsg, "message formatting mismatch")
-			assert.Equal(t, 1, len(clientMock.CreateChatCompletionCalls()))
+			assert.Len(t, clientMock.CreateChatCompletionCalls(), 1)
 		})
 	}
+}
+
+func TestStripThoughtTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "no thought tags",
+			input:    "This is a normal response",
+			expected: "This is a normal response",
+		},
+		{
+			name:     "single thought tag",
+			input:    "This is <thought>some thinking process</thought> a response with thoughts",
+			expected: "This is  a response with thoughts",
+		},
+		{
+			name:     "multiple thought tags",
+			input:    "<thought>Initial thinking</thought>Response<thought>More thinking</thought>",
+			expected: "Response",
+		},
+		{
+			name:     "multiline thought tags",
+			input:    "Start\n<thought>\nMultiline\nthinking\n</thought>\nEnd",
+			expected: "Start\n\nEnd",
+		},
+		{
+			name:     "JSON content with thought tags",
+			input:    `{"result": "<thought>thinking about spam</thought>This is spam"}`,
+			expected: `{"result": "This is spam"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripThoughtTags(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestReasoningEffortInRequest(t *testing.T) {
+	tests := []struct {
+		name            string
+		reasoningEffort string
+		expectInRequest bool
+		expectedEffort  string
+	}{
+		{
+			name:            "empty reasoning effort",
+			reasoningEffort: "",
+			expectInRequest: false,
+		},
+		{
+			name:            "none reasoning effort",
+			reasoningEffort: "none",
+			expectInRequest: false,
+		},
+		{
+			name:            "low reasoning effort",
+			reasoningEffort: "low",
+			expectInRequest: true,
+			expectedEffort:  "low",
+		},
+		{
+			name:            "medium reasoning effort",
+			reasoningEffort: "medium",
+			expectInRequest: true,
+			expectedEffort:  "medium",
+		},
+		{
+			name:            "high reasoning effort",
+			reasoningEffort: "high",
+			expectInRequest: true,
+			expectedEffort:  "high",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedRequest openai.ChatCompletionRequest
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedRequest = req
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				Model:           "gpt-4o-mini",
+				ReasoningEffort: tt.reasoningEffort,
+			})
+
+			// call the check method to trigger the client call
+			checker.check(context.Background(), "test message", nil)
+
+			// verify the reasoning_effort parameter in the request
+			if tt.expectInRequest {
+				require.Equal(t, tt.expectedEffort, capturedRequest.ReasoningEffort)
+			} else {
+				require.Empty(t, capturedRequest.ReasoningEffort)
+			}
+		})
+	}
+}
+
+func TestBuildSystemPromptWithCustomPrompts(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemPrompt  string
+		customPrompts []string
+		expected      string
+	}{
+		{
+			name:          "with empty custom prompts",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{},
+			expected:      "Base prompt",
+		},
+		{
+			name:          "with one custom prompt",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{"Check for pattern X"},
+			expected:      "Base prompt\n\nAlso, specifically check for these patterns:\n1. Check for pattern X\n",
+		},
+		{
+			name:          "with multiple custom prompts",
+			systemPrompt:  "Base prompt",
+			customPrompts: []string{"Check for pattern X", "Check for pattern Y", "Watch for price patterns like $X,XXX"},
+			expected:      "Base prompt\n\nAlso, specifically check for these patterns:\n1. Check for pattern X\n2. Check for pattern Y\n3. Watch for price patterns like $X,XXX\n",
+		},
+		{
+			name:          "with default prompt when system prompt is empty",
+			systemPrompt:  "",
+			customPrompts: []string{"Custom pattern check"},
+			expected:      defaultPrompt + "\n\nAlso, specifically check for these patterns:\n1. Custom pattern check\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				SystemPrompt:  tt.systemPrompt,
+				CustomPrompts: tt.customPrompts,
+			})
+
+			// test the buildSystemPrompt function
+			result := checker.buildSystemPrompt()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCustomPromptsInActualRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemPrompt  string
+		customPrompts []string
+	}{
+		{
+			name:          "with no custom prompts",
+			systemPrompt:  "Base system prompt",
+			customPrompts: []string{},
+		},
+		{
+			name:          "with custom prompts",
+			systemPrompt:  "Base system prompt",
+			customPrompts: []string{"Check for 'will perform X - $Y' pattern", "Watch for excessive emoji usage"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedContent string
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedContent = req.Messages[0].Content // capture the system message content
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				SystemPrompt:  tt.systemPrompt,
+				CustomPrompts: tt.customPrompts,
+			})
+
+			// call the check method to trigger the request
+			checker.check(context.Background(), "test message", nil)
+
+			// verify the system message in the request contains what we expect
+			expectedContent := checker.buildSystemPrompt()
+			assert.Equal(t, expectedContent, capturedContent)
+
+			// if we have custom prompts, ensure they are in the system message
+			for _, prompt := range tt.customPrompts {
+				assert.Contains(t, capturedContent, prompt)
+			}
+		})
+	}
+}
+
+func TestIsReasoningModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected bool
+	}{
+		{name: "gpt-4o-mini", model: "gpt-4o-mini", expected: false},
+		{name: "gpt-4o", model: "gpt-4o", expected: false},
+		{name: "gpt-4-turbo", model: "gpt-4-turbo", expected: false},
+		{name: "gpt-3.5-turbo", model: "gpt-3.5-turbo", expected: false},
+		{name: "o1-mini", model: "o1-mini", expected: true},
+		{name: "o1-preview", model: "o1-preview", expected: true},
+		{name: "o3-mini", model: "o3-mini", expected: true},
+		{name: "o4", model: "o4", expected: true},
+		{name: "gpt-5", model: "gpt-5", expected: true},
+		{name: "gpt-5-mini", model: "gpt-5-mini", expected: true},
+		{name: "gpt-5-turbo", model: "gpt-5-turbo", expected: true},
+		{name: "GPT-5", model: "GPT-5", expected: true},
+		{name: "O1-MINI", model: "O1-MINI", expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := &openAIChecker{params: OpenAIConfig{Model: tt.model}}
+			result := checker.isReasoningModel()
+			assert.Equal(t, tt.expected, result, "model %s should return %v", tt.model, tt.expected)
+		})
+	}
+}
+
+func TestMaxTokensFieldBasedOnModel(t *testing.T) {
+	tests := []struct {
+		name                      string
+		model                     string
+		expectMaxTokens           bool
+		expectMaxCompletionTokens bool
+	}{
+		{name: "standard model uses MaxTokens", model: "gpt-4o-mini", expectMaxTokens: true, expectMaxCompletionTokens: false},
+		{name: "gpt-4 uses MaxTokens", model: "gpt-4", expectMaxTokens: true, expectMaxCompletionTokens: false},
+		{name: "o1-mini uses MaxCompletionTokens", model: "o1-mini", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "o1-preview uses MaxCompletionTokens", model: "o1-preview", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "gpt-5 uses MaxCompletionTokens", model: "gpt-5", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "gpt-5-mini uses MaxCompletionTokens", model: "gpt-5-mini", expectMaxTokens: false, expectMaxCompletionTokens: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedRequest openai.ChatCompletionRequest
+
+			clientMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					capturedRequest = req
+					return openai.ChatCompletionResponse{
+						Choices: []openai.ChatCompletionChoice{{
+							Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"test", "confidence":90}`},
+						}},
+					}, nil
+				},
+			}
+
+			checker := newOpenAIChecker(clientMock, OpenAIConfig{
+				Model:             tt.model,
+				MaxTokensResponse: 100,
+			})
+
+			// call the check method to trigger the client call
+			checker.check(context.Background(), "test message", nil)
+
+			// verify the correct field is used
+			if tt.expectMaxTokens {
+				assert.Equal(t, 100, capturedRequest.MaxTokens, "MaxTokens should be set for model %s", tt.model)
+				assert.Equal(t, 0, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should not be set for model %s", tt.model)
+			}
+			if tt.expectMaxCompletionTokens {
+				assert.Equal(t, 0, capturedRequest.MaxTokens, "MaxTokens should not be set for model %s", tt.model)
+				assert.Equal(t, 100, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should be set for model %s", tt.model)
+			}
+		})
+	}
+}
+
+func TestOpenAIChecker_TruncateUTF8(t *testing.T) {
+	var capturedMsg string
+	clientMock := &mocks.OpenAIClientMock{
+		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+			capturedMsg = req.Messages[1].Content
+			return openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"ok", "confidence":100}`},
+				}},
+			}, nil
+		},
+	}
+
+	// 'Привет' is 12 bytes in UTF-8 (2 bytes per char)
+	// '🌞' is 4 bytes
+	msg := "Привет🌞"
+
+	t.Run("truncate in middle of 2-byte char", func(t *testing.T) {
+		// mock OpenAI client already defined above.
+		// we need to use a model that doesn't trigger the real tokenizer
+		// or make the tokenizer fail.
+		// since we're in a test, let's just make sure it falls back to defaultReducer.
+		checker := newOpenAIChecker(clientMock, OpenAIConfig{
+			MaxSymbolsRequest: 1, // will take 1 rune in fallback
+			MaxTokensRequest:  0, // forces tokenizer to be used if available, but let's test fallback
+		})
+
+		checker.check(context.Background(), msg, nil)
+		assert.True(t, utf8.ValidString(capturedMsg), "Truncated string should be valid UTF-8. Got: %x", capturedMsg)
+	})
 }

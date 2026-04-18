@@ -27,21 +27,25 @@
 //
 //	OS      Arch    SQLite version
 //	------------------------------
-//	darwin	amd64   3.49.0
-//	darwin	arm64   3.49.0
-//	freebsd	amd64   3.49.0
-//	freebsd	arm64   3.49.0
-//	linux	386     3.49.0
-//	linux	amd64   3.49.0
-//	linux	arm     3.49.0
-//	linux	arm64   3.49.0
-//	linux	loong64 3.49.0
-//	linux	ppc64le 3.49.0
-//	linux	riscv64 3.49.0
-//	linux	s390x   3.49.0
-//	windows	386     3.49.0
-//	windows	amd64   3.49.0
-//	windows	arm64   3.49.0
+//	darwin	amd64   3.50.4
+//	darwin	arm64   3.50.4
+//	freebsd	amd64   3.50.4
+//	freebsd	arm64   3.50.4
+//	linux	386     3.50.4
+//	linux	amd64   3.50.4
+//	linux	arm     3.50.4
+//	linux	arm64   3.50.4
+//	linux	loong64 3.50.4
+//	linux	ppc64le 3.50.4
+//	linux	riscv64 3.50.4
+//	linux	s390x   3.50.4
+//	windows	386     3.50.4
+//	windows	amd64   3.50.4
+//	windows	arm64   3.50.4
+//
+// # Benchmarks
+//
+// [The SQLite Drivers Benchmarks Game]
 //
 // # Builders
 //
@@ -50,6 +54,10 @@
 // https://modern-c.appspot.com/-/builder/?importpath=modernc.org%2fsqlite
 //
 // # Changelog
+//
+//   - 2025-10-10 v1.39.1: Upgrade to SQLite 3.50.4.
+//
+//   - 2025-06-09 v1.38.0: Upgrade to SQLite 3.50.1.
 //
 //   - 2025-02-26 v1.36.0: Upgrade to SQLite 3.49.0.
 //
@@ -289,4 +297,6 @@
 // # Sqlite documentation
 //
 // See https://sqlite.org/docs.html
+//
+// [The SQLite Drivers Benchmarks Game]: https://pkg.go.dev/modernc.org/sqlite-bench#readme-tl-dr-scorecard
 package sqlite // import "modernc.org/sqlite"

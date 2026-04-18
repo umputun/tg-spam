@@ -171,7 +171,8 @@ func (c *Converter) convertTableSchema(tableName, sqliteStmt string) string {
 			// 1. Add a generated column that computes a SHA256 hash of the message text
 			// 2. Change the unique constraint to use the hash instead of the full message text
 			pgStmt = strings.Replace(pgStmt, "UNIQUE(gid, message)",
-				"message_hash TEXT GENERATED ALWAYS AS (encode(sha256(message::bytea), 'hex')) STORED,\n            UNIQUE(gid, message_hash)", 1)
+				"message_hash TEXT GENERATED ALWAYS AS (encode(sha256(message::bytea), 'hex')) STORED,\n"+
+					"            UNIQUE(gid, message_hash)", 1)
 		}
 
 	case "dictionary":
@@ -227,12 +228,12 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 		copyColumns = filteredColumns
 	}
 
-	// write COPY statement header with explanatory comment
+	//nolint:gosec // table name from internal schema, not user input
 	if _, err := fmt.Fprintf(w, "-- Data for table %s\n", table); err != nil {
 		return fmt.Errorf("failed to write comment: %w", err)
 	}
 
-	// the COPY command specifies which table and columns to load data into
+	//nolint:gosec // table/columns from internal schema
 	if _, err := fmt.Fprintf(w, "COPY %s (%s) FROM stdin;\n", table, strings.Join(copyColumns, ", ")); err != nil {
 		return fmt.Errorf("failed to write COPY header: %w", err)
 	}
@@ -247,7 +248,7 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 
 	// write each row in PostgreSQL COPY format (tab-separated values)
 	for rows.Next() {
-		row := make(map[string]interface{})
+		row := make(map[string]any)
 		if err := rows.MapScan(row); err != nil {
 			return fmt.Errorf("failed to scan row: %w", err)
 		}
@@ -277,7 +278,7 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 			values = append(values, c.formatPostgresValue(val))
 		}
 
-		// write row as tab-separated values
+		//nolint:gosec // values from internal database rows
 		if _, err := fmt.Fprintf(w, "%s\n", strings.Join(values, "\t")); err != nil {
 			return fmt.Errorf("failed to write data row: %w", err)
 		}
@@ -360,7 +361,7 @@ func (c *Converter) convertIndexDefinition(tableName, sqliteStmt string) string 
 
 // formatPostgresValue formats a value for PostgreSQL COPY format.
 // PostgreSQL COPY format requires special handling for NULL values and character escaping.
-func (c *Converter) formatPostgresValue(value interface{}) string {
+func (c *Converter) formatPostgresValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return "\\N" // postgreSQL COPY format for NULL
