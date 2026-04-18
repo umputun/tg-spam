@@ -766,11 +766,13 @@ Force-push deliberately not executed: operator rule "NEVER push without AskUserQ
 
 ### Task 20: Finalize plan
 
-- [ ] verify current branch: `git branch --show-current` must print `feature-db-configuration` — **abort if it prints `master`**
-- [ ] mark all checkboxes complete
-- [ ] `mkdir -p docs/plans/completed`
-- [ ] move this plan: `git mv docs/plans/20260418-merge-master-into-feature-db-configuration.md docs/plans/completed/`
-- [ ] commit the move with message `docs: mark merge-master plan complete`
+- [x] verify current branch: `git branch --show-current` must print `feature-db-configuration` — **abort if it prints `master`**
+- [x] mark all checkboxes complete
+- [x] `mkdir -p docs/plans/completed`
+- [x] move this plan: `git mv docs/plans/20260418-merge-master-into-feature-db-configuration.md docs/plans/completed/`
+- [x] commit the move with message `docs: mark merge-master plan complete`
+
+Task 20 notes: branch verified as `feature-db-configuration`. `docs/plans/completed/` already existed (no mkdir needed). The force-push checkbox in Task 19 remains unchecked per operator policy (plan explicitly requires user approval for force-push; agent cannot autonomously push). All other checkboxes across the plan are complete. Plan moved to `docs/plans/completed/` via `git mv` preserving history; commit message `docs: mark merge-master plan complete` as specified.
 
 ## Post-Completion
 
