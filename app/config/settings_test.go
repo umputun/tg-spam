@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestSettings_JSON(t *testing.T) {
@@ -307,6 +308,96 @@ func TestSettings_IsCASEnabled(t *testing.T) {
 			assert.Equal(t, tt.expected, s.IsCASEnabled())
 		})
 	}
+}
+
+// newPopulatedSettings returns a Settings with non-zero values in every
+// newly-added group so round-trip tests can detect dropped fields.
+func newPopulatedSettings() *Settings {
+	s := New()
+	s.Delete.JoinMessages = true
+	s.Delete.LeaveMessages = true
+
+	s.Gemini.Token = "gemini-secret"
+	s.Gemini.Veto = true
+	s.Gemini.Prompt = "gemini-prompt"
+	s.Gemini.CustomPrompts = []string{"g1", "g2"}
+	s.Gemini.Model = "gemini-pro"
+	s.Gemini.MaxTokensResponse = 1024
+	s.Gemini.MaxSymbolsRequest = 2048
+	s.Gemini.RetryCount = 3
+	s.Gemini.HistorySize = 5
+	s.Gemini.CheckShortMessages = true
+
+	s.LLM.Consensus = "all"
+	s.LLM.RequestTimeout = 45 * time.Second
+
+	s.Duplicates.Threshold = 7
+	s.Duplicates.Window = 2 * time.Minute
+
+	s.Report.Enabled = true
+	s.Report.Threshold = 4
+	s.Report.AutoBanThreshold = 10
+	s.Report.RateLimit = 5
+	s.Report.RatePeriod = 90 * time.Second
+
+	s.AggressiveCleanup = true
+	s.AggressiveCleanupLimit = 50
+
+	return s
+}
+
+func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
+	original := newPopulatedSettings()
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	assert.Contains(t, jsonStr, `"delete"`)
+	assert.Contains(t, jsonStr, `"gemini"`)
+	assert.Contains(t, jsonStr, `"llm"`)
+	assert.Contains(t, jsonStr, `"duplicates"`)
+	assert.Contains(t, jsonStr, `"report"`)
+	assert.Contains(t, jsonStr, `"aggressive_cleanup"`)
+	assert.Contains(t, jsonStr, `"aggressive_cleanup_limit"`)
+
+	var restored Settings
+	require.NoError(t, json.Unmarshal(data, &restored))
+
+	assert.Equal(t, original.Delete, restored.Delete)
+	assert.Equal(t, original.Gemini, restored.Gemini)
+	assert.Equal(t, original.LLM, restored.LLM)
+	assert.Equal(t, original.Duplicates, restored.Duplicates)
+	assert.Equal(t, original.Report, restored.Report)
+	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
+	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
+}
+
+func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
+	original := newPopulatedSettings()
+
+	data, err := yaml.Marshal(original)
+	require.NoError(t, err)
+
+	yamlStr := string(data)
+	assert.Contains(t, yamlStr, "delete:")
+	assert.Contains(t, yamlStr, "gemini:")
+	assert.Contains(t, yamlStr, "llm:")
+	assert.Contains(t, yamlStr, "duplicates:")
+	assert.Contains(t, yamlStr, "report:")
+	assert.Contains(t, yamlStr, "aggressive_cleanup:")
+	assert.Contains(t, yamlStr, "aggressive_cleanup_limit:")
+
+	var restored Settings
+	require.NoError(t, yaml.Unmarshal(data, &restored))
+
+	assert.Equal(t, original.Delete, restored.Delete)
+	assert.Equal(t, original.Gemini, restored.Gemini)
+	assert.Equal(t, original.LLM, restored.LLM)
+	assert.Equal(t, original.Duplicates, restored.Duplicates)
+	assert.Equal(t, original.Report, restored.Report)
+	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
+	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
 }
 
 func TestSettings_IsStartupMessageEnabled(t *testing.T) {

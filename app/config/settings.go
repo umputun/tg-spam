@@ -17,11 +17,16 @@ type Settings struct {
 	CAS           CASSettings           `json:"cas" yaml:"cas" db:"cas"`
 	Meta          MetaSettings          `json:"meta" yaml:"meta" db:"meta"`
 	OpenAI        OpenAISettings        `json:"openai" yaml:"openai" db:"openai"`
+	Gemini        GeminiSettings        `json:"gemini" yaml:"gemini" db:"gemini"`
+	LLM           LLMSettings           `json:"llm" yaml:"llm" db:"llm"`
 	LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins" db:"lua_plugins"`
 	AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing" db:"abnormal_spacing"`
 	Files         FilesSettings         `json:"files" yaml:"files" db:"files"`
 	Message       MessageSettings       `json:"message" yaml:"message" db:"message"`
 	Server        ServerSettings        `json:"server" yaml:"server" db:"server"`
+	Delete        DeleteSettings        `json:"delete" yaml:"delete" db:"delete"`
+	Duplicates    DuplicatesSettings    `json:"duplicates" yaml:"duplicates" db:"duplicates"`
+	Report        ReportSettings        `json:"report" yaml:"report" db:"report"`
 
 	// spam detection settings
 	SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
@@ -33,6 +38,10 @@ type Settings struct {
 	// bot behavior settings
 	NoSpamReply         bool `json:"no_spam_reply" yaml:"no_spam_reply" db:"no_spam_reply"`
 	SuppressJoinMessage bool `json:"suppress_join_message" yaml:"suppress_join_message" db:"suppress_join_message"`
+
+	// cleanup settings
+	AggressiveCleanup      bool `json:"aggressive_cleanup" yaml:"aggressive_cleanup" db:"aggressive_cleanup"`
+	AggressiveCleanupLimit int  `json:"aggressive_cleanup_limit" yaml:"aggressive_cleanup_limit" db:"aggressive_cleanup_limit"`
 
 	// detection mode settings
 	ParanoidMode       bool `json:"paranoid_mode" yaml:"paranoid_mode" db:"paranoid_mode"`
@@ -115,6 +124,47 @@ type OpenAISettings struct {
 	HistorySize        int      `json:"history_size" yaml:"history_size" db:"openai_history_size"`
 	ReasoningEffort    string   `json:"reasoning_effort" yaml:"reasoning_effort" db:"openai_reasoning_effort"`
 	CheckShortMessages bool     `json:"check_short_messages" yaml:"check_short_messages" db:"openai_check_short_messages"`
+}
+
+// GeminiSettings contains Gemini LLM integration settings
+type GeminiSettings struct {
+	Token              string   `json:"token" yaml:"token" db:"gemini_token"`
+	Veto               bool     `json:"veto" yaml:"veto" db:"gemini_veto"`
+	Prompt             string   `json:"prompt" yaml:"prompt" db:"gemini_prompt"`
+	CustomPrompts      []string `json:"custom_prompts" yaml:"custom_prompts" db:"gemini_custom_prompts"`
+	Model              string   `json:"model" yaml:"model" db:"gemini_model"`
+	MaxTokensResponse  int32    `json:"max_tokens_response" yaml:"max_tokens_response" db:"gemini_max_tokens_response"`
+	MaxSymbolsRequest  int      `json:"max_symbols_request" yaml:"max_symbols_request" db:"gemini_max_symbols_request"`
+	RetryCount         int      `json:"retry_count" yaml:"retry_count" db:"gemini_retry_count"`
+	HistorySize        int      `json:"history_size" yaml:"history_size" db:"gemini_history_size"`
+	CheckShortMessages bool     `json:"check_short_messages" yaml:"check_short_messages" db:"gemini_check_short_messages"`
+}
+
+// LLMSettings contains shared LLM orchestration settings
+type LLMSettings struct {
+	Consensus      string        `json:"consensus" yaml:"consensus" db:"llm_consensus"`
+	RequestTimeout time.Duration `json:"request_timeout" yaml:"request_timeout" db:"llm_request_timeout"`
+}
+
+// DeleteSettings contains settings for automatic deletion of service messages
+type DeleteSettings struct {
+	JoinMessages  bool `json:"join_messages" yaml:"join_messages" db:"delete_join_messages"`
+	LeaveMessages bool `json:"leave_messages" yaml:"leave_messages" db:"delete_leave_messages"`
+}
+
+// DuplicatesSettings contains duplicate-message detection settings
+type DuplicatesSettings struct {
+	Threshold int           `json:"threshold" yaml:"threshold" db:"duplicates_threshold"`
+	Window    time.Duration `json:"window" yaml:"window" db:"duplicates_window"`
+}
+
+// ReportSettings contains user-report feature settings
+type ReportSettings struct {
+	Enabled          bool          `json:"enabled" yaml:"enabled" db:"report_enabled"`
+	Threshold        int           `json:"threshold" yaml:"threshold" db:"report_threshold"`
+	AutoBanThreshold int           `json:"auto_ban_threshold" yaml:"auto_ban_threshold" db:"report_auto_ban_threshold"`
+	RateLimit        int           `json:"rate_limit" yaml:"rate_limit" db:"report_rate_limit"`
+	RatePeriod       time.Duration `json:"rate_period" yaml:"rate_period" db:"report_rate_period"`
 }
 
 // LuaPluginsSettings contains Lua plugins settings

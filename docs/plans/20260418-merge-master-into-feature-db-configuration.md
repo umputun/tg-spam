@@ -316,15 +316,15 @@ No tests. Lint must exit zero.
 - Modify: `app/config/settings.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] add `DeleteSettings` struct with `JoinMessages`, `LeaveMessages` + json/yaml/db tags
-- [ ] add `GeminiSettings` struct mirroring `OpenAISettings` shape (Token, Veto, Prompt, CustomPrompts, Model, MaxTokensResponse `int32`, MaxSymbolsRequest, RetryCount, HistorySize, CheckShortMessages) + tags
-- [ ] add `LLMSettings` struct with `Consensus string`, `RequestTimeout time.Duration` + tags
-- [ ] add `DuplicatesSettings` struct with `Threshold int`, `Window time.Duration` + tags
-- [ ] add `ReportSettings` struct with `Enabled`, `Threshold`, `AutoBanThreshold`, `RateLimit`, `RatePeriod time.Duration` + tags
-- [ ] add top-level fields to `Settings`: `Delete`, `Gemini`, `LLM`, `Duplicates`, `Report`, `AggressiveCleanup bool`, `AggressiveCleanupLimit int` with tags
-- [ ] write JSON round-trip test covering every new group (marshal → unmarshal → deep-equal)
-- [ ] write YAML round-trip test likewise
-- [ ] run `go test ./app/config/...` — must pass before next task
+- [x] add `DeleteSettings` struct with `JoinMessages`, `LeaveMessages` + json/yaml/db tags
+- [x] add `GeminiSettings` struct mirroring `OpenAISettings` shape (Token, Veto, Prompt, CustomPrompts, Model, MaxTokensResponse `int32`, MaxSymbolsRequest, RetryCount, HistorySize, CheckShortMessages) + tags
+- [x] add `LLMSettings` struct with `Consensus string`, `RequestTimeout time.Duration` + tags
+- [x] add `DuplicatesSettings` struct with `Threshold int`, `Window time.Duration` + tags
+- [x] add `ReportSettings` struct with `Enabled`, `Threshold`, `AutoBanThreshold`, `RateLimit`, `RatePeriod time.Duration` + tags
+- [x] add top-level fields to `Settings`: `Delete`, `Gemini`, `LLM`, `Duplicates`, `Report`, `AggressiveCleanup bool`, `AggressiveCleanupLimit int` with tags
+- [x] write JSON round-trip test covering every new group (marshal → unmarshal → deep-equal)
+- [x] write YAML round-trip test likewise
+- [x] run `go test ./app/config/...` — must pass before next task
 
 ### Task 4: Extend MetaSettings and drop Server.AuthUser from domain model
 
