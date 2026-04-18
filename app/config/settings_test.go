@@ -317,6 +317,9 @@ func newPopulatedSettings() *Settings {
 	s.Delete.JoinMessages = true
 	s.Delete.LeaveMessages = true
 
+	s.Meta.ContactOnly = true
+	s.Meta.Giveaway = true
+
 	s.Gemini.Token = "gemini-secret"
 	s.Gemini.Veto = true
 	s.Gemini.Prompt = "gemini-prompt"
@@ -360,6 +363,8 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, jsonStr, `"report"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup_limit"`)
+	assert.Contains(t, jsonStr, `"contact_only"`)
+	assert.Contains(t, jsonStr, `"giveaway"`)
 
 	var restored Settings
 	require.NoError(t, json.Unmarshal(data, &restored))
@@ -371,6 +376,8 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Report, restored.Report)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
+	assert.True(t, restored.Meta.ContactOnly)
+	assert.True(t, restored.Meta.Giveaway)
 }
 
 func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
@@ -387,6 +394,8 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, yamlStr, "report:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup_limit:")
+	assert.Contains(t, yamlStr, "contact_only:")
+	assert.Contains(t, yamlStr, "giveaway:")
 
 	var restored Settings
 	require.NoError(t, yaml.Unmarshal(data, &restored))
@@ -398,6 +407,8 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Report, restored.Report)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
+	assert.True(t, restored.Meta.ContactOnly)
+	assert.True(t, restored.Meta.Giveaway)
 }
 
 func TestSettings_IsStartupMessageEnabled(t *testing.T) {

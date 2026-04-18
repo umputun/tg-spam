@@ -337,11 +337,11 @@ is handled in Task 8 where we are rewriting options from master's baseline
 anyway. Landing options-struct edits in Pass 1 would create extra churn inside
 the Pass 2 merge conflict blocks.
 
-- [ ] add `ContactOnly bool` and `Giveaway bool` to `MetaSettings` with tags
-- [ ] remove `AuthUser` field from `ServerSettings` (PR-only addition that master never had)
-- [ ] grep for and remove any references to `ServerSettings.AuthUser` inside `app/config/` (tests, etc.)
-- [ ] add test case in `settings_test.go` asserting `MetaSettings` JSON/YAML round-trip includes `ContactOnly` and `Giveaway`
-- [ ] run `go test ./app/config/...` — must pass before next task
+- [x] add `ContactOnly bool` and `Giveaway bool` to `MetaSettings` with tags
+- [x] remove `AuthUser` field from `ServerSettings` (PR-only addition that master never had)
+- [x] grep for and remove any references to `ServerSettings.AuthUser` inside `app/config/` (tests, etc.)
+- [x] add test case in `settings_test.go` asserting `MetaSettings` JSON/YAML round-trip includes `ContactOnly` and `Giveaway`
+- [x] run `go test ./app/config/...` — must pass before next task
 
 ### Task 4a: Update crypt.go sensitive-fields plumbing
 

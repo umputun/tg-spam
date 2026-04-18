@@ -456,10 +456,9 @@ func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
 			crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
 			s.Require().NoError(err)
 
-			// custom sensitive fields - only encrypt Telegram token and a different field
+			// custom sensitive fields - encrypt only Telegram token, opting out of the default list
 			customFields := []string{
 				"telegram.token",
-				"server.auth_user", // not normally encrypted
 			}
 
 			// create store with encryption and custom fields
@@ -474,10 +473,9 @@ func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
 			// create settings with sensitive info
 			settings := New()
 			settings.InstanceID = "custom-fields-test"
-			settings.Telegram.Token = "super-secret-telegram-token"
-			settings.OpenAI.Token = "super-secret-openai-token"    // should NOT be encrypted
-			settings.Server.AuthHash = "super-secret-auth-hash"    // should NOT be encrypted
-			settings.Server.AuthUser = "custom-sensitive-username" // should be encrypted
+			settings.Telegram.Token = "super-secret-telegram-token" // should be encrypted
+			settings.OpenAI.Token = "super-secret-openai-token"     // should NOT be encrypted (not in custom list)
+			settings.Server.AuthHash = "super-secret-auth-hash"     // should NOT be encrypted (not in custom list)
 
 			// save settings with custom encryption fields
 			err = store.Save(s.ctx, settings)
@@ -501,17 +499,14 @@ func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
 				} `json:"openai"`
 				Server struct {
 					AuthHash string `json:"auth_hash"`
-					AuthUser string `json:"auth_user"`
 				} `json:"server"`
 			}
 			err = json.Unmarshal([]byte(record.Data), &rawSettings)
 			s.Require().NoError(err)
 
-			// verify only the custom fields are encrypted
+			// verify only the custom field is encrypted
 			s.True(IsEncrypted(rawSettings.Telegram.Token),
 				"Telegram token should be encrypted")
-			s.True(IsEncrypted(rawSettings.Server.AuthUser),
-				"Server auth user should be encrypted (custom field)")
 
 			// verify fields NOT in the custom list remain unencrypted
 			s.False(IsEncrypted(rawSettings.OpenAI.Token),
@@ -525,7 +520,6 @@ func (s *SettingsTestSuite) TestStore_WithCustomSensitiveFields() {
 
 			// verify proper decryption
 			s.Equal("super-secret-telegram-token", loaded.Telegram.Token)
-			s.Equal("custom-sensitive-username", loaded.Server.AuthUser)
 			s.Equal("super-secret-openai-token", loaded.OpenAI.Token)
 			s.Equal("super-secret-auth-hash", loaded.Server.AuthHash)
 		})

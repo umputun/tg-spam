@@ -107,6 +107,8 @@ type MetaSettings struct {
 	Forward         bool   `json:"forward" yaml:"forward" db:"meta_forward"`
 	Keyboard        bool   `json:"keyboard" yaml:"keyboard" db:"meta_keyboard"`
 	UsernameSymbols string `json:"username_symbols" yaml:"username_symbols" db:"meta_username_symbols"`
+	ContactOnly     bool   `json:"contact_only" yaml:"contact_only" db:"meta_contact_only"`
+	Giveaway        bool   `json:"giveaway" yaml:"giveaway" db:"meta_giveaway"`
 }
 
 // OpenAISettings contains OpenAI integration settings
@@ -203,7 +205,6 @@ type MessageSettings struct {
 type ServerSettings struct {
 	Enabled    bool   `json:"enabled" yaml:"enabled" db:"server_enabled"`
 	ListenAddr string `json:"listen_addr" yaml:"listen_addr" db:"server_listen_addr"`
-	AuthUser   string `json:"auth_user" yaml:"auth_user" db:"server_auth_user"`
 	AuthHash   string `json:"auth_hash" yaml:"auth_hash" db:"server_auth_hash"`
 }
 

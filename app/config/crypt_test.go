@@ -96,7 +96,6 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 		},
 		Server: ServerSettings{
 			AuthHash: "server-auth-hash-secret",
-			AuthUser: "public-username",
 		},
 	}
 
@@ -113,7 +112,6 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 	assert.Equal(t, "public-group-name", settings.Telegram.Group)
 	assert.Equal(t, "gpt-4", settings.OpenAI.Model)
 	assert.Equal(t, "public-prompt", settings.OpenAI.Prompt)
-	assert.Equal(t, "public-username", settings.Server.AuthUser)
 
 	// create a new crypter with the same key
 	decrypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
@@ -132,7 +130,6 @@ func TestCrypter_EncryptDecryptSensitiveFields(t *testing.T) {
 	assert.Equal(t, "public-group-name", settings.Telegram.Group)
 	assert.Equal(t, "gpt-4", settings.OpenAI.Model)
 	assert.Equal(t, "public-prompt", settings.OpenAI.Prompt)
-	assert.Equal(t, "public-username", settings.Server.AuthUser)
 }
 
 func TestCrypter_EncryptWithInvalidKey(t *testing.T) {

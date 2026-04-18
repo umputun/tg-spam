@@ -22,7 +22,6 @@ const (
 	FieldTelegramToken  = "telegram.token"
 	FieldOpenAIToken    = "openai.token"
 	FieldServerAuthHash = "server.auth_hash"
-	FieldServerAuthUser = "server.auth_user"
 )
 
 // MinKeyLength defines the minimum acceptable length for an encryption key
@@ -190,14 +189,6 @@ func (c *Crypter) EncryptSensitiveFields(settings *Settings, sensitiveFields ...
 				}
 				settings.Server.AuthHash = encrypted
 			}
-		case FieldServerAuthUser:
-			if settings.Server.AuthUser != "" && !IsEncrypted(settings.Server.AuthUser) {
-				encrypted, err := c.Encrypt(settings.Server.AuthUser)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt Server auth user: %w", err)
-				}
-				settings.Server.AuthUser = encrypted
-			}
 		default:
 			log.Printf("[WARN] unknown sensitive field: %s", field)
 		}
@@ -252,16 +243,6 @@ func (c *Crypter) DecryptSensitiveFields(settings *Settings, sensitiveFields ...
 					log.Printf("[WARN] failed to decrypt Server auth hash: %v", err)
 				} else {
 					settings.Server.AuthHash = decrypted
-				}
-			}
-		case FieldServerAuthUser:
-			if IsEncrypted(settings.Server.AuthUser) {
-				decrypted, err := c.Decrypt(settings.Server.AuthUser)
-				if err != nil {
-					decryptErrs = append(decryptErrs, fmt.Errorf("failed to decrypt Server auth user: %w", err))
-					log.Printf("[WARN] failed to decrypt Server auth user: %v", err)
-				} else {
-					settings.Server.AuthUser = decrypted
 				}
 			}
 		default:
