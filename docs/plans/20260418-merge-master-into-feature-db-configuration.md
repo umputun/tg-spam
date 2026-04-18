@@ -288,11 +288,11 @@ field-per-field; extend it additively for each new group. Keep the
 - Delete: `coverage.html`
 - Modify: `.gitignore`
 
-- [ ] `git rm coverage.html`
-- [ ] merge `.gitignore` conflict: take union of master's entries and PR's additions (`.claude/`, `issue.md`, `*.bak`, `*.local`)
-- [ ] add `coverage.html` and `coverage.out` to `.gitignore` if not already covered
-- [ ] commit with message `chore: remove coverage.html and align .gitignore`
-- [ ] verify `git status` clean afterwards
+- [x] `git rm coverage.html`
+- [x] merge `.gitignore` conflict: take union of master's entries and PR's additions (`.claude/`, `issue.md`, `*.bak`, `*.local`)
+- [x] add `coverage.html` and `coverage.out` to `.gitignore` if not already covered
+- [x] commit with message `chore: remove coverage.html and align .gitignore`
+- [x] verify `git status` clean afterwards
 
 No tests needed for this task (housekeeping only), but verify `go build ./...` still succeeds.
 
