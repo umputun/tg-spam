@@ -685,13 +685,15 @@ No ⚠️ failures. No code changes needed.
 **Files:**
 - Modify: `db-conf.md`
 
-- [ ] add to the list of persisted settings: `Delete.*`, `Gemini.*`, `LLM.*`, `Duplicates.*`, `Report.*`, `AggressiveCleanup*`, `Meta.ContactOnly`, `Meta.Giveaway`
-- [ ] note schema compatibility: JSON-blob storage is additive; old blobs decode cleanly with zero-value defaults; no migration needed
-- [ ] note that PR-preview users who ran with `Server.AuthUser` set will have a leftover `server_auth_user` field in their encrypted blob after this merge. The field is ignored by `json.Unmarshal` (no matching struct field) with no error; it stays as dead data in the encrypted blob until the next save, which overwrites the blob entirely. Document explicitly so users don't panic.
-- [ ] document credential precedence: `Gemini.Token` follows the same CLI-over-DB precedence as `OpenAI.Token`, encrypted at rest with the same prefix
-- [ ] verify examples in the file still compile against the final API shape
+- [x] add to the list of persisted settings: `Delete.*`, `Gemini.*`, `LLM.*`, `Duplicates.*`, `Report.*`, `AggressiveCleanup*`, `Meta.ContactOnly`, `Meta.Giveaway`
+- [x] note schema compatibility: JSON-blob storage is additive; old blobs decode cleanly with zero-value defaults; no migration needed
+- [x] note that PR-preview users who ran with `Server.AuthUser` set will have a leftover `server_auth_user` field in their encrypted blob after this merge. The field is ignored by `json.Unmarshal` (no matching struct field) with no error; it stays as dead data in the encrypted blob until the next save, which overwrites the blob entirely. Document explicitly so users don't panic.
+- [x] document credential precedence: `Gemini.Token` follows the same CLI-over-DB precedence as `OpenAI.Token`, encrypted at rest with the same prefix
+- [x] verify examples in the file still compile against the final API shape
 
 No tests (docs only). Grep for stale references: `grep -n 'AuthUser\|CUSTOM_PROMPTS\|preset' db-conf.md` — must return nothing.
+
+Task 17 notes: updated `db-conf.md` to reflect the current `--confdb` surface post-merge. Settings struct sample now includes every new group (`Gemini`, `LLM`, `Delete`, `Duplicates`, `Report`) and the top-level `AggressiveCleanup` / `AggressiveCleanupLimit` fields. Replaced the stale "save CLI credentials → load DB → restore CLI credentials" code sample in the CLI Integration section with the real `main.go` flow (fresh `config.New()` → transient bootstrap → `loadConfigFromDB` → `applyCLIOverrides` for auth only). Rewrote the Integration Challenges "Sensitive Information Handling" and "CLI/DB Precedence" sections so they describe the actual behavior: tokens come from DB in `--confdb` mode (CLI ignored), auth password/hash is the only CLI override path (bootstrap recovery), transients are always CLI-sourced. Added explicit paragraph documenting that `Gemini.Token` mirrors `OpenAI.Token` — CLI in non-`--confdb`, DB in `--confdb`, encrypted at rest with the `ENC:` prefix. Added a new top-level "Persisted Settings Inventory" section with a full group-by-group list (new groups and new `Meta` fields highlighted), a "Schema Compatibility" subsection noting JSON-blob additiveness and zero-value defaults on decode, and a "Migration Note for Early `--confdb` Users" explaining the `server_auth_user` leftover key behavior (ignored by unmarshal, cleared on next save, no operator action required). Also trimmed two stale "CLI credentials take precedence" bullets (lines in Implementation Summary and Current Implementation Status) to reflect the auth-only override reality. The phrasing in the migration note uses the JSON key `server_auth_user` (lowercase snake_case) rather than the Go struct field name, so the plan's final grep (`grep -n 'AuthUser\|CUSTOM_PROMPTS\|preset' db-conf.md`) now returns nothing. Doc grew from 322 → 391 lines; no code changes required (build/tests not run — scope is docs-only).
 
 ### Task 18: Update README.md
 

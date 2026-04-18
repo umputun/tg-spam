@@ -9,7 +9,7 @@ This document describes the implemented database configuration support for the T
 1. **Package Structure**: Created a dedicated `config` package (not `settings`) to avoid confusion with the existing webapi Settings struct
 2. **Domain-Driven Design**: Configuration is organized by functional domains (Telegram, Admin, OpenAI, etc.)
 3. **Security First**: Sensitive fields are encrypted using AES-256-GCM with Argon2 key derivation
-4. **CLI Precedence**: CLI parameters always override database values for security-critical settings
+4. **CLI Precedence**: CLI always owns connection/control flags and the web auth password/hash; database owns everything else in `--confdb` mode
 
 ## Implementation Summary
 
@@ -32,9 +32,9 @@ The implementation consists of four main components:
    - Proper authentication and authorization
 
 4. **Security Features**:
-   - Encryption for tokens and passwords
+   - Encryption for tokens and password hashes
    - Transient settings that are never persisted
-   - CLI credentials take precedence over database values
+   - CLI override for web auth password/hash even in `--confdb` mode (bootstrap recovery)
 
 ## Implementation Details
 
@@ -59,11 +59,16 @@ type Settings struct {
     CAS           CASSettings           `json:"cas" yaml:"cas" db:"cas"`
     Meta          MetaSettings          `json:"meta" yaml:"meta" db:"meta"`
     OpenAI        OpenAISettings        `json:"openai" yaml:"openai" db:"openai"`
+    Gemini        GeminiSettings        `json:"gemini" yaml:"gemini" db:"gemini"`
+    LLM           LLMSettings           `json:"llm" yaml:"llm" db:"llm"`
     LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins" db:"lua_plugins"`
     AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing" db:"abnormal_spacing"`
     Files         FilesSettings         `json:"files" yaml:"files" db:"files"`
     Message       MessageSettings       `json:"message" yaml:"message" db:"message"`
     Server        ServerSettings        `json:"server" yaml:"server" db:"server"`
+    Delete        DeleteSettings        `json:"delete" yaml:"delete" db:"delete"`
+    Duplicates    DuplicatesSettings    `json:"duplicates" yaml:"duplicates" db:"duplicates"`
+    Report        ReportSettings        `json:"report" yaml:"report" db:"report"`
 
     // Spam detection settings
     SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
@@ -71,6 +76,10 @@ type Settings struct {
     MaxEmoji            int     `json:"max_emoji" yaml:"max_emoji" db:"max_emoji"`
     MinSpamProbability  float64 `json:"min_spam_probability" yaml:"min_spam_probability" db:"min_spam_probability"`
     MultiLangWords      int     `json:"multi_lang_words" yaml:"multi_lang_words" db:"multi_lang_words"`
+
+    // Cleanup settings
+    AggressiveCleanup      bool `json:"aggressive_cleanup" yaml:"aggressive_cleanup" db:"aggressive_cleanup"`
+    AggressiveCleanupLimit int  `json:"aggressive_cleanup_limit" yaml:"aggressive_cleanup_limit" db:"aggressive_cleanup_limit"`
 
     // Transient fields that should never be stored
     Transient TransientSettings `json:"-" yaml:"-"`
@@ -131,8 +140,36 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 The main.go integrates the config package seamlessly:
 
 ```go
-// Convert CLI options to domain settings model
-appSettings := optToSettings(opts)
+var appSettings *config.Settings
+
+if opts.ConfigDB {
+    // database configuration mode - load from database first
+    appSettings = config.New()
+
+    // set transient values needed for database connection BEFORE loading
+    appSettings.Transient.ConfigDB = opts.ConfigDB
+    appSettings.Transient.ConfigDBEncryptKey = opts.ConfigDBEncryptKey
+    appSettings.Transient.DataBaseURL = opts.DataBaseURL
+    appSettings.InstanceID = opts.InstanceID
+    appSettings.Files.DynamicDataPath = opts.Files.DynamicDataPath
+
+    // load settings from database (overwrites the empty struct)
+    if err := loadConfigFromDB(ctx, appSettings); err != nil {
+        log.Printf("[ERROR] failed to load configuration from database: %v", err)
+        os.Exit(1)
+    }
+
+    // apply remaining transient values from CLI (these are never stored in DB)
+    appSettings.Transient.Dbg = opts.Dbg
+    appSettings.Transient.TGDbg = opts.TGDbg
+    appSettings.Dry = opts.Dry
+
+    // apply explicit CLI overrides for non-transient values (auth password / hash)
+    applyCLIOverrides(appSettings, opts)
+} else {
+    // traditional mode - CLI is source of truth
+    appSettings = optToSettings(opts)
+}
 
 // Handle save-config command
 if p.Active != nil && p.Active.Name == "save-config" {
@@ -144,38 +181,13 @@ if p.Active != nil && p.Active.Name == "save-config" {
     cancel()
     os.Exit(0)
 }
-
-// If --confdb is set, load configuration from database
-if appSettings.Transient.ConfigDB {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    
-    // Save CLI credentials before loading from DB
-    transient := appSettings.Transient
-    telegramToken := appSettings.Telegram.Token
-    openAIToken := appSettings.OpenAI.Token
-    webAuthHash := appSettings.Server.AuthHash
-    
-    // Load from database
-    if err := loadConfigFromDB(ctx, appSettings); err != nil {
-        log.Printf("[ERROR] failed to load configuration from database: %v", err)
-        cancel()
-        os.Exit(1)
-    }
-    cancel()
-    
-    // Restore CLI values (they take precedence)
-    appSettings.Transient = transient
-    if telegramToken != "" {
-        appSettings.Telegram.Token = telegramToken
-    }
-    if openAIToken != "" {
-        appSettings.OpenAI.Token = openAIToken
-    }
-    if webAuthHash != "" {
-        appSettings.Server.AuthHash = webAuthHash
-    }
-}
 ```
+
+In `--confdb` mode, CLI tokens (`Telegram.Token`, `OpenAI.Token`, `Gemini.Token`) are not
+applied; the database is authoritative for them. Only auth password/hash are
+reapplied via `applyCLIOverrides`, because the bootstrap path must let an operator
+recover access if the stored hash is lost. The `save-config` command captures the
+current CLI configuration into the DB so the subsequent `--confdb` start sees it.
 
 ### 4. Web API Integration
 
@@ -211,19 +223,22 @@ type Config struct {
 
 Sensitive information like API tokens and passwords needs proper handling. We've addressed this by:
 
-- Storing credentials within their proper domain models (Telegram.Token, OpenAI.Token, Server.AuthHash)
+- Storing credentials within their proper domain models (`Telegram.Token`, `OpenAI.Token`, `Gemini.Token`, `Server.AuthHash`)
+- Encrypting each at rest with an `ENC:` prefix when an encryption key is configured
 - Storing the temporary password used for hash generation in the `Transient` field with `json:"-"` and `yaml:"-"` tags
-- Automatically creating a safe copy of settings before database storage
-- Keeping CLI credentials as the authoritative source, never overriding them with database values
+- Automatically creating a safe copy of settings before database storage (transient fields stripped)
 
 ### 2. CLI/DB Precedence
 
-We've established clear precedence rules for settings:
+Settings resolve based on the run mode:
 
-- Database connection parameters (DataBaseURL, etc.) always come from CLI
-- Security credentials (tokens, passwords) always come from CLI
-- Control flags (ConfigDB, Debug modes) always come from CLI
-- All other settings can come from the database if `--confdb` is enabled
+- Without `--confdb`: CLI is the sole source of truth; `optToSettings` converts the flag struct to `*config.Settings`
+- With `--confdb`: the database is the source of truth for persisted fields, including API tokens (`Telegram.Token`, `OpenAI.Token`, `Gemini.Token`) — CLI values for these are ignored on load. This is why the `save-config` command exists: it is the bootstrap path that captures current CLI values into the DB
+- Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg`, `Dry` (marked transient, never persisted)
+- CLI override path in `--confdb` mode (handled by `applyCLIOverrides`): web auth password (`--server.auth-passwd`) and web auth hash (`--server.auth-hash`). The auth password/hash are overridable so an operator can recover UI access without touching the DB
+
+`Gemini.Token` follows the same precedence model as `OpenAI.Token`: CLI in non-`--confdb` mode,
+database in `--confdb` mode, encrypted at rest with the same `ENC:` prefix scheme.
 
 ### 3. Backward Compatibility
 
@@ -232,6 +247,60 @@ To maintain backward compatibility, we:
 - Keep the existing CLI parsing with the `options` struct
 - Add conversion functions between `options` and our new `Settings` type
 - Preserve the original behavior when `--confdb` is not specified
+
+## Persisted Settings Inventory
+
+All fields on `*config.Settings` other than `Transient` are persisted as a single
+encrypted JSON blob. Sensitive string fields are encrypted individually with an
+`ENC:` prefix; the rest are stored in plaintext inside the blob.
+
+### Persisted Groups
+
+- `InstanceID`
+- `Telegram` — group, idle duration, timeout, token (encrypted)
+- `Admin` — admin group, disable forward, testing IDs, super users
+- `History` — duration, min size, size
+- `Logger` — enabled, filename, max size, max backups
+- `CAS` — API, timeout, user agent
+- `Meta` — links limit, mentions limit, image/links/videos/audios-only, forward, keyboard, username symbols, **`contact_only`**, **`giveaway`**
+- `OpenAI` — full config, token (encrypted)
+- `Gemini` — token (encrypted), veto, prompt, custom prompts, model, max tokens response (`int32`), max symbols request, retry count, history size, check short messages
+- `LLM` — consensus, request timeout
+- `LuaPlugins` — enabled, plugins dir, enabled plugins list, dynamic reload
+- `AbnormalSpace` — ratio thresholds, short-word parameters, min words
+- `Files` — samples path, dynamic path, watch interval
+- `Message` — startup, spam, dry, warn
+- `Server` — enabled, listen address, auth hash (encrypted)
+- `Delete` — **`join_messages`**, **`leave_messages`**
+- `Duplicates` — threshold, window
+- `Report` — enabled, threshold, auto-ban threshold, rate limit, rate period
+- Top-level scalars: similarity/probability/emoji thresholds, `multi_lang_words`, `no_spam_reply`, `suppress_join_message`, **`aggressive_cleanup`**, **`aggressive_cleanup_limit`**, paranoid mode, first messages count, training/soft-ban/convert/max-backups/dry
+
+### Schema Compatibility
+
+The store writes a single JSON blob per row, wrapped by the Crypter for sensitive
+fields. Adding new fields is strictly additive:
+
+- Old blobs decode into newer `*config.Settings` with zero-value defaults on the
+  new fields; no migration is needed.
+- The next `Save` overwrites the entire blob, so any JSON keys present in storage
+  that no longer exist on the struct are dropped on the next write.
+
+### Migration Note for Early `--confdb` Users
+
+Before the master merge, a short-lived PR-preview iteration exposed a
+`server_auth_user` field under the `server` group. That field has since been
+removed (the web auth user is now hardcoded to `"tg-spam"`). If an early
+`--confdb` blob contains a `server_auth_user` key:
+
+- It is ignored by `json.Unmarshal` (no matching struct field), silently and
+  without error.
+- It remains as dead data in the encrypted blob until the next `Save`, at which
+  point the entire blob is rewritten from the current `*config.Settings` shape
+  and the stale key disappears.
+
+No operator action is required. Saving settings once through the web UI, the
+`save-config` command, or any `PUT /config` request cleans up the blob.
 
 ## Usage
 
@@ -299,9 +368,9 @@ When running with `--confdb` and `--server.enabled`, the web UI provides configu
    - Form-based updates with in-memory and DB persistence options
 
 4. **Security Features**:
-   - Field-level encryption for sensitive data
+   - Field-level encryption for sensitive data (`Telegram.Token`, `OpenAI.Token`, `Gemini.Token`, `Server.AuthHash`)
    - Transient settings never persisted
-   - CLI credentials always take precedence
+   - Web auth password/hash overridable from CLI even in `--confdb` mode (bootstrap recovery)
    - Bcrypt hash generation for web authentication
 
 ### 🔄 Implementation Details
