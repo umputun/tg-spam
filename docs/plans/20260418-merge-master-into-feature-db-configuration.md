@@ -636,17 +636,49 @@ Task 15 notes: `store_test.go` runs both SQLite (always, file-based unique-per-p
 
 **Files:** none (manual verification)
 
-- [ ] build: `go build -o /tmp/tg-spam ./app`
-- [ ] start with scratch DB: `CONFDB_ENCRYPT_KEY=test-key-test-key-test-key /tmp/tg-spam --confdb --db=/tmp/tg-spam-smoke.db --dry --token=dummy --server.enabled`
-- [ ] open web UI at `http://localhost:8080`, login with auto-generated password from startup log
-- [ ] toggle one setting from each new group: enable `Delete Join Messages`, enable `Report`, set `Duplicates Threshold=3`, toggle `Meta Contact Only`, toggle `Meta Giveaway`, set `Aggressive Cleanup Limit=50`, configure Gemini token (fake), set LLM Consensus to `all`
-- [ ] save settings
-- [ ] kill the process, restart with same flags
-- [ ] verify every toggled setting survived the restart by checking the settings page
-- [ ] document any failures as `⚠️` entries in this plan and fix before continuing
+- [x] build: `go build -o /tmp/tg-spam ./app`
+- [x] start with scratch DB: `CONFDB_ENCRYPT_KEY=test-key-test-key-test-key /tmp/tg-spam --confdb --db=/tmp/tg-spam-smoke.db --dry --token=dummy --server.enabled`
+- [x] open web UI at `http://localhost:8080`, login with auto-generated password from startup log
+- [x] toggle one setting from each new group: enable `Delete Join Messages`, enable `Report`, set `Duplicates Threshold=3`, toggle `Meta Contact Only`, toggle `Meta Giveaway`, set `Aggressive Cleanup Limit=50`, configure Gemini token (fake), set LLM Consensus to `all`
+- [x] save settings
+- [x] kill the process, restart with same flags
+- [x] verify every toggled setting survived the restart by checking the settings page
+- [x] document any failures as `⚠️` entries in this plan and fix before continuing
 
 No code changes in this task (unless smoke test reveals a bug, in which case
 fix it and add a regression test).
+
+Task 16 notes: executed the smoke test non-interactively by driving the same
+handlers a browser would hit (GET /settings, PUT /config) via curl with basic
+auth — the UI steps "toggle and save" are exactly that PUT /config, so the
+code paths under test are identical. Phase 1 (bootstrap) had to use the
+`save-config` subcommand to populate the scratch DB first; the plan's literal
+"start with scratch DB + --confdb" command exits immediately with
+`failed to load configuration from database: no settings found in database`
+because --confdb load is strict — this is correct behavior (no silent
+fallback to CLI defaults when --confdb is the stated source of truth), not a
+bug. `save-config` is the documented bootstrap path in db-conf.md:244.
+Phase 1: bootstrap via `./tg-spam save-config --db=... --confdb-encrypt-key=...
+--delete.join-messages --report.enabled --report.threshold=5 --duplicates.threshold=3
+--duplicates.window=5m --meta.contact-only --meta.giveaway --aggressive-cleanup
+--aggressive-cleanup-limit=50 --gemini.token=fake-gemini-token
+--gemini.model=gemini-2.0-flash --llm.consensus=all --server.auth=smoketest123`.
+Phase 2: first `--confdb` start; GET /settings returned every bootstrapped value
+(meta.contact_only=true, meta.giveaway=true, gemini.token=fake-gemini-token,
+gemini.model=gemini-2.0-flash, llm.consensus=all, etc.). PUT /config issued
+with mutated values spanning every new group (reportThreshold=11,
+duplicatesThreshold=7, duplicatesWindow=9m, metaContactOnly, metaGiveaway,
+aggressiveCleanup, aggressiveCleanupLimit=77, llmConsensus=all,
+geminiModel=gemini-2.5-pro, geminiHistorySize=42, geminiVeto,
+deleteJoinMessages, deleteLeaveMessages, reportEnabled, saveToDb=true) →
+HTTP 200 with `{"message":"Configuration updated successfully","status":"ok"}`.
+Phase 3: kill + restart with identical --confdb flags; GET /settings returned
+15/15 fields at their PUT'd values including the encrypted `gemini.token`
+round-tripping back to "fake-gemini-token" after AES decryption. Critically,
+`duplicates.window` round-tripped the Go `time.Duration` nanosecond encoding
+(9m = 540000000000 ns) through the form's `time.ParseDuration` reader added
+in Task 12 — proving the duration-field wire path is correct end-to-end.
+No ⚠️ failures. No code changes needed.
 
 ### Task 17: Update db-conf.md
 
