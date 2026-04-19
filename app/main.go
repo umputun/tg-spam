@@ -509,8 +509,10 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 	authPassswd := opts.Server.AuthPasswd
 	switch {
 	case opts.Server.AuthHash != "":
-		// user supplied a bcrypt hash; leave password empty so the inner
-		// authMiddleware short-circuits and only hash auth is enforced.
+		// user supplied a bcrypt hash; leave password empty. the outer router
+		// already enforces the hash via BasicAuthWithBcryptHashAndPrompt, and
+		// authMiddleware is bypassed whenever AuthPasswd is empty, avoiding
+		// a second (unknown) password check on inner routes.
 		authPassswd = ""
 	case opts.Server.AuthPasswd == "auto":
 		authPassswd, err = webapi.GenerateRandomPassword(20)

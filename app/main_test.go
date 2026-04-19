@@ -264,21 +264,99 @@ func Test_activateServerOnly(t *testing.T) {
 }
 
 func Test_activateServerAuthHashOnly(t *testing.T) {
-	// regression for issue #381: when SERVER_AUTH is left at default "auto" but
-	// SERVER_AUTH_HASH is explicitly set, the server must not generate a random
-	// password; hash-based auth alone must work end-to-end (including inner
-	// authMiddleware on /, /check, etc.).
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	// regression for issue #381: SERVER_AUTH left at default "auto" with
+	// SERVER_AUTH_HASH explicitly set must authenticate via hash alone, both
+	// on the webUI and on authApi routes.
 	const knownPassword = "secret-known-pass"
 	authHash, err := rest.GenerateBcryptHash(knownPassword)
 	require.NoError(t, err)
 
+	baseURL := runActivateServerForTest(t, ":9989", "auto", authHash)
+
+	t.Run("webUI correct password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("webUI wrong password rejected", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", "wrong-password")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("authApi correct password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/settings", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("authApi wrong password rejected", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/settings", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", "wrong-password")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+}
+
+func Test_activateServerAuthHashOverridesExplicitPasswd(t *testing.T) {
+	// when both SERVER_AUTH (explicit) and SERVER_AUTH_HASH are set, hash wins:
+	// the explicit password must not be accepted, only the hash-matching one.
+	const knownPassword = "hash-matching-pass"
+	const explicitPassword = "ignored-explicit-pass"
+	authHash, err := rest.GenerateBcryptHash(knownPassword)
+	require.NoError(t, err)
+
+	baseURL := runActivateServerForTest(t, ":9990", explicitPassword, authHash)
+
+	t.Run("hash-matching password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("explicit password ignored", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", explicitPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+}
+
+// runActivateServerForTest boots the full execute() flow with a minimal set of
+// options sufficient for web-server-only mode, waits for /ping to respond, and
+// returns the base URL. Cleanup (context cancel + goroutine join) is registered
+// via t.Cleanup.
+func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash string) string {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+
 	var opts options
 	opts.Server.Enabled = true
-	opts.Server.ListenAddr = ":9989"
-	opts.Server.AuthPasswd = "auto" // default, simulates SERVER_AUTH unset
+	opts.Server.ListenAddr = listenAddr
+	opts.Server.AuthPasswd = authPasswd
 	opts.Server.AuthHash = authHash
 	opts.InstanceID = "gr1"
 	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
@@ -288,13 +366,13 @@ func Test_activateServerAuthHashOnly(t *testing.T) {
 	require.NoError(t, err)
 	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
 	require.NoError(t, err)
-	fh.Close()
+	require.NoError(t, fh.Close())
 
 	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("ham1\nham2\nham3\n")
 	require.NoError(t, err)
-	fh.Close()
+	require.NoError(t, fh.Close())
 
 	done := make(chan struct{})
 	go func() {
@@ -302,9 +380,14 @@ func Test_activateServerAuthHashOnly(t *testing.T) {
 		assert.NoError(t, execErr)
 		close(done)
 	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
+	baseURL := "http://localhost" + listenAddr
 	require.Eventually(t, func() bool {
-		pingResp, pingErr := http.Get("http://localhost:9989/ping")
+		pingResp, pingErr := http.Get(baseURL + "/ping")
 		if pingErr != nil {
 			return false
 		}
@@ -312,19 +395,7 @@ func Test_activateServerAuthHashOnly(t *testing.T) {
 		return pingResp.StatusCode == http.StatusOK
 	}, time.Second*5, time.Millisecond*100, "server did not start")
 
-	// hit an authMiddleware-protected route with the password matching AuthHash;
-	// must succeed when the bug is fixed (401 today because inner middleware
-	// expects the random-generated password).
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:9989/", http.NoBody)
-	require.NoError(t, err)
-	req.SetBasicAuth("tg-spam", knownPassword)
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, "SERVER_AUTH_HASH-only config must not require the generated password")
-
-	cancel()
-	<-done
+	return baseURL
 }
 
 func Test_checkVolumeMount(t *testing.T) {
