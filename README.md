@@ -384,6 +384,20 @@ Example plugins are available in the [_examples/lua_plugins](https://github.com/
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
 
+### Using a proxy
+
+For networks where access to `api.telegram.org` is blocked, `tg-spam` honours the standard Go proxy environment variables out of the box. No flag or code change is required.
+
+Set one of `HTTPS_PROXY` / `HTTP_PROXY` (and optionally `NO_PROXY`) in the bot's environment or docker-compose file. Supported proxy schemes are `http`, `https`, `socks5`, and `socks5h`:
+
+```
+HTTPS_PROXY=http://user:pass@proxy.example.com:8080
+# or
+HTTPS_PROXY=socks5://user:pass@proxy.example.com:1080
+```
+
+The same variables also control traffic to any other HTTPS endpoint the bot talks to (OpenAI, Gemini, remote sample repositories, etc.), so `NO_PROXY` can be used to carve out exceptions.
+
 ### Automatic backup on version upgrade
 
 `tg-spam` includes an automatic backup mechanism that triggers when a version upgrade is detected. This feature helps protect against potential data loss or corruption that could occur during version upgrades, particularly when database schema changes are involved. If you need to rollback to a previous version, having these backups ensures you can restore your data to a compatible state.
