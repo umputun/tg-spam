@@ -23,7 +23,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-pkgz/fileutils"
 	"github.com/go-pkgz/lgr"
-	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
 	"github.com/sashabaranov/go-openai"
 	"google.golang.org/genai"
@@ -508,16 +507,17 @@ func checkVolumeMount(opts options) (ok bool) {
 func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator,
 	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
 	authPassswd := opts.Server.AuthPasswd
-	if opts.Server.AuthPasswd == "auto" {
+	switch {
+	case opts.Server.AuthHash != "":
+		// user supplied a bcrypt hash; leave password empty so the inner
+		// authMiddleware short-circuits and only hash auth is enforced.
+		authPassswd = ""
+	case opts.Server.AuthPasswd == "auto":
 		authPassswd, err = webapi.GenerateRandomPassword(20)
 		if err != nil {
 			return fmt.Errorf("can't generate random password, %w", err)
 		}
-		authHash, err := rest.GenerateBcryptHash(authPassswd)
-		if err != nil {
-			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
-		}
-		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPassswd, authHash)
+		log.Printf("[WARN] generated basic auth password for user tg-spam: %q", authPassswd)
 	}
 
 	// make store and load approved users

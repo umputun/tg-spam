@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -258,6 +259,70 @@ func Test_activateServerOnly(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "pong", string(body))
+	cancel()
+	<-done
+}
+
+func Test_activateServerAuthHashOnly(t *testing.T) {
+	// regression for issue #381: when SERVER_AUTH is left at default "auto" but
+	// SERVER_AUTH_HASH is explicitly set, the server must not generate a random
+	// password; hash-based auth alone must work end-to-end (including inner
+	// authMiddleware on /, /check, etc.).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const knownPassword = "secret-known-pass"
+	authHash, err := rest.GenerateBcryptHash(knownPassword)
+	require.NoError(t, err)
+
+	var opts options
+	opts.Server.Enabled = true
+	opts.Server.ListenAddr = ":9989"
+	opts.Server.AuthPasswd = "auto" // default, simulates SERVER_AUTH unset
+	opts.Server.AuthHash = authHash
+	opts.InstanceID = "gr1"
+	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
+
+	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
+	require.NoError(t, err)
+	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
+	require.NoError(t, err)
+	fh.Close()
+
+	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
+	require.NoError(t, err)
+	_, err = fh.WriteString("ham1\nham2\nham3\n")
+	require.NoError(t, err)
+	fh.Close()
+
+	done := make(chan struct{})
+	go func() {
+		execErr := execute(ctx, opts)
+		assert.NoError(t, execErr)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		pingResp, pingErr := http.Get("http://localhost:9989/ping")
+		if pingErr != nil {
+			return false
+		}
+		defer pingResp.Body.Close()
+		return pingResp.StatusCode == http.StatusOK
+	}, time.Second*5, time.Millisecond*100, "server did not start")
+
+	// hit an authMiddleware-protected route with the password matching AuthHash;
+	// must succeed when the bug is fixed (401 today because inner middleware
+	// expects the random-generated password).
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:9989/", http.NoBody)
+	require.NoError(t, err)
+	req.SetBasicAuth("tg-spam", knownPassword)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, "SERVER_AUTH_HASH-only config must not require the generated password")
+
 	cancel()
 	<-done
 }
