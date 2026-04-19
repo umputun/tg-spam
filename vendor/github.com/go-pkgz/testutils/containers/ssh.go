@@ -31,10 +31,26 @@ func NewSSHTestContainer(ctx context.Context, t *testing.T) *SSHTestContainer {
 	return NewSSHTestContainerWithUser(ctx, t, "test")
 }
 
+// NewSSHTestContainerE creates a new SSH test container and returns an SSHTestContainer instance.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewSSHTestContainerE(ctx context.Context) (*SSHTestContainer, error) {
+	return NewSSHTestContainerWithUserE(ctx, "test")
+}
+
 // NewSSHTestContainerWithUser creates a new SSH test container with a specific user
 func NewSSHTestContainerWithUser(ctx context.Context, t *testing.T, user string) *SSHTestContainer {
-	pubKey, err := os.ReadFile("testdata/test_ssh_key.pub")
+	sc, err := NewSSHTestContainerWithUserE(ctx, user)
 	require.NoError(t, err)
+	return sc
+}
+
+// NewSSHTestContainerWithUserE creates a new SSH test container with a specific user.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewSSHTestContainerWithUserE(ctx context.Context, user string) (*SSHTestContainer, error) {
+	pubKey, err := os.ReadFile("testdata/test_ssh_key.pub")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read SSH public key: %w", err)
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image:        "lscr.io/linuxserver/openssh-server:latest",
@@ -55,20 +71,28 @@ func NewSSHTestContainerWithUser(ctx context.Context, t *testing.T, user string)
 		ContainerRequest: req,
 		Started:          true,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ssh container: %w", err)
+	}
 
 	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
+	}
 
 	port, err := container.MappedPort(ctx, "2222")
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get mapped port: %w", err)
+	}
 
 	return &SSHTestContainer{
 		Container: container,
 		Host:      host,
-		Port:      port,
+		Port:      nat.Port(port.String()),
 		User:      user,
-	}
+	}, nil
 }
 
 // Address returns the SSH server address in host:port format
@@ -141,7 +165,7 @@ func (sc *SSHTestContainer) GetFile(ctx context.Context, remotePath, localPath s
 	defer remoteFile.Close()
 
 	// create local file
-	localFile, err := os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	localFile, err := os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- localPath validated above
 	if err != nil {
 		return fmt.Errorf("failed to create local file %s: %w", localPath, err)
 	}
@@ -169,7 +193,7 @@ func (sc *SSHTestContainer) SaveFile(ctx context.Context, localPath, remotePath 
 	}
 
 	// open local file
-	localFile, err := os.Open(localPath)
+	localFile, err := os.Open(localPath) // #nosec G304 -- localPath validated above
 	if err != nil {
 		return fmt.Errorf("failed to open local file %s: %w", localPath, err)
 	}
@@ -200,22 +224,68 @@ func (sc *SSHTestContainer) SaveFile(ctx context.Context, localPath, remotePath 
 
 // create directories recursively
 func (sc *SSHTestContainer) createDirRecursive(sftpClient *sftp.Client, remotePath string) error {
-	parts := strings.Split(strings.Trim(filepath.ToSlash(remotePath), "/"), "/")
-	if len(parts) == 0 {
+	// handle empty path
+	if remotePath == "" || remotePath == "." {
 		return nil
 	}
 
-	current := "/"
-	for _, part := range parts {
-		current = filepath.Join(current, part)
-		info, err := sftpClient.Stat(current)
-		if err == nil && info.IsDir() {
-			continue
-		}
-		if err := sftpClient.Mkdir(current); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", current, err)
+	// normalize path - always use forward slashes for SFTP
+	remotePath = filepath.ToSlash(remotePath)
+
+	// check if path is absolute
+	isAbsolute := strings.HasPrefix(remotePath, "/")
+
+	// get starting path
+	var current string
+	if isAbsolute {
+		current = "/"
+		remotePath = strings.TrimPrefix(remotePath, "/")
+	} else {
+		// for relative paths, start from current working directory
+		var err error
+		current, err = sftpClient.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 	}
+
+	// split path into parts and create directories
+	parts := strings.Split(strings.Trim(remotePath, "/"), "/")
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+
+		// validate path component to prevent traversal attacks
+		if part == ".." || strings.Contains(part, "\x00") {
+			return fmt.Errorf("invalid path component: %q", part)
+		}
+
+		// use forward slashes for SFTP paths
+		if current == "/" {
+			current = "/" + part
+		} else {
+			current = current + "/" + part
+		}
+
+		// attempt to create directory - this handles race conditions better
+		if err := sftpClient.Mkdir(current); err != nil {
+			// if directory already exists, verify it's actually a directory
+			// sftp errors don't always map to os.IsExist, so check the actual error
+			if !os.IsExist(err) && !strings.Contains(err.Error(), "Failure") {
+				return fmt.Errorf("failed to create directory %s: %w", current, err)
+			}
+
+			// directory might exist, verify it's actually a directory
+			info, statErr := sftpClient.Stat(current)
+			if statErr == nil && !info.IsDir() {
+				return fmt.Errorf("path exists but is not a directory: %s", current)
+			}
+			// directory exists or we can't stat it, continue
+			continue
+		}
+	}
+
 	return nil
 }
 

@@ -27,8 +27,22 @@ func NewPostgresTestContainer(ctx context.Context, t *testing.T) *PostgresTestCo
 	return NewPostgresTestContainerWithDB(ctx, t, "test")
 }
 
+// NewPostgresTestContainerE creates a new PostgreSQL test container with default settings.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewPostgresTestContainerE(ctx context.Context) (*PostgresTestContainer, error) {
+	return NewPostgresTestContainerWithDBE(ctx, "test")
+}
+
 // NewPostgresTestContainerWithDB creates a new PostgreSQL test container with a specific database name
 func NewPostgresTestContainerWithDB(ctx context.Context, t *testing.T, dbName string) *PostgresTestContainer {
+	pc, err := NewPostgresTestContainerWithDBE(ctx, dbName)
+	require.NoError(t, err)
+	return pc
+}
+
+// NewPostgresTestContainerWithDBE creates a new PostgreSQL test container with a specific database name.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewPostgresTestContainerWithDBE(ctx context.Context, dbName string) (*PostgresTestContainer, error) {
 	const (
 		defaultUser     = "postgres"
 		defaultPassword = "secret"
@@ -51,22 +65,30 @@ func NewPostgresTestContainerWithDB(ctx context.Context, t *testing.T, dbName st
 		ContainerRequest: req,
 		Started:          true,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create postgres container: %w", err)
+	}
 
 	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
+	}
 
 	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get mapped port: %w", err)
+	}
 
 	return &PostgresTestContainer{
 		Container: container,
 		Host:      host,
-		Port:      port,
+		Port:      nat.Port(port.String()),
 		User:      defaultUser,
 		Password:  defaultPassword,
 		Database:  dbName,
-	}
+	}, nil
 }
 
 // ConnectionString returns the PostgreSQL connection string for this container

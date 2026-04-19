@@ -24,6 +24,14 @@ type MongoTestContainer struct {
 
 // NewMongoTestContainer creates a new MongoDB test container
 func NewMongoTestContainer(ctx context.Context, t *testing.T, mongoVersion int) *MongoTestContainer {
+	mc, err := NewMongoTestContainerE(ctx, mongoVersion)
+	require.NoError(t, err)
+	return mc
+}
+
+// NewMongoTestContainerE creates a new MongoDB test container.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewMongoTestContainerE(ctx context.Context, mongoVersion int) (*MongoTestContainer, error) {
 	origURL := os.Getenv("MONGO_TEST")
 	req := testcontainers.ContainerRequest{
 		Image:        fmt.Sprintf("mongo:%d", mongoVersion),
@@ -35,26 +43,45 @@ func NewMongoTestContainer(ctx context.Context, t *testing.T, mongoVersion int) 
 		ContainerRequest: req,
 		Started:          true,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mongo container: %w", err)
+	}
 
 	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
+	}
+
 	port, err := container.MappedPort(ctx, "27017")
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get mapped port: %w", err)
+	}
 
 	uri := fmt.Sprintf("mongodb://%s:%s", host, port.Port())
-	err = os.Setenv("MONGO_TEST", uri)
-	require.NoError(t, err)
+	if err = os.Setenv("MONGO_TEST", uri); err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to set MONGO_TEST env: %w", err)
+	}
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
-	require.NoError(t, err)
+	if err != nil {
+		if origURL != "" {
+			_ = os.Setenv("MONGO_TEST", origURL)
+		} else {
+			_ = os.Unsetenv("MONGO_TEST")
+		}
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to connect to mongo: %w", err)
+	}
 
 	return &MongoTestContainer{
 		Container: container,
 		URI:       uri,
 		Client:    client,
 		origURL:   origURL,
-	}
+	}, nil
 }
 
 // Collection returns a new collection with unique name for tests
