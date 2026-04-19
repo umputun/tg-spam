@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -260,6 +261,141 @@ func Test_activateServerOnly(t *testing.T) {
 	assert.Equal(t, "pong", string(body))
 	cancel()
 	<-done
+}
+
+func Test_activateServerAuthHashOnly(t *testing.T) {
+	// regression for issue #381: SERVER_AUTH left at default "auto" with
+	// SERVER_AUTH_HASH explicitly set must authenticate via hash alone, both
+	// on the webUI and on authApi routes.
+	const knownPassword = "secret-known-pass"
+	authHash, err := rest.GenerateBcryptHash(knownPassword)
+	require.NoError(t, err)
+
+	baseURL := runActivateServerForTest(t, ":9989", "auto", authHash)
+
+	t.Run("webUI correct password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("webUI wrong password rejected", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", "wrong-password")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("authApi correct password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/settings", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("authApi wrong password rejected", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/settings", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", "wrong-password")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+}
+
+func Test_activateServerAuthHashOverridesExplicitPasswd(t *testing.T) {
+	// when both SERVER_AUTH (explicit) and SERVER_AUTH_HASH are set, hash wins:
+	// the explicit password must not be accepted, only the hash-matching one.
+	const knownPassword = "hash-matching-pass"
+	const explicitPassword = "ignored-explicit-pass"
+	authHash, err := rest.GenerateBcryptHash(knownPassword)
+	require.NoError(t, err)
+
+	baseURL := runActivateServerForTest(t, ":9990", explicitPassword, authHash)
+
+	t.Run("hash-matching password accepted", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", knownPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("explicit password ignored", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/", http.NoBody)
+		require.NoError(t, err)
+		req.SetBasicAuth("tg-spam", explicitPassword)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+}
+
+// runActivateServerForTest boots the full execute() flow with a minimal set of
+// options sufficient for web-server-only mode, waits for /ping to respond, and
+// returns the base URL. Cleanup (context cancel + goroutine join) is registered
+// via t.Cleanup.
+func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash string) string {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var opts options
+	opts.Server.Enabled = true
+	opts.Server.ListenAddr = listenAddr
+	opts.Server.AuthPasswd = authPasswd
+	opts.Server.AuthHash = authHash
+	opts.InstanceID = "gr1"
+	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
+
+	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
+	require.NoError(t, err)
+	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
+	require.NoError(t, err)
+	require.NoError(t, fh.Close())
+
+	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
+	require.NoError(t, err)
+	_, err = fh.WriteString("ham1\nham2\nham3\n")
+	require.NoError(t, err)
+	require.NoError(t, fh.Close())
+
+	done := make(chan struct{})
+	go func() {
+		execErr := execute(ctx, opts)
+		assert.NoError(t, execErr)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	baseURL := "http://localhost" + listenAddr
+	require.Eventually(t, func() bool {
+		pingResp, pingErr := http.Get(baseURL + "/ping")
+		if pingErr != nil {
+			return false
+		}
+		defer pingResp.Body.Close()
+		return pingResp.StatusCode == http.StatusOK
+	}, time.Second*5, time.Millisecond*100, "server did not start")
+
+	return baseURL
 }
 
 func Test_checkVolumeMount(t *testing.T) {
