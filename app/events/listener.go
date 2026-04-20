@@ -744,7 +744,7 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 }
 
 // procReaction handles a message_reaction update: checks if the reacting user is a spam bot and bans if needed.
-func (l *TelegramListener) procReaction(_ context.Context, r *tbapi.MessageReactionUpdated) error {
+func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageReactionUpdated) error {
 	if r.User == nil {
 		log.Printf("[DEBUG] reaction from anonymous user, skipped")
 		return nil
@@ -757,9 +757,18 @@ func (l *TelegramListener) procReaction(_ context.Context, r *tbapi.MessageReact
 		return nil // reaction removed, not added — don't count toward spam threshold
 	}
 
+	if l.SuperUsers.IsSuper(r.User.UserName, r.User.ID) {
+		log.Printf("[DEBUG] superuser %s reaction ignored", r.User.UserName)
+		return nil
+	}
+
 	resp := l.Bot.OnReaction(r.User.ID, r.User.UserName)
 	if resp.BanInterval == 0 {
 		return nil
+	}
+
+	if err := l.Locator.AddSpam(ctx, r.User.ID, resp.CheckResults); err != nil {
+		log.Printf("[WARN] failed to add reaction spam to locator: %v", err)
 	}
 
 	banUserStr := fmt.Sprintf("%v", resp.User)

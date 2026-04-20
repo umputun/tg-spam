@@ -10,7 +10,7 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-// reactionDetector tracks reaction counts per user in a sliding window
+// reactionDetector tracks reaction counts per user in a fixed time window
 type reactionDetector struct {
 	threshold int
 	window    time.Duration

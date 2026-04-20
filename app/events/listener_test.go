@@ -4404,15 +4404,19 @@ func TestProcReaction(t *testing.T) {
 
 	t.Run("threshold reached, user banned", func(t *testing.T) {
 		mockAPI := makeAPI(t)
+		locatorMock := &mocks.LocatorMock{
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+		}
 		botMock := &mocks.BotMock{
 			OnReactionFunc: func(userID int64, userName string) bot.Response {
 				return bot.Response{
-					BanInterval: bot.PermanentBanDuration,
-					User:        bot.User{ID: userID, Username: userName},
+					BanInterval:  bot.PermanentBanDuration,
+					User:         bot.User{ID: userID, Username: userName},
+					CheckResults: []spamcheck.Response{{Name: "reactions", Spam: true, Details: "5 reactions in 1s"}},
 				}
 			},
 		}
-		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123", Locator: locatorMock}
 
 		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
 			Chat:        tbapi.Chat{ID: 123},
@@ -4431,6 +4435,29 @@ func TestProcReaction(t *testing.T) {
 		require.Len(t, mockAPI.RequestCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID)
 		assert.Equal(t, int64(42), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
+		require.Len(t, locatorMock.AddSpamCalls(), 1)
+		assert.Equal(t, int64(42), locatorMock.AddSpamCalls()[0].UserID)
+	})
+
+	t.Run("superuser reaction ignored", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123", SuperUsers: SuperUsers{"superadmin"}}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 99, UserName: "superadmin"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Empty(t, botMock.OnReactionCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
 	})
 
 	t.Run("reaction removal not counted", func(t *testing.T) {
