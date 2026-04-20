@@ -51,6 +51,7 @@ type Detector interface {
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
+	CheckReaction(userID int64) spamcheck.Response
 	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
 
@@ -194,6 +195,24 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 // IsApprovedUser checks if user is in the list of approved users
 func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 	return s.Detector.IsApprovedUser(fmt.Sprintf("%d", userID))
+}
+
+// OnReaction checks if user reacting to messages is a spammer.
+// approved users are skipped; unapproved users are checked against the reaction detector.
+func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
+	if s.IsApprovedUser(userID) {
+		return Response{}
+	}
+	resp := s.Detector.CheckReaction(userID)
+	if resp.Spam {
+		log.Printf("[INFO] user %s (%d) detected as reaction spammer", userName, userID)
+		return Response{
+			BanInterval:  PermanentBanDuration,
+			User:         User{ID: userID, Username: userName},
+			CheckResults: []spamcheck.Response{resp},
+		}
+	}
+	return Response{}
 }
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage

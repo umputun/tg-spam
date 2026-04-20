@@ -63,16 +63,16 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 3: Detector and Bot interfaces + SpamFilter.OnReaction
 
-- [ ] in `app/bot/spam.go` add `CheckReaction(userID int64) spamcheck.Response` to `Detector` interface
-- [ ] regenerate mock: `go generate ./app/bot/...`
-- [ ] in `app/events/events.go` add `OnReaction(userID int64, userName string) bot.Response` to `Bot` interface
-- [ ] regenerate mock: `go generate ./app/events/...`
-- [ ] in `app/bot/spam.go` add `OnReaction(userID int64, userName string) Response` method on `*SpamFilter`:
+- [x] in `app/bot/spam.go` add `CheckReaction(userID int64) spamcheck.Response` to `Detector` interface
+- [x] regenerate mock: `go generate ./app/bot/...`
+- [x] in `app/events/events.go` add `OnReaction(userID int64, userName string) bot.Response` to `Bot` interface
+- [x] regenerate mock: `go generate ./app/events/...`
+- [x] in `app/bot/spam.go` add `OnReaction(userID int64, userName string) Response` method on `*SpamFilter`:
   - skip if `s.IsApprovedUser(userID)` → `Response{}`
   - call `s.Detector.CheckReaction(userID)`
   - if spam=true → return `Response{Spam: true, BanInterval: permanentBanDuration, User: User{ID: userID, Name: userName}, CheckResults: []spamcheck.Response{resp}}`
-- [ ] add `TestSpamFilterOnReaction` in `app/bot/spam_test.go`: approved user skipped, below threshold no ban, threshold reached returns ban response
-- [ ] `go test -race ./app/bot/... -run TestSpamFilter` must pass
+- [x] add `TestSpamFilterOnReaction` in `app/bot/spam_test.go`: approved user skipped, below threshold no ban, threshold reached returns ban response
+- [x] `go test -race ./app/bot/... -run TestSpamFilter` must pass
 
 ### Task 4: listener — reaction routing
 

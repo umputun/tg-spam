@@ -26,6 +26,9 @@ import (
 //			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
+//			CheckReactionFunc: func(userID int64) spamcheck.Response {
+//				panic("mock out the CheckReaction method")
+//			},
 //			GetLuaPluginNamesFunc: func() []string {
 //				panic("mock out the GetLuaPluginNames method")
 //			},
@@ -69,6 +72,9 @@ type DetectorMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
+	// CheckReactionFunc mocks the CheckReaction method.
+	CheckReactionFunc func(userID int64) spamcheck.Response
+
 	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
 	GetLuaPluginNamesFunc func() []string
 
@@ -110,6 +116,11 @@ type DetectorMock struct {
 		Check []struct {
 			// Request is the request argument value.
 			Request spamcheck.Request
+		}
+		// CheckReaction holds details about calls to the CheckReaction method.
+		CheckReaction []struct {
+			// UserID is the userID argument value.
+			UserID int64
 		}
 		// GetLuaPluginNames holds details about calls to the GetLuaPluginNames method.
 		GetLuaPluginNames []struct {
@@ -162,6 +173,7 @@ type DetectorMock struct {
 	lockAddApprovedUser    sync.RWMutex
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
+	lockCheckReaction      sync.RWMutex
 	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
@@ -283,6 +295,45 @@ func (mock *DetectorMock) ResetCheckCalls() {
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
+}
+
+// CheckReaction calls CheckReactionFunc.
+func (mock *DetectorMock) CheckReaction(userID int64) spamcheck.Response {
+	if mock.CheckReactionFunc == nil {
+		panic("DetectorMock.CheckReactionFunc: method is nil but Detector.CheckReaction was just called")
+	}
+	callInfo := struct {
+		UserID int64
+	}{
+		UserID: userID,
+	}
+	mock.lockCheckReaction.Lock()
+	mock.calls.CheckReaction = append(mock.calls.CheckReaction, callInfo)
+	mock.lockCheckReaction.Unlock()
+	return mock.CheckReactionFunc(userID)
+}
+
+// CheckReactionCalls gets all the calls that were made to CheckReaction.
+// Check the length with:
+//
+//	len(mockedDetector.CheckReactionCalls())
+func (mock *DetectorMock) CheckReactionCalls() []struct {
+	UserID int64
+} {
+	var calls []struct {
+		UserID int64
+	}
+	mock.lockCheckReaction.RLock()
+	calls = mock.calls.CheckReaction
+	mock.lockCheckReaction.RUnlock()
+	return calls
+}
+
+// ResetCheckReactionCalls reset all the calls that were made to CheckReaction.
+func (mock *DetectorMock) ResetCheckReactionCalls() {
+	mock.lockCheckReaction.Lock()
+	mock.calls.CheckReaction = nil
+	mock.lockCheckReaction.Unlock()
 }
 
 // GetLuaPluginNames calls GetLuaPluginNamesFunc.
@@ -652,6 +703,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
+
+	mock.lockCheckReaction.Lock()
+	mock.calls.CheckReaction = nil
+	mock.lockCheckReaction.Unlock()
 
 	mock.lockGetLuaPluginNames.Lock()
 	mock.calls.GetLuaPluginNames = nil

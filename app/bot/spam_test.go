@@ -1104,3 +1104,66 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 		})
 	}
 }
+
+func TestSpamFilterOnReaction(t *testing.T) {
+	tests := []struct {
+		name         string
+		userID       int64
+		userName     string
+		isApproved   bool
+		reactionResp spamcheck.Response
+		wantBan      bool
+	}{
+		{
+			name:       "approved user skipped",
+			userID:     1,
+			userName:   "user1",
+			isApproved: true,
+			wantBan:    false,
+		},
+		{
+			name:         "below threshold, no ban",
+			userID:       2,
+			userName:     "user2",
+			isApproved:   false,
+			reactionResp: spamcheck.Response{Name: "reactions", Spam: false, Details: "2/5"},
+			wantBan:      false,
+		},
+		{
+			name:         "threshold reached, ban",
+			userID:       3,
+			userName:     "user3",
+			isApproved:   false,
+			reactionResp: spamcheck.Response{Name: "reactions", Spam: true, Details: "exceeded, 5 reactions in 1h0m0s"},
+			wantBan:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			det := &mocks.DetectorMock{
+				IsApprovedUserFunc: func(userID string) bool {
+					return tc.isApproved
+				},
+				CheckReactionFunc: func(userID int64) spamcheck.Response {
+					return tc.reactionResp
+				},
+			}
+			sf := NewSpamFilter(det, SpamConfig{})
+			resp := sf.OnReaction(tc.userID, tc.userName)
+			if tc.wantBan {
+				assert.Equal(t, PermanentBanDuration, resp.BanInterval)
+				assert.Equal(t, tc.userID, resp.User.ID)
+				assert.Equal(t, tc.userName, resp.User.Username)
+				require.Len(t, resp.CheckResults, 1)
+				assert.True(t, resp.CheckResults[0].Spam)
+			} else {
+				assert.Zero(t, resp.BanInterval)
+			}
+			if !tc.isApproved && tc.wantBan {
+				assert.Len(t, det.CheckReactionCalls(), 1)
+				assert.Equal(t, tc.userID, det.CheckReactionCalls()[0].UserID)
+			}
+		})
+	}
+}
