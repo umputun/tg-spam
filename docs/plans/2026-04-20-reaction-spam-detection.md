@@ -76,8 +76,8 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 4: listener — reaction routing
 
-- [ ] in `app/events/listener.go` in `Do()` add `u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "message_reaction"}` after `u := tbapi.NewUpdate(0)` (line 153)
-- [ ] add branch before `if update.Message == nil { continue }`:
+- [x] in `app/events/listener.go` in `Do()` add `u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "message_reaction"}` after `u := tbapi.NewUpdate(0)` (line 153)
+- [x] add branch before `if update.Message == nil { continue }`:
   ```go
   if update.MessageReaction != nil {
       if err := l.procReaction(ctx, update.MessageReaction); err != nil {
@@ -86,13 +86,13 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
       continue
   }
   ```
-- [ ] implement `procReaction(ctx context.Context, r *tbapi.MessageReactionUpdated) error`:
+- [x] implement `procReaction(ctx context.Context, r *tbapi.MessageReactionUpdated) error`:
   - skip if `r.User == nil` (anonymous admin)
   - skip if `r.Chat.ID != l.chatID` (only main chat)
   - call `l.Bot.OnReaction(r.User.ID, r.User.UserName)`
   - if `resp.Spam` → call `banUserOrChannel(banRequest{...})` + `l.adminHandler.ReportBan(...)`
-- [ ] add `TestProcReaction` in `app/events/listener_test.go`: nil user skip, wrong chatID skip, below threshold no ban, threshold reached triggers ban, approved user not banned even after threshold
-- [ ] `go test -race ./app/events/... -run TestProcReaction` must pass
+- [x] add `TestProcReaction` in `app/events/listener_test.go`: nil user skip, wrong chatID skip, below threshold no ban, threshold reached triggers ban, approved user not banned even after threshold
+- [x] `go test -race ./app/events/... -run TestProcReaction` must pass
 
 ### Task 5: CLI flags and wiring in main.go
 

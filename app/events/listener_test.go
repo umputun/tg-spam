@@ -4316,3 +4316,143 @@ func TestTelegramListener_DMUsersMethods(t *testing.T) {
 	assert.Empty(t, users)
 	assert.NotNil(t, users)
 }
+
+func TestProcReaction(t *testing.T) {
+	makeAPI := func(t *testing.T) *mocks.TbAPIMock {
+		t.Helper()
+		return &mocks.TbAPIMock{
+			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+				return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+				return nil, nil
+			},
+		}
+	}
+
+	t.Run("nil user skipped", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat: tbapi.Chat{ID: 123},
+			User: nil,
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Empty(t, botMock.OnReactionCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
+	t.Run("wrong chatID skipped", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat: tbapi.Chat{ID: 999},
+			User: &tbapi.User{ID: 42, UserName: "spammer"},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Empty(t, botMock.OnReactionCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
+	t.Run("below threshold, no ban", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{}
+			},
+		}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat: tbapi.Chat{ID: 123},
+			User: &tbapi.User{ID: 42, UserName: "user"},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		require.Len(t, botMock.OnReactionCalls(), 1)
+		assert.Equal(t, int64(42), botMock.OnReactionCalls()[0].UserID)
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
+	t.Run("threshold reached, user banned", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{
+					BanInterval: bot.PermanentBanDuration,
+					User:        bot.User{ID: userID, Username: userName},
+				}
+			},
+		}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat: tbapi.Chat{ID: 123},
+			User: &tbapi.User{ID: 42, UserName: "spammer"},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		require.Len(t, botMock.OnReactionCalls(), 1)
+		assert.Equal(t, int64(42), botMock.OnReactionCalls()[0].UserID)
+		require.Len(t, mockAPI.RequestCalls(), 1)
+		assert.Equal(t, int64(123), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).ChatID)
+		assert.Equal(t, int64(42), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
+	})
+
+	t.Run("approved user not banned", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				// approved user: OnReaction returns empty response
+				return bot.Response{}
+			},
+		}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat: tbapi.Chat{ID: 123},
+			User: &tbapi.User{ID: 77, UserName: "approved"},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		require.Len(t, botMock.OnReactionCalls(), 1)
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+}
