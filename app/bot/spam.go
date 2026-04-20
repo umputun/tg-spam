@@ -203,7 +203,7 @@ func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
 	if s.IsApprovedUser(userID) {
 		return Response{}
 	}
-	resp := s.Detector.CheckReaction(userID)
+	resp := s.CheckReaction(userID)
 	if resp.Spam {
 		log.Printf("[INFO] user %s (%d) detected as reaction spammer", userName, userID)
 		return Response{

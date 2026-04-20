@@ -456,7 +456,6 @@ func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult,
 	}
 }
 
-// Reset resets spam samples/classifier, excluded tokens, stop words and approved users.
 // CheckReaction checks if a user is a reaction spammer. Returns spam=true if the user exceeded the reaction threshold.
 // If the reaction detector is disabled, returns a non-spam response with "disabled" details.
 func (d *Detector) CheckReaction(userID int64) spamcheck.Response {
@@ -466,6 +465,7 @@ func (d *Detector) CheckReaction(userID int64) spamcheck.Response {
 	return d.reactionDetector.check(userID)
 }
 
+// Reset resets spam samples/classifier, excluded tokens, stop words and approved users.
 func (d *Detector) Reset() {
 	d.lock.Lock()
 	defer d.lock.Unlock()

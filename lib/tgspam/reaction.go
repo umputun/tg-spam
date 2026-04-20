@@ -71,5 +71,6 @@ func (d *reactionDetector) check(userID int64) spamcheck.Response {
 		}
 	}
 
-	return spamcheck.Response{Name: "reactions", Spam: false, Details: fmt.Sprintf("%d/%d reactions in window", h.count, d.threshold)}
+	details := fmt.Sprintf("%d/%d reactions in window", h.count, d.threshold)
+	return spamcheck.Response{Name: "reactions", Spam: false, Details: details}
 }

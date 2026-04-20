@@ -113,10 +113,10 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 6: final verification and docs
 
-- [ ] `go test -race ./...` — all tests pass
-- [ ] `golangci-lint run` — no errors
-- [ ] `unfuck-ai-comments run --fmt --skip=mocks ./...` — normalize comments
-- [ ] update README.md: add reaction spam section in "Spam Detection Modules" and a row in "All Application Options"
+- [x] `go test -race ./...` — all tests pass
+- [x] `golangci-lint run` — no errors
+- [x] `unfuck-ai-comments run --fmt --skip=mocks ./...` — normalize comments
+- [x] update README.md: add reaction spam section in "Spam Detection Modules" and a row in "All Application Options"
 
 ## Technical Details
 

@@ -204,6 +204,16 @@ Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
 - `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 
+**Reaction spam detection**
+
+This option is disabled by default. When enabled, the bot tracks emoji reactions from each user and marks them as a spammer if they exceed the reaction threshold within a time window. This targets bots that never post messages but mass-react to posts to attract attention to their profile (which contains spam in the bio).
+
+Only applies to unapproved users — approved users are exempt from reaction spam detection.
+
+Configure with:
+- `--reactions.max-reactions=, [$REACTIONS_MAX_REACTIONS]` (default: 0, disabled) - Max reactions per user in window to trigger spam ban
+- `--reactions.window=, [$REACTIONS_WINDOW]` (default: 1h) - Time window for reaction spam detection
+
 **Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
@@ -584,6 +594,10 @@ space:
 duplicates:
       --duplicates.threshold=           duplicate messages to trigger spam (0=disabled) (default: 0) [$DUPLICATES_THRESHOLD]
       --duplicates.window=              time window for duplicate detection (default: 1h) [$DUPLICATES_WINDOW]
+
+reactions:
+      --reactions.max-reactions=        max reactions per user in window to trigger spam ban (0=disabled) (default: 0) [$REACTIONS_MAX_REACTIONS]
+      --reactions.window=               time window for reaction spam detection (default: 1h) [$REACTIONS_WINDOW]
 
 report:
       --report.enabled                  enable user spam reporting [$REPORT_ENABLED]
