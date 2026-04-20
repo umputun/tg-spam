@@ -147,6 +147,11 @@ type options struct {
 		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
+	Reactions struct {
+		MaxReactions int           `long:"max-reactions" env:"MAX_REACTIONS" default:"0" description:"max reactions per user in window to trigger spam ban (0=disabled)"`
+		Window       time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for reaction spam detection"`
+	} `group:"reactions" namespace:"reactions" env-namespace:"REACTIONS"`
+
 	Report struct {
 		Enabled          bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
 		Threshold        int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
@@ -662,6 +667,13 @@ func makeDetector(opts options) *tgspam.Detector {
 	if opts.Duplicates.Threshold > 0 {
 		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v",
 			opts.Duplicates.Threshold, opts.Duplicates.Window)
+	}
+
+	detectorConfig.ReactionSpam.MaxReactions = opts.Reactions.MaxReactions
+	detectorConfig.ReactionSpam.Window = opts.Reactions.Window
+	if opts.Reactions.MaxReactions > 0 {
+		log.Printf("[INFO] reaction spam detection enabled, max reactions: %d, window: %v",
+			opts.Reactions.MaxReactions, opts.Reactions.Window)
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)

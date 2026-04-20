@@ -96,20 +96,20 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 5: CLI flags and wiring in main.go
 
-- [ ] in `app/main.go` add flag group after `Duplicates`:
+- [x] in `app/main.go` add flag group after `Duplicates`:
   ```go
   Reactions struct {
       MaxReactions int           `long:"max-reactions" env:"MAX_REACTIONS" default:"0" description:"max reactions per user in window to trigger spam ban (0=disabled)"`
       Window       time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for reaction spam detection"`
   } `group:"reactions" namespace:"reactions" env-namespace:"REACTIONS"`
   ```
-- [ ] wire into `detectorConfig`:
+- [x] wire into `detectorConfig`:
   ```go
   detectorConfig.ReactionSpam.MaxReactions = opts.Reactions.MaxReactions
   detectorConfig.ReactionSpam.Window = opts.Reactions.Window
   ```
-- [ ] add `log.Printf` when feature is enabled
-- [ ] `go build ./app` must succeed
+- [x] add `log.Printf` when feature is enabled
+- [x] `go build ./app` must succeed
 
 ### Task 6: final verification and docs
 
