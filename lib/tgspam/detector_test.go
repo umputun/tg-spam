@@ -3357,6 +3357,39 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 	})
 }
 
+func TestDetectorCheckReaction(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		d := NewDetector(Config{})
+		resp := d.CheckReaction(123)
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+		assert.Equal(t, "disabled", resp.Details)
+	})
+
+	t.Run("enabled, below threshold", func(t *testing.T) {
+		d := NewDetector(Config{ReactionSpam: struct {
+			MaxReactions int
+			Window       time.Duration
+		}{MaxReactions: 5, Window: time.Hour}})
+		resp := d.CheckReaction(42)
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+	})
+
+	t.Run("enabled, threshold reached triggers spam", func(t *testing.T) {
+		d := NewDetector(Config{ReactionSpam: struct {
+			MaxReactions int
+			Window       time.Duration
+		}{MaxReactions: 3, Window: time.Hour}})
+		var resp spamcheck.Response
+		for range 3 {
+			resp = d.CheckReaction(99)
+		}
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+	})
+}
+
 // helper function to find response by name
 func findResponseByName(responses []spamcheck.Response, name string) *spamcheck.Response {
 	for _, r := range responses {

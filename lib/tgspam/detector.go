@@ -40,6 +40,7 @@ type Detector struct {
 	openaiChecker     *openAIChecker
 	geminiChecker     *geminiChecker
 	duplicateDetector *duplicateDetector
+	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.Check // separate field for Lua plugin checks
 	tokenizedSpam     []map[string]int
@@ -137,6 +138,11 @@ type Config struct {
 		Window    time.Duration // time window for duplicate detection
 	}
 
+	ReactionSpam struct {
+		MaxReactions int           // max reactions per user in window to trigger spam ban (0=disabled)
+		Window       time.Duration // time window for reaction spam detection
+	}
+
 	HistorySize int // history of recent messages to keep in memory
 }
 
@@ -189,6 +195,7 @@ func NewDetector(p Config) *Detector {
 		hamHistory:        spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:       spamcheck.NewLastRequests(p.HistorySize),
 		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
+		reactionDetector:  newReactionDetector(p.ReactionSpam.MaxReactions, p.ReactionSpam.Window),
 		luaEngine:         nil, // will be set with WithLuaEngine if needed
 	}
 	res.LLMConsensus = res.normalizeLLMConsensusMode(p.LLMConsensus)
@@ -450,6 +457,15 @@ func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult,
 }
 
 // Reset resets spam samples/classifier, excluded tokens, stop words and approved users.
+// CheckReaction checks if a user is a reaction spammer. Returns spam=true if the user exceeded the reaction threshold.
+// If the reaction detector is disabled, returns a non-spam response with "disabled" details.
+func (d *Detector) CheckReaction(userID int64) spamcheck.Response {
+	if d.reactionDetector == nil {
+		return spamcheck.Response{Name: "reactions", Spam: false, Details: "disabled"}
+	}
+	return d.reactionDetector.check(userID)
+}
+
 func (d *Detector) Reset() {
 	d.lock.Lock()
 	defer d.lock.Unlock()

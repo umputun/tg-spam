@@ -48,18 +48,18 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 2: integration into Detector
 
-- [ ] in `lib/tgspam/detector.go` add to `Config` struct (after `DuplicateDetection`):
+- [x] in `lib/tgspam/detector.go` add to `Config` struct (after `DuplicateDetection`):
   ```go
   ReactionSpam struct {
       MaxReactions int
       Window       time.Duration
   }
   ```
-- [ ] add field `reactionDetector *reactionDetector` to `Detector` struct
-- [ ] in `NewDetector` initialize: `reactionDetector: newReactionDetector(p.ReactionSpam.MaxReactions, p.ReactionSpam.Window)` — returns nil if MaxReactions <= 0 (disabled)
-- [ ] add method `CheckReaction(userID int64) spamcheck.Response` on `*Detector` — calls `d.reactionDetector.check(userID)`, returns `{Name:"reactions", Spam:false, Details:"disabled"}` if detector is nil
-- [ ] add tests in `lib/tgspam/detector_test.go` for `TestDetectorCheckReaction`: disabled by default, enabled+below threshold, enabled+spam triggered
-- [ ] `go test -race ./lib/tgspam/... -run TestDetector` must pass
+- [x] add field `reactionDetector *reactionDetector` to `Detector` struct
+- [x] in `NewDetector` initialize: `reactionDetector: newReactionDetector(p.ReactionSpam.MaxReactions, p.ReactionSpam.Window)` — returns nil if MaxReactions <= 0 (disabled)
+- [x] add method `CheckReaction(userID int64) spamcheck.Response` on `*Detector` — calls `d.reactionDetector.check(userID)`, returns `{Name:"reactions", Spam:false, Details:"disabled"}` if detector is nil
+- [x] add tests in `lib/tgspam/detector_test.go` for `TestDetectorCheckReaction`: disabled by default, enabled+below threshold, enabled+spam triggered
+- [x] `go test -race ./lib/tgspam/... -run TestDetector` must pass
 
 ### Task 3: Detector and Bot interfaces + SpamFilter.OnReaction
 
