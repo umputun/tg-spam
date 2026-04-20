@@ -753,6 +753,9 @@ func (l *TelegramListener) procReaction(_ context.Context, r *tbapi.MessageReact
 		log.Printf("[DEBUG] reaction from chat %d, not primary chat %d, skipped", r.Chat.ID, l.chatID)
 		return nil
 	}
+	if len(r.NewReaction) == 0 {
+		return nil // reaction removed, not added — don't count toward spam threshold
+	}
 
 	resp := l.Bot.OnReaction(r.User.ID, r.User.UserName)
 	if resp.BanInterval == 0 {
@@ -768,8 +771,11 @@ func (l *TelegramListener) procReaction(_ context.Context, r *tbapi.MessageReact
 		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
 	}
 	if l.adminChatID != 0 && resp.User.ID != 0 {
-		msg := &bot.Message{From: bot.User{ID: resp.User.ID, Username: resp.User.Username}}
-		l.adminHandler.ReportBan(banUserStr, msg)
+		// reactions don't have a message ID to delete, so send a plain notification without action buttons
+		notif := tbapi.NewMessage(l.adminChatID, fmt.Sprintf("permanently banned reaction spammer %s", banUserStr))
+		if _, err := l.TbAPI.Send(notif); err != nil {
+			log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+		}
 	}
 	return nil
 }

@@ -1160,7 +1160,9 @@ func TestSpamFilterOnReaction(t *testing.T) {
 			} else {
 				assert.Zero(t, resp.BanInterval)
 			}
-			if !tc.isApproved && tc.wantBan {
+			if tc.isApproved {
+				assert.Empty(t, det.CheckReactionCalls(), "approved user must not trigger CheckReaction")
+			} else {
 				assert.Len(t, det.CheckReactionCalls(), 1)
 				assert.Equal(t, tc.userID, det.CheckReactionCalls()[0].UserID)
 			}

@@ -21,7 +21,6 @@ type reactionDetector struct {
 type reactionHistory struct {
 	count     int
 	firstSeen time.Time
-	lastSeen  time.Time
 }
 
 // newReactionDetector creates a new reaction detector; returns nil if threshold <= 0 (disabled)
@@ -39,10 +38,6 @@ func newReactionDetector(threshold int, window time.Duration) *reactionDetector 
 
 // check increments the reaction counter for userID and returns spam=true when threshold exceeded within window
 func (d *reactionDetector) check(userID int64) spamcheck.Response {
-	if d == nil {
-		return spamcheck.Response{Name: "reactions", Spam: false, Details: "disabled"}
-	}
-
 	now := time.Now()
 
 	d.mu.Lock()
@@ -59,7 +54,6 @@ func (d *reactionDetector) check(userID int64) spamcheck.Response {
 		h.firstSeen = now
 	}
 	h.count++
-	h.lastSeen = now
 
 	d.cache.Set(userID, h, d.window*2)
 
@@ -67,7 +61,7 @@ func (d *reactionDetector) check(userID int64) spamcheck.Response {
 		return spamcheck.Response{
 			Name:    "reactions",
 			Spam:    true,
-			Details: fmt.Sprintf("%d reactions in %s", h.count, h.lastSeen.Sub(h.firstSeen).Round(time.Second)),
+			Details: fmt.Sprintf("%d reactions in %s", h.count, now.Sub(h.firstSeen).Round(time.Second)),
 		}
 	}
 

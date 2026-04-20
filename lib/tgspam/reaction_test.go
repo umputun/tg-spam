@@ -12,11 +12,6 @@ func TestReactionDetector(t *testing.T) {
 	t.Run("disabled when threshold is zero", func(t *testing.T) {
 		d := newReactionDetector(0, time.Hour)
 		require.Nil(t, d)
-		var nd *reactionDetector
-		resp := nd.check(123)
-		assert.False(t, resp.Spam)
-		assert.Equal(t, "reactions", resp.Name)
-		assert.Equal(t, "disabled", resp.Details)
 	})
 
 	t.Run("disabled when threshold is negative", func(t *testing.T) {
@@ -41,15 +36,17 @@ func TestReactionDetector(t *testing.T) {
 		resp := d.check(1)
 		assert.True(t, resp.Spam)
 		assert.Equal(t, "reactions", resp.Name)
+		assert.Contains(t, resp.Details, "3 reactions in")
 	})
 
-	t.Run("threshold exceeded on subsequent calls", func(t *testing.T) {
+	t.Run("threshold exceeded on subsequent calls stays spam", func(t *testing.T) {
 		d := newReactionDetector(2, time.Hour)
 		require.NotNil(t, d)
 		d.check(1)
 		d.check(1)
-		resp := d.check(1)
+		resp := d.check(1) // call above threshold verifies count still reported correctly
 		assert.True(t, resp.Spam)
+		assert.Contains(t, resp.Details, "3 reactions in")
 	})
 
 	t.Run("independent users", func(t *testing.T) {

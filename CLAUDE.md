@@ -90,6 +90,16 @@
 - Deletion errors are logged but don't fail the operation (messages might be already deleted or too old)
 - Design principle: When a spammer is detected, aggressively clean up ALL their spam messages, not just the triggering one
 
+### Reaction Spam Detection
+- Reaction spam runs on a separate path from message spam: `CheckReaction(userID int64)` on `Detector` bypasses `Check(msg)` entirely (no LLM, CAS, stop words, or classifier)
+- `reactionDetector` is nil when disabled (`MaxReactions <= 0`); `CheckReaction` returns a non-spam "disabled" response when the detector is nil
+- `Bot` interface exposes `OnReaction(userID int64, userName string) bot.Response`; `SpamFilter.OnReaction` gates on `IsApprovedUser` — unlike duplicate detection which runs for all users, approved users are exempt from reaction spam detection (reaction-spamming bots never post messages and therefore never accumulate the message history needed for approval)
+- Telegram does not deliver `message_reaction` updates by default; the listener explicitly sets `AllowedUpdates = []string{"message", "edited_message", "callback_query", "message_reaction"}` in `Do()` — this is always active regardless of whether `MaxReactions` is set
+- `procReaction` in `app/events/listener.go` routes `update.MessageReaction` updates: skips nil users (anonymous), skips reactions from non-primary chats, skips removal events (`len(r.NewReaction) == 0`), then calls `Bot.OnReaction` and triggers `banUserOrChannel` if spam
+- Reaction bans send a plain text notification to admin chat; there is no "confirm ban" button because the ban happens immediately (reactions have no associated message ID to delete)
+- No `ExtraDeleteIDs` for reactions — reactions don't create messages to clean up
+- Counter resets when `firstSeen + window < now`; LRU cache uses `WithMaxKeys(10000).WithTTL(window * 2)` (same pattern as `duplicateDetector`)
+
 ### LLM Checker Structure
 - Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`
 - Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc

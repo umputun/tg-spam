@@ -4386,8 +4386,9 @@ func TestProcReaction(t *testing.T) {
 		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
 
 		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
-			Chat: tbapi.Chat{ID: 123},
-			User: &tbapi.User{ID: 42, UserName: "user"},
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "user"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
 		}}
 		updChan := make(chan tbapi.Update, 1)
 		updChan <- upd
@@ -4414,8 +4415,9 @@ func TestProcReaction(t *testing.T) {
 		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
 
 		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
-			Chat: tbapi.Chat{ID: 123},
-			User: &tbapi.User{ID: 42, UserName: "spammer"},
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "spammer"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
 		}}
 		updChan := make(chan tbapi.Update, 1)
 		updChan <- upd
@@ -4431,6 +4433,28 @@ func TestProcReaction(t *testing.T) {
 		assert.Equal(t, int64(42), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
 	})
 
+	t.Run("reaction removal not counted", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "user"},
+			NewReaction: []tbapi.ReactionType{},
+			OldReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Empty(t, botMock.OnReactionCalls())
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
 	t.Run("approved user not banned", func(t *testing.T) {
 		mockAPI := makeAPI(t)
 		botMock := &mocks.BotMock{
@@ -4442,8 +4466,9 @@ func TestProcReaction(t *testing.T) {
 		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
 
 		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
-			Chat: tbapi.Chat{ID: 123},
-			User: &tbapi.User{ID: 77, UserName: "approved"},
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 77, UserName: "approved"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
 		}}
 		updChan := make(chan tbapi.Update, 1)
 		updChan <- upd

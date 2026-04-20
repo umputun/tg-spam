@@ -3387,6 +3387,7 @@ func TestDetectorCheckReaction(t *testing.T) {
 		}
 		assert.True(t, resp.Spam)
 		assert.Equal(t, "reactions", resp.Name)
+		assert.Contains(t, resp.Details, "3 reactions in")
 	})
 }
 

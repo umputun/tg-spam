@@ -208,7 +208,9 @@ Configure with:
 
 This option is disabled by default. When enabled, the bot tracks emoji reactions from each user and marks them as a spammer if they exceed the reaction threshold within a time window. This targets bots that never post messages but mass-react to posts to attract attention to their profile (which contains spam in the bio).
 
-Only applies to unapproved users — approved users are exempt from reaction spam detection.
+Only applies to unapproved users — approved users are exempt from reaction spam detection. Unlike duplicate message detection (which runs for all users including approved ones), reaction spam detection is skipped for approved users — reaction-spamming bots never post messages and therefore never accumulate the message history needed for approval; legitimate active users should not be penalized for reacting.
+
+Note: the bot always subscribes to `message_reaction` updates from Telegram on startup, regardless of whether `--reactions.max-reactions` is set. This is a change from previous versions where no reaction updates were requested.
 
 Configure with:
 - `--reactions.max-reactions=, [$REACTIONS_MAX_REACTIONS]` (default: 0, disabled) - Max reactions per user in window to trigger spam ban
