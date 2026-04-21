@@ -39,14 +39,16 @@ func TestReactionDetector(t *testing.T) {
 		assert.Contains(t, resp.Details, "3 reactions in")
 	})
 
-	t.Run("threshold exceeded on subsequent calls stays spam", func(t *testing.T) {
+	t.Run("threshold exceeded on subsequent calls suppresses repeat ban", func(t *testing.T) {
 		d := newReactionDetector(2, time.Hour)
 		require.NotNil(t, d)
 		d.check(1)
-		d.check(1)
-		resp := d.check(1) // call above threshold verifies count still reported correctly
+		resp := d.check(1) // hits threshold exactly — spam=true, ban issued
 		assert.True(t, resp.Spam)
-		assert.Contains(t, resp.Details, "3 reactions in")
+		assert.Contains(t, resp.Details, "2 reactions in")
+		resp = d.check(1) // above threshold — suppress to avoid re-banning on every subsequent reaction
+		assert.False(t, resp.Spam)
+		assert.Contains(t, resp.Details, "already reported")
 	})
 
 	t.Run("independent users", func(t *testing.T) {
