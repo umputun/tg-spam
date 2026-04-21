@@ -39,9 +39,9 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 ### Task 1: reactionDetector in lib/tgspam/
 
-- [x] create `lib/tgspam/reaction.go` — `reactionDetector` struct with fields: `threshold int`, `window time.Duration`, `cache cache.Cache[int64, reactionHistory]`, `mu sync.RWMutex`
-- [x] `reactionHistory` struct: `count int`, `firstSeen time.Time`, `lastSeen time.Time`
-- [x] `newReactionDetector(threshold int, window time.Duration) *reactionDetector` — returns nil if threshold <= 0
+- [x] create `lib/tgspam/reaction.go` — `reactionDetector` struct with fields: `threshold int`, `window time.Duration`, `cache cache.Cache[int64, reactionHistory]`, `mu sync.Mutex`
+- [x] `reactionHistory` struct: `count int`, `firstSeen time.Time`
+- [x] `newReactionDetector(threshold int, window time.Duration) *reactionDetector` — returns nil if threshold <= 0 or window <= 0
 - [x] `check(userID int64) spamcheck.Response` — bumps counter, returns `spam=true` when threshold exceeded; resets when `firstSeen + window < now`
 - [x] create `lib/tgspam/reaction_test.go` — table-driven tests: disabled (threshold=0), below threshold, threshold reached, window expiry resets counter
 - [x] `go test -race ./lib/tgspam/... -run TestReaction` must pass
