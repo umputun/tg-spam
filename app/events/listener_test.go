@@ -89,6 +89,8 @@ func TestTelegramListener_Do(t *testing.T) {
 	assert.Equal(t, "startup", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 	assert.Equal(t, "bot's answer", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
 	assert.Len(t, mockAPI.GetChatAdministratorsCalls(), 1)
+	require.Len(t, mockAPI.GetUpdatesChanCalls(), 1)
+	assert.Contains(t, mockAPI.GetUpdatesChanCalls()[0].Config.AllowedUpdates, "message_reaction")
 
 	require.Len(t, botMock.OnMessageCalls(), 1)
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
