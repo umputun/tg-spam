@@ -57,16 +57,12 @@ func (d *reactionDetector) check(userID int64) spamcheck.Response {
 
 	d.cache.Set(userID, h, d.window*2)
 
-	if h.count == d.threshold {
+	if h.count >= d.threshold {
 		return spamcheck.Response{
 			Name:    "reactions",
 			Spam:    true,
 			Details: fmt.Sprintf("%d reactions in %s", h.count, now.Sub(h.firstSeen).Round(time.Second)),
 		}
-	}
-	if h.count > d.threshold {
-		// ban was already issued at threshold; suppress repeat detection to avoid re-banning on every subsequent reaction
-		return spamcheck.Response{Name: "reactions", Spam: false, Details: fmt.Sprintf("reaction spam already reported (%d)", h.count)}
 	}
 
 	details := fmt.Sprintf("%d/%d reactions in window", h.count, d.threshold)

@@ -763,7 +763,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 	}
 
 	resp := l.Bot.OnReaction(r.User.ID, r.User.UserName)
-	if resp.BanInterval == 0 {
+	if resp.BanInterval <= 0 {
 		return nil
 	}
 
