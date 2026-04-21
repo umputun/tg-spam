@@ -1145,7 +1145,7 @@ func TestSpamFilterOnReaction(t *testing.T) {
 				IsApprovedUserFunc: func(userID string) bool {
 					return tc.isApproved
 				},
-				CheckReactionFunc: func(userID int64) spamcheck.Response {
+				RecordReactionFunc: func(userID int64) spamcheck.Response {
 					return tc.reactionResp
 				},
 			}
@@ -1161,10 +1161,10 @@ func TestSpamFilterOnReaction(t *testing.T) {
 				assert.Zero(t, resp.BanInterval)
 			}
 			if tc.isApproved {
-				assert.Empty(t, det.CheckReactionCalls(), "approved user must not trigger CheckReaction")
+				assert.Empty(t, det.RecordReactionCalls(), "approved user must not trigger RecordReaction")
 			} else {
-				assert.Len(t, det.CheckReactionCalls(), 1)
-				assert.Equal(t, tc.userID, det.CheckReactionCalls()[0].UserID)
+				assert.Len(t, det.RecordReactionCalls(), 1)
+				assert.Equal(t, tc.userID, det.RecordReactionCalls()[0].UserID)
 			}
 		})
 	}

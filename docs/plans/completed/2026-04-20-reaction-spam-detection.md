@@ -10,7 +10,7 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 - `lib/tgspam/duplicate.go` — template for `reactionDetector` (LRU cache, sliding window, per-user)
 - `lib/tgspam/detector.go:100-141` — `Config` struct where `ReactionSpam` is added; `NewDetector` initializes detectors
-- `app/bot/spam.go:42-55` — `Detector` interface (extend with `CheckReaction`)
+- `app/bot/spam.go:42-55` — `Detector` interface (extend with `RecordReaction`)
 - `app/events/events.go:68-75` — `Bot` interface (extend with `OnReaction`)
 - `app/events/listener.go:153-156` — `NewUpdate` + main loop, add `MessageReaction` routing here
 - `app/main.go:145-148` — CLI flags `Duplicates` group, add `Reactions` group by same pattern
@@ -57,19 +57,19 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
   ```
 - [x] add field `reactionDetector *reactionDetector` to `Detector` struct
 - [x] in `NewDetector` initialize: `reactionDetector: newReactionDetector(p.ReactionSpam.MaxReactions, p.ReactionSpam.Window)` — returns nil if MaxReactions <= 0 (disabled)
-- [x] add method `CheckReaction(userID int64) spamcheck.Response` on `*Detector` — calls `d.reactionDetector.check(userID)`, returns `{Name:"reactions", Spam:false, Details:"disabled"}` if detector is nil
-- [x] add tests in `lib/tgspam/detector_test.go` for `TestDetectorCheckReaction`: disabled by default, enabled+below threshold, enabled+spam triggered
+- [x] add method `RecordReaction(userID int64) spamcheck.Response` on `*Detector` — calls `d.reactionDetector.check(userID)`, returns `{Name:"reactions", Spam:false, Details:"disabled"}` if detector is nil
+- [x] add tests in `lib/tgspam/detector_test.go` for `TestDetectorRecordReaction`: disabled by default, enabled+below threshold, enabled+spam triggered
 - [x] `go test -race ./lib/tgspam/... -run TestDetector` must pass
 
 ### Task 3: Detector and Bot interfaces + SpamFilter.OnReaction
 
-- [x] in `app/bot/spam.go` add `CheckReaction(userID int64) spamcheck.Response` to `Detector` interface
+- [x] in `app/bot/spam.go` add `RecordReaction(userID int64) spamcheck.Response` to `Detector` interface
 - [x] regenerate mock: `go generate ./app/bot/...`
 - [x] in `app/events/events.go` add `OnReaction(userID int64, userName string) bot.Response` to `Bot` interface
 - [x] regenerate mock: `go generate ./app/events/...`
 - [x] in `app/bot/spam.go` add `OnReaction(userID int64, userName string) Response` method on `*SpamFilter`:
   - skip if `s.IsApprovedUser(userID)` → `Response{}`
-  - call `s.Detector.CheckReaction(userID)`
+  - call `s.Detector.RecordReaction(userID)`
   - if spam=true → return `Response{Spam: true, BanInterval: permanentBanDuration, User: User{ID: userID, Name: userName}, CheckResults: []spamcheck.Response{resp}}`
 - [x] add `TestSpamFilterOnReaction` in `app/bot/spam_test.go`: approved user skipped, below threshold no ban, threshold reached returns ban response
 - [x] `go test -race ./app/bot/... -run TestSpamFilter` must pass

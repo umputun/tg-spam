@@ -26,8 +26,8 @@ import (
 //			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
-//			CheckReactionFunc: func(userID int64) spamcheck.Response {
-//				panic("mock out the CheckReaction method")
+//			RecordReactionFunc: func(userID int64) spamcheck.Response {
+//				panic("mock out the RecordReaction method")
 //			},
 //			GetLuaPluginNamesFunc: func() []string {
 //				panic("mock out the GetLuaPluginNames method")
@@ -72,8 +72,8 @@ type DetectorMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
-	// CheckReactionFunc mocks the CheckReaction method.
-	CheckReactionFunc func(userID int64) spamcheck.Response
+	// RecordReactionFunc mocks the RecordReaction method.
+	RecordReactionFunc func(userID int64) spamcheck.Response
 
 	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
 	GetLuaPluginNamesFunc func() []string
@@ -117,8 +117,8 @@ type DetectorMock struct {
 			// Request is the request argument value.
 			Request spamcheck.Request
 		}
-		// CheckReaction holds details about calls to the CheckReaction method.
-		CheckReaction []struct {
+		// RecordReaction holds details about calls to the RecordReaction method.
+		RecordReaction []struct {
 			// UserID is the userID argument value.
 			UserID int64
 		}
@@ -173,7 +173,7 @@ type DetectorMock struct {
 	lockAddApprovedUser    sync.RWMutex
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
-	lockCheckReaction      sync.RWMutex
+	lockRecordReaction     sync.RWMutex
 	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
@@ -297,43 +297,43 @@ func (mock *DetectorMock) ResetCheckCalls() {
 	mock.lockCheck.Unlock()
 }
 
-// CheckReaction calls CheckReactionFunc.
-func (mock *DetectorMock) CheckReaction(userID int64) spamcheck.Response {
-	if mock.CheckReactionFunc == nil {
-		panic("DetectorMock.CheckReactionFunc: method is nil but Detector.CheckReaction was just called")
+// RecordReaction calls RecordReactionFunc.
+func (mock *DetectorMock) RecordReaction(userID int64) spamcheck.Response {
+	if mock.RecordReactionFunc == nil {
+		panic("DetectorMock.RecordReactionFunc: method is nil but Detector.RecordReaction was just called")
 	}
 	callInfo := struct {
 		UserID int64
 	}{
 		UserID: userID,
 	}
-	mock.lockCheckReaction.Lock()
-	mock.calls.CheckReaction = append(mock.calls.CheckReaction, callInfo)
-	mock.lockCheckReaction.Unlock()
-	return mock.CheckReactionFunc(userID)
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = append(mock.calls.RecordReaction, callInfo)
+	mock.lockRecordReaction.Unlock()
+	return mock.RecordReactionFunc(userID)
 }
 
-// CheckReactionCalls gets all the calls that were made to CheckReaction.
+// RecordReactionCalls gets all the calls that were made to RecordReaction.
 // Check the length with:
 //
-//	len(mockedDetector.CheckReactionCalls())
-func (mock *DetectorMock) CheckReactionCalls() []struct {
+//	len(mockedDetector.RecordReactionCalls())
+func (mock *DetectorMock) RecordReactionCalls() []struct {
 	UserID int64
 } {
 	var calls []struct {
 		UserID int64
 	}
-	mock.lockCheckReaction.RLock()
-	calls = mock.calls.CheckReaction
-	mock.lockCheckReaction.RUnlock()
+	mock.lockRecordReaction.RLock()
+	calls = mock.calls.RecordReaction
+	mock.lockRecordReaction.RUnlock()
 	return calls
 }
 
-// ResetCheckReactionCalls reset all the calls that were made to CheckReaction.
-func (mock *DetectorMock) ResetCheckReactionCalls() {
-	mock.lockCheckReaction.Lock()
-	mock.calls.CheckReaction = nil
-	mock.lockCheckReaction.Unlock()
+// ResetRecordReactionCalls reset all the calls that were made to RecordReaction.
+func (mock *DetectorMock) ResetRecordReactionCalls() {
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
 }
 
 // GetLuaPluginNames calls GetLuaPluginNamesFunc.
@@ -704,9 +704,9 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
 
-	mock.lockCheckReaction.Lock()
-	mock.calls.CheckReaction = nil
-	mock.lockCheckReaction.Unlock()
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
 
 	mock.lockGetLuaPluginNames.Lock()
 	mock.calls.GetLuaPluginNames = nil

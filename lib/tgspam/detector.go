@@ -456,9 +456,9 @@ func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult,
 	}
 }
 
-// CheckReaction checks if a user is a reaction spammer. Returns spam=true if the user exceeded the reaction threshold.
+// RecordReaction records a new reaction for a user and returns spam=true if the reaction threshold is exceeded.
 // If the reaction detector is disabled, returns a non-spam response with "disabled" details.
-func (d *Detector) CheckReaction(userID int64) spamcheck.Response {
+func (d *Detector) RecordReaction(userID int64) spamcheck.Response {
 	if d.reactionDetector == nil {
 		return spamcheck.Response{Name: "reactions", Spam: false, Details: "disabled"}
 	}

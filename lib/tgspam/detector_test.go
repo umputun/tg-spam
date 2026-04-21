@@ -3357,10 +3357,10 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 	})
 }
 
-func TestDetectorCheckReaction(t *testing.T) {
+func TestDetectorRecordReaction(t *testing.T) {
 	t.Run("disabled by default", func(t *testing.T) {
 		d := NewDetector(Config{})
-		resp := d.CheckReaction(123)
+		resp := d.RecordReaction(123)
 		assert.False(t, resp.Spam)
 		assert.Equal(t, "reactions", resp.Name)
 		assert.Equal(t, "disabled", resp.Details)
@@ -3371,7 +3371,7 @@ func TestDetectorCheckReaction(t *testing.T) {
 			MaxReactions int
 			Window       time.Duration
 		}{MaxReactions: 5, Window: time.Hour}})
-		resp := d.CheckReaction(42)
+		resp := d.RecordReaction(42)
 		assert.False(t, resp.Spam)
 		assert.Equal(t, "reactions", resp.Name)
 	})
@@ -3383,7 +3383,7 @@ func TestDetectorCheckReaction(t *testing.T) {
 		}{MaxReactions: 3, Window: time.Hour}})
 		var resp spamcheck.Response
 		for range 3 {
-			resp = d.CheckReaction(99)
+			resp = d.RecordReaction(99)
 		}
 		assert.True(t, resp.Spam)
 		assert.Equal(t, "reactions", resp.Name)
