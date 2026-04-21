@@ -197,8 +197,9 @@ func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 	return s.Detector.IsApprovedUser(fmt.Sprintf("%d", userID))
 }
 
-// OnReaction checks if user reacting to messages is a spammer.
-// approved users are skipped; unapproved users are checked against the reaction detector.
+// OnReaction records one net-new reaction from a user and returns a ban response if the threshold is exceeded.
+// Approved users are skipped. Callers should invoke this once per added reaction; if a single Telegram update
+// adds multiple reactions, each added reaction is counted separately.
 func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
 	if s.IsApprovedUser(userID) {
 		return Response{}

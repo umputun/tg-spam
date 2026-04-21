@@ -456,8 +456,10 @@ func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult,
 	}
 }
 
-// RecordReaction records a new reaction for a user and returns spam=true if the reaction threshold is exceeded.
-// If the reaction detector is disabled, returns a non-spam response with "disabled" details.
+// RecordReaction records one net-new reaction for a user and returns spam=true if the reaction threshold is exceeded.
+// Callers should invoke this once per added reaction; if a single external event adds multiple reactions, each
+// added reaction is counted separately. If the reaction detector is disabled, it returns a non-spam response with
+// "disabled" details.
 func (d *Detector) RecordReaction(userID int64) spamcheck.Response {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
