@@ -132,7 +132,7 @@ Integrated via a dedicated path (not through `Check(msg)`) since reactions are n
 
 **`procReaction` → ban flow:**
 - Uses existing `banUserOrChannel()` unchanged
-- `resp.BanInterval = 0` means permanent ban (same as other detectors)
+- Uses `bot.PermanentBanDuration` for permanent bans (same convention as the rest of the app)
 - No `ExtraDeleteIDs` — reactions don't create messages
 
 **AllowedUpdates:**
