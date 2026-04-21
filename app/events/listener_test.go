@@ -4485,6 +4485,56 @@ func TestProcReaction(t *testing.T) {
 		assert.Empty(t, mockAPI.RequestCalls())
 	})
 
+	t.Run("reaction change not counted", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		botMock := &mocks.BotMock{}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "user"},
+			OldReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👎"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Empty(t, botMock.OnReactionCalls(), "changing a reaction should not increment the counter")
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
+	t.Run("multi-reaction burst counted correctly", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		callCount := 0
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				callCount++
+				return bot.Response{}
+			},
+		}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123"}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "user"},
+			OldReaction: []tbapi.ReactionType{},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}, {Type: "emoji", Emoji: "❤️"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		assert.Equal(t, 2, callCount, "each net new reaction should increment the counter once")
+		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
 	t.Run("approved user not banned", func(t *testing.T) {
 		mockAPI := makeAPI(t)
 		botMock := &mocks.BotMock{

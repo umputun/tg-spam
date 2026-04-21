@@ -610,7 +610,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
 	if resp.ChannelID == 0 {
-		return fmt.Sprintf("%v", resp.User)
+		return resp.User.String()
 	}
 	botChat := bot.SenderChat{
 		ID: resp.ChannelID,
@@ -753,8 +753,10 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		log.Printf("[DEBUG] reaction from chat %d, not primary chat %d, skipped", r.Chat.ID, l.chatID)
 		return nil
 	}
-	if len(r.NewReaction) == 0 {
-		return nil // reaction removed, not added — don't count toward spam threshold
+	// count only net new reactions; changes (👍→👎) and removals have newReactionsAdded <= 0
+	newReactionsAdded := len(r.NewReaction) - len(r.OldReaction)
+	if newReactionsAdded <= 0 {
+		return nil
 	}
 
 	if l.SuperUsers.IsSuper(r.User.UserName, r.User.ID) {
@@ -762,7 +764,13 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		return nil
 	}
 
-	resp := l.Bot.OnReaction(r.User.ID, r.User.UserName)
+	var resp bot.Response
+	for range newReactionsAdded {
+		resp = l.Bot.OnReaction(r.User.ID, r.User.UserName)
+		if resp.BanInterval > 0 {
+			break
+		}
+	}
 	if resp.BanInterval <= 0 {
 		return nil
 	}
@@ -772,7 +780,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 	}
 	l.SpamLogger.Save(&bot.Message{From: resp.User}, &resp)
 
-	banUserStr := fmt.Sprintf("%v", resp.User)
+	banUserStr := resp.User.String()
 	banReq := banRequest{
 		duration: resp.BanInterval, userID: resp.User.ID, userName: banUserStr,
 		chatID: l.chatID, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode,

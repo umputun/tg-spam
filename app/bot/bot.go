@@ -95,6 +95,17 @@ type User struct {
 	IsPremium   bool   `json:"is_premium,omitempty"`
 }
 
+// String returns a human-readable representation of the user.
+func (u User) String() string {
+	if u.Username != "" {
+		return fmt.Sprintf("@%s (%d)", u.Username, u.ID)
+	}
+	if u.DisplayName != "" {
+		return fmt.Sprintf("%s (%d)", u.DisplayName, u.ID)
+	}
+	return fmt.Sprintf("id:%d", u.ID)
+}
+
 // DisplayName returns user's display name or username or id
 func DisplayName(msg Message) string {
 	displayUsername := msg.From.DisplayName
