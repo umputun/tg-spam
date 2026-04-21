@@ -770,6 +770,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 	if err := l.Locator.AddSpam(ctx, r.User.ID, resp.CheckResults); err != nil {
 		log.Printf("[WARN] failed to add reaction spam to locator: %v", err)
 	}
+	l.SpamLogger.Save(&bot.Message{From: resp.User}, &resp)
 
 	banUserStr := fmt.Sprintf("%v", resp.User)
 	banReq := banRequest{
@@ -784,6 +785,8 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		notifText := fmt.Sprintf("permanently banned reaction spammer %s", banUserStr)
 		if l.TrainingMode {
 			notifText = fmt.Sprintf("[training] reaction spammer detected: %s", banUserStr)
+		} else if l.Dry {
+			notifText = fmt.Sprintf("[dry run] would ban reaction spammer %s", banUserStr)
 		}
 		notif := tbapi.NewMessage(l.adminChatID, notifText)
 		if _, err := l.TbAPI.Send(notif); err != nil {

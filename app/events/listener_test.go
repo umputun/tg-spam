@@ -4407,6 +4407,7 @@ func TestProcReaction(t *testing.T) {
 		locatorMock := &mocks.LocatorMock{
 			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
 		}
+		spamLoggerMock := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 		botMock := &mocks.BotMock{
 			OnReactionFunc: func(userID int64, userName string) bot.Response {
 				return bot.Response{
@@ -4416,7 +4417,7 @@ func TestProcReaction(t *testing.T) {
 				}
 			},
 		}
-		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123", Locator: locatorMock}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Group: "123", Locator: locatorMock, SpamLogger: spamLoggerMock}
 
 		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
 			Chat:        tbapi.Chat{ID: 123},
@@ -4437,6 +4438,8 @@ func TestProcReaction(t *testing.T) {
 		assert.Equal(t, int64(42), mockAPI.RequestCalls()[0].C.(tbapi.BanChatMemberConfig).UserID)
 		require.Len(t, locatorMock.AddSpamCalls(), 1)
 		assert.Equal(t, int64(42), locatorMock.AddSpamCalls()[0].UserID)
+		require.Len(t, spamLoggerMock.SaveCalls(), 1)
+		assert.Equal(t, int64(42), spamLoggerMock.SaveCalls()[0].Msg.From.ID)
 	})
 
 	t.Run("superuser reaction ignored", func(t *testing.T) {
