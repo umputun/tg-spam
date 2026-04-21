@@ -778,7 +778,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 	if err := l.Locator.AddSpam(ctx, r.User.ID, resp.CheckResults); err != nil {
 		log.Printf("[WARN] failed to add reaction spam to locator: %v", err)
 	}
-	l.SpamLogger.Save(&bot.Message{From: resp.User}, &resp)
+	l.SpamLogger.Save(&bot.Message{From: resp.User, Text: "[reaction spam]"}, &resp)
 
 	banUserStr := resp.User.String()
 	banReq := banRequest{

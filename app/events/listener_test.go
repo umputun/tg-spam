@@ -4440,6 +4440,7 @@ func TestProcReaction(t *testing.T) {
 		assert.Equal(t, int64(42), locatorMock.AddSpamCalls()[0].UserID)
 		require.Len(t, spamLoggerMock.SaveCalls(), 1)
 		assert.Equal(t, int64(42), spamLoggerMock.SaveCalls()[0].Msg.From.ID)
+		assert.Equal(t, "[reaction spam]", spamLoggerMock.SaveCalls()[0].Msg.Text)
 	})
 
 	t.Run("superuser reaction ignored", func(t *testing.T) {
@@ -4559,5 +4560,127 @@ func TestProcReaction(t *testing.T) {
 		require.EqualError(t, err, "telegram update chan closed")
 		require.Len(t, botMock.OnReactionCalls(), 1)
 		assert.Empty(t, mockAPI.RequestCalls())
+	})
+
+	t.Run("threshold reached, admin notified", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		locatorMock := &mocks.LocatorMock{
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+		}
+		spamLoggerMock := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{
+					BanInterval:  bot.PermanentBanDuration,
+					User:         bot.User{ID: userID, Username: userName},
+					CheckResults: []spamcheck.Response{{Name: "reactions", Spam: true, Details: "5 reactions in 1s"}},
+				}
+			},
+		}
+		l := TelegramListener{
+			TbAPI: mockAPI, Bot: botMock, Group: "123",
+			Locator: locatorMock, SpamLogger: spamLoggerMock,
+			adminChatID: 456,
+		}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "spammer"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		require.Len(t, mockAPI.RequestCalls(), 1)
+		sendCalls := mockAPI.SendCalls()
+		require.Len(t, sendCalls, 1)
+		msg := sendCalls[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, int64(456), msg.ChatID)
+		assert.Contains(t, msg.Text, "spammer")
+		assert.Contains(t, msg.Text, "banned")
+	})
+
+	t.Run("threshold reached, dry run admin notified", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		locatorMock := &mocks.LocatorMock{
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+		}
+		spamLoggerMock := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{
+					BanInterval:  bot.PermanentBanDuration,
+					User:         bot.User{ID: userID, Username: userName},
+					CheckResults: []spamcheck.Response{{Name: "reactions", Spam: true}},
+				}
+			},
+		}
+		l := TelegramListener{
+			TbAPI: mockAPI, Bot: botMock, Group: "123",
+			Locator: locatorMock, SpamLogger: spamLoggerMock,
+			adminChatID: 456, Dry: true,
+		}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "spammer"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		sendCalls := mockAPI.SendCalls()
+		require.Len(t, sendCalls, 1)
+		msg := sendCalls[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, int64(456), msg.ChatID)
+		assert.Contains(t, msg.Text, "[dry run]")
+	})
+
+	t.Run("threshold reached, training mode admin notified", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		locatorMock := &mocks.LocatorMock{
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+		}
+		spamLoggerMock := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{
+					BanInterval:  bot.PermanentBanDuration,
+					User:         bot.User{ID: userID, Username: userName},
+					CheckResults: []spamcheck.Response{{Name: "reactions", Spam: true}},
+				}
+			},
+		}
+		l := TelegramListener{
+			TbAPI: mockAPI, Bot: botMock, Group: "123",
+			Locator: locatorMock, SpamLogger: spamLoggerMock,
+			adminChatID: 456, TrainingMode: true,
+		}
+
+		upd := tbapi.Update{MessageReaction: &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "spammer"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		}}
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		err := l.Do(context.Background())
+		require.EqualError(t, err, "telegram update chan closed")
+		sendCalls := mockAPI.SendCalls()
+		require.Len(t, sendCalls, 1)
+		msg := sendCalls[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, int64(456), msg.ChatID)
+		assert.Contains(t, msg.Text, "[training]")
 	})
 }
