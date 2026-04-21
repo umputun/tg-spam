@@ -2,13 +2,13 @@
 
 ## Overview
 
-New spam strategy: bots don't write messages but mass-react to others' posts, luring users into their profile where spam is in bio. Solution: a separate `reactionDetector` with a per-user sliding window, modeled on `duplicateDetector`. Opt-in feature behind a flag, only for unapproved users.
+New spam strategy: bots don't write messages but mass-react to others' posts, luring users into their profile where spam is in bio. Solution: a separate `reactionDetector` with a per-user fixed window starting at the first reaction in the current window, modeled on `duplicateDetector`. Opt-in feature behind a flag, only for unapproved users.
 
 Integrated via a dedicated path (not through `Check(msg)`) since reactions are not messages and routing through LLM/CAS/stopwords is meaningless.
 
 ## Context (from discovery)
 
-- `lib/tgspam/duplicate.go` — template for `reactionDetector` (LRU cache, sliding window, per-user)
+- `lib/tgspam/duplicate.go` — template for `reactionDetector` (LRU cache, per-user counting window)
 - `lib/tgspam/detector.go:100-141` — `Config` struct where `ReactionSpam` is added; `NewDetector` initializes detectors
 - `app/bot/spam.go:42-55` — `Detector` interface (extend with `RecordReaction`)
 - `app/events/events.go:68-75` — `Bot` interface (extend with `OnReaction`)
