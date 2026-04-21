@@ -15,7 +15,7 @@ type reactionDetector struct {
 	threshold int
 	window    time.Duration
 	cache     cache.Cache[int64, reactionHistory]
-	mu        sync.RWMutex
+	mu        sync.Mutex
 }
 
 type reactionHistory struct {
@@ -23,9 +23,9 @@ type reactionHistory struct {
 	firstSeen time.Time
 }
 
-// newReactionDetector creates a new reaction detector; returns nil if threshold <= 0 (disabled)
+// newReactionDetector creates a new reaction detector; returns nil if threshold <= 0 or window <= 0 (disabled)
 func newReactionDetector(threshold int, window time.Duration) *reactionDetector {
-	if threshold <= 0 {
+	if threshold <= 0 || window <= 0 {
 		return nil
 	}
 	const maxUsers = 10000
