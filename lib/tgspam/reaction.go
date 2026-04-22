@@ -36,7 +36,9 @@ func newReactionDetector(threshold int, window time.Duration) *reactionDetector 
 	}
 }
 
-// check increments the reaction counter for userID and returns spam=true when threshold exceeded within window
+// check increments the reaction counter for userID and returns spam=true once the threshold is reached.
+// After that it keeps returning spam=true for subsequent reactions in the same active window until the
+// window expires and the counter resets.
 func (d *reactionDetector) check(userID int64) spamcheck.Response {
 	now := time.Now()
 
