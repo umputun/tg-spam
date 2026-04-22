@@ -421,6 +421,20 @@ Example plugins are available in the [_examples/lua_plugins](https://github.com/
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
 
+### Using a proxy
+
+For networks where access to `api.telegram.org` is blocked, `tg-spam` honours the standard Go proxy environment variables out of the box. No flag or code change is required.
+
+Set one of `HTTPS_PROXY` / `HTTP_PROXY` (and optionally `NO_PROXY`) in the bot's environment or docker-compose file. Supported proxy schemes are `http`, `https`, `socks5`, and `socks5h`:
+
+```
+HTTPS_PROXY=http://user:pass@proxy.example.com:8080
+# or
+HTTPS_PROXY=socks5://user:pass@proxy.example.com:1080
+```
+
+The same variables also control traffic to any other HTTPS endpoint the bot talks to (OpenAI, Gemini, remote sample repositories, etc.), so `NO_PROXY` can be used to carve out exceptions.
+
 ### Automatic backup on version upgrade
 
 `tg-spam` includes an automatic backup mechanism that triggers when a version upgrade is detected. This feature helps protect against potential data loss or corruption that could occur during version upgrades, particularly when database schema changes are involved. If you need to rollback to a previous version, having these backups ensures you can restore your data to a compatible state.
@@ -682,9 +696,9 @@ Pls note: Missed spam messages forwarded to the admin chat will be banned and re
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password and the hash are printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
 
-For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
+For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. Setting `--server.auth-hash` alone is sufficient — when a hash is provided, no random password is generated regardless of `--server.auth`, and only hash-based auth is enforced. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
 
 alternatively, it is possible to use one of the following commands to generate the hash:
 ```

@@ -600,6 +600,7 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		log.Printf("[INFO] using provided bcrypt hash for authentication")
 	} else if authPasswd != "" {
 		// generate hash from password if no hash but password is provided
+		// generateAuthHash handles the "auto" password case internally
 		authHash, err = generateAuthHash(authPasswd)
 		if err != nil {
 			return fmt.Errorf("can't handle authentication setup: %w", err)
