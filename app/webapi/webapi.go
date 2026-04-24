@@ -73,7 +73,8 @@ type Config struct {
 	StorageEngine   StorageEngine    // database engine access for backups
 	DMUsersProvider DMUsersProvider  // provider for recent DM users
 	SettingsStore   SettingsStore    // configuration storage interface
-	AuthHash        string           // basic auth bcrypt hash for user "tg-spam"
+	AuthUser        string           // basic auth user; empty falls back to AppSettings.Server.AuthUser, then "tg-spam"
+	AuthHash        string           // basic auth bcrypt hash
 	Dbg             bool             // debug mode
 	BotUsername     string           // resolved telegram bot username
 	AppSettings     *config.Settings // application settings (domain model)
@@ -156,7 +157,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// a safety fallback if AppSettings hash is empty so a DB that lost the
 	// hash can't silently unlock the API.
 	if s.AuthHash != "" {
-		log.Printf("[INFO] basic auth enabled for webapi server (user: tg-spam)")
+		log.Printf("[INFO] basic auth enabled for webapi server (user: %s)", s.activeAuthUser())
 		router.Use(s.basicAuthMiddleware)
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
@@ -198,12 +199,14 @@ func (s *Server) basicAuthMiddleware(h http.Handler) http.Handler {
 	})
 }
 
-// checkBasicAuth returns true when user is "tg-spam" and passwd matches the
-// currently active bcrypt hash. The active hash is AppSettings.Server.AuthHash
-// when non-empty, else the startup AuthHash; startup serves as a safety
-// fallback so reloads that drop the DB hash can't unlock the server.
+// checkBasicAuth returns true when user matches the active auth user and
+// passwd matches the currently active bcrypt hash. The active user is
+// AppSettings.Server.AuthUser when non-empty, else the startup AuthUser, else
+// the historical default "tg-spam". The active hash follows the same precedence
+// over AuthHash; startup serves as a safety fallback so reloads that drop the
+// DB hash can't unlock the server.
 func (s *Server) checkBasicAuth(user, passwd string) bool {
-	if user != "tg-spam" {
+	if user != s.activeAuthUser() {
 		return false
 	}
 	hash := s.AuthHash
@@ -216,6 +219,22 @@ func (s *Server) checkBasicAuth(user, passwd string) bool {
 		return false
 	}
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(passwd)) == nil
+}
+
+// activeAuthUser returns the configured basic auth username with the same
+// precedence as the hash: settings -> startup -> "tg-spam" default.
+func (s *Server) activeAuthUser() string {
+	s.appSettingsMu.RLock()
+	if s.AppSettings != nil && s.AppSettings.Server.AuthUser != "" {
+		u := s.AppSettings.Server.AuthUser
+		s.appSettingsMu.RUnlock()
+		return u
+	}
+	s.appSettingsMu.RUnlock()
+	if s.AuthUser != "" {
+		return s.AuthUser
+	}
+	return "tg-spam"
 }
 
 func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {

@@ -215,6 +215,31 @@ func TestServer_checkBasicAuth(t *testing.T) {
 		assert.False(t, srv.checkBasicAuth("tg-spam", ""))
 		assert.False(t, srv.checkBasicAuth("tg-spam", "anything"))
 	})
+
+	t.Run("AppSettings AuthUser overrides default", func(t *testing.T) {
+		srv := &Server{Config: Config{
+			AuthHash:    startupHash,
+			AppSettings: &config.Settings{Server: config.ServerSettings{AuthUser: "custom"}},
+		}}
+		assert.True(t, srv.checkBasicAuth("custom", "startup"))
+		assert.False(t, srv.checkBasicAuth("tg-spam", "startup"), "default must not work when AuthUser is set")
+	})
+
+	t.Run("startup AuthUser used when AppSettings empty", func(t *testing.T) {
+		srv := &Server{Config: Config{AuthUser: "startupuser", AuthHash: startupHash, AppSettings: &config.Settings{}}}
+		assert.True(t, srv.checkBasicAuth("startupuser", "startup"))
+		assert.False(t, srv.checkBasicAuth("tg-spam", "startup"))
+	})
+
+	t.Run("AppSettings AuthUser wins over startup", func(t *testing.T) {
+		srv := &Server{Config: Config{
+			AuthUser:    "startupuser",
+			AuthHash:    startupHash,
+			AppSettings: &config.Settings{Server: config.ServerSettings{AuthUser: "settingsuser"}},
+		}}
+		assert.True(t, srv.checkBasicAuth("settingsuser", "startup"))
+		assert.False(t, srv.checkBasicAuth("startupuser", "startup"))
+	})
 }
 
 func TestServer_routes(t *testing.T) {
