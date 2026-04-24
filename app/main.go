@@ -649,7 +649,8 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		Dictionary:      dictionaryStore,
 		StorageEngine:   db, // add database engine for backup functionality
 		DMUsersProvider: dmUsersProvider,
-		AuthHash:        authHash, // use the hash (either from options or generated)
+		AuthUser:        settings.Server.AuthUser, // optional basic auth user (defaults to "tg-spam" when empty)
+		AuthHash:        authHash,                 // use the hash (either from options or generated)
 		Version:         revision,
 		Dbg:             settings.Transient.Dbg,
 		BotUsername:     botUsername,

@@ -209,6 +209,7 @@ type MessageSettings struct {
 type ServerSettings struct {
 	Enabled    bool   `json:"enabled" yaml:"enabled" db:"server_enabled"`
 	ListenAddr string `json:"listen_addr" yaml:"listen_addr" db:"server_listen_addr"`
+	AuthUser   string `json:"auth_user,omitempty" yaml:"auth_user,omitempty" db:"server_auth_user"`
 	AuthHash   string `json:"auth_hash" yaml:"auth_hash" db:"server_auth_hash"`
 }
 
