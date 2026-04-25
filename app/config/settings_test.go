@@ -211,6 +211,9 @@ func newPopulatedSettings() *Settings {
 	s.Duplicates.Threshold = 7
 	s.Duplicates.Window = 2 * time.Minute
 
+	s.Reactions.MaxReactions = 5
+	s.Reactions.Window = 30 * time.Minute
+
 	s.Report.Enabled = true
 	s.Report.Threshold = 4
 	s.Report.AutoBanThreshold = 10
@@ -234,6 +237,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, jsonStr, `"gemini"`)
 	assert.Contains(t, jsonStr, `"llm"`)
 	assert.Contains(t, jsonStr, `"duplicates"`)
+	assert.Contains(t, jsonStr, `"reactions"`)
 	assert.Contains(t, jsonStr, `"report"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup_limit"`)
@@ -247,6 +251,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Gemini, restored.Gemini)
 	assert.Equal(t, original.LLM, restored.LLM)
 	assert.Equal(t, original.Duplicates, restored.Duplicates)
+	assert.Equal(t, original.Reactions, restored.Reactions)
 	assert.Equal(t, original.Report, restored.Report)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
@@ -265,6 +270,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, yamlStr, "gemini:")
 	assert.Contains(t, yamlStr, "llm:")
 	assert.Contains(t, yamlStr, "duplicates:")
+	assert.Contains(t, yamlStr, "reactions:")
 	assert.Contains(t, yamlStr, "report:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup_limit:")
@@ -278,6 +284,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Gemini, restored.Gemini)
 	assert.Equal(t, original.LLM, restored.LLM)
 	assert.Equal(t, original.Duplicates, restored.Duplicates)
+	assert.Equal(t, original.Reactions, restored.Reactions)
 	assert.Equal(t, original.Report, restored.Report)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)

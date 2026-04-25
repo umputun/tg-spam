@@ -30,6 +30,7 @@ type Settings struct {
 	Server        ServerSettings        `json:"server" yaml:"server" db:"server"`
 	Delete        DeleteSettings        `json:"delete" yaml:"delete" db:"delete"`
 	Duplicates    DuplicatesSettings    `json:"duplicates" yaml:"duplicates" db:"duplicates"`
+	Reactions     ReactionsSettings     `json:"reactions" yaml:"reactions" db:"reactions"`
 	Report        ReportSettings        `json:"report" yaml:"report" db:"report"`
 
 	// spam detection settings
@@ -162,6 +163,12 @@ type DeleteSettings struct {
 type DuplicatesSettings struct {
 	Threshold int           `json:"threshold" yaml:"threshold" db:"duplicates_threshold"`
 	Window    time.Duration `json:"window" yaml:"window" db:"duplicates_window"`
+}
+
+// ReactionsSettings contains reaction-spam detection settings
+type ReactionsSettings struct {
+	MaxReactions int           `json:"max_reactions" yaml:"max_reactions" db:"reactions_max_reactions"`
+	Window       time.Duration `json:"window" yaml:"window" db:"reactions_window"`
 }
 
 // ReportSettings contains user-report feature settings

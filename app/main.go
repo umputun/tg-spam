@@ -719,11 +719,11 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 			settings.Duplicates.Threshold, settings.Duplicates.Window)
 	}
 
-	detectorConfig.ReactionSpam.MaxReactions = opts.Reactions.MaxReactions
-	detectorConfig.ReactionSpam.Window = opts.Reactions.Window
-	if opts.Reactions.MaxReactions > 0 {
+	detectorConfig.ReactionSpam.MaxReactions = settings.Reactions.MaxReactions
+	detectorConfig.ReactionSpam.Window = settings.Reactions.Window
+	if settings.Reactions.MaxReactions > 0 {
 		log.Printf("[INFO] reaction spam detection enabled, max reactions: %d, window: %v",
-			opts.Reactions.MaxReactions, opts.Reactions.Window)
+			settings.Reactions.MaxReactions, settings.Reactions.Window)
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)
@@ -1372,6 +1372,11 @@ func optToSettings(opts options) *config.Settings {
 		Duplicates: config.DuplicatesSettings{
 			Threshold: opts.Duplicates.Threshold,
 			Window:    opts.Duplicates.Window,
+		},
+
+		Reactions: config.ReactionsSettings{
+			MaxReactions: opts.Reactions.MaxReactions,
+			Window:       opts.Reactions.Window,
 		},
 
 		Report: config.ReportSettings{
