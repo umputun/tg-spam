@@ -79,12 +79,24 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// reapply startup-equivalent normalization: fills any zero fields left by a
+	// partial/legacy DB blob from the defaults template and reasserts operator-
+	// supplied operational CLI overrides (--files.dynamic, --files.samples,
+	// --server.listen, --dry) so reload doesn't silently revert them to DB values.
+	// run BEFORE transient/auth preservation so the closure can't accidentally
+	// touch in-memory transient state.
+	if s.ReloadNormalize != nil {
+		s.ReloadNormalize(settings)
+	}
+
 	// preserve transient settings (never stored in DB). Tokens are NOT preserved:
 	// in --confdb mode the DB is authoritative for Telegram/OpenAI/Gemini tokens,
 	// so reload must pick up fresh DB values. Auth hash is preserved only when
-	// transient.AuthFromCLI is set by applyCLIOverrides, marking an explicit CLI
-	// override that must survive reload. When auth originated from the DB, fresh
-	// DB values win so external hash rotations are picked up.
+	// transient.AuthFromCLI is set, which marks an in-memory hash that must
+	// survive reload (set by applyCLIOverrides for explicit --server.auth/-hash
+	// flags, and by applyAutoAuthFallback for the auto-generated safety net).
+	// when auth originated from the DB, fresh DB values win so external hash
+	// rotations are picked up.
 	settings.Transient = s.AppSettings.Transient
 	if s.AppSettings.Transient.AuthFromCLI {
 		settings.Server.AuthHash = s.AppSettings.Server.AuthHash
@@ -119,24 +131,34 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// settings struct can't be observed in a partially updated state and so a
 	// concurrent loadConfigHandler can't swap the pointer mid-save.
 	s.appSettingsMu.Lock()
+
+	// load-bearing: updateSettingsFromForm must replace slices wholesale, never
+	// mutate in place. The snapshot below is a value copy that captures slice
+	// headers — if a future change adds in-place slice mutation, a failed save
+	// would not roll back the slice contents. Enforced by
+	// testUpdateSettingsFromForm_NoInPlaceSliceMutation.
+	snapshot := *s.AppSettings
 	updateSettingsFromForm(s.AppSettings, r)
 
 	saveToDB := r.FormValue("saveToDb") == "true" && s.SettingsStore != nil
 	if saveToDB {
-		log.Printf("[DEBUG] Saving settings to database")
+		log.Printf("[DEBUG] saving settings to database")
 		if err := s.SettingsStore.Save(r.Context(), s.AppSettings); err != nil {
+			*s.AppSettings = snapshot // rollback in-memory mutation on save failure
 			s.appSettingsMu.Unlock()
 			log.Printf("[ERROR] failed to save updated configuration: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[DEBUG] Settings saved successfully")
+		log.Printf("[DEBUG] settings saved successfully")
 	}
 	s.appSettingsMu.Unlock()
 
 	if r.Header.Get("HX-Request") == "true" {
-		// return a success message for HTMX
-		if _, err := w.Write([]byte(`<div class="alert alert-success">Configuration updated successfully</div>`)); err != nil {
+		// wrap the alert in #update-result so the next outerHTML swap finds the
+		// same target — without the id, the first save replaces #update-result
+		// with a plain alert div and subsequent saves silently no-op
+		if _, err := w.Write([]byte(`<div id="update-result" class="alert alert-success">Configuration updated successfully</div>`)); err != nil {
 			log.Printf("[ERROR] failed to write response: %v", err)
 		}
 		return
@@ -188,11 +210,11 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	settings.NoSpamReply = r.FormValue("noSpamReply") == "on"
 
 	// handle CasEnabled separately because we need to set CAS.API
-	casEnabled := r.FormValue("casEnabled") == "on"
-	if casEnabled && settings.CAS.API == "" {
-		settings.CAS.API = "https://api.cas.chat" // default CAS API endpoint
-	} else if !casEnabled {
+	switch casEnabled := r.FormValue("casEnabled") == "on"; {
+	case !casEnabled:
 		settings.CAS.API = ""
+	case settings.CAS.API == "":
+		settings.CAS.API = "https://api.cas.chat" // default CAS API endpoint
 	}
 
 	// parse super users from comma-separated string; only write when the form
@@ -214,47 +236,77 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
-	// meta checks
-	metaEnabled := r.FormValue("metaEnabled") == "on"
-
-	if val := r.FormValue("metaLinksLimit"); val != "" {
-		if limit, err := strconv.Atoi(val); err == nil {
-			settings.Meta.LinksLimit = limit
+	// meta checks: server-side authoritative master toggle. Behavior:
+	//   - form contains zero meta-related fields → skip the entire block so
+	//     unrelated saves preserve all 11 IsMetaEnabled-contributing fields
+	//   - metaEnabled=on → write rendered fields from form; rendered booleans
+	//     follow presence-of-on (absent == unchecked == false), unrendered
+	//     booleans (metaContactOnly, metaGiveaway) and the optional
+	//     metaUsernameSymbols are gated on r.Form presence so submits without
+	//     them preserve existing values
+	//   - metaEnabled absent → master toggle off, clear ALL 11 fields used by
+	//     isMetaEnabled() so a checked per-feature box (e.g., metaImageOnly)
+	//     cannot keep meta enabled
+	metaFormFields := []string{
+		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
+		"metaLinksOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
+		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway",
+	}
+	hasMetaForm := false
+	for _, k := range metaFormFields {
+		if _, ok := r.Form[k]; ok {
+			hasMetaForm = true
+			break
 		}
-	} else if !metaEnabled {
-		settings.Meta.LinksLimit = -1
 	}
-
-	if val := r.FormValue("metaMentionsLimit"); val != "" {
-		if limit, err := strconv.Atoi(val); err == nil {
-			settings.Meta.MentionsLimit = limit
+	if hasMetaForm {
+		if r.FormValue("metaEnabled") == "on" {
+			if val := r.FormValue("metaLinksLimit"); val != "" {
+				if limit, err := strconv.Atoi(val); err == nil {
+					settings.Meta.LinksLimit = limit
+				}
+			}
+			if val := r.FormValue("metaMentionsLimit"); val != "" {
+				if limit, err := strconv.Atoi(val); err == nil {
+					settings.Meta.MentionsLimit = limit
+				}
+			}
+			// honor the "leave empty to disable" UI hint: clear the setting whenever
+			// the form posts an empty value. The field is only written when the form
+			// contains it, so submits without it preserve the existing value.
+			if _, ok := r.Form["metaUsernameSymbols"]; ok {
+				settings.Meta.UsernameSymbols = r.FormValue("metaUsernameSymbols")
+			}
+			settings.Meta.LinksOnly = r.FormValue("metaLinksOnly") == "on"
+			settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
+			settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
+			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
+			settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
+			settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
+			// metaContactOnly and metaGiveaway are not currently rendered in the ConfigDB
+			// UI form. Gate them behind form presence so saves that don't render them
+			// can't silently wipe values set via save-config CLI or external DB tooling.
+			if _, ok := r.Form["metaContactOnly"]; ok {
+				settings.Meta.ContactOnly = r.FormValue("metaContactOnly") == "on"
+			}
+			if _, ok := r.Form["metaGiveaway"]; ok {
+				settings.Meta.Giveaway = r.FormValue("metaGiveaway") == "on"
+			}
+		} else {
+			// master toggle off — clear EVERY field used by IsMetaEnabled so the
+			// returned settings unambiguously satisfy IsMetaEnabled() == false
+			settings.Meta.LinksLimit = -1
+			settings.Meta.MentionsLimit = -1
+			settings.Meta.UsernameSymbols = ""
+			settings.Meta.LinksOnly = false
+			settings.Meta.ImageOnly = false
+			settings.Meta.VideosOnly = false
+			settings.Meta.AudiosOnly = false
+			settings.Meta.Forward = false
+			settings.Meta.Keyboard = false
+			settings.Meta.ContactOnly = false
+			settings.Meta.Giveaway = false
 		}
-	} else if !metaEnabled {
-		settings.Meta.MentionsLimit = -1
-	}
-
-	settings.Meta.LinksOnly = r.FormValue("metaLinksOnly") == "on"
-	settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
-	settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
-	settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
-	settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
-	settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
-
-	// metaContactOnly and metaGiveaway are not currently rendered in the ConfigDB
-	// UI form. Gate them behind form presence so saving unrelated changes can't
-	// silently wipe values set via save-config CLI or external DB tooling.
-	if _, ok := r.Form["metaContactOnly"]; ok {
-		settings.Meta.ContactOnly = r.FormValue("metaContactOnly") == "on"
-	}
-	if _, ok := r.Form["metaGiveaway"]; ok {
-		settings.Meta.Giveaway = r.FormValue("metaGiveaway") == "on"
-	}
-
-	// honor the "leave empty to disable" UI hint: clear the setting whenever
-	// the form posts an empty value. The field is only written when the form
-	// contains it, so unrelated saves preserve the existing value.
-	if _, ok := r.Form["metaUsernameSymbols"]; ok {
-		settings.Meta.UsernameSymbols = r.FormValue("metaUsernameSymbols")
 	}
 
 	// openAI settings. enablement (APIBase/Token) is managed via CLI and save-config
@@ -330,6 +382,20 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	if val := r.FormValue("duplicatesWindow"); val != "" {
 		if d, err := time.ParseDuration(val); err == nil {
 			settings.Duplicates.Window = d
+		}
+	}
+
+	// reactions detector. Gated on r.Form key presence (not value-non-empty) so a
+	// saved form without the reactions section preserves existing values, while an
+	// explicit zero from the operator (disabling the detector) is honored.
+	if _, ok := r.Form["reactionsMaxReactions"]; ok {
+		if n, err := strconv.Atoi(r.FormValue("reactionsMaxReactions")); err == nil {
+			settings.Reactions.MaxReactions = n
+		}
+	}
+	if _, ok := r.Form["reactionsWindow"]; ok {
+		if d, err := time.ParseDuration(r.FormValue("reactionsWindow")); err == nil {
+			settings.Reactions.Window = d
 		}
 	}
 
@@ -429,11 +495,11 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	}
 
 	// startupMessageEnabled controls Message.Startup
-	startupMessageEnabled := r.FormValue("startupMessageEnabled") == "on"
-	if startupMessageEnabled && settings.Message.Startup == "" {
-		settings.Message.Startup = "Bot started"
-	} else if !startupMessageEnabled {
+	switch startupMessageEnabled := r.FormValue("startupMessageEnabled") == "on"; {
+	case !startupMessageEnabled:
 		settings.Message.Startup = ""
+	case settings.Message.Startup == "":
+		settings.Message.Startup = "Bot started"
 	}
 
 	settings.Training = r.FormValue("trainingEnabled") == "on"

@@ -436,6 +436,102 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Configuration storage not available")
 	})
+
+	t.Run("ReloadNormalize fills defaults and reapplies operational CLI overrides", func(t *testing.T) {
+		// regression for codex review: a partial DB blob plus operator-supplied
+		// --files.dynamic / --server.listen / --dry must survive POST /config/reload
+		storedSettings := &config.Settings{
+			InstanceID: "stored-instance",
+			Server: config.ServerSettings{
+				ListenAddr: ":8080", // CLI default — must be overridden by closure
+			},
+			Files: config.FilesSettings{
+				DynamicDataPath: "data", // CLI default — must be overridden
+			},
+			// LinksLimit left zero to simulate a partial/legacy blob; closure
+			// should fill via ApplyDefaults equivalent
+			Meta: config.MetaSettings{},
+		}
+
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return storedSettings, nil
+			},
+		}
+
+		appSettings := &config.Settings{
+			InstanceID: "test-instance",
+			Server: config.ServerSettings{
+				ListenAddr: ":9090",
+			},
+			Files: config.FilesSettings{
+				DynamicDataPath: "/var/data",
+			},
+		}
+
+		// closure mirrors the production wiring: defaults-fill plus operational
+		// CLI override reapplication
+		normalize := func(s *config.Settings) {
+			if s.Meta.LinksLimit == 0 {
+				s.Meta.LinksLimit = -1 // simulate ApplyDefaults filling a meta default
+			}
+			s.Server.ListenAddr = ":9090" // simulate CLI override reapplication
+			s.Files.DynamicDataPath = "/var/data"
+			s.Dry = true
+		}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore:   settingsStore,
+				AppSettings:     appSettings,
+				ReloadNormalize: normalize,
+			},
+		}
+
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		// CLI overrides reapplied on top of DB values
+		assert.Equal(t, ":9090", srv.AppSettings.Server.ListenAddr,
+			"--server.listen CLI override must survive reload, not be silently replaced by DB :8080")
+		assert.Equal(t, "/var/data", srv.AppSettings.Files.DynamicDataPath,
+			"--files.dynamic CLI override must survive reload")
+		assert.True(t, srv.AppSettings.Dry, "--dry CLI override must survive reload")
+		// defaults filled into partial blob
+		assert.Equal(t, -1, srv.AppSettings.Meta.LinksLimit,
+			"zero values from a partial DB blob must be filled from defaults template")
+	})
+
+	t.Run("ReloadNormalize nil is safe (non-confdb wiring)", func(t *testing.T) {
+		// non-confdb mode wires ReloadNormalize=nil; reload must still work
+		// without it and apply only the existing transient/auth preservation.
+		storedSettings := &config.Settings{InstanceID: "stored-instance"}
+
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return storedSettings, nil
+			},
+		}
+
+		appSettings := &config.Settings{InstanceID: "test-instance"}
+
+		srv := Server{
+			Config: Config{
+				SettingsStore:   settingsStore,
+				AppSettings:     appSettings,
+				ReloadNormalize: nil,
+			},
+		}
+
+		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
+	})
 }
 
 func TestUpdateConfigHandler(t *testing.T) {
@@ -462,6 +558,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		// create form data
 		form := url.Values{}
 		form.Add("primaryGroup", "new-group")
+		form.Add("metaEnabled", "on")
 		form.Add("metaLinksLimit", "5")
 		form.Add("similarityThreshold", "0.8")
 
@@ -1133,6 +1230,7 @@ func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
 		{
 			name: "meta contact-only and giveaway",
 			form: url.Values{
+				"metaEnabled":     []string{"on"},
 				"metaContactOnly": []string{"on"},
 				"metaGiveaway":    []string{"on"},
 			},
@@ -1208,6 +1306,17 @@ func TestUpdateSettingsFromForm_NewGroups(t *testing.T) {
 			assert: func(t *testing.T, s *config.Settings) {
 				assert.Equal(t, 4, s.Duplicates.Threshold)
 				assert.Equal(t, 30*time.Second, s.Duplicates.Window)
+			},
+		},
+		{
+			name: "reactions detector",
+			form: url.Values{
+				"reactionsMaxReactions": []string{"10"},
+				"reactionsWindow":       []string{"2h"},
+			},
+			assert: func(t *testing.T, s *config.Settings) {
+				assert.Equal(t, 10, s.Reactions.MaxReactions)
+				assert.Equal(t, 2*time.Hour, s.Reactions.Window)
 			},
 		},
 		{
@@ -1287,6 +1396,7 @@ func TestUpdateConfigHandler_RoundTrip_NewGroups(t *testing.T) {
 		"saveToDb":                 []string{"true"},
 		"deleteJoinMessages":       []string{"on"},
 		"deleteLeaveMessages":      []string{"on"},
+		"metaEnabled":              []string{"on"},
 		"metaContactOnly":          []string{"on"},
 		"metaGiveaway":             []string{"on"},
 		"geminiVeto":               []string{"on"},
@@ -1386,6 +1496,70 @@ func TestUpdateSettingsFromForm_PreservesUnrenderedFields(t *testing.T) {
 	assert.True(t, settings.AggressiveCleanup, "AggressiveCleanup must be preserved when form omits it")
 }
 
+func TestUpdateSettingsFromForm_Reactions_PresentApplied(t *testing.T) {
+	// reactions fields present in form must be parsed and applied
+	settings := &config.Settings{}
+
+	form := url.Values{}
+	form.Add("reactionsMaxReactions", "10")
+	form.Add("reactionsWindow", "2h")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 10, settings.Reactions.MaxReactions)
+	assert.Equal(t, 2*time.Hour, settings.Reactions.Window)
+}
+
+func TestUpdateSettingsFromForm_Reactions_AbsentPreserves(t *testing.T) {
+	// reactions fields absent from form must preserve existing values; the gate is
+	// r.Form key presence (not value-non-empty) so unrelated saves don't wipe state
+	settings := &config.Settings{
+		Reactions: config.ReactionsSettings{
+			MaxReactions: 5,
+			Window:       45 * time.Minute,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("primaryGroup", "some-group") // simulate user saving an unrelated change
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 5, settings.Reactions.MaxReactions, "MaxReactions must be preserved when form omits it")
+	assert.Equal(t, 45*time.Minute, settings.Reactions.Window, "Window must be preserved when form omits it")
+}
+
+func TestUpdateSettingsFromForm_Reactions_PresentZeroExplicit(t *testing.T) {
+	// explicit zero from operator (form value is "0") is the "disable detector"
+	// signal and must be honored — distinct from "absent" which preserves
+	settings := &config.Settings{
+		Reactions: config.ReactionsSettings{
+			MaxReactions: 5,
+			Window:       1 * time.Hour,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("reactionsMaxReactions", "0")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 0, settings.Reactions.MaxReactions, "explicit zero must override existing value")
+	assert.Equal(t, 1*time.Hour, settings.Reactions.Window, "Window must be preserved when not in form")
+}
+
 func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 	// the UI hint below the input says "leave empty to disable". Clearing the
 	// field in the form must clear the setting regardless of metaEnabled state.
@@ -1406,4 +1580,365 @@ func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 	updateSettingsFromForm(settings, req)
 
 	assert.Empty(t, settings.Meta.UsernameSymbols, "empty form value must clear the setting")
+}
+
+func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
+	// when the meta master toggle is off (metaEnabled absent) and the form
+	// contains at least one meta-related field, the server-side authoritative
+	// toggle must clear ALL 11 fields used by IsMetaEnabled so a checked
+	// per-feature box (e.g., metaImageOnly) cannot keep meta enabled
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			LinksLimit:      5,
+			MentionsLimit:   3,
+			UsernameSymbols: "@",
+			ImageOnly:       true,
+			LinksOnly:       true,
+			VideosOnly:      true,
+			AudiosOnly:      true,
+			Forward:         true,
+			Keyboard:        true,
+			ContactOnly:     true,
+			Giveaway:        true,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("metaLinksLimit", "5")
+	form.Add("metaMentionsLimit", "3")
+	form.Add("metaUsernameSymbols", "@")
+	form.Add("metaImageOnly", "on")
+	form.Add("metaLinksOnly", "on")
+	form.Add("metaVideoOnly", "on")
+	form.Add("metaAudioOnly", "on")
+	form.Add("metaForwarded", "on")
+	form.Add("metaKeyboard", "on")
+	form.Add("metaContactOnly", "on")
+	form.Add("metaGiveaway", "on")
+	// metaEnabled deliberately absent (master toggle off)
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, -1, settings.Meta.LinksLimit, "LinksLimit must be cleared to -1")
+	assert.Equal(t, -1, settings.Meta.MentionsLimit, "MentionsLimit must be cleared to -1")
+	assert.Empty(t, settings.Meta.UsernameSymbols, "UsernameSymbols must be cleared")
+	assert.False(t, settings.Meta.ImageOnly, "ImageOnly must be cleared")
+	assert.False(t, settings.Meta.LinksOnly, "LinksOnly must be cleared")
+	assert.False(t, settings.Meta.VideosOnly, "VideosOnly must be cleared")
+	assert.False(t, settings.Meta.AudiosOnly, "AudiosOnly must be cleared")
+	assert.False(t, settings.Meta.Forward, "Forward must be cleared")
+	assert.False(t, settings.Meta.Keyboard, "Keyboard must be cleared")
+	assert.False(t, settings.Meta.ContactOnly, "ContactOnly must be cleared")
+	assert.False(t, settings.Meta.Giveaway, "Giveaway must be cleared")
+	assert.False(t, settings.IsMetaEnabled(), "IsMetaEnabled must report false after master toggle off")
+}
+
+func TestUpdateSettingsFromForm_MetaEnabled_HonorsAllFields(t *testing.T) {
+	// metaEnabled=on with a subset of meta fields populated: the populated
+	// fields must take effect; rendered booleans absent from the form follow
+	// presence-of-on semantics (absent == unchecked == false); unrendered
+	// booleans (metaContactOnly, metaGiveaway) are gated on form presence
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			LinksLimit:      -1,
+			MentionsLimit:   -1,
+			UsernameSymbols: "",
+		},
+	}
+
+	form := url.Values{}
+	form.Add("metaEnabled", "on")
+	form.Add("metaLinksLimit", "5")
+	form.Add("metaImageOnly", "on")
+	form.Add("metaContactOnly", "on")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 5, settings.Meta.LinksLimit)
+	assert.True(t, settings.Meta.ImageOnly)
+	assert.True(t, settings.Meta.ContactOnly)
+	assert.False(t, settings.Meta.LinksOnly, "rendered boolean absent from form must be false")
+	assert.False(t, settings.Meta.Giveaway, "unrendered boolean absent from form must remain unchanged (was false)")
+	assert.True(t, settings.IsMetaEnabled())
+}
+
+func TestUpdateSettingsFromForm_NoMetaFields_PreservesExisting(t *testing.T) {
+	// when the form contains zero meta-related fields, the meta block is
+	// skipped entirely so partial saves preserve all 11 fields
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			LinksLimit:  10,
+			ImageOnly:   true,
+			ContactOnly: true,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("primaryGroup", "unrelated")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 10, settings.Meta.LinksLimit, "LinksLimit preserved on partial save")
+	assert.True(t, settings.Meta.ImageOnly, "ImageOnly preserved on partial save")
+	assert.True(t, settings.Meta.ContactOnly, "ContactOnly preserved on partial save")
+}
+
+func TestUpdateSettingsFromForm_MetaEnabled_BooleanFieldsRespectPresence(t *testing.T) {
+	// rendered meta booleans that are absent from the form are treated as
+	// unchecked (false) — submitting metaEnabled=on with only metaImageOnly=on
+	// must leave all other rendered booleans at false even if they were true
+	settings := &config.Settings{
+		Meta: config.MetaSettings{
+			LinksOnly:  true,
+			VideosOnly: true,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("metaEnabled", "on")
+	form.Add("metaImageOnly", "on")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.True(t, settings.Meta.ImageOnly, "rendered boolean present in form follows on/off")
+	assert.False(t, settings.Meta.LinksOnly, "rendered boolean absent from form is unchecked")
+	assert.False(t, settings.Meta.VideosOnly, "rendered boolean absent from form is unchecked")
+}
+
+func TestUpdateConfigHandler_SaveFailure_RollsBackInMemory(t *testing.T) {
+	// when SettingsStore.Save returns an error, in-memory AppSettings must be
+	// restored to the pre-call state so the UI never observes a state that
+	// disagrees with the persisted DB.
+	settingsStore := &mocks.SettingsStoreMock{
+		SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+			return errors.New("save error")
+		},
+	}
+
+	appSettings := &config.Settings{
+		InstanceID: "test-instance",
+		Telegram: config.TelegramSettings{
+			Group: "original-group",
+		},
+		ParanoidMode:        false,
+		SimilarityThreshold: 0.5,
+		MinMsgLen:           5,
+	}
+
+	srv := Server{
+		Config: Config{
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("saveToDb", "true")
+	form.Add("primaryGroup", "mutated-group")
+	form.Add("paranoidMode", "on")
+	form.Add("similarityThreshold", "0.99")
+	form.Add("minMsgLen", "42")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to save configuration")
+
+	// verify Save was called once
+	assert.Len(t, settingsStore.SaveCalls(), 1)
+
+	// verify in-memory state matches pre-call values, not the form values
+	assert.Equal(t, "original-group", srv.AppSettings.Telegram.Group, "Telegram.Group must roll back")
+	assert.False(t, srv.AppSettings.ParanoidMode, "ParanoidMode must roll back")
+	assert.InEpsilon(t, 0.5, srv.AppSettings.SimilarityThreshold, 0.0001, "SimilarityThreshold must roll back")
+	assert.Equal(t, 5, srv.AppSettings.MinMsgLen, "MinMsgLen must roll back")
+}
+
+func TestUpdateConfigHandler_SaveSuccess_KeepsMutation(t *testing.T) {
+	// regression guard: success path must still apply form mutations to AppSettings.
+	settingsStore := &mocks.SettingsStoreMock{
+		SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+			return nil
+		},
+	}
+
+	appSettings := &config.Settings{
+		InstanceID: "test-instance",
+		Telegram: config.TelegramSettings{
+			Group: "original-group",
+		},
+		MinMsgLen: 5,
+	}
+
+	srv := Server{
+		Config: Config{
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("saveToDb", "true")
+	form.Add("primaryGroup", "mutated-group")
+	form.Add("minMsgLen", "42")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Len(t, settingsStore.SaveCalls(), 1)
+
+	// verify mutations stuck through the success path
+	assert.Equal(t, "mutated-group", srv.AppSettings.Telegram.Group)
+	assert.Equal(t, 42, srv.AppSettings.MinMsgLen)
+}
+
+func TestUpdateConfigHandler_HTMXResponse_HasTargetID(t *testing.T) {
+	// the HTMX form uses hx-target="#update-result" with hx-swap="outerHTML",
+	// so the response must carry id="update-result" — otherwise the first save
+	// removes the target element and subsequent saves silently no-op.
+	appSettings := &config.Settings{
+		InstanceID: "test-instance",
+		Telegram: config.TelegramSettings{
+			Group: "test-group",
+		},
+	}
+
+	srv := Server{
+		Config: Config{
+			AppSettings: appSettings,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("primaryGroup", "new-group")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `id="update-result"`,
+		"HTMX response must keep #update-result id so subsequent saves can target it")
+	assert.Contains(t, w.Body.String(), "Configuration updated successfully")
+}
+
+func TestUpdateConfigHandler_SaveFailure_PreservesSlices(t *testing.T) {
+	// rollback must restore slice fields (Admin.SuperUsers, LuaPlugins.EnabledPlugins)
+	// to their pre-call value. Verifies the snapshot-and-restore approach is sound for
+	// slice headers as long as updateSettingsFromForm does not mutate elements in place
+	// (verified by TestUpdateSettingsFromForm_NoInPlaceSliceMutation).
+	settingsStore := &mocks.SettingsStoreMock{
+		SaveFunc: func(ctx context.Context, settings *config.Settings) error {
+			return errors.New("save error")
+		},
+	}
+
+	originalSuperUsers := []string{"admin1", "admin2"}
+	originalEnabledPlugins := []string{"plugin-a", "plugin-b"}
+
+	appSettings := &config.Settings{
+		InstanceID: "test-instance",
+		Admin: config.AdminSettings{
+			SuperUsers: originalSuperUsers,
+		},
+		LuaPlugins: config.LuaPluginsSettings{
+			EnabledPlugins: originalEnabledPlugins,
+		},
+	}
+
+	srv := Server{
+		Config: Config{
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("saveToDb", "true")
+	form.Add("superUsers", "newuser1,newuser2,newuser3")
+	form.Add("luaEnabledPlugins", "plugin-x")
+	form.Add("luaEnabledPlugins", "plugin-y")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, []string{"admin1", "admin2"}, srv.AppSettings.Admin.SuperUsers,
+		"SuperUsers slice must restore to pre-call value")
+	assert.Equal(t, []string{"plugin-a", "plugin-b"}, srv.AppSettings.LuaPlugins.EnabledPlugins,
+		"EnabledPlugins slice must restore to pre-call value")
+
+	// the original backing array must also be untouched (load-bearing for rollback)
+	assert.Equal(t, []string{"admin1", "admin2"}, originalSuperUsers,
+		"original SuperUsers backing array must not be mutated in place")
+	assert.Equal(t, []string{"plugin-a", "plugin-b"}, originalEnabledPlugins,
+		"original EnabledPlugins backing array must not be mutated in place")
+}
+
+func TestUpdateSettingsFromForm_NoInPlaceSliceMutation(t *testing.T) {
+	// load-bearing invariant for snapshot-and-restore in updateConfigHandler:
+	// updateSettingsFromForm must replace slice fields wholesale (assigning a new
+	// slice header), never mutate elements of the existing backing array. If this
+	// invariant breaks, a save-failure rollback would leave slice contents corrupted
+	// even though the snapshot copy restored the slice header.
+	originalSuperUsers := []string{"admin1", "admin2", "admin3"}
+	originalEnabledPlugins := []string{"plugin-a", "plugin-b"}
+
+	// keep references to the original backing arrays so we can detect in-place mutation
+	superUsersBackup := make([]string, len(originalSuperUsers))
+	copy(superUsersBackup, originalSuperUsers)
+	enabledPluginsBackup := make([]string, len(originalEnabledPlugins))
+	copy(enabledPluginsBackup, originalEnabledPlugins)
+
+	settings := &config.Settings{
+		Admin: config.AdminSettings{
+			SuperUsers: originalSuperUsers,
+		},
+		LuaPlugins: config.LuaPluginsSettings{
+			EnabledPlugins: originalEnabledPlugins,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("superUsers", "newuser1,newuser2")
+	form.Add("luaEnabledPlugins", "plugin-x")
+	form.Add("luaEnabledPlugins", "plugin-y")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	// the original backing arrays must be untouched after the form update
+	assert.Equal(t, superUsersBackup, originalSuperUsers,
+		"updateSettingsFromForm must not mutate the original SuperUsers backing array in place")
+	assert.Equal(t, enabledPluginsBackup, originalEnabledPlugins,
+		"updateSettingsFromForm must not mutate the original EnabledPlugins backing array in place")
 }

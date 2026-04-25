@@ -79,6 +79,15 @@ type Config struct {
 	BotUsername     string           // resolved telegram bot username
 	AppSettings     *config.Settings // application settings (domain model)
 	ConfigDBMode    bool             // indicates if app is running with database config
+	// ReloadNormalize, when non-nil, is invoked by loadConfigHandler on the
+	// freshly loaded *config.Settings before transient/auth preservation. It
+	// must perform the same defaults-fill and operational CLI override
+	// reapplication that startup performs (ApplyDefaults + path/listen/dry
+	// CLI overrides) so a partial/legacy DB blob and operator-supplied
+	// --files.dynamic / --files.samples / --server.listen / --dry survive
+	// POST /config/reload. Credentials (Telegram/OpenAI/Gemini tokens) are
+	// intentionally NOT reapplied here — DB rotation wins on reload.
+	ReloadNormalize func(*config.Settings)
 }
 
 // Detector is a spam detector interface.
@@ -303,12 +312,12 @@ func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
 
 		// configuration management endpoints
 		if s.SettingsStore != nil && s.ConfigDBMode {
-			webUI.Route(func(config *routegroup.Bundle) {
-				config.HandleFunc("POST /config", s.saveConfigHandler) // save current configuration to database
+			webUI.Route(func(cfgRouter *routegroup.Bundle) {
+				cfgRouter.HandleFunc("POST /config", s.saveConfigHandler) // save current configuration to database
 				// reload uses POST because it mutates state; GET would bypass cross-origin protection (safe methods are always allowed)
-				config.HandleFunc("POST /config/reload", s.loadConfigHandler)
-				config.HandleFunc("PUT /config", s.updateConfigHandler)    // update configuration
-				config.HandleFunc("DELETE /config", s.deleteConfigHandler) // delete configuration
+				cfgRouter.HandleFunc("POST /config/reload", s.loadConfigHandler)
+				cfgRouter.HandleFunc("PUT /config", s.updateConfigHandler)    // update configuration
+				cfgRouter.HandleFunc("DELETE /config", s.deleteConfigHandler) // delete configuration
 			})
 		}
 
