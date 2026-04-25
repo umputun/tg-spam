@@ -152,6 +152,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
+	u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "message_reaction"}
 
 	updates := l.TbAPI.GetUpdatesChan(u)
 	log.Printf("[DEBUG] start listening for updates")
@@ -217,6 +218,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 				if err := l.procEvents(editedUpdate); err != nil {
 					log.Printf("[WARN] failed to process edited message update: %v", err)
+				}
+				continue
+			}
+
+			if update.MessageReaction != nil {
+				if err := l.procReaction(ctx, update.MessageReaction); err != nil {
+					log.Printf("[WARN] failed to process reaction: %v", err)
 				}
 				continue
 			}
@@ -602,7 +610,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
 	if resp.ChannelID == 0 {
-		return fmt.Sprintf("%v", resp.User)
+		return resp.User.String()
 	}
 	botChat := bot.SenderChat{
 		ID: resp.ChannelID,
@@ -733,6 +741,68 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 			}
 		}
 	}
+}
+
+// procReaction handles a message_reaction update: checks if the reacting user is a spam bot and bans if needed.
+func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageReactionUpdated) error {
+	if r.User == nil {
+		log.Printf("[DEBUG] reaction from anonymous user, skipped")
+		return nil
+	}
+	if r.Chat.ID != l.chatID {
+		log.Printf("[DEBUG] reaction from chat %d, not primary chat %d, skipped", r.Chat.ID, l.chatID)
+		return nil
+	}
+	// count only net new reactions; changes (👍→👎) and removals have newReactionsAdded <= 0
+	newReactionsAdded := len(r.NewReaction) - len(r.OldReaction)
+	if newReactionsAdded <= 0 {
+		return nil
+	}
+
+	if l.SuperUsers.IsSuper(r.User.UserName, r.User.ID) {
+		log.Printf("[DEBUG] superuser %s reaction ignored", r.User.UserName)
+		return nil
+	}
+
+	var resp bot.Response
+	for range newReactionsAdded {
+		resp = l.Bot.OnReaction(r.User.ID, r.User.UserName)
+		if resp.BanInterval > 0 {
+			break
+		}
+	}
+	if resp.BanInterval <= 0 {
+		return nil
+	}
+
+	if err := l.Locator.AddSpam(ctx, r.User.ID, resp.CheckResults); err != nil {
+		log.Printf("[WARN] failed to add reaction spam to locator: %v", err)
+	}
+	l.SpamLogger.Save(&bot.Message{From: resp.User, Text: "[reaction spam]"}, &resp)
+
+	banUserStr := resp.User.String()
+	banReq := banRequest{
+		duration: resp.BanInterval, userID: resp.User.ID, userName: banUserStr,
+		chatID: l.chatID, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode,
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
+	}
+	if l.adminChatID != 0 && resp.User.ID != 0 {
+		// reactions don't have a message ID to delete, so send a plain notification without action buttons
+		notifText := fmt.Sprintf("permanently banned reaction spammer %s", banUserStr)
+		switch {
+		case l.TrainingMode:
+			notifText = fmt.Sprintf("[training] reaction spammer detected: %s", banUserStr)
+		case l.Dry:
+			notifText = fmt.Sprintf("[dry run] would ban reaction spammer %s", banUserStr)
+		}
+		notif := tbapi.NewMessage(l.adminChatID, notifText)
+		if _, err := l.TbAPI.Send(notif); err != nil {
+			log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+		}
+	}
+	return nil
 }
 
 // SuperUsers for moderators. Can be either username or user ID.
