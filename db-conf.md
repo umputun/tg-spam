@@ -332,7 +332,7 @@ To run the application with database configuration:
     --telegram.token "BOT_TOKEN"
 ```
 
-Note: Security-sensitive parameters (tokens, passwords) must still be provided via CLI for security reasons.
+Note: tokens and the bcrypt auth hash are persisted in the config DB and (when `--confdb-encrypt-key` is set) encrypted at rest with the `ENC:` prefix. CLI flags like `--telegram.token`, `--openai.token`, `--gemini.token`, and `--server.auth`/`--server.auth-hash` are *override-only* — provide them when you want to seed a fresh DB or rotate without editing the blob; an empty CLI value leaves the DB-stored value in place. See "CLI/DB Precedence" above for the full rule set.
 
 ### Web UI Configuration Management
 
@@ -341,6 +341,51 @@ When running with `--confdb` and `--server.enabled`, the web UI provides configu
 - POST `/config/reload` - Reload configuration from database (non-safe method so cross-origin CSRF protection applies)
 - PUT `/config` - Update specific settings
 - DELETE `/config` - Remove configuration from database
+
+### Settings UI vs CLI-only Fields
+
+Not every persisted setting has a corresponding form input on the
+`/settings` page in `--confdb` mode. Persisted values for the fields
+below come from `save-config`, direct DB editing, or the matching CLI
+flag at startup; changing them requires restarting the bot with the
+updated CLI argument or env var (or a `save-config` round-trip), since
+the running process won't pick up the new value through the web UI.
+
+**Connection and infrastructure** (typically operational, change rarely):
+- Telegram connection: `Telegram.Token`, `Telegram.IdleDuration`,
+  `Telegram.Timeout`
+- Server: `Server.Enabled`, `Server.ListenAddr`, `Server.AuthUser`,
+  `Server.AuthHash`
+- CAS: `CAS.Timeout`, `CAS.UserAgent`
+- Logger: `Logger.FileName`, `Logger.MaxSize`, `Logger.MaxBackups`
+- History: `History.Duration`, `History.MinSize`
+- Misc: `MaxBackups`, `Convert`, `SuppressJoinMessage`
+
+**Detection tuning** (could reasonably be in UI, currently CLI-only):
+- Admin: `Admin.TestingIDs`
+- Abnormal spacing thresholds: `AbnormalSpace.SpaceRatioThreshold`,
+  `AbnormalSpace.ShortWordRatioThreshold`,
+  `AbnormalSpace.ShortWordLen`, `AbnormalSpace.MinWords`
+- LLM: `LLM.Consensus`, `LLM.RequestTimeout`
+- OpenAI tuning: `OpenAI.APIBase`, `OpenAI.Prompt`,
+  `OpenAI.CustomPrompts`, `OpenAI.MaxTokensResponse`,
+  `OpenAI.MaxTokensRequest`, `OpenAI.MaxSymbolsRequest`,
+  `OpenAI.RetryCount`, `OpenAI.ReasoningEffort`
+- Gemini tuning: `Gemini.Prompt`, `Gemini.CustomPrompts`,
+  `Gemini.MaxTokensResponse`, `Gemini.MaxSymbolsRequest`,
+  `Gemini.RetryCount`
+
+**Message templates** (user-facing strings, could reasonably be in UI):
+- `Message.Spam`, `Message.Dry`, `Message.Warn`, `Message.Startup`
+  (only the startup-message on/off toggle is in the UI)
+
+**Credentials** (intentionally never UI-editable, managed via CLI/env
+or `save-config`):
+- `Telegram.Token`, `OpenAI.Token`, `Gemini.Token`, `Server.AuthHash`
+
+Surfacing the detection-tuning and message-template groups in the web
+UI is reasonable future work; this list is the canonical inventory of
+what's missing today.
 
 ## Current Implementation Status
 

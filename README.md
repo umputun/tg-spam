@@ -250,7 +250,7 @@ export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
 ./tg-spam --confdb --telegram.group=your-group
 ```
 
-On subsequent `--confdb` starts the bot loads every persisted group from the database; transient flags (paths, server listen address, debug flags) still come from the CLI. See [db-conf.md](db-conf.md) for the full persisted settings inventory and the CLI/DB precedence rules.
+On subsequent `--confdb` starts the bot loads every persisted group from the database; transient flags (paths, server listen address, debug flags) still come from the CLI. See [db-conf.md](db-conf.md) for the full persisted settings inventory and the CLI/DB precedence rules. Note that not every persisted field has a form input on the `/settings` page — connection settings, message templates, OpenAI/Gemini prompt and tuning, abnormal-spacing thresholds, and several others require a CLI restart or `save-config` round-trip to change. The "Settings UI vs CLI-only Fields" section in db-conf.md lists the full inventory.
 
 #### Security Details
 
