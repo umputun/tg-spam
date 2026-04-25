@@ -233,12 +233,13 @@ Sensitive information like API tokens and passwords needs proper handling. We've
 Settings resolve based on the run mode:
 
 - Without `--confdb`: CLI is the sole source of truth; `optToSettings` converts the flag struct to `*config.Settings`
-- With `--confdb`: the database is the source of truth for persisted fields; CLI-provided credentials (`--telegram.token`, `--openai.token`, `--gemini.token`), auth (`--server.auth`, `--server.auth-hash`), and `--dry` are overlaid on top via `applyCLIOverrides` so an operator can rotate secrets or toggle dry-run without touching the DB
+- With `--confdb`: the database is the source of truth for persisted fields; CLI-provided credentials (`--telegram.token`, `--openai.token`, `--gemini.token`), auth (`--server.auth`, `--server.auth-hash`), `--dry`, and non-default values for `--server.listen`, `--files.dynamic`, `--files.samples` are overlaid on top via `applyCLIOverrides` so an operator can rotate secrets, toggle dry-run, or relocate runtime paths without touching the DB
 - Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg` (marked transient, never persisted)
 - `Dry` is persisted in the DB and one-way-overridable from CLI: `--dry` forces true, CLI default (unset) preserves the DB value. To disable dry-run after enabling it, use the settings UI or `save-config`
 - CLI override path in `--confdb` mode (handled by `applyCLIOverrides`):
   - web auth password (`--server.auth`) and web auth hash (`--server.auth-hash`) — override-only so an operator can recover UI access
   - API tokens `--telegram.token`, `--openai.token`, `--gemini.token` — non-empty CLI values overlay the DB; empty CLI values leave the DB-stored token in place
+  - runtime paths and listen address `--server.listen`, `--files.dynamic`, `--files.samples` — non-default CLI values overlay the DB; default CLI values (or empty for `--files.samples`) preserve the DB-stored value
 
 `Gemini.Token` follows the same precedence model as `OpenAI.Token`: CLI overlays DB via `applyCLIOverrides`, encrypted at rest with the same `ENC:` prefix scheme.
 
@@ -272,9 +273,10 @@ encrypted JSON blob. Sensitive string fields are encrypted individually with an
 - `AbnormalSpace` — ratio thresholds, short-word parameters, min words
 - `Files` — samples path, dynamic path, watch interval
 - `Message` — startup, spam, dry, warn
-- `Server` — enabled, listen address, auth hash (encrypted)
+- `Server` — enabled, listen address, **`auth_user`**, auth hash (encrypted)
 - `Delete` — **`join_messages`**, **`leave_messages`**
 - `Duplicates` — threshold, window
+- `Reactions` — max reactions, window
 - `Report` — enabled, threshold, auto-ban threshold, rate limit, rate period
 - Top-level scalars: similarity/probability/emoji thresholds, `multi_lang_words`, `no_spam_reply`, `suppress_join_message`, **`aggressive_cleanup`**, **`aggressive_cleanup_limit`**, paranoid mode, first messages count, training/soft-ban/convert/max-backups/dry
 

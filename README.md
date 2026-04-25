@@ -666,6 +666,9 @@ server:
 
 Help Options:
   -h, --help                            Show this help message
+
+Available commands:
+  save-config  Save current configuration to database
 ```
 
 ### Application Options in details
@@ -726,6 +729,7 @@ openssl passwd -apr1 your_password
 
 In case if both `--server.auth` and `--server.auth-hash` are set, the hash will be used.
 
+In `--confdb` mode, if the server is enabled but the database has no stored auth hash AND the operator did not pass any `--server.auth*` flag on the CLI, a random password is generated automatically and logged at startup (the same behavior as the default legacy mode). The automatic fallback never overrides an explicit `--server.auth=` (empty) intent — passing an empty `--server.auth` deliberately leaves the UI unauthenticated.
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
