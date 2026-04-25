@@ -292,6 +292,248 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.True(t, restored.Meta.Giveaway)
 }
 
+func TestSettings_ApplyDefaults_FillsZeroFromTemplate(t *testing.T) {
+	target := New()
+	template := &Settings{
+		Server: ServerSettings{ListenAddr: ":8080"},
+		LLM:    LLMSettings{RequestTimeout: 30 * time.Second},
+		OpenAI: OpenAISettings{MaxSymbolsRequest: 16000},
+	}
+
+	target.ApplyDefaults(template)
+
+	assert.Equal(t, ":8080", target.Server.ListenAddr)
+	assert.Equal(t, 30*time.Second, target.LLM.RequestTimeout)
+	assert.Equal(t, 16000, target.OpenAI.MaxSymbolsRequest)
+}
+
+func TestSettings_ApplyDefaults_PreservesTargetNonZero(t *testing.T) {
+	target := New()
+	target.Server.ListenAddr = ":9090"
+	target.LLM.RequestTimeout = 90 * time.Second
+	target.OpenAI.MaxSymbolsRequest = 32000
+
+	template := &Settings{
+		Server: ServerSettings{ListenAddr: ":8080"},
+		LLM:    LLMSettings{RequestTimeout: 30 * time.Second},
+		OpenAI: OpenAISettings{MaxSymbolsRequest: 16000},
+	}
+
+	target.ApplyDefaults(template)
+
+	assert.Equal(t, ":9090", target.Server.ListenAddr)
+	assert.Equal(t, 90*time.Second, target.LLM.RequestTimeout)
+	assert.Equal(t, 32000, target.OpenAI.MaxSymbolsRequest)
+}
+
+func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(target, template *Settings)
+		assertFn func(t *testing.T, target *Settings)
+	}{
+		{
+			name: "Meta.LinksLimit",
+			setup: func(target, template *Settings) {
+				target.Meta.LinksLimit = 0
+				template.Meta.LinksLimit = -1
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Meta.LinksLimit) },
+		},
+		{
+			name: "Meta.MentionsLimit",
+			setup: func(target, template *Settings) {
+				target.Meta.MentionsLimit = 0
+				template.Meta.MentionsLimit = -1
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Meta.MentionsLimit) },
+		},
+		{
+			name: "MaxEmoji",
+			setup: func(target, template *Settings) {
+				target.MaxEmoji = 0
+				template.MaxEmoji = 2
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MaxEmoji) },
+		},
+		{
+			name: "MultiLangWords",
+			setup: func(target, template *Settings) {
+				target.MultiLangWords = 0
+				template.MultiLangWords = 5
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MultiLangWords) },
+		},
+		{
+			name: "MaxBackups",
+			setup: func(target, template *Settings) {
+				target.MaxBackups = 0
+				template.MaxBackups = 10
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MaxBackups) },
+		},
+		{
+			name: "Reactions.MaxReactions",
+			setup: func(target, template *Settings) {
+				target.Reactions.MaxReactions = 0
+				template.Reactions.MaxReactions = 3
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Reactions.MaxReactions) },
+		},
+		{
+			name: "Duplicates.Threshold",
+			setup: func(target, template *Settings) {
+				target.Duplicates.Threshold = 0
+				template.Duplicates.Threshold = 5
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Duplicates.Threshold) },
+		},
+		{
+			name: "Report.AutoBanThreshold",
+			setup: func(target, template *Settings) {
+				target.Report.AutoBanThreshold = 0
+				template.Report.AutoBanThreshold = 4
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Report.AutoBanThreshold) },
+		},
+		{
+			name: "Report.RateLimit",
+			setup: func(target, template *Settings) {
+				target.Report.RateLimit = 0
+				template.Report.RateLimit = 10
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Report.RateLimit) },
+		},
+		{
+			name: "OpenAI.HistorySize",
+			setup: func(target, template *Settings) {
+				target.OpenAI.HistorySize = 0
+				template.OpenAI.HistorySize = 5
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.OpenAI.HistorySize) },
+		},
+		{
+			name: "Gemini.HistorySize",
+			setup: func(target, template *Settings) {
+				target.Gemini.HistorySize = 0
+				template.Gemini.HistorySize = 5
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Gemini.HistorySize) },
+		},
+		{
+			name: "FirstMessagesCount",
+			setup: func(target, template *Settings) {
+				target.FirstMessagesCount = 0
+				template.FirstMessagesCount = 1
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.FirstMessagesCount) },
+		},
+		{
+			name: "SimilarityThreshold",
+			setup: func(target, template *Settings) {
+				target.SimilarityThreshold = 0
+				template.SimilarityThreshold = 0.5
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.InDelta(t, 0.0, target.SimilarityThreshold, 0.0001) },
+		},
+		{
+			name: "MinSpamProbability",
+			setup: func(target, template *Settings) {
+				target.MinSpamProbability = 0
+				template.MinSpamProbability = 50
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.InDelta(t, 0.0, target.MinSpamProbability, 0.0001) },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := New()
+			template := &Settings{}
+			tt.setup(target, template)
+			target.ApplyDefaults(template)
+			tt.assertFn(t, target)
+		})
+	}
+}
+
+func TestSettings_ApplyDefaults_NestedStructs(t *testing.T) {
+	target := New()
+	template := &Settings{
+		Telegram: TelegramSettings{
+			Timeout:      30 * time.Second,
+			IdleDuration: 30 * time.Second,
+		},
+		OpenAI: OpenAISettings{
+			Model:             "gpt-4o-mini",
+			MaxTokensResponse: 1024,
+			MaxTokensRequest:  2048,
+			RetryCount:        1,
+		},
+		Gemini: GeminiSettings{
+			Model:             "gemma-4-31b-it",
+			MaxTokensResponse: 1024,
+			MaxSymbolsRequest: 8192,
+			RetryCount:        1,
+		},
+		Report: ReportSettings{
+			Threshold:  2,
+			RatePeriod: time.Hour,
+		},
+	}
+
+	target.ApplyDefaults(template)
+
+	assert.Equal(t, 30*time.Second, target.Telegram.Timeout)
+	assert.Equal(t, 30*time.Second, target.Telegram.IdleDuration)
+	assert.Equal(t, "gpt-4o-mini", target.OpenAI.Model)
+	assert.Equal(t, 1024, target.OpenAI.MaxTokensResponse)
+	assert.Equal(t, 2048, target.OpenAI.MaxTokensRequest)
+	assert.Equal(t, 1, target.OpenAI.RetryCount)
+	assert.Equal(t, "gemma-4-31b-it", target.Gemini.Model)
+	assert.Equal(t, int32(1024), target.Gemini.MaxTokensResponse)
+	assert.Equal(t, 8192, target.Gemini.MaxSymbolsRequest)
+	assert.Equal(t, 1, target.Gemini.RetryCount)
+	assert.Equal(t, 2, target.Report.Threshold)
+	assert.Equal(t, time.Hour, target.Report.RatePeriod)
+}
+
+func TestSettings_ApplyDefaults_TransientNotTouched(t *testing.T) {
+	target := New()
+	template := &Settings{
+		Transient: TransientSettings{
+			DataBaseURL:        "tg-spam.db",
+			StorageTimeout:     5 * time.Second,
+			ConfigDB:           true,
+			Dbg:                true,
+			TGDbg:              true,
+			ConfigDBEncryptKey: "secret",
+			WebAuthPasswd:      "auto",
+			AuthFromCLI:        true,
+		},
+	}
+
+	target.ApplyDefaults(template)
+
+	assert.Empty(t, target.Transient.DataBaseURL)
+	assert.Equal(t, time.Duration(0), target.Transient.StorageTimeout)
+	assert.False(t, target.Transient.ConfigDB)
+	assert.False(t, target.Transient.Dbg)
+	assert.False(t, target.Transient.TGDbg)
+	assert.Empty(t, target.Transient.ConfigDBEncryptKey)
+	assert.Empty(t, target.Transient.WebAuthPasswd)
+	assert.False(t, target.Transient.AuthFromCLI)
+}
+
+func TestSettings_ApplyDefaults_NilTemplate(t *testing.T) {
+	target := New()
+	target.Server.ListenAddr = ":9090"
+
+	target.ApplyDefaults(nil)
+
+	assert.Equal(t, ":9090", target.Server.ListenAddr)
+}
+
 func TestSettings_IsStartupMessageEnabled(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -30,7 +30,6 @@ const MinKeyLength = 20
 // Crypter handles encryption and decryption of sensitive fields
 type Crypter struct {
 	key []byte
-	gid string // instance ID for salt generation
 }
 
 // Argon2 parameters for key derivation
@@ -70,7 +69,7 @@ func NewCrypter(masterKey, instanceID string) (*Crypter, error) {
 		argon2KeyLen,
 	)
 
-	return &Crypter{key: key, gid: instanceID}, nil
+	return &Crypter{key: key}, nil
 }
 
 // Encrypt encrypts a string value

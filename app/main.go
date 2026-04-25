@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -247,13 +248,25 @@ func main() {
 
 	// determine configuration source based on --confdb flag
 	var appSettings *config.Settings
+	// reloadNormalize captures the same defaults-fill + operational CLI override
+	// policy used at startup so POST /config/reload can apply it to a freshly
+	// loaded DB blob. nil in non-confdb mode (no reload endpoint exists there).
+	var reloadNormalize func(*config.Settings)
 
 	if opts.ConfigDB {
 		// database configuration mode - load from database first
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		log.Printf("[INFO] loading configuration from database")
+		// build defaults template from CLI struct tags once; same template is
+		// used by loadConfigFromDB (to fill partial blobs) and applyCLIOverrides
+		// (to distinguish "operator passed default" from "operator opted out")
+		defaults, err := defaultSettingsTemplate()
+		if err != nil {
+			log.Printf("[ERROR] failed to build defaults template: %v", err)
+			cancel()
+			os.Exit(1) //nolint:gocritic // cancel is called before exit
+		}
 
 		// create a new settings instance
 		appSettings = config.New()
@@ -267,7 +280,7 @@ func main() {
 		appSettings.Files.DynamicDataPath = opts.Files.DynamicDataPath
 
 		// load settings from database
-		if err := loadConfigFromDB(ctx, appSettings); err != nil {
+		if err := loadConfigFromDB(ctx, appSettings, defaults); err != nil {
 			log.Printf("[ERROR] failed to load configuration from database: %v", err)
 			cancel()
 			os.Exit(1) //nolint:gocritic // cancel is called before exit
@@ -279,7 +292,18 @@ func main() {
 		appSettings.Transient.StorageTimeout = opts.StorageTimeout
 
 		// apply explicit CLI overrides for non-transient values
-		applyCLIOverrides(appSettings, opts)
+		applyCLIOverrides(appSettings, opts, defaults)
+
+		// build a reload normalizer that mirrors startup's defaults-fill +
+		// operational CLI overrides; webapi's loadConfigHandler invokes it
+		// after Load so a partial/legacy DB blob plus operator-supplied
+		// --files.dynamic / --files.samples / --server.listen / --dry survive
+		// POST /config/reload.
+		reloadNormalize = func(s *config.Settings) {
+			s.ApplyDefaults(defaults)
+			applyOperationalCLIOverrides(s, opts, defaults)
+			normalizeFilePaths(s)
+		}
 	} else {
 		// traditional mode - CLI is source of truth
 		appSettings = optToSettings(opts)
@@ -350,20 +374,18 @@ func main() {
 	}()
 
 	// expand, make absolute paths
-	appSettings.Files.DynamicDataPath = expandPath(appSettings.Files.DynamicDataPath)
-	if appSettings.Files.SamplesDataPath == "" {
-		appSettings.Files.SamplesDataPath = appSettings.Files.DynamicDataPath
-	} else {
-		appSettings.Files.SamplesDataPath = expandPath(appSettings.Files.SamplesDataPath)
-	}
+	normalizeFilePaths(appSettings)
 
-	if err := execute(ctx, appSettings); err != nil {
+	if err := execute(ctx, appSettings, reloadNormalize); err != nil {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
 	}
 }
 
-func execute(ctx context.Context, settings *config.Settings) error {
+// execute runs the main application loop. The reloadNormalize callback, when
+// non-nil, is forwarded to webapi so POST /config/reload can reapply startup-
+// equivalent defaults-fill and operational CLI overrides on top of the DB blob.
+func execute(ctx context.Context, settings *config.Settings, reloadNormalize func(*config.Settings)) error {
 	if settings.Dry {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
@@ -428,7 +450,7 @@ func execute(ctx context.Context, settings *config.Settings) error {
 	// activate web server if enabled, server-only mode (no telegram token)
 	if settings.Server.Enabled && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		// server starts in background goroutine without DM users provider
-		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, nil, ""); srvErr != nil {
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, nil, "", reloadNormalize); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		log.Printf("[WARN] no telegram token and group set, web server only mode")
@@ -505,7 +527,8 @@ func execute(ctx context.Context, settings *config.Settings) error {
 
 	// activate web server if enabled, with DM users provider from the telegram listener
 	if settings.Server.Enabled {
-		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, &tgListener, tgListener.BotUsername); srvErr != nil {
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, &tgListener,
+			tgListener.BotUsername, reloadNormalize); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 	}
@@ -594,8 +617,44 @@ func checkVolumeMount(settings *config.Settings) (ok bool) {
 	return false
 }
 
+// applyAutoAuthFallback enables auto-generated password mode as a safety net
+// when --confdb leaves the web UI without any auth material. It only fires
+// when the server is enabled and no hash/password is present anywhere AND
+// the operator did not deliberately opt out via --server.auth=. The
+// !AuthFromCLI guard preserves the explicit opt-out semantics set by
+// applyCLIOverrides when the operator passes any --server.auth= value other
+// than "auto" (including empty, which disables auth on purpose).
+//
+// Without this fallback, a fresh DB row missing AuthHash would silently
+// expose the web UI without authentication. With it, the legacy CLI behavior
+// (default --server.auth=auto generates a random password) is preserved
+// even when settings come from the database.
+//
+// Setting AuthFromCLI=true is load-bearing: the hash that activateServer
+// later derives from "auto" is held only in memory (the DB row is empty by
+// definition when the fallback fires). loadConfigHandler must then preserve
+// the in-memory AuthHash across /config/reload, otherwise the next reload
+// would silently drop the generated hash and a subsequent /config save
+// would persist an empty hash to the DB.
+func applyAutoAuthFallback(settings *config.Settings) {
+	if settings.Server.Enabled &&
+		settings.Server.AuthHash == "" &&
+		settings.Transient.WebAuthPasswd == "" &&
+		!settings.Transient.AuthFromCLI {
+		log.Print("[WARN] no auth configured (DB empty, no CLI override) — generating random password")
+		settings.Transient.WebAuthPasswd = "auto"
+		settings.Transient.AuthFromCLI = true
+	}
+}
+
 func activateServer(ctx context.Context, settings *config.Settings, sf *bot.SpamFilter, loc *storage.Locator,
-	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
+	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string,
+	reloadNormalize func(*config.Settings)) (err error) {
+	// safety net: when --confdb leaves the web UI without any auth material, fall
+	// back to generating a random password (matches legacy behavior where CLI
+	// default --server.auth=auto would trigger random-password generation)
+	applyAutoAuthFallback(settings)
+
 	// handle authentication - always use bcrypt hash for security
 	authPasswd := settings.Transient.WebAuthPasswd
 	authHash := settings.Server.AuthHash
@@ -661,11 +720,13 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 		BotUsername:     botUsername,
 		AppSettings:     settings,
 		ConfigDBMode:    settings.Transient.ConfigDB, // indicate we're running with database config
+		// applies startup-equivalent defaults-fill + operational CLI overrides on /config/reload
+		ReloadNormalize: reloadNormalize,
 	}
 	if settingsStore != nil {
 		cfg.SettingsStore = settingsStore // avoid nil-interface-wrapping-nil-pointer trap
 	}
-	srv := webapi.Server{Config: cfg}
+	srv := webapi.NewServer(cfg)
 
 	go func() {
 		if err := srv.Run(ctx); err != nil {
@@ -915,6 +976,19 @@ func makeSpamBot(ctx context.Context, settings *config.Settings, dataDB *engine.
 	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, settings.Transient.StorageTimeout))
 
 	return spamBot, nil
+}
+
+// normalizeFilePaths expands ~ and makes file paths absolute, applying the
+// empty-samples-path fallback so SamplesDataPath inherits DynamicDataPath when
+// the operator left it unset. Called at startup and from the reloadNormalize
+// closure so POST /config/reload yields the same path shape as startup.
+func normalizeFilePaths(s *config.Settings) {
+	s.Files.DynamicDataPath = expandPath(s.Files.DynamicDataPath)
+	if s.Files.SamplesDataPath == "" {
+		s.Files.SamplesDataPath = s.Files.DynamicDataPath
+		return
+	}
+	s.Files.SamplesDataPath = expandPath(s.Files.SamplesDataPath)
 }
 
 // expandPath expands ~ to home dir and makes the absolute path
@@ -1458,15 +1532,134 @@ func optToSettings(opts options) *config.Settings {
 	return settings
 }
 
+// defaultSettingsTemplate builds a *config.Settings populated with the canonical
+// CLI defaults expressed as `default:` struct tags on the options type. Used as
+// a single source of truth by both applyCLIOverrides (for "is this value the
+// CLI default?" comparisons) and (*config.Settings).ApplyDefaults (for filling
+// missing keys in DB-loaded blobs).
+//
+// Pure reflection is used instead of go-flags.Parse([]string{}) on purpose:
+// go-flags reads os.LookupEnv during default-fill, which would let ambient
+// environment values like SERVER_LISTEN leak into the template and silently
+// break both override comparisons and defaults-fill semantics.
+func defaultSettingsTemplate() (*config.Settings, error) {
+	var opts options
+	if err := applyStructTagDefaults(reflect.ValueOf(&opts).Elem()); err != nil {
+		return nil, fmt.Errorf("failed to derive defaults from struct tags: %w", err)
+	}
+	return optToSettings(opts), nil
+}
+
+// durationType is reused by applyStructTagDefaults to identify time.Duration
+// fields, whose reflect.Kind is Int64 but which require time.ParseDuration.
+var durationType = reflect.TypeFor[time.Duration]()
+
+// applyStructTagDefaults walks v recursively, parses each leaf field's
+// `default:"..."` struct tag, and assigns a typed value via the dispatcher
+// below. Nested struct fields are recursed into; fields without a default tag
+// keep their Go zero value (matching CLI behavior when the flag is omitted
+// and no env var is set).
+//
+// Returns an error for any field type the dispatcher does not handle, so a
+// future contributor adding a new kind (e.g., uint) gets caught by tests
+// rather than producing a silently-wrong template.
+func applyStructTagDefaults(v reflect.Value) error {
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		ft := t.Field(i)
+		if !ft.IsExported() {
+			continue
+		}
+		f := v.Field(i)
+		// recurse into plain nested structs; time.Duration has Kind=Int64 so it
+		// falls through to the leaf branch below
+		if f.Kind() == reflect.Struct && f.Type() != durationType {
+			if err := applyStructTagDefaults(f); err != nil {
+				return fmt.Errorf("%s: %w", ft.Name, err)
+			}
+			continue
+		}
+		tag, ok := ft.Tag.Lookup("default")
+		if !ok {
+			continue
+		}
+		if !f.CanSet() {
+			continue
+		}
+		if err := setFieldFromDefaultTag(f, tag); err != nil {
+			return fmt.Errorf("%s: %w", ft.Name, err)
+		}
+	}
+	return nil
+}
+
+// setFieldFromDefaultTag parses tag according to f's type and assigns the
+// resulting typed value to f. Supports the field types currently used by the
+// options struct: string, bool, int family, uint family, float family, and
+// time.Duration. Slice/map/pointer fields are not used with default tags in
+// the options struct and will return an error if added without dispatcher
+// support.
+func setFieldFromDefaultTag(f reflect.Value, tag string) error {
+	// time.Duration (Kind=Int64) must be checked before the generic int branch
+	if f.Type() == durationType {
+		d, err := time.ParseDuration(tag)
+		if err != nil {
+			return fmt.Errorf("invalid duration default %q: %w", tag, err)
+		}
+		f.SetInt(int64(d))
+		return nil
+	}
+	switch f.Kind() {
+	case reflect.String:
+		f.SetString(tag)
+	case reflect.Bool:
+		b, err := strconv.ParseBool(tag)
+		if err != nil {
+			return fmt.Errorf("invalid bool default %q: %w", tag, err)
+		}
+		f.SetBool(b)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i, err := strconv.ParseInt(tag, 10, f.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("invalid int default %q: %w", tag, err)
+		}
+		f.SetInt(i)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u, err := strconv.ParseUint(tag, 10, f.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("invalid uint default %q: %w", tag, err)
+		}
+		f.SetUint(u)
+	case reflect.Float32, reflect.Float64:
+		fl, err := strconv.ParseFloat(tag, f.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("invalid float default %q: %w", tag, err)
+		}
+		f.SetFloat(fl)
+	default:
+		return fmt.Errorf("unsupported field kind %s for default tag %q", f.Kind(), tag)
+	}
+	return nil
+}
+
 // applyCLIOverrides applies explicit CLI overrides to settings loaded from database.
 // Only overrides values that differ from their zero/default values — the DB remains
 // the source of truth for any field the operator did not explicitly pass on the CLI.
 //
+// The defaults template is used to distinguish "operator passed the default value
+// explicitly" from "operator did not pass the flag at all" for fields that have a
+// `default:` struct tag. For fields without a default tag, an empty/zero CLI value
+// is treated as "not passed".
+//
 // How to add new overrides:
-// 1. Check if the CLI option was explicitly provided (not using default value)
-// 2. Compare with the default value from the options struct definition
-// 3. Apply the override only if the value differs from the default
-func applyCLIOverrides(settings *config.Settings, opts options) {
+//  1. Check if the CLI option was explicitly provided (not using default value)
+//  2. Compare with the default value from the template (or "" / zero for fields
+//     without a default tag)
+//  3. Apply the override only if the value differs from the default
+func applyCLIOverrides(settings *config.Settings, opts options, defaults *config.Settings) {
 	// override credentials if provided on CLI. This lets an operator rotate tokens
 	// without touching the DB — empty CLI value leaves the DB-stored token in place.
 	if opts.Telegram.Token != "" {
@@ -1495,16 +1688,55 @@ func applyCLIOverrides(settings *config.Settings, opts options) {
 		settings.Transient.WebAuthPasswd = ""
 	}
 
+	// operational CLI overrides (dry-run, listen addr, file paths) live in a
+	// separate helper because they must also be reapplied after POST
+	// /config/reload — credentials/auth above intentionally are not reapplied
+	// (DB rotation wins on reload), so the split keeps reload semantics narrow.
+	applyOperationalCLIOverrides(settings, opts, defaults)
+}
+
+// applyOperationalCLIOverrides reapplies the subset of CLI overrides that
+// must survive POST /config/reload: dry-run, listen address, dynamic and
+// samples data paths. These are operational knobs an operator chose at
+// startup and the DB's persisted value should never silently override them
+// just because the operator clicked Reload.
+func applyOperationalCLIOverrides(settings *config.Settings, opts options, defaults *config.Settings) {
 	// override dry-run if explicitly enabled via CLI (default is false).
 	// false never overrides the DB value; to disable dry-run after enabling it,
 	// use the settings UI or save-config.
 	if opts.Dry {
 		settings.Dry = true
 	}
+
+	// override server listen address if operator passed a non-default value;
+	// preserves DB value when CLI is left at the ":8080" default
+	if opts.Server.ListenAddr != defaults.Server.ListenAddr {
+		settings.Server.ListenAddr = opts.Server.ListenAddr
+	}
+
+	// override dynamic data path if operator passed a non-default value;
+	// preserves DB value when CLI is left at the "data" default
+	if opts.Files.DynamicDataPath != defaults.Files.DynamicDataPath {
+		settings.Files.DynamicDataPath = opts.Files.DynamicDataPath
+	}
+
+	// override samples data path when operator passes a non-empty value;
+	// SamplesDataPath has no default tag — empty means "use DynamicDataPath",
+	// so empty CLI never overrides the DB value
+	if opts.Files.SamplesDataPath != "" {
+		settings.Files.SamplesDataPath = opts.Files.SamplesDataPath
+	}
 }
 
-// loadConfigFromDB loads configuration from the database
-func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
+// loadConfigFromDB loads configuration from the database. Any field that was
+// absent in the persisted JSON blob (and therefore loaded as Go zero) is filled
+// from defaults, so legacy or partial blobs still yield a fully-populated
+// settings value. Fields whose zero is a meaningful operator choice
+// (zeroAwarePaths in the config package) are preserved regardless.
+//
+// Passing a nil defaults template disables the fill step — used by a few tests
+// that care only about round-trip behavior.
+func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) error {
 	log.Print("[INFO] loading configuration from database")
 
 	// create database connection using the same logic as main data DB
@@ -1548,6 +1780,9 @@ func loadConfigFromDB(ctx context.Context, settings *config.Settings) error {
 
 	// restore transient values
 	settings.Transient = transient
+
+	// fill any field left zero by a partial/legacy blob from the CLI-default template
+	settings.ApplyDefaults(defaults)
 
 	log.Printf("[INFO] configuration loaded from database successfully")
 	return nil

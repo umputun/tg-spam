@@ -55,13 +55,13 @@ var configQueries = engine.NewQueryMap().
 	}).
 	AddSame(CmdCreateConfigIndexes, `CREATE INDEX IF NOT EXISTS idx_config_gid ON config(gid)`).
 	Add(CmdUpsertConfig, engine.Query{
-		Sqlite: `INSERT INTO config (gid, data, updated_at) 
-			VALUES (?, ?, ?) 
-			ON CONFLICT (gid) DO UPDATE 
+		Sqlite: `INSERT INTO config (gid, data, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT (gid) DO UPDATE
 			SET data = excluded.data, updated_at = excluded.updated_at`,
-		Postgres: `INSERT INTO config (gid, data, updated_at) 
-			VALUES ($1, $2, $3) 
-			ON CONFLICT (gid) DO UPDATE 
+		Postgres: `INSERT INTO config (gid, data, updated_at)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (gid) DO UPDATE
 			SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`,
 	}).
 	AddSame(CmdSelectConfig, `SELECT data FROM config WHERE gid = ?`).
@@ -72,7 +72,7 @@ var configQueries = engine.NewQueryMap().
 // NewStore creates a new settings store
 func NewStore(ctx context.Context, db *engine.SQL, opts ...StoreOption) (*Store, error) {
 	if db == nil {
-		return nil, fmt.Errorf("no db provided")
+		return nil, errors.New("no db provided")
 	}
 
 	// create store with default options
@@ -173,7 +173,7 @@ func (s *Store) Load(ctx context.Context) (*Settings, error) {
 // Save stores the settings to the database
 func (s *Store) Save(ctx context.Context, settings *Settings) error {
 	if settings == nil {
-		return fmt.Errorf("nil settings")
+		return errors.New("nil settings")
 	}
 
 	s.Lock()

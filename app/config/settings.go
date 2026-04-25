@@ -5,6 +5,7 @@
 package config
 
 import (
+	"reflect"
 	"time"
 )
 
@@ -237,10 +238,13 @@ type TransientSettings struct {
 	// temporary auth password (used only to generate hash)
 	WebAuthPasswd string `json:"-" yaml:"-"`
 
-	// authFromCLI marks web auth (hash or password) as originating from CLI
-	// overrides rather than from the database. When true, loadConfigHandler
-	// preserves the in-memory auth state across reloads so CLI overrides
-	// survive; when false, reload picks up fresh DB values.
+	// AuthFromCLI marks web auth (hash or password) as held in memory rather
+	// than authoritative in the database. It is set by applyCLIOverrides for
+	// explicit --server.auth/--server.auth-hash overrides, and by
+	// applyAutoAuthFallback for the auto-generated password safety net. When
+	// true, loadConfigHandler preserves the in-memory auth state across
+	// reloads so the override survives; when false, reload picks up fresh
+	// DB values.
 	AuthFromCLI bool `json:"-" yaml:"-"`
 }
 
@@ -277,4 +281,95 @@ func (s *Settings) IsCASEnabled() bool {
 // IsStartupMessageEnabled returns true if a startup message is configured
 func (s *Settings) IsStartupMessageEnabled() bool {
 	return s.Message.Startup != ""
+}
+
+// zeroAwarePaths lists Settings field paths where the zero value is a meaningful
+// operator choice (typically "disabled" or a special semantic) rather than a
+// missing JSON key. ApplyDefaults must NOT overwrite zero on these fields,
+// because doing so would silently re-enable a feature the operator intentionally
+// disabled by saving zero into the DB blob.
+//
+// Each entry is documented with the runtime check (file:line) that interprets
+// zero as a real value. If a new such check is added, the corresponding field
+// path must be added here.
+var zeroAwarePaths = map[string]bool{
+	// "disabled when zero/negative" semantics
+	"Meta.LinksLimit":         true, // app/main.go:799 (>= 0); app/config/settings.go IsMetaEnabled (>= 0)
+	"Meta.MentionsLimit":      true, // app/main.go:803 (>= 0); app/config/settings.go IsMetaEnabled (>= 0)
+	"MaxEmoji":                true, // lib/tgspam/detector.go:249 (>= 0): -1 disables, 0 = no emojis allowed
+	"MultiLangWords":          true, // lib/tgspam/detector.go:268 (> 0): 0 disables
+	"MaxBackups":              true, // app/main.go:546 (> 0): description says "set 0 to disable"
+	"Reactions.MaxReactions":  true, // app/main.go:724 (> 0): 0 disables
+	"Duplicates.Threshold":    true, // app/main.go:717 (> 0): 0 disables
+	"Report.AutoBanThreshold": true, // app/main.go:336, app/events/reports.go:191 (> 0): 0 disables
+	"Report.RateLimit":        true, // app/events/reports.go:154 (<= 0): 0 disables rate limiting
+	"OpenAI.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
+	"Gemini.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
+	"FirstMessagesCount":      true, // app/main.go:703, lib/tgspam/detector.go:205,208 (> 0): 0 disables
+	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
+	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
+}
+
+// ApplyDefaults fills zero-valued fields in s with the corresponding values from
+// template. Fields listed in zeroAwarePaths are never overwritten regardless of
+// their current value, because zero on those fields is a meaningful operator
+// choice rather than missing data.
+//
+// The Transient group is intentionally skipped — it is fed from CLI options
+// elsewhere (optToSettings, applyCLIOverrides) and must not inherit template
+// values built from CLI struct tags.
+//
+// Slice fields with no default tag in the CLI struct (which is currently every
+// slice in the options struct) end up as nil in the template, so ApplyDefaults
+// will not overwrite an empty slice in the target.
+func (s *Settings) ApplyDefaults(template *Settings) {
+	if template == nil {
+		return
+	}
+	applyDefaultsRecursive(reflect.ValueOf(s).Elem(), reflect.ValueOf(template).Elem(), "")
+}
+
+// applyDefaultsRecursive walks two parallel struct values and fills zero leaf
+// fields in target from the corresponding leaf fields in template. Skips the
+// Transient group and any field path listed in zeroAwarePaths.
+func applyDefaultsRecursive(target, template reflect.Value, path string) {
+	if target.Kind() != reflect.Struct {
+		return
+	}
+	tt := target.Type()
+	for i := 0; i < target.NumField(); i++ {
+		ft := tt.Field(i)
+		if !ft.IsExported() {
+			continue
+		}
+		// the Transient group is CLI-fed elsewhere; defaults must not flow into it
+		if ft.Name == "Transient" {
+			continue
+		}
+		fieldPath := ft.Name
+		if path != "" {
+			fieldPath = path + "." + ft.Name
+		}
+		targetField := target.Field(i)
+		templateField := template.Field(i)
+
+		// recurse into nested settings structs (time.Duration is int64-aliased,
+		// so its Kind is Int64, not Struct — handled by the leaf branch below)
+		if targetField.Kind() == reflect.Struct {
+			applyDefaultsRecursive(targetField, templateField, fieldPath)
+			continue
+		}
+
+		// leaf field: respect zero-aware paths regardless of current value
+		if zeroAwarePaths[fieldPath] {
+			continue
+		}
+
+		if !targetField.CanSet() {
+			continue
+		}
+		if targetField.IsZero() && !templateField.IsZero() {
+			targetField.Set(templateField)
+		}
+	}
 }

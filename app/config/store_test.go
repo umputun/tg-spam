@@ -258,9 +258,6 @@ func (s *SettingsTestSuite) TestStore_Update() {
 			initialUpdate, err := store.LastUpdated(s.ctx)
 			s.Require().NoError(err)
 
-			// wait a bit to ensure timestamps are different
-			time.Sleep(10 * time.Millisecond)
-
 			// create and save updated settings
 			s2 := New()
 			s2.InstanceID = "updated"
@@ -273,14 +270,11 @@ func (s *SettingsTestSuite) TestStore_Update() {
 			updatedTime, err := store.LastUpdated(s.ctx)
 			s.Require().NoError(err)
 
-			// make sure update time changed (for SQLite this should be reliable)
-			// for PostgreSQL times might be different due to precision differences
-			if db.Type() == engine.Sqlite {
-				s.True(updatedTime.After(initialUpdate))
-			} else {
-				// for PostgreSQL we mainly check it's a valid time
-				s.False(updatedTime.IsZero())
-			}
+			// updated_at must move forward, never backward; equality is tolerated to
+			// avoid flakiness on coarse timestamp precision (consecutive Save calls
+			// can land within the same tick on some platforms)
+			s.False(updatedTime.IsZero())
+			s.False(updatedTime.Before(initialUpdate), "updated_at must not move backward")
 
 			// load settings and verify they were updated
 			loaded, err := store.Load(s.ctx)

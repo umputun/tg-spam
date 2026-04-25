@@ -10,12 +10,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-pkgz/rest"
+	"github.com/jessevdk/go-flags"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -309,7 +312,7 @@ func Test_activateServerOnly(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		execErr := execute(ctx, settings)
+		execErr := execute(ctx, settings, nil)
 		assert.NoError(t, execErr)
 		close(done)
 	}()
@@ -449,7 +452,7 @@ func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash str
 
 	done := make(chan struct{})
 	go func() {
-		execErr := execute(ctx, settings)
+		execErr := execute(ctx, settings, nil)
 		assert.NoError(t, execErr)
 		close(done)
 	}()
@@ -590,6 +593,36 @@ func Test_expandPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_normalizeFilePaths(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	t.Run("expands tilde and applies samples fallback when empty", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "~/tg-data", SamplesDataPath: ""}}
+		normalizeFilePaths(s)
+		assert.Equal(t, filepath.Join(home, "tg-data"), s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(home, "tg-data"), s.Files.SamplesDataPath,
+			"empty samples path must inherit the normalized dynamic path")
+	})
+
+	t.Run("expands relative dynamic path to absolute", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "data", SamplesDataPath: ""}}
+		normalizeFilePaths(s)
+		assert.Equal(t, filepath.Join(wd, "data"), s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(wd, "data"), s.Files.SamplesDataPath)
+	})
+
+	t.Run("expands non-empty samples path independently", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "/var/dynamic", SamplesDataPath: "~/samples"}}
+		normalizeFilePaths(s)
+		assert.Equal(t, "/var/dynamic", s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(home, "samples"), s.Files.SamplesDataPath,
+			"non-empty samples path must be expanded, not replaced by dynamic path")
+	})
 }
 
 func Test_migrateSamples(t *testing.T) {
@@ -992,8 +1025,21 @@ func TestBackupDB(t *testing.T) {
 }
 
 func TestApplyCLIOverrides(t *testing.T) {
-	makeOpts := func(passwd, hash string) options {
+	defaults, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	// newDefaultOpts returns options pre-populated with CLI struct-tag defaults,
+	// matching the state go-flags would produce after parsing argv with no flags.
+	newDefaultOpts := func(t *testing.T) options {
+		t.Helper()
 		var o options
+		require.NoError(t, applyStructTagDefaults(reflect.ValueOf(&o).Elem()))
+		return o
+	}
+
+	makeOpts := func(t *testing.T, passwd, hash string) options {
+		t.Helper()
+		o := newDefaultOpts(t)
 		o.Server.AuthPasswd = passwd
 		o.Server.AuthHash = hash
 		return o
@@ -1013,7 +1059,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "existing-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts:            makeOpts("new-password", ""),
+			opts:            makeOpts(t, "new-password", ""),
 			expectedPasswd:  "new-password",
 			expectedHash:    "", // hash should be cleared
 			expectedFromCLI: true,
@@ -1024,7 +1070,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "old-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "password"},
 			},
-			opts:            makeOpts("auto", "$2a$10$newHashFromCLI"),
+			opts:            makeOpts(t, "auto", "$2a$10$newHashFromCLI"),
 			expectedPasswd:  "", // password should be cleared
 			expectedHash:    "$2a$10$newHashFromCLI",
 			expectedFromCLI: true,
@@ -1035,7 +1081,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "existing-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "existing-password"},
 			},
-			opts:            makeOpts("auto", ""),
+			opts:            makeOpts(t, "auto", ""),
 			expectedPasswd:  "existing-password",
 			expectedHash:    "existing-hash",
 			expectedFromCLI: false,
@@ -1046,7 +1092,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 				Server:    config.ServerSettings{AuthHash: "old-hash"},
 				Transient: config.TransientSettings{WebAuthPasswd: "old-password"},
 			},
-			opts:            makeOpts("cli-password", "$2a$10$cliHash"),
+			opts:            makeOpts(t, "cli-password", "$2a$10$cliHash"),
 			expectedPasswd:  "", // password cleared because hash takes precedence
 			expectedHash:    "$2a$10$cliHash",
 			expectedFromCLI: true,
@@ -1057,7 +1103,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// make a copy of settings to avoid modifying the test case
 			settingsCopy := tt.settings
-			applyCLIOverrides(&settingsCopy, tt.opts)
+			applyCLIOverrides(&settingsCopy, tt.opts, defaults)
 
 			assert.Equal(t, tt.expectedPasswd, settingsCopy.Transient.WebAuthPasswd,
 				"WebAuthPasswd should match expected value")
@@ -1071,54 +1117,148 @@ func TestApplyCLIOverrides(t *testing.T) {
 	t.Run("dry flag preserves DB value when CLI default", func(t *testing.T) {
 		// dry=true persisted in DB must survive startup when --dry is not passed
 		settings := config.Settings{Dry: true}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
-		applyCLIOverrides(&settings, opts)
+		opts := newDefaultOpts(t)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.True(t, settings.Dry, "DB Dry=true must not be clobbered by CLI default")
 	})
 
 	t.Run("dry flag CLI true overrides DB false", func(t *testing.T) {
 		settings := config.Settings{Dry: false}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
+		opts := newDefaultOpts(t)
 		opts.Dry = true
-		applyCLIOverrides(&settings, opts)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.True(t, settings.Dry, "CLI --dry must override DB Dry=false")
 	})
 
 	t.Run("telegram token CLI overrides DB value", func(t *testing.T) {
 		settings := config.Settings{Telegram: config.TelegramSettings{Token: "db-token"}}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
+		opts := newDefaultOpts(t)
 		opts.Telegram.Token = "cli-token"
-		applyCLIOverrides(&settings, opts)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.Equal(t, "cli-token", settings.Telegram.Token, "CLI telegram token must override DB value")
 	})
 
 	t.Run("empty telegram CLI token preserves DB value", func(t *testing.T) {
 		settings := config.Settings{Telegram: config.TelegramSettings{Token: "db-token"}}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
-		applyCLIOverrides(&settings, opts)
+		opts := newDefaultOpts(t)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.Equal(t, "db-token", settings.Telegram.Token, "DB telegram token must survive when CLI is empty")
 	})
 
 	t.Run("openai token CLI overrides DB value", func(t *testing.T) {
 		settings := config.Settings{OpenAI: config.OpenAISettings{Token: "db-openai"}}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
+		opts := newDefaultOpts(t)
 		opts.OpenAI.Token = "cli-openai"
-		applyCLIOverrides(&settings, opts)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.Equal(t, "cli-openai", settings.OpenAI.Token, "CLI openai token must override DB value")
 	})
 
 	t.Run("gemini token CLI overrides DB value", func(t *testing.T) {
 		settings := config.Settings{Gemini: config.GeminiSettings{Token: "db-gemini"}}
-		var opts options
-		opts.Server.AuthPasswd = "auto"
+		opts := newDefaultOpts(t)
 		opts.Gemini.Token = "cli-gemini"
-		applyCLIOverrides(&settings, opts)
+		applyCLIOverrides(&settings, opts, defaults)
 		assert.Equal(t, "cli-gemini", settings.Gemini.Token, "CLI gemini token must override DB value")
+	})
+
+	t.Run("ListenAddr non-default overrides DB", func(t *testing.T) {
+		settings := config.Settings{Server: config.ServerSettings{ListenAddr: ":9090"}}
+		opts := newDefaultOpts(t)
+		opts.Server.ListenAddr = ":7070"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, ":7070", settings.Server.ListenAddr, "explicit CLI listen address must override DB value")
+	})
+
+	t.Run("ListenAddr default preserves DB", func(t *testing.T) {
+		settings := config.Settings{Server: config.ServerSettings{ListenAddr: ":9090"}}
+		opts := newDefaultOpts(t) // ListenAddr left at the CLI default ":8080"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, ":9090", settings.Server.ListenAddr, "DB listen address must survive when CLI uses default")
+	})
+
+	t.Run("DynamicDataPath non-default overrides DB", func(t *testing.T) {
+		settings := config.Settings{Files: config.FilesSettings{DynamicDataPath: "/db/dynamic"}}
+		opts := newDefaultOpts(t)
+		opts.Files.DynamicDataPath = "/cli/dynamic"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, "/cli/dynamic", settings.Files.DynamicDataPath,
+			"explicit CLI dynamic data path must override DB value")
+	})
+
+	t.Run("DynamicDataPath default preserves DB", func(t *testing.T) {
+		settings := config.Settings{Files: config.FilesSettings{DynamicDataPath: "/db/dynamic"}}
+		opts := newDefaultOpts(t) // DynamicDataPath left at the CLI default "data"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, "/db/dynamic", settings.Files.DynamicDataPath,
+			"DB dynamic data path must survive when CLI uses default")
+	})
+
+	t.Run("SamplesDataPath non-empty overrides DB", func(t *testing.T) {
+		settings := config.Settings{Files: config.FilesSettings{SamplesDataPath: "/db/samples"}}
+		opts := newDefaultOpts(t)
+		opts.Files.SamplesDataPath = "/cli/samples"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, "/cli/samples", settings.Files.SamplesDataPath,
+			"explicit CLI samples data path must override DB value")
+	})
+
+	t.Run("SamplesDataPath empty preserves DB", func(t *testing.T) {
+		settings := config.Settings{Files: config.FilesSettings{SamplesDataPath: "/db/samples"}}
+		opts := newDefaultOpts(t) // SamplesDataPath has no default tag, stays empty when CLI omits it
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, "/db/samples", settings.Files.SamplesDataPath,
+			"DB samples data path must survive when CLI omits the flag")
+	})
+
+	// applyOperationalCLIOverrides is the subset reused by POST /config/reload.
+	// it must NOT touch credentials/auth — those have a different reload policy.
+	t.Run("operational subset does not touch credentials or auth", func(t *testing.T) {
+		settings := config.Settings{
+			Telegram:  config.TelegramSettings{Token: "db-tg"},
+			OpenAI:    config.OpenAISettings{Token: "db-openai"},
+			Gemini:    config.GeminiSettings{Token: "db-gemini"},
+			Server:    config.ServerSettings{AuthHash: "db-hash"},
+			Transient: config.TransientSettings{WebAuthPasswd: "db-passwd"},
+		}
+		opts := newDefaultOpts(t)
+		opts.Telegram.Token = "cli-tg"
+		opts.OpenAI.Token = "cli-openai"
+		opts.Gemini.Token = "cli-gemini"
+		opts.Server.AuthPasswd = "cli-passwd"
+		opts.Server.AuthHash = "cli-hash"
+
+		applyOperationalCLIOverrides(&settings, opts, defaults)
+
+		// none of the credential/auth fields should be touched by the operational subset
+		assert.Equal(t, "db-tg", settings.Telegram.Token, "operational subset must not override telegram token")
+		assert.Equal(t, "db-openai", settings.OpenAI.Token, "operational subset must not override openai token")
+		assert.Equal(t, "db-gemini", settings.Gemini.Token, "operational subset must not override gemini token")
+		assert.Equal(t, "db-hash", settings.Server.AuthHash, "operational subset must not override auth hash")
+		assert.Equal(t, "db-passwd", settings.Transient.WebAuthPasswd,
+			"operational subset must not override web auth password")
+		assert.False(t, settings.Transient.AuthFromCLI, "operational subset must not flip AuthFromCLI")
+	})
+
+	t.Run("operational subset reapplies dry/listen/paths", func(t *testing.T) {
+		// the closure passed to webapi.Config.ReloadNormalize calls
+		// applyOperationalCLIOverrides; verify all four operational knobs land
+		settings := config.Settings{
+			Dry:    false,
+			Server: config.ServerSettings{ListenAddr: ":8080"},
+			Files:  config.FilesSettings{DynamicDataPath: "data", SamplesDataPath: "/db/samples"},
+		}
+		opts := newDefaultOpts(t)
+		opts.Dry = true
+		opts.Server.ListenAddr = ":9999"
+		opts.Files.DynamicDataPath = "/cli/dynamic"
+		opts.Files.SamplesDataPath = "/cli/samples"
+
+		applyOperationalCLIOverrides(&settings, opts, defaults)
+
+		assert.True(t, settings.Dry)
+		assert.Equal(t, ":9999", settings.Server.ListenAddr)
+		assert.Equal(t, "/cli/dynamic", settings.Files.DynamicDataPath)
+		assert.Equal(t, "/cli/samples", settings.Files.SamplesDataPath)
 	})
 }
 
@@ -1494,7 +1634,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		}
 
 		// test loading config from DB
-		err = loadConfigFromDB(ctx, loadedSettings)
+		err = loadConfigFromDB(ctx, loadedSettings, nil)
 		require.NoError(t, err)
 
 		// verify loaded values match original (except sensitive fields that should be cleared)
@@ -1552,7 +1692,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		}
 
 		// test loading config from DB
-		err = loadConfigFromDB(ctx, loadedSettings)
+		err = loadConfigFromDB(ctx, loadedSettings, nil)
 		require.NoError(t, err)
 
 		// verify domain model tokens are loaded
@@ -1588,7 +1728,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			},
 		}
 
-		err = loadConfigFromDB(ctx, loadedSettings)
+		err = loadConfigFromDB(ctx, loadedSettings, nil)
 		require.NoError(t, err)
 
 		// verify hash in original settings was set
@@ -1656,7 +1796,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		authHash := cliSettings.Server.AuthHash
 
 		// test loading configuration from database
-		err = loadConfigFromDB(ctx, cliSettings)
+		err = loadConfigFromDB(ctx, cliSettings, nil)
 		require.NoError(t, err)
 
 		// restore transient values
@@ -1702,10 +1842,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		ctx := context.Background()
 		err := saveConfigToDB(ctx, invalidSettings)
-		require.Error(t, err, "Expected error when trying to save to invalid database path")
+		require.Error(t, err, "expected error when trying to save to invalid database path")
 
-		err = loadConfigFromDB(ctx, invalidSettings)
-		assert.Error(t, err, "Expected error when trying to load from invalid database path")
+		err = loadConfigFromDB(ctx, invalidSettings, nil)
+		assert.Error(t, err, "expected error when trying to load from invalid database path")
 	})
 
 	t.Run("error handling - non-existent config", func(t *testing.T) {
@@ -1727,7 +1867,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 		ctx := context.Background()
 		// try to load from a database with no config
-		err = loadConfigFromDB(ctx, emptySettings)
+		err = loadConfigFromDB(ctx, emptySettings, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to load") // matches "failed to load settings from database"
 	})
@@ -1768,7 +1908,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			},
 		}
 
-		err = loadConfigFromDB(ctx, loadedSettingsNoKey)
+		err = loadConfigFromDB(ctx, loadedSettingsNoKey, nil)
 		require.NoError(t, err) // loading succeeds but tokens should be garbled
 
 		// verify tokens are not decrypted properly
@@ -1785,7 +1925,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			},
 		}
 
-		err = loadConfigFromDB(ctx, loadedSettingsWithKey)
+		err = loadConfigFromDB(ctx, loadedSettingsWithKey, nil)
 		require.NoError(t, err)
 
 		// verify tokens are decrypted properly
@@ -1818,10 +1958,16 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		err := saveConfigToDB(ctx, dbSettings)
 		require.NoError(t, err)
 
-		// create CLI options with explicit password override
+		// create CLI options with explicit password override; pre-populate
+		// struct-tag defaults so the override comparison only fires for the
+		// fields the operator actually set
 		var cliOpts options
+		require.NoError(t, applyStructTagDefaults(reflect.ValueOf(&cliOpts).Elem()))
 		cliOpts.InstanceID = "test-instance"
 		cliOpts.Server.AuthPasswd = "cli-password"
+
+		defaults, err := defaultSettingsTemplate()
+		require.NoError(t, err)
 
 		// load settings from database
 		loadedSettings := &config.Settings{
@@ -1832,11 +1978,11 @@ func TestSaveAndLoadConfig(t *testing.T) {
 			},
 		}
 
-		err = loadConfigFromDB(ctx, loadedSettings)
+		err = loadConfigFromDB(ctx, loadedSettings, nil)
 		require.NoError(t, err)
 
 		// apply CLI overrides
-		applyCLIOverrides(loadedSettings, cliOpts)
+		applyCLIOverrides(loadedSettings, cliOpts, defaults)
 
 		// verify database values were loaded
 		assert.Equal(t, "db-group", loadedSettings.Telegram.Group)
@@ -1909,7 +2055,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				ConfigDBEncryptKey: encryptKey,
 			},
 		}
-		err = loadConfigFromDB(ctx, loaded)
+		err = loadConfigFromDB(ctx, loaded, nil)
 		require.NoError(t, err)
 
 		assert.Equal(t, settings.Delete, loaded.Delete, "Delete group round-trip")
@@ -1922,4 +2068,548 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		assert.Equal(t, settings.AggressiveCleanup, loaded.AggressiveCleanup)
 		assert.Equal(t, settings.AggressiveCleanupLimit, loaded.AggressiveCleanupLimit)
 	})
+}
+
+func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {
+	setupLog(true)
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "partial-blob.db")
+
+	// persist a nearly-empty Settings: only InstanceID is set. Every other field
+	// becomes the Go zero on save, which mirrors a partial/legacy JSON blob where
+	// keys are missing — unmarshal produces the same zero values either way.
+	partial := &config.Settings{
+		InstanceID: "test-instance",
+		Transient: config.TransientSettings{
+			DataBaseURL: dbFile,
+		},
+	}
+	ctx := context.Background()
+	require.NoError(t, saveConfigToDB(ctx, partial))
+
+	loaded := &config.Settings{
+		InstanceID: "test-instance",
+		Transient: config.TransientSettings{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+		},
+	}
+
+	defaults, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	require.NoError(t, loadConfigFromDB(ctx, loaded, defaults))
+
+	// fields without zero-aware semantics are filled from the CLI-default template
+	assert.Equal(t, ":8080", loaded.Server.ListenAddr, "Server.ListenAddr filled from template")
+	assert.Equal(t, 30*time.Second, loaded.LLM.RequestTimeout, "LLM.RequestTimeout filled from template")
+	assert.Equal(t, 16000, loaded.OpenAI.MaxSymbolsRequest, "OpenAI.MaxSymbolsRequest filled from template")
+	assert.Equal(t, "data", loaded.Files.DynamicDataPath, "Files.DynamicDataPath filled from template")
+	assert.Equal(t, "any", loaded.LLM.Consensus, "LLM.Consensus filled from template")
+	assert.Equal(t, 50, loaded.MinMsgLen, "MinMsgLen filled from template")
+	assert.Equal(t, 24*time.Hour, loaded.History.Duration, "History.Duration filled from template")
+
+	// zero-aware paths stay at the operator's persisted zero even though template has non-zero
+	assert.Equal(t, 0, loaded.Meta.LinksLimit, "Meta.LinksLimit stays 0 (zero-aware, template=-1)")
+	assert.Equal(t, 0, loaded.Meta.MentionsLimit, "Meta.MentionsLimit stays 0 (zero-aware, template=-1)")
+	assert.Equal(t, 0, loaded.MaxEmoji, "MaxEmoji stays 0 (zero-aware, template=2)")
+	assert.Equal(t, 0, loaded.Report.RateLimit, "Report.RateLimit stays 0 (zero-aware, template=10)")
+	assert.Equal(t, 0, loaded.MaxBackups, "MaxBackups stays 0 (zero-aware, template=10)")
+	assert.Equal(t, 0, loaded.FirstMessagesCount, "FirstMessagesCount stays 0 (zero-aware, template=1)")
+
+	// instanceID round-trips from DB (non-zero), not filled from template
+	assert.Equal(t, "test-instance", loaded.InstanceID)
+
+	// transient values untouched by ApplyDefaults
+	assert.Equal(t, dbFile, loaded.Transient.DataBaseURL)
+	assert.True(t, loaded.Transient.ConfigDB)
+}
+
+func TestLoadConfigFromDB_DoesNotOverrideExisting(t *testing.T) {
+	setupLog(true)
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "complete-blob.db")
+
+	// persist a complete settings blob with explicit operator values for the
+	// same fields that TestLoadConfigFromDB_AppliesDefaults checks. ApplyDefaults
+	// must leave these alone because the target is non-zero.
+	complete := &config.Settings{
+		InstanceID: "test-instance",
+		MinMsgLen:  321,
+		Server: config.ServerSettings{
+			ListenAddr: ":9090",
+		},
+		Files: config.FilesSettings{
+			DynamicDataPath: "/custom/data",
+		},
+		LLM: config.LLMSettings{
+			Consensus:      "all",
+			RequestTimeout: 99 * time.Second,
+		},
+		OpenAI: config.OpenAISettings{
+			MaxSymbolsRequest: 4242,
+		},
+		History: config.HistorySettings{
+			Duration: 48 * time.Hour,
+		},
+		Transient: config.TransientSettings{
+			DataBaseURL: dbFile,
+		},
+	}
+	ctx := context.Background()
+	require.NoError(t, saveConfigToDB(ctx, complete))
+
+	loaded := &config.Settings{
+		InstanceID: "test-instance",
+		Transient: config.TransientSettings{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+		},
+	}
+
+	defaults, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	require.NoError(t, loadConfigFromDB(ctx, loaded, defaults))
+
+	assert.Equal(t, ":9090", loaded.Server.ListenAddr, "DB value preserved, not replaced by template :8080")
+	assert.Equal(t, 321, loaded.MinMsgLen, "DB value preserved, not replaced by template 50")
+	assert.Equal(t, "/custom/data", loaded.Files.DynamicDataPath, "DB value preserved, not replaced by template 'data'")
+	assert.Equal(t, "all", loaded.LLM.Consensus, "DB value preserved, not replaced by template 'any'")
+	assert.Equal(t, 99*time.Second, loaded.LLM.RequestTimeout, "DB value preserved, not replaced by template 30s")
+	assert.Equal(t, 4242, loaded.OpenAI.MaxSymbolsRequest, "DB value preserved, not replaced by template 16000")
+	assert.Equal(t, 48*time.Hour, loaded.History.Duration, "DB value preserved, not replaced by template 24h")
+}
+
+func TestDefaultSettingsTemplate_KeyFields(t *testing.T) {
+	tmpl, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+	require.NotNil(t, tmpl)
+
+	// strings sourced from CLI struct tags
+	assert.Equal(t, "tg-spam", tmpl.InstanceID, "InstanceID default")
+	assert.Equal(t, ":8080", tmpl.Server.ListenAddr, "Server.ListenAddr default")
+	assert.Equal(t, "data", tmpl.Files.DynamicDataPath, "Files.DynamicDataPath default")
+	assert.Equal(t, "https://api.cas.chat", tmpl.CAS.API, "CAS.API default")
+	assert.Equal(t, "any", tmpl.LLM.Consensus, "LLM.Consensus default")
+	assert.Equal(t, "gpt-4o-mini", tmpl.OpenAI.Model, "OpenAI.Model default")
+	assert.Equal(t, "gemma-4-31b-it", tmpl.Gemini.Model, "Gemini.Model default")
+	assert.Equal(t, "this is spam", tmpl.Message.Spam, "Message.Spam default")
+	assert.Equal(t, "tg-spam.log", tmpl.Logger.FileName, "Logger.FileName default")
+	assert.Equal(t, "100M", tmpl.Logger.MaxSize, "Logger.MaxSize default")
+	assert.Equal(t, "enabled", tmpl.Convert, "Convert default")
+
+	// durations
+	assert.Equal(t, 30*time.Second, tmpl.LLM.RequestTimeout, "LLM.RequestTimeout default")
+	assert.Equal(t, 30*time.Second, tmpl.Telegram.Timeout, "Telegram.Timeout default")
+	assert.Equal(t, 30*time.Second, tmpl.Telegram.IdleDuration, "Telegram.IdleDuration default")
+	assert.Equal(t, 24*time.Hour, tmpl.History.Duration, "HistoryDuration default")
+	assert.Equal(t, 5*time.Second, tmpl.CAS.Timeout, "CAS.Timeout default")
+	assert.Equal(t, time.Hour, tmpl.Duplicates.Window, "Duplicates.Window default")
+	assert.Equal(t, time.Hour, tmpl.Reactions.Window, "Reactions.Window default")
+	assert.Equal(t, time.Hour, tmpl.Report.RatePeriod, "Report.RatePeriod default")
+
+	// ints (including negatives that should round-trip via the int dispatcher)
+	assert.Equal(t, 1000, tmpl.History.MinSize, "HistoryMinSize default")
+	assert.Equal(t, 100, tmpl.History.Size, "HistorySize default")
+	assert.Equal(t, 16000, tmpl.OpenAI.MaxSymbolsRequest, "OpenAI.MaxSymbolsRequest default")
+	assert.Equal(t, 1024, tmpl.OpenAI.MaxTokensResponse, "OpenAI.MaxTokensResponse default")
+	assert.Equal(t, int32(1024), tmpl.Gemini.MaxTokensResponse, "Gemini.MaxTokensResponse default (int32)")
+	assert.Equal(t, -1, tmpl.Meta.LinksLimit, "Meta.LinksLimit default")
+	assert.Equal(t, -1, tmpl.Meta.MentionsLimit, "Meta.MentionsLimit default")
+	assert.Equal(t, 2, tmpl.MaxEmoji, "MaxEmoji default")
+	assert.Equal(t, 50, tmpl.MinMsgLen, "MinMsgLen default")
+	assert.Equal(t, 1, tmpl.FirstMessagesCount, "FirstMessagesCount default")
+	assert.Equal(t, 10, tmpl.Report.RateLimit, "Report.RateLimit default")
+	assert.Equal(t, 10, tmpl.MaxBackups, "MaxBackups default")
+
+	// floats
+	assert.InEpsilon(t, 0.5, tmpl.SimilarityThreshold, 0.0001, "SimilarityThreshold default")
+	assert.InEpsilon(t, 50.0, tmpl.MinSpamProbability, 0.0001, "MinSpamProbability default")
+	assert.InEpsilon(t, 0.3, tmpl.AbnormalSpace.SpaceRatioThreshold, 0.0001, "AbnormalSpace.SpaceRatioThreshold default")
+	assert.InEpsilon(t, 0.7, tmpl.AbnormalSpace.ShortWordRatioThreshold, 0.0001, "AbnormalSpace.ShortWordRatioThreshold default")
+
+	// bools default to false (no default tag)
+	assert.False(t, tmpl.Server.Enabled, "Server.Enabled default false")
+	assert.False(t, tmpl.Dry, "Dry default false")
+	assert.False(t, tmpl.Training, "Training default false")
+}
+
+func TestDefaultSettingsTemplate_EnvVarsDoNotPolluteTemplate(t *testing.T) {
+	// load-bearing test: prove we avoided the go-flags env-pollution trap.
+	// go-flags reads os.LookupEnv(envKey) BEFORE the default tag during
+	// parser init (option.go:328-352, clearDefault), so building the template
+	// via Parse([]string{}) would let SERVER_LISTEN, FILES_DYNAMIC, etc.
+	// silently override struct-tag defaults whenever those env vars are set.
+	t.Setenv("SERVER_LISTEN", ":9999")
+	t.Setenv("FILES_DYNAMIC", "/custom/dynamic/path")
+	t.Setenv("REPORT_RATE_LIMIT", "99")
+	t.Setenv("INSTANCE_ID", "polluted-instance")
+	t.Setenv("LLM_REQUEST_TIMEOUT", "5m")
+	t.Setenv("CAS_API", "https://evil.example.com")
+
+	tmpl, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	assert.Equal(t, ":8080", tmpl.Server.ListenAddr, "Server.ListenAddr must come from struct tag, not env")
+	assert.Equal(t, "data", tmpl.Files.DynamicDataPath, "Files.DynamicDataPath must come from struct tag, not env")
+	assert.Equal(t, 10, tmpl.Report.RateLimit, "Report.RateLimit must come from struct tag, not env")
+	assert.Equal(t, "tg-spam", tmpl.InstanceID, "InstanceID must come from struct tag, not env")
+	assert.Equal(t, 30*time.Second, tmpl.LLM.RequestTimeout, "LLM.RequestTimeout must come from struct tag, not env")
+	assert.Equal(t, "https://api.cas.chat", tmpl.CAS.API, "CAS.API must come from struct tag, not env")
+}
+
+func TestDefaultSettingsTemplate_TypeDispatch(t *testing.T) {
+	t.Run("string", func(t *testing.T) {
+		var s string
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&s).Elem(), "hello"))
+		assert.Equal(t, "hello", s)
+	})
+
+	t.Run("string empty default", func(t *testing.T) {
+		s := "preset"
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&s).Elem(), ""))
+		assert.Empty(t, s, "empty default tag must clear the field")
+	})
+
+	t.Run("bool true", func(t *testing.T) {
+		var b bool
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&b).Elem(), "true"))
+		assert.True(t, b)
+	})
+
+	t.Run("bool false", func(t *testing.T) {
+		b := true
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&b).Elem(), "false"))
+		assert.False(t, b)
+	})
+
+	t.Run("int positive", func(t *testing.T) {
+		var i int
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&i).Elem(), "42"))
+		assert.Equal(t, 42, i)
+	})
+
+	t.Run("int negative", func(t *testing.T) {
+		var i int
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&i).Elem(), "-1"))
+		assert.Equal(t, -1, i)
+	})
+
+	t.Run("int32", func(t *testing.T) {
+		var i int32
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&i).Elem(), "1024"))
+		assert.Equal(t, int32(1024), i)
+	})
+
+	t.Run("int64", func(t *testing.T) {
+		var i int64
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&i).Elem(), "9876543210"))
+		assert.Equal(t, int64(9876543210), i)
+	})
+
+	t.Run("float64", func(t *testing.T) {
+		var f float64
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&f).Elem(), "0.7"))
+		assert.InEpsilon(t, 0.7, f, 0.0001)
+	})
+
+	t.Run("duration zero", func(t *testing.T) {
+		var d time.Duration
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&d).Elem(), "0s"))
+		assert.Equal(t, time.Duration(0), d)
+	})
+
+	t.Run("duration human-readable", func(t *testing.T) {
+		var d time.Duration
+		require.NoError(t, setFieldFromDefaultTag(reflect.ValueOf(&d).Elem(), "24h"))
+		assert.Equal(t, 24*time.Hour, d)
+	})
+
+	t.Run("invalid bool returns error", func(t *testing.T) {
+		var b bool
+		err := setFieldFromDefaultTag(reflect.ValueOf(&b).Elem(), "notabool")
+		require.Error(t, err)
+	})
+
+	t.Run("invalid int returns error", func(t *testing.T) {
+		var i int
+		err := setFieldFromDefaultTag(reflect.ValueOf(&i).Elem(), "notanint")
+		require.Error(t, err)
+	})
+
+	t.Run("invalid duration returns error", func(t *testing.T) {
+		var d time.Duration
+		err := setFieldFromDefaultTag(reflect.ValueOf(&d).Elem(), "notaduration")
+		require.Error(t, err)
+	})
+
+	t.Run("unsupported kind returns error", func(t *testing.T) {
+		// slices have no default tags in the options struct, but the dispatcher
+		// must still surface them so a future contributor adding one is caught
+		var s []string
+		err := setFieldFromDefaultTag(reflect.ValueOf(&s).Elem(), "x,y,z")
+		require.Error(t, err)
+	})
+}
+
+func TestDefaultSettingsTemplate_FieldsWithoutTag(t *testing.T) {
+	tmpl, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	// fields without `default:` tags must keep their Go zero value
+	assert.Empty(t, tmpl.Telegram.Token, "Telegram.Token has no default tag")
+	assert.Empty(t, tmpl.Telegram.Group, "Telegram.Group has no default tag")
+	assert.Empty(t, tmpl.OpenAI.Token, "OpenAI.Token has no default tag")
+	assert.Empty(t, tmpl.Gemini.Token, "Gemini.Token has no default tag")
+	assert.Empty(t, tmpl.Server.AuthHash, "Server.AuthHash empty default")
+	assert.Empty(t, tmpl.Files.SamplesDataPath, "Files.SamplesDataPath has no default tag")
+	assert.Empty(t, tmpl.Admin.AdminGroup, "AdminGroup has no default tag")
+	assert.Empty(t, tmpl.Meta.UsernameSymbols, "Meta.UsernameSymbols has no default tag")
+
+	// slice fields with no default tag stay nil
+	assert.Nil(t, tmpl.Admin.SuperUsers, "SuperUsers slice has no default tag")
+	assert.Nil(t, tmpl.Admin.TestingIDs, "TestingIDs slice has no default tag")
+	assert.Nil(t, tmpl.OpenAI.CustomPrompts, "OpenAI.CustomPrompts slice has no default tag")
+	assert.Nil(t, tmpl.Gemini.CustomPrompts, "Gemini.CustomPrompts slice has no default tag")
+	assert.Nil(t, tmpl.LuaPlugins.EnabledPlugins, "LuaPlugins.EnabledPlugins slice has no default tag")
+}
+
+// legacy-mode WebAuthPasswd flow verified by reading optToSettings:
+// app/main.go:1486 sets `WebAuthPasswd: opts.Server.AuthPasswd` (CLI default
+// "auto"), so legacy mode never reaches the empty/empty case — the auto-auth
+// fallback only triggers when --confdb loads settings without an AuthHash AND
+// the operator did not pass --server.auth on the CLI.
+func Test_applyAutoAuthFallback_EmptyAuthGeneratesPassword(t *testing.T) {
+	settings := &config.Settings{}
+	settings.Server.Enabled = true
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = false
+
+	applyAutoAuthFallback(settings)
+
+	assert.Equal(t, "auto", settings.Transient.WebAuthPasswd, "fallback should set WebAuthPasswd=auto")
+	assert.Empty(t, settings.Server.AuthHash, "AuthHash is generated later by activateServer, not by the fallback")
+	assert.True(t, settings.Transient.AuthFromCLI,
+		"AuthFromCLI must be set so loadConfigHandler preserves the generated AuthHash across /config/reload")
+}
+
+// load-bearing regression for the explicit no-auth opt-out path: when an
+// operator deliberately passes --server.auth= (empty) on the CLI,
+// applyCLIOverrides sets AuthFromCLI=true. The auto-auth fallback must
+// honor that opt-out and leave WebAuthPasswd empty.
+func Test_applyAutoAuthFallback_ExplicitCLIEmpty_DoesNotAutoAuth(t *testing.T) {
+	settings := &config.Settings{}
+	settings.Server.Enabled = true
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = true
+
+	applyAutoAuthFallback(settings)
+
+	assert.Empty(t, settings.Transient.WebAuthPasswd, "AuthFromCLI=true must opt out of auto-auth")
+	assert.Empty(t, settings.Server.AuthHash)
+}
+
+func Test_applyAutoAuthFallback_NonEmptyAuthHashUnchanged(t *testing.T) {
+	settings := &config.Settings{}
+	settings.Server.Enabled = true
+	settings.Server.AuthHash = "$2a$10$existing-bcrypt-hash"
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = false
+
+	applyAutoAuthFallback(settings)
+
+	assert.Empty(t, settings.Transient.WebAuthPasswd, "non-empty AuthHash short-circuits the fallback")
+	assert.Equal(t, "$2a$10$existing-bcrypt-hash", settings.Server.AuthHash, "existing AuthHash preserved")
+}
+
+func Test_applyAutoAuthFallback_DisabledServerSkipsAutoAuth(t *testing.T) {
+	settings := &config.Settings{}
+	settings.Server.Enabled = false
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = false
+
+	applyAutoAuthFallback(settings)
+
+	assert.Empty(t, settings.Transient.WebAuthPasswd, "disabled server must skip the fallback")
+	assert.Empty(t, settings.Server.AuthHash)
+}
+
+func Test_applyAutoAuthFallback_NonEmptyPasswdHonored(t *testing.T) {
+	settings := &config.Settings{}
+	settings.Server.Enabled = true
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = "custom"
+	settings.Transient.AuthFromCLI = false
+
+	applyAutoAuthFallback(settings)
+
+	assert.Equal(t, "custom", settings.Transient.WebAuthPasswd, "existing custom password must not be overwritten by 'auto'")
+	assert.Empty(t, settings.Server.AuthHash)
+}
+
+// integration test: verifies the end-to-end flow through activateServer
+// produces a non-empty bcrypt hash on settings.Server.AuthHash when both DB
+// and CLI start out empty. Uses execute() because activateServer needs a
+// fully constructed bot.SpamFilter, locator and DB engine — replicating that
+// setup directly is more brittle than reusing the production wiring.
+func Test_activateServerEmptyAuthGeneratesBcryptHash(t *testing.T) {
+	settings := makeTestSettings()
+	settings.Server.Enabled = true
+	settings.Server.ListenAddr = ":9991"
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = false
+	settings.InstanceID = "gr1"
+	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	settings.Files.SamplesDataPath = t.TempDir()
+	settings.Files.DynamicDataPath = t.TempDir()
+	require.NoError(t, os.WriteFile(path.Join(settings.Files.SamplesDataPath, "spam-samples.txt"), []byte("spam1\n"), 0o644))
+	require.NoError(t, os.WriteFile(path.Join(settings.Files.SamplesDataPath, "ham-samples.txt"), []byte("ham1\n"), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		execErr := execute(ctx, settings, nil)
+		assert.NoError(t, execErr)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		resp, getErr := http.Get("http://localhost:9991/ping")
+		if getErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, time.Second*5, time.Millisecond*100, "server did not start")
+
+	cancel()
+	<-done
+
+	assert.NotEmpty(t, settings.Server.AuthHash, "auto-auth fallback should have populated AuthHash with a bcrypt hash")
+	assert.True(t, strings.HasPrefix(settings.Server.AuthHash, "$2a$") || strings.HasPrefix(settings.Server.AuthHash, "$2b$"),
+		"AuthHash should be a bcrypt hash (got %q)", settings.Server.AuthHash)
+}
+
+func TestREADMEAllOptionsMatchesHelp(t *testing.T) {
+	// guards drift between CLI flags/env vars and the "All Application Options"
+	// block in README.md. parses options struct via go-flags to enumerate every
+	// long flag and env var, then asserts each appears in the README block.
+	// also verifies the trailing "Available commands" section is present.
+
+	readmeBytes, err := os.ReadFile("../README.md")
+	require.NoError(t, err)
+	readme := string(readmeBytes)
+
+	// extract the fenced "All Application Options" code block
+	const headerMarker = "## All Application Options"
+	headerIdx := strings.Index(readme, headerMarker)
+	require.NotEqual(t, -1, headerIdx, "README must contain ## All Application Options heading")
+
+	tail := readme[headerIdx+len(headerMarker):]
+	openIdx := strings.Index(tail, "```")
+	require.NotEqual(t, -1, openIdx, "README must contain a fenced code block after All Application Options")
+	tail = tail[openIdx+3:]
+	closeIdx := strings.Index(tail, "```")
+	require.NotEqual(t, -1, closeIdx, "README options code block must be closed")
+	optionsBlock := tail[:closeIdx]
+
+	// build parser identical to main() so option enumeration matches help output
+	var opts options
+	parser := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	parser.SubcommandsOptional = true
+	_, err = parser.AddCommand("save-config", "Save current configuration to database",
+		"Saves all current settings to the database for future use with --confdb", &struct{}{})
+	require.NoError(t, err)
+
+	// walk all groups recursively and collect flags + env vars
+	var (
+		flagNames = map[string]string{} // long name -> namespace path for diagnostics
+		envVars   = map[string]string{}
+		groups    []string // group short descriptions used as section headers in help
+	)
+	var walk func(g *flags.Group, namePrefix, envPrefix string)
+	walk = func(g *flags.Group, namePrefix, envPrefix string) {
+		if g.Hidden {
+			return
+		}
+		for _, opt := range g.Options() {
+			if opt.Hidden || opt.LongName == "" {
+				continue
+			}
+			fullName := opt.LongName
+			if namePrefix != "" {
+				fullName = namePrefix + "." + opt.LongName
+			}
+			flagNames["--"+fullName] = fullName
+			if opt.EnvDefaultKey != "" {
+				envKey := opt.EnvDefaultKey
+				if envPrefix != "" {
+					envKey = envPrefix + "_" + envKey
+				}
+				envVars["[$"+envKey+"]"] = fullName
+			}
+		}
+		for _, sub := range g.Groups() {
+			if sub.Hidden {
+				continue
+			}
+			subNamePrefix := namePrefix
+			if sub.Namespace != "" {
+				if subNamePrefix == "" {
+					subNamePrefix = sub.Namespace
+				} else {
+					subNamePrefix = subNamePrefix + "." + sub.Namespace
+				}
+			}
+			subEnvPrefix := envPrefix
+			if sub.EnvNamespace != "" {
+				if subEnvPrefix == "" {
+					subEnvPrefix = sub.EnvNamespace
+				} else {
+					subEnvPrefix = subEnvPrefix + "_" + sub.EnvNamespace
+				}
+			}
+			if sub.ShortDescription != "" && sub.Namespace != "" {
+				groups = append(groups, sub.ShortDescription+":")
+			}
+			walk(sub, subNamePrefix, subEnvPrefix)
+		}
+	}
+	walk(parser.Group, "", "")
+
+	// every long flag must appear in the README options block
+	for flag := range flagNames {
+		assert.Contains(t, optionsBlock, flag, "README All Application Options block missing flag %s", flag)
+	}
+
+	// every env var must appear in the README options block
+	for env := range envVars {
+		assert.Contains(t, optionsBlock, env, "README All Application Options block missing env var %s", env)
+	}
+
+	// each group header (e.g. "telegram:", "openai:") must be present
+	for _, header := range groups {
+		assert.Contains(t, optionsBlock, header, "README options block missing group header %q", header)
+	}
+
+	// available commands block must include save-config
+	require.Contains(t, optionsBlock, "Available commands:",
+		`README options block must include "Available commands:" section`)
+	require.Regexp(t, `(?m)^\s+save-config\s+Save current configuration to database`,
+		optionsBlock, "README options block must list save-config command")
+
+	// reverse direction: catch stale entries in README that no longer exist as flags.
+	// extract every "--<long-name>" token from the options block (not in code spans
+	// inside descriptions) and assert each is a known flag.
+	flagPattern := regexp.MustCompile(`(?m)^\s+(--[a-zA-Z][a-zA-Z0-9.-]*)`)
+	for _, match := range flagPattern.FindAllStringSubmatch(optionsBlock, -1) {
+		token := match[1]
+		assert.Contains(t, flagNames, token,
+			"README options block lists flag %s that is not defined in options struct", token)
+	}
 }
