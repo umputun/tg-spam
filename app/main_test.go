@@ -83,7 +83,7 @@ func TestMakeSpamLogger(t *testing.T) {
 	savedMsgs := []storage.DetectedSpamInfo{}
 	err = db.Select(&savedMsgs, "SELECT text, user_id, user_name, timestamp, checks FROM detected_spam")
 	require.NoError(t, err)
-	assert.Len(t, savedMsgs, 1)
+	require.Len(t, savedMsgs, 1)
 	assert.Equal(t, "Test message blah blah", savedMsgs[0].Text)
 	assert.Equal(t, "testuser", savedMsgs[0].UserName)
 	assert.Equal(t, int64(123), savedMsgs[0].UserID)

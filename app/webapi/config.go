@@ -140,6 +140,16 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	snapshot := *s.AppSettings
 	updateSettingsFromForm(s.AppSettings, r)
 
+	// normalize Lua plugin selection: a freshly-rendered settings page checks
+	// every plugin when EnabledPlugins is empty (semantic "all enabled"). If
+	// the operator hits Save without unchecking anything, the form posts the
+	// full list and would freeze auto-enable for future plugins. Collapse
+	// "all available selected" back to nil so the empty-list semantic survives.
+	if s.Detector != nil {
+		s.AppSettings.LuaPlugins.EnabledPlugins = normalizeLuaEnabledPlugins(
+			s.AppSettings.LuaPlugins.EnabledPlugins, s.Detector.GetLuaPluginNames())
+	}
+
 	saveToDB := r.FormValue("saveToDb") == "true" && s.SettingsStore != nil
 	if saveToDB {
 		log.Printf("[DEBUG] saving settings to database")
@@ -194,6 +204,35 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// return JSON response for API calls
 	rest.RenderJSON(w, rest.JSON{"status": "ok", "message": "Configuration deleted successfully"})
+}
+
+// normalizeLuaEnabledPlugins collapses a "all available plugins selected"
+// submission back to nil so the semantic "no preference, enable all" stored in
+// EnabledPlugins survives a UI round-trip. The settings page renders every
+// plugin checkbox as checked when EnabledPlugins is empty; without this
+// normalization, hitting Save once freezes the list at the currently-loaded
+// set and silently disables auto-enable for plugins added later.
+//
+// Returns selected unchanged when:
+//   - available is empty (no detector or no plugins loaded)
+//   - selected is shorter than available (operator unchecked at least one)
+//   - selected omits any plugin in available (literal selection differs)
+//
+// Returns nil only when selected covers every entry in available.
+func normalizeLuaEnabledPlugins(selected, available []string) []string {
+	if len(available) == 0 || len(selected) < len(available) {
+		return selected
+	}
+	selectedSet := make(map[string]struct{}, len(selected))
+	for _, name := range selected {
+		selectedSet[name] = struct{}{}
+	}
+	for _, name := range available {
+		if _, ok := selectedSet[name]; !ok {
+			return selected
+		}
+	}
+	return nil
 }
 
 // updateSettingsFromForm updates settings from form values

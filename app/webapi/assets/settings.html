@@ -97,7 +97,7 @@
     {{if .ConfigDBMode}}
     <div class="alert alert-warning py-2 mb-3 small">
         <i class="bi bi-exclamation-triangle me-1"></i>
-        Saved settings are persisted to the database but only take effect after a restart. The detector, spam bot, and auth middleware are constructed once at startup.
+        Saved settings are persisted to the database. Detector and spam bot changes take effect after a restart, while auth hash and credential rotations apply immediately on the next request or after <code>/config/reload</code>.
     </div>
     {{end}}
 

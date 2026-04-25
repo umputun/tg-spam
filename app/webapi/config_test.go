@@ -1942,3 +1942,27 @@ func TestUpdateSettingsFromForm_NoInPlaceSliceMutation(t *testing.T) {
 	assert.Equal(t, enabledPluginsBackup, originalEnabledPlugins,
 		"updateSettingsFromForm must not mutate the original EnabledPlugins backing array in place")
 }
+
+func TestNormalizeLuaEnabledPlugins(t *testing.T) {
+	tests := []struct {
+		name      string
+		selected  []string
+		available []string
+		want      []string
+	}{
+		{"all available selected collapses to nil", []string{"a", "b", "c"}, []string{"a", "b", "c"}, nil},
+		{"all selected with different order collapses", []string{"c", "a", "b"}, []string{"a", "b", "c"}, nil},
+		{"subset preserved", []string{"a", "b"}, []string{"a", "b", "c"}, []string{"a", "b"}},
+		{"empty selected preserved", nil, []string{"a", "b", "c"}, nil},
+		{"empty available preserves selected", []string{"a", "b"}, nil, []string{"a", "b"}},
+		{"both empty", nil, nil, nil},
+		{"selected has plugin not in available", []string{"a", "x"}, []string{"a", "b"}, []string{"a", "x"}},
+		{"single available, single selected collapses", []string{"only"}, []string{"only"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeLuaEnabledPlugins(tt.selected, tt.available)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
