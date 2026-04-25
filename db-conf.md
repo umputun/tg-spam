@@ -290,19 +290,16 @@ fields. Adding new fields is strictly additive:
 
 ### Migration Note for Early `--confdb` Users
 
-Before the master merge, a short-lived PR-preview iteration exposed a
-`server_auth_user` field under the `server` group. That field has since been
-removed (the web auth user is now hardcoded to `"tg-spam"`). If an early
-`--confdb` blob contains a `server_auth_user` key:
+The web auth username is configurable via the persisted `Server.AuthUser`
+field (JSON key `auth_user`). When unset, `activeAuthUser()` falls back to
+the startup `AuthUser` and finally to the `"tg-spam"` default, so blobs
+written without this field continue to work unchanged.
 
-- It is ignored by `json.Unmarshal` (no matching struct field), silently and
-  without error.
-- It remains as dead data in the encrypted blob until the next `Save`, at which
-  point the entire blob is rewritten from the current `*config.Settings` shape
-  and the stale key disappears.
-
-No operator action is required. Saving settings once through the web UI, the
-`save-config` command, or any `PUT /config` request cleans up the blob.
+A short-lived intermediate revision dropped the field entirely; if a blob
+written during that window omits `auth_user`, the default `"tg-spam"`
+username applies. Operators who relied on a custom username can restore it
+through the settings UI or by re-running `save-config`. No action is
+required for blobs that already carry the field.
 
 ## Usage
 
