@@ -1117,6 +1117,60 @@ func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {
 	assert.True(t, loaded.Transient.ConfigDB)
 }
 
+func TestLoadConfigFromDB_PreservesCLIInstanceIDOnEmptyBlob(t *testing.T) {
+	setupLog(true)
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "empty-instance.db")
+
+	// persist a blob with InstanceID="" — mirrors what an external wrapper
+	// writes when it builds the JSON without setting instance_id. saveConfigToDB
+	// here uses the empty InstanceID for the engine gid too, which is fine for
+	// the test fixture; the bug under test is what loadConfigFromDB does next.
+	blob := &config.Settings{
+		InstanceID: "",
+		Dry:        true,
+		Telegram:   config.TelegramSettings{Group: "g"},
+		Transient:  config.TransientSettings{DataBaseURL: dbFile},
+	}
+	ctx := context.Background()
+	require.NoError(t, saveConfigToDB(ctx, blob))
+
+	// rebind the DB file path so the subsequent loadConfigFromDB opens it under
+	// the CLI-supplied InstanceID. Without the preserve-on-empty branch, after
+	// *settings = *dbSettings the value would become "" and every later
+	// makeDB call in activateServer would bind to gid="", breaking
+	// POST /config/reload with "no settings found in database".
+	loaded := &config.Settings{
+		InstanceID: "cli-instance",
+		Transient: config.TransientSettings{
+			DataBaseURL: dbFile,
+			ConfigDB:    true,
+		},
+	}
+	// the blob row sits under gid="" (saveConfigToDB used the empty InstanceID),
+	// so manually re-key it to gid="cli-instance" to match the load path. This
+	// stages the exact disk layout the bug produces in production: a row whose
+	// gid matches the CLI value but whose JSON blob has instance_id="".
+	rekeyConfigBlobGID(t, dbFile, "cli-instance")
+
+	require.NoError(t, loadConfigFromDB(ctx, loaded, nil))
+	assert.Equal(t, "cli-instance", loaded.InstanceID, "CLI value must be retained when blob is empty")
+	assert.True(t, loaded.Dry, "other fields still come from the blob")
+}
+
+// rekeyConfigBlobGID rewrites the gid column of every row in the config table
+// of the given sqlite file. Used to stage a row whose gid matches the CLI
+// value but whose JSON blob has instance_id="" (the exact disk layout
+// produced by external wrappers that build the config JSON themselves).
+func rekeyConfigBlobGID(t *testing.T, dbFile, newGID string) {
+	t.Helper()
+	db, err := engine.New(context.Background(), dbFile, "")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	_, err = db.Exec("UPDATE config SET gid = $1", newGID)
+	require.NoError(t, err)
+}
+
 func TestLoadConfigFromDB_DoesNotOverrideExisting(t *testing.T) {
 	setupLog(true)
 	tmpDir := t.TempDir()

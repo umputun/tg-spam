@@ -464,14 +464,13 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 
 	// preserve InstanceID supplied by --instance-id / INSTANCE_ID. This field
 	// is the storage gid for every per-instance store (settings, samples,
-	// detected spam, locator, etc.). Letting an empty value from the DB blob
-	// overwrite it leaves activateServer constructing engines with gid=""
-	// — startup load works because loadConfigFromDB uses its own short-lived
-	// store keyed by the still-CLI value, but the runtime SettingsStore is
-	// then bound to the wrong gid and POST /config/reload fails with
-	// "no settings found in database". Affects external orchestrators
-	// (e.g. tg-spam-manager) that write per-instance config blobs without
-	// embedding instance_id.
+	// detected spam, locator, etc.) and the Argon2 salt for sensitive-field
+	// encryption. Letting an empty value from the DB blob overwrite it
+	// leaves activateServer constructing engines with gid="" and the runtime
+	// SettingsStore bound to the wrong gid, so POST /config/reload fails with
+	// "no settings found in database". Affects deployments that write the
+	// per-instance config blob from outside tg-spam (the wrapper builds the
+	// JSON itself and may not embed instance_id).
 	instanceID := settings.InstanceID
 
 	// replace settings with loaded values including credentials
@@ -482,9 +481,16 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 
 	// restore InstanceID from CLI when the DB blob doesn't carry one. If the
 	// blob has its own non-empty InstanceID (e.g. saved by tg-spam itself),
-	// trust the persisted value to avoid silently rebinding storage.
+	// trust the persisted value to avoid silently rebinding storage. Warn
+	// on divergence: a mismatch shifts both the runtime gid and the Argon2
+	// salt derived in app/config/crypt.go, so the next save would re-encrypt
+	// sensitive fields under a different key.
 	if settings.InstanceID == "" {
 		settings.InstanceID = instanceID
+	} else if instanceID != "" && settings.InstanceID != instanceID {
+		log.Printf("[WARN] persisted instance_id %q differs from CLI value %q; "+
+			"using persisted value, but next save will re-encrypt sensitive fields under a different Argon2 salt",
+			settings.InstanceID, instanceID)
 	}
 
 	// fill any field left zero by a partial/legacy blob from the CLI-default template
