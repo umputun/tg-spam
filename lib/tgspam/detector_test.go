@@ -1808,7 +1808,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
-	t.Run("with openai and MinMsgLen - short message skips openai by default", func(t *testing.T) {
+	t.Run("with openai and MinMsgLen - short message skips openai by default (repeat)", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
 		mockOpenAIClient := &mocks.OpenAIClientMock{
 			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
@@ -1843,7 +1843,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
 
-	t.Run("with openai and MinMsgLen - short message checked when flag is true", func(t *testing.T) {
+	t.Run("with openai and MinMsgLen - short message checked when flag is true (repeat)", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
 		mockOpenAIClient := &mocks.OpenAIClientMock{
 			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
@@ -1881,7 +1881,7 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 2)
 	})
 
-	t.Run("with openai and MinMsgLen - short message already spam skips openai", func(t *testing.T) {
+	t.Run("with openai and MinMsgLen - short message already spam skips openai (with LoadResult assert)", func(t *testing.T) {
 		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
 		mockOpenAIClient := &mocks.OpenAIClientMock{
 			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {

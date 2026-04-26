@@ -462,11 +462,30 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 	// save original transient values only (non-functional values)
 	transient := settings.Transient
 
+	// preserve InstanceID supplied by --instance-id / INSTANCE_ID. This field
+	// is the storage gid for every per-instance store (settings, samples,
+	// detected spam, locator, etc.). Letting an empty value from the DB blob
+	// overwrite it leaves activateServer constructing engines with gid=""
+	// — startup load works because loadConfigFromDB uses its own short-lived
+	// store keyed by the still-CLI value, but the runtime SettingsStore is
+	// then bound to the wrong gid and POST /config/reload fails with
+	// "no settings found in database". Affects external orchestrators
+	// (e.g. tg-spam-manager) that write per-instance config blobs without
+	// embedding instance_id.
+	instanceID := settings.InstanceID
+
 	// replace settings with loaded values including credentials
 	*settings = *dbSettings
 
 	// restore transient values
 	settings.Transient = transient
+
+	// restore InstanceID from CLI when the DB blob doesn't carry one. If the
+	// blob has its own non-empty InstanceID (e.g. saved by tg-spam itself),
+	// trust the persisted value to avoid silently rebinding storage.
+	if settings.InstanceID == "" {
+		settings.InstanceID = instanceID
+	}
 
 	// fill any field left zero by a partial/legacy blob from the CLI-default template
 	settings.ApplyDefaults(defaults)
