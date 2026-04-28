@@ -193,17 +193,17 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Create: `app/storage/warnings.go`
 - Create: `app/storage/warnings_test.go`
 
-- [ ] declare typed `engine.DBCmd` constants `CmdCreateWarningsTable`, `CmdCreateWarningsIndexes`, `CmdAddWarning`, `CmdCountWarningsWithin`, `CmdCleanupWarnings`
-- [ ] declare `warningsQueries` via `engine.NewQueryMap()` with SQLite and Postgres `engine.Query` entries for each command (mirror `reportsQueries` at `app/storage/reports.go:37-104`)
-- [ ] create `Warnings` struct embedding `*engine.SQL` and `engine.RWLocker` (mirror `Reports` shape)
-- [ ] add `NewWarnings(ctx, db) (*Warnings, error)` constructor that calls `engine.InitTable` with `engine.TableConfig` containing `warningsQueries`, the create commands, the index command, and a no-op `migrate` function (matches `reports.go:126`)
-- [ ] implement `Add(ctx, userID, userName) error`: `Lock`/`defer Unlock`, set `gid = r.GID()`, set `created_at = time.Now()`, pick `CmdAddWarning` query, run via `NamedExecContext`, then call private `cleanupOld(ctx)` to prune rows older than 1 year (storage cutoff, not the user's configured window)
-- [ ] implement `CountWithin(ctx, userID, window) (int, error)`: `RLock`/`defer RUnlock`, pick `CmdCountWarningsWithin`, adopt placeholders via `r.Adopt`, scan result via `GetContext`
-- [ ] implement private `cleanupOld(ctx) error` using `CmdCleanupWarnings` (`DELETE FROM warnings WHERE created_at < ?`), log warn on failure but don't propagate
-- [ ] write tests for `Add` (single insert, multiple inserts, multi-user isolation, multi-gid isolation, both SQLite and Postgres engines)
-- [ ] write tests for `CountWithin` (zero result, within window, outside window cutoff, mixed inside/outside, both engines)
-- [ ] write test for `cleanupOld` (verify rows older than 1y are removed on Add, recent rows preserved)
-- [ ] run `go test -race ./app/storage/...` — must pass before next task
+- [x] declare typed `engine.DBCmd` constants `CmdCreateWarningsTable`, `CmdCreateWarningsIndexes`, `CmdAddWarning`, `CmdCountWarningsWithin`, `CmdCleanupWarnings`
+- [x] declare `warningsQueries` via `engine.NewQueryMap()` with SQLite and Postgres `engine.Query` entries for each command (mirror `reportsQueries` at `app/storage/reports.go:37-104`)
+- [x] create `Warnings` struct embedding `*engine.SQL` and `engine.RWLocker` (mirror `Reports` shape)
+- [x] add `NewWarnings(ctx, db) (*Warnings, error)` constructor that calls `engine.InitTable` with `engine.TableConfig` containing `warningsQueries`, the create commands, the index command, and a no-op `migrate` function (matches `reports.go:126`)
+- [x] implement `Add(ctx, userID, userName) error`: `Lock`/`defer Unlock`, set `gid = r.GID()`, set `created_at = time.Now()`, pick `CmdAddWarning` query, run via `NamedExecContext`, then call private `cleanupOld(ctx)` to prune rows older than 1 year (storage cutoff, not the user's configured window)
+- [x] implement `CountWithin(ctx, userID, window) (int, error)`: `RLock`/`defer RUnlock`, pick `CmdCountWarningsWithin`, adopt placeholders via `r.Adopt`, scan result via `GetContext`
+- [x] implement private `cleanupOld(ctx) error` using `CmdCleanupWarnings` (`DELETE FROM warnings WHERE created_at < ?`), log warn on failure but don't propagate
+- [x] write tests for `Add` (single insert, multiple inserts, multi-user isolation, multi-gid isolation, both SQLite and Postgres engines)
+- [x] write tests for `CountWithin` (zero result, within window, outside window cutoff, mixed inside/outside, both engines)
+- [x] write test for `cleanupOld` (verify rows older than 1y are removed on Add, recent rows preserved)
+- [x] run `go test -race ./app/storage/...` — must pass before next task
 
 ### Task 2: Add `Warnings` consumer interface and moq mock
 
