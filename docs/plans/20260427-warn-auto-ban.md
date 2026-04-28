@@ -301,14 +301,14 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 
 ### Task 8: Verify acceptance criteria
 
-- [ ] verify all 6 listed comments from issue #71 are addressed (count tracked, configurable threshold, optional disable)
-- [ ] verify default behavior unchanged: with `--warn-threshold=0` (default), no DB writes and no behavior changes vs master
-- [ ] verify all existing `/warn` tests still pass without modification
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run linter: `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
-- [ ] run formatters: `~/.claude/format.sh` or fallback gofmt + goimports
-- [ ] verify race-free: `go test -race ./app/storage/... ./app/events/...`
-- [ ] verify coverage: `go test -cover ./...` — coverage of new files at or above project standard
+- [x] verify all 6 listed comments from issue #71 are addressed (count tracked, configurable threshold, optional disable)
+- [x] verify default behavior unchanged: with `--warn-threshold=0` (default), no DB writes and no behavior changes vs master
+- [x] verify all existing `/warn` tests still pass without modification
+- [x] run full test suite: `go test -race ./...`
+- [x] run linter: `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
+- [x] run formatters: `~/.claude/format.sh` or fallback gofmt + goimports
+- [x] verify race-free: `go test -race ./app/storage/... ./app/events/...`
+- [x] verify coverage: `go test -cover ./...` — coverage of new files at or above project standard
 
 ### Task 9: [Final] Update documentation
 
