@@ -20,6 +20,7 @@ import (
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
+//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -62,6 +63,12 @@ type Reports interface {
 	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
 	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
 	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
+}
+
+// Warnings is an interface for admin /warn records storage used by the warn auto-ban feature
+type Warnings interface {
+	Add(ctx context.Context, userID int64, userName string) error
+	CountWithin(ctx context.Context, userID int64, window time.Duration) (int, error)
 }
 
 // Bot is an interface for bot events.

@@ -31,6 +31,9 @@ type admin struct {
 	warnMsg                string
 	aggressiveCleanup      bool
 	aggressiveCleanupLimit int
+	warnings               Warnings      //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
+	warnThreshold          int           //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
+	warnWindow             time.Duration //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
 }
 
 const (

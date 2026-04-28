@@ -212,11 +212,11 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Create: `app/events/mocks/warnings.go` (generated)
 - Modify: `app/events/admin.go` (struct fields only)
 
-- [ ] add `Warnings` interface to `app/events/events.go` next to `Reports` interface with `Add(ctx, userID, userName) error` and `CountWithin(ctx, userID, window) (int, error)` methods
-- [ ] add `//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings` directive next to existing directives at `events.go:18-22` (matches existing flag style)
-- [ ] add `warnings Warnings`, `warnThreshold int`, `warnWindow time.Duration` fields to the `admin` struct in `app/events/admin.go`
-- [ ] regenerate mocks via `go generate ./app/events/...`
-- [ ] verify mock compiles and existing admin tests still pass: `go test -race ./app/events/...`
+- [x] add `Warnings` interface to `app/events/events.go` next to `Reports` interface with `Add(ctx, userID, userName) error` and `CountWithin(ctx, userID, window) (int, error)` methods
+- [x] add `//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings` directive next to existing directives at `events.go:18-22` (matches existing flag style)
+- [x] add `warnings Warnings`, `warnThreshold int`, `warnWindow time.Duration` fields to the `admin` struct in `app/events/admin.go`
+- [x] regenerate mocks via `go generate ./app/events/...`
+- [x] verify mock compiles and existing admin tests still pass: `go test -race ./app/events/...`
 
 ### Task 3: Wire CLI flags and Settings
 
