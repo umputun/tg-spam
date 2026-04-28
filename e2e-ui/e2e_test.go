@@ -555,6 +555,11 @@ func TestManageSamples_DeleteSpam(t *testing.T) {
 		return e == nil && contains(text, sampleText)
 	}, 5*time.Second, 100*time.Millisecond)
 
+	// wait for htmx to finish processing the swapped content; otherwise the
+	// new delete form's hx-post may not be bound yet and the click would fall
+	// through to a native form submit against the page url
+	require.NoError(t, page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{State: playwright.LoadStateNetworkidle}))
+
 	// delete the sample - find row with our sample and click delete
 	deleteBtn := page.Locator(fmt.Sprintf("#spam-samples-list li:has-text('%s') button.btn-danger", sampleText))
 	require.NoError(t, deleteBtn.Click())
