@@ -24,6 +24,21 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
+//go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
+
+// SpamLogger is an interface for spam logger
+type SpamLogger interface {
+	Save(msg *bot.Message, response *bot.Response)
+}
+
+// SpamLoggerFunc is a function that implements SpamLogger interface
+type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
+
+// Save is a function that implements SpamLogger interface
+func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
+	f(msg, response)
+}
+
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
 type TelegramListener struct {

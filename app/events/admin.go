@@ -16,6 +16,14 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 )
 
+//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings
+
+// Warnings is an interface for admin /warn records storage used by the warn auto-ban feature
+type Warnings interface {
+	Add(ctx context.Context, userID int64, userName string) error
+	CountWithin(ctx context.Context, userID int64, window time.Duration) (int, error)
+}
+
 // admin is a helper to handle all admin-group related stuff, created by listener
 // public methods kept public (on a private struct) to be able to recognize the api
 type admin struct {

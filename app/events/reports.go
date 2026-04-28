@@ -13,6 +13,18 @@ import (
 	"github.com/umputun/tg-spam/app/storage"
 )
 
+//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
+
+// Reports is an interface for user spam reports storage
+type Reports interface {
+	Add(ctx context.Context, report storage.Report) error
+	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
+	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
+	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
+	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
+	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
+}
+
 // ReportConfig is user spam reporting configuration
 type ReportConfig struct {
 	Storage          Reports       // reports storage for user spam reports

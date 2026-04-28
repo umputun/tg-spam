@@ -16,11 +16,8 @@ import (
 )
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
-//go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
-//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
-//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -29,19 +26,6 @@ type TbAPI interface {
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error)
 	GetChatAdministrators(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
-}
-
-// SpamLogger is an interface for spam logger
-type SpamLogger interface {
-	Save(msg *bot.Message, response *bot.Response)
-}
-
-// SpamLoggerFunc is a function that implements SpamLogger interface
-type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
-
-// Save is a function that implements SpamLogger interface
-func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
-	f(msg, response)
 }
 
 // Locator is an interface for message locator
@@ -53,22 +37,6 @@ type Locator interface {
 	MsgHash(msg string) string
 	UserNameByID(ctx context.Context, userID int64) string
 	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
-}
-
-// Reports is an interface for user spam reports storage
-type Reports interface {
-	Add(ctx context.Context, report storage.Report) error
-	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
-	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
-	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
-	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
-	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
-}
-
-// Warnings is an interface for admin /warn records storage used by the warn auto-ban feature
-type Warnings interface {
-	Add(ctx context.Context, userID int64, userName string) error
-	CountWithin(ctx context.Context, userID int64, window time.Duration) (int, error)
 }
 
 // Bot is an interface for bot events.
