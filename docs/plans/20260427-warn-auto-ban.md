@@ -246,12 +246,12 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `app/events/listener.go`
 - Modify: `app/events/listener_test.go` (if existing tests reference TelegramListener literal)
 
-- [ ] in `app/main.go`, after the existing storage init block, construct `warnings, err := storage.NewWarnings(ctx, db)` with proper error handling matching the surrounding pattern
-- [ ] add three new flat fields to `TelegramListener` struct in `app/events/listener.go:40-52`: `WarnThreshold int`, `WarnWindow time.Duration`, `Warnings Warnings` (with brief comments matching neighbors)
-- [ ] populate these three fields in the `tgListener := events.TelegramListener{...}` literal in `app/main.go` (around line 481) from `appSettings.Warn.Threshold`, `appSettings.Warn.Window`, and the new `warnings` value
-- [ ] in `app/events/listener.go:128`, add `warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow` to the `&admin{...}` literal
-- [ ] update any existing `TelegramListener` test fixtures that build the struct literal so they still compile (likely just zero-value the new fields)
-- [ ] run `go test -race ./app/...` — must pass before next task (admin handler logic still TBD; tests should pass with zero-valued threshold)
+- [x] in `app/main.go`, after the existing storage init block, construct `warnings, err := storage.NewWarnings(ctx, db)` with proper error handling matching the surrounding pattern
+- [x] add three new flat fields to `TelegramListener` struct in `app/events/listener.go:40-52`: `WarnThreshold int`, `WarnWindow time.Duration`, `Warnings Warnings` (with brief comments matching neighbors)
+- [x] populate these three fields in the `tgListener := events.TelegramListener{...}` literal in `app/main.go` (around line 481) from `appSettings.Warn.Threshold`, `appSettings.Warn.Window`, and the new `warnings` value
+- [x] in `app/events/listener.go:128`, add `warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow` to the `&admin{...}` literal
+- [x] update any existing `TelegramListener` test fixtures that build the struct literal so they still compile (likely just zero-value the new fields)
+- [x] run `go test -race ./app/...` — must pass before next task (admin handler logic still TBD; tests should pass with zero-valued threshold)
 
 ### Task 5: Extend `DirectWarnReport` and add `executeWarnBan`
 

@@ -50,6 +50,9 @@ type TelegramListener struct {
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
+	WarnThreshold           int           // auto-ban after N warns within window (0=disabled)
+	WarnWindow              time.Duration // sliding window for counting warns
+	Warnings                Warnings      // storage for admin /warn records
 
 	adminHandler    *admin
 	reportsHandler  *userReports
@@ -130,6 +133,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		primChatID: l.chatID, adminChatID: l.adminChatID,
 		trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
+		warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow,
 	}
 
 	l.reportsHandler = &userReports{

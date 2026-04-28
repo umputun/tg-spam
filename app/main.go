@@ -464,6 +464,15 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		}
 	}
 
+	// make warnings storage if warn auto-ban feature is enabled
+	var warningsStore *storage.Warnings
+	if settings.Warn.Threshold > 0 {
+		warningsStore, err = storage.NewWarnings(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make warnings store, %w", err)
+		}
+	}
+
 	// activate web server if enabled, server-only mode (no telegram token)
 	if settings.Server.Enabled && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		// server starts in background goroutine without DM users provider
@@ -527,6 +536,9 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		Dry:                     settings.Dry,
 		AggressiveCleanup:       settings.AggressiveCleanup,
 		AggressiveCleanupLimit:  settings.AggressiveCleanupLimit,
+		WarnThreshold:           settings.Warn.Threshold,
+		WarnWindow:              settings.Warn.Window,
+		Warnings:                warningsStore,
 	}
 
 	if settings.Delete.JoinMessages {
