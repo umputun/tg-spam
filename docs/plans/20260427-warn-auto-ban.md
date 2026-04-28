@@ -284,9 +284,9 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `app/webapi/config.go`
 - Modify: `app/webapi/config_test.go`
 
-- [ ] in the form parser handler, add `warnThreshold` int parsing (`strconv.Atoi`) and `warnWindow` `time.Duration` parsing (`time.ParseDuration`) — mirror the `reportAutoBanThreshold` and `reactionsWindow` handlers exactly
-- [ ] write `config_test.go` cases: valid threshold/window persist into `settings.Warn.Threshold`/`Window`, malformed values do not silently zero (existing handlers leave the field unchanged on parse error — match that behavior), missing form fields don't touch the field
-- [ ] run `go test -race ./app/webapi/...` — must pass before next task
+- [x] in the form parser handler, add `warnThreshold` int parsing (`strconv.Atoi`) and `warnWindow` `time.Duration` parsing (`time.ParseDuration`) — mirror the `reportAutoBanThreshold` and `reactionsWindow` handlers exactly
+- [x] write `config_test.go` cases: valid threshold/window persist into `settings.Warn.Threshold`/`Window`, malformed values do not silently zero (existing handlers leave the field unchanged on parse error — match that behavior), missing form fields don't touch the field
+- [x] run `go test -race ./app/webapi/...` — must pass before next task
 
 ### Task 7: Web UI form inputs
 

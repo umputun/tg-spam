@@ -1560,6 +1560,94 @@ func TestUpdateSettingsFromForm_Reactions_PresentZeroExplicit(t *testing.T) {
 	assert.Equal(t, 1*time.Hour, settings.Reactions.Window, "Window must be preserved when not in form")
 }
 
+func TestUpdateSettingsFromForm_Warn_PresentApplied(t *testing.T) {
+	// warnThreshold and warnWindow present in form must be parsed and applied
+	settings := &config.Settings{}
+
+	form := url.Values{}
+	form.Add("warnThreshold", "3")
+	form.Add("warnWindow", "12h")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 3, settings.Warn.Threshold)
+	assert.Equal(t, 12*time.Hour, settings.Warn.Window)
+}
+
+func TestUpdateSettingsFromForm_Warn_AbsentPreserves(t *testing.T) {
+	// warnThreshold (val != "" gate) and warnWindow (r.Form key gate) absent from form
+	// must preserve existing values so unrelated saves don't wipe state
+	settings := &config.Settings{
+		Warn: config.WarnSettings{
+			Threshold: 5,
+			Window:    24 * time.Hour,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("primaryGroup", "some-group") // simulate user saving an unrelated change
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 5, settings.Warn.Threshold, "Threshold must be preserved when form omits it")
+	assert.Equal(t, 24*time.Hour, settings.Warn.Window, "Window must be preserved when form omits it")
+}
+
+func TestUpdateSettingsFromForm_Warn_PresentZeroExplicit(t *testing.T) {
+	// explicit zero from operator (form value is "0") is the "disable feature"
+	// signal for warnThreshold and must be honored — distinct from "absent" which preserves
+	settings := &config.Settings{
+		Warn: config.WarnSettings{
+			Threshold: 5,
+			Window:    24 * time.Hour,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("warnThreshold", "0")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 0, settings.Warn.Threshold, "explicit zero must override existing value")
+	assert.Equal(t, 24*time.Hour, settings.Warn.Window, "Window must be preserved when form omits it")
+}
+
+func TestUpdateSettingsFromForm_Warn_MalformedPreserves(t *testing.T) {
+	// malformed values must not silently zero the field — existing handlers leave
+	// the field unchanged on parse error and warnThreshold/warnWindow follow that pattern
+	settings := &config.Settings{
+		Warn: config.WarnSettings{
+			Threshold: 4,
+			Window:    6 * time.Hour,
+		},
+	}
+
+	form := url.Values{}
+	form.Add("warnThreshold", "not-a-number")
+	form.Add("warnWindow", "not-a-duration")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 4, settings.Warn.Threshold, "Threshold must be preserved when input invalid")
+	assert.Equal(t, 6*time.Hour, settings.Warn.Window, "Window must be preserved when input invalid")
+}
+
 func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 	// the UI hint below the input says "leave empty to disable". Clearing the
 	// field in the form must clear the setting regardless of metaEnabled state.
