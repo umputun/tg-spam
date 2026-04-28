@@ -31,9 +31,9 @@ type admin struct {
 	warnMsg                string
 	aggressiveCleanup      bool
 	aggressiveCleanupLimit int
-	warnings               Warnings      //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
-	warnThreshold          int           //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
-	warnWindow             time.Duration //nolint:unused // wired in Task 4, used in Task 5 (DirectWarnReport)
+	warnings               Warnings      // storage for /warn records, used by DirectWarnReport auto-ban path
+	warnThreshold          int           // auto-ban after N /warn within warnWindow (0 disables auto-ban)
+	warnWindow             time.Duration // sliding window for counting warns
 }
 
 const (
@@ -361,8 +361,92 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
 
+	// auto-ban path: track the warn and ban if threshold reached within the configured window.
+	// disabled when threshold is 0 or storage is not wired (defensive).
+	if a.warnThreshold > 0 && a.warnings != nil {
+		var targetID int64
+		var targetName string
+		var channelID int64
+		switch {
+		case origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0:
+			targetID = origMsg.SenderChat.ID
+			targetName = a.channelDisplayName(origMsg.SenderChat)
+			channelID = origMsg.SenderChat.ID
+		case origMsg.From != nil && origMsg.From.ID != 0:
+			targetID = origMsg.From.ID
+			targetName = origMsg.From.UserName
+		default:
+			// no resolvable target (shouldn't happen for real telegram updates)
+			if err := errs.ErrorOrNil(); err != nil {
+				return fmt.Errorf("direct warn report failed: %w", err)
+			}
+			return nil
+		}
+
+		ctx := context.TODO()
+		if err := a.warnings.Add(ctx, targetID, targetName); err != nil {
+			log.Printf("[WARN] failed to record warn for %q (%d): %v", targetName, targetID, err)
+		} else {
+			count, err := a.warnings.CountWithin(ctx, targetID, a.warnWindow)
+			if err != nil {
+				log.Printf("[WARN] failed to count warns for %q (%d): %v", targetName, targetID, err)
+			} else if count >= a.warnThreshold {
+				if banErr := a.executeWarnBan(targetID, targetName, channelID, count); banErr != nil {
+					errs = multierror.Append(errs, banErr)
+				}
+			}
+		}
+	}
+
 	if err := errs.ErrorOrNil(); err != nil {
 		return fmt.Errorf("direct warn report failed: %w", err)
+	}
+	return nil
+}
+
+// executeWarnBan bans a user or channel after the warn-threshold is reached within warnWindow.
+// it respects dry, training, and softBan modes, and posts an admin-chat notification.
+// it does not update spam samples - a warn is not necessarily spam content.
+func (a *admin) executeWarnBan(userID int64, userName string, channelID int64, count int) error {
+	log.Printf("[INFO] warn auto-ban triggered for %q (%d): %d warns within %v", userName, userID, count, a.warnWindow)
+
+	banReq := banRequest{
+		duration:  bot.PermanentBanDuration,
+		userID:    userID,
+		channelID: channelID,
+		chatID:    a.primChatID,
+		tbAPI:     a.tbAPI,
+		dry:       a.dry,
+		training:  a.trainingMode,
+		userName:  userName,
+		restrict:  a.softBan,
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		return fmt.Errorf("failed to auto-ban %q (%d) after %d warns: %w", userName, userID, count, err)
+	}
+
+	if a.adminChatID == 0 {
+		return nil
+	}
+
+	action := "banned"
+	switch {
+	case a.dry:
+		action = "would have banned"
+	case a.trainingMode:
+		action = "would have banned (training)"
+	case a.softBan && channelID == 0:
+		action = "restricted"
+	}
+
+	target := userName
+	if channelID == 0 && userName != "" {
+		target = "@" + userName
+	}
+	notification := fmt.Sprintf("**warn auto-%s** %s (%d) after %d warns within %v",
+		action, escapeMarkDownV1Text(target), userID, count, a.warnWindow)
+	if err := send(tbapi.NewMessage(a.adminChatID, notification), a.tbAPI); err != nil {
+		return fmt.Errorf("failed to send warn auto-ban notification: %w", err)
 	}
 	return nil
 }

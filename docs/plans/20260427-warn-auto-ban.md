@@ -259,14 +259,14 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `app/events/admin.go`
 - Modify: `app/events/admin_test.go`
 
-- [ ] insert new logic in `DirectWarnReport` AFTER the existing warning-message-post block but BEFORE the final `return errs.ErrorOrNil()` (the insertion point is the end of the function, but inside the existing `errs` accumulator scope so any new errors are aggregated)
-- [ ] add early return: `if a.warnThreshold == 0 || a.warnings == nil { return errs.ErrorOrNil() }` — keeps current behavior identical when feature disabled
-- [ ] resolve `targetID`, `targetName`, `channelID` from `origMsg.SenderChat` (channel: ID + `channelDisplayName`, channelID = SenderChat.ID) or `origMsg.From` (user: ID + UserName, channelID = 0); add nil-target guard returning `errs.ErrorOrNil()` if both are nil/zero
-- [ ] call `a.warnings.Add(ctx, targetID, targetName)` — on error log `[WARN]` and return existing errs (warning message already posted, best-effort)
-- [ ] call `count, err := a.warnings.CountWithin(ctx, targetID, a.warnWindow)` — on error log `[WARN]` and return
-- [ ] if `count >= a.warnThreshold` call `a.executeWarnBan(targetID, targetName, channelID, count)` and `errs = multierror.Append(errs, err)` on error
-- [ ] implement `executeWarnBan(userID int64, userName string, channelID int64, count int) error`: respect dry/training/soft-ban modes (mirror `executeAutoBan` in `app/events/reports.go:220-270`); build `banRequest{userID: userID, channelID: channelID, chatID: a.primChatID, ...}`; call existing `banUserOrChannel`; on success post admin-chat notification "auto-ban: @username banned after N warnings within Wh"; **do not** call `bot.UpdateSpam` (warn ≠ spam content)
-- [ ] write `admin_test.go` cases extending `TestAdmin_DirectWarnReport`:
+- [x] insert new logic in `DirectWarnReport` AFTER the existing warning-message-post block but BEFORE the final `return errs.ErrorOrNil()` (the insertion point is the end of the function, but inside the existing `errs` accumulator scope so any new errors are aggregated)
+- [x] add early return: `if a.warnThreshold == 0 || a.warnings == nil { return errs.ErrorOrNil() }` — keeps current behavior identical when feature disabled
+- [x] resolve `targetID`, `targetName`, `channelID` from `origMsg.SenderChat` (channel: ID + `channelDisplayName`, channelID = SenderChat.ID) or `origMsg.From` (user: ID + UserName, channelID = 0); add nil-target guard returning `errs.ErrorOrNil()` if both are nil/zero
+- [x] call `a.warnings.Add(ctx, targetID, targetName)` — on error log `[WARN]` and return existing errs (warning message already posted, best-effort)
+- [x] call `count, err := a.warnings.CountWithin(ctx, targetID, a.warnWindow)` — on error log `[WARN]` and return
+- [x] if `count >= a.warnThreshold` call `a.executeWarnBan(targetID, targetName, channelID, count)` and `errs = multierror.Append(errs, err)` on error
+- [x] implement `executeWarnBan(userID int64, userName string, channelID int64, count int) error`: respect dry/training/soft-ban modes (mirror `executeAutoBan` in `app/events/reports.go:220-270`); build `banRequest{userID: userID, channelID: channelID, chatID: a.primChatID, ...}`; call existing `banUserOrChannel`; on success post admin-chat notification "auto-ban: @username banned after N warnings within Wh"; **do not** call `bot.UpdateSpam` (warn ≠ spam content)
+- [x] write `admin_test.go` cases extending `TestAdmin_DirectWarnReport`:
   - threshold=0: no Warnings calls, behavior identical to current
   - threshold=2, CountWithin=1: warn posted, no ban call, no admin notification
   - threshold=2, CountWithin=2: warn posted, ban call issued, admin notification posted
@@ -276,7 +276,7 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
   - `Warnings.Add` returns error: warn still posted, no count/ban attempted
   - `Warnings.CountWithin` returns error: warn still posted, no ban attempted
   - `a.warnings == nil`: no panic, behaves like threshold=0 (defensive)
-- [ ] run `go test -race ./app/events/...` — must pass before next task
+- [x] run `go test -race ./app/events/...` — must pass before next task
 
 ### Task 6: Web UI form parsing
 
