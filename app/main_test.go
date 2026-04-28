@@ -10,16 +10,19 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-pkgz/rest"
+	"github.com/jessevdk/go-flags"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
@@ -71,7 +74,7 @@ func TestMakeSpamLogger(t *testing.T) {
 
 		assert.Equal(t, "Test User", logEntry["display_name"])
 		assert.Equal(t, "testuser", logEntry["user_name"])
-		assert.InDelta(t, float64(123), logEntry["user_id"], 0.001) // json.Unmarshal converts numbers to float64
+		assert.InEpsilon(t, float64(123), logEntry["user_id"], 0.0001) // json.Unmarshal converts numbers to float64
 		assert.Equal(t, "Test message blah blah", logEntry["text"])
 	}
 	require.NoError(t, scanner.Err())
@@ -89,6 +92,26 @@ func TestMakeSpamLogger(t *testing.T) {
 
 }
 
+// Helper function to create settings for testing
+func makeTestSettings() *config.Settings {
+	return &config.Settings{
+		InstanceID: "test-instance",
+		Logger: config.LoggerSettings{
+			Enabled:    false,
+			FileName:   "/tmp/test.log",
+			MaxSize:    "10M",
+			MaxBackups: 1,
+		},
+		Files: config.FilesSettings{
+			SamplesDataPath: "/tmp/samples",
+			DynamicDataPath: "/tmp/dynamic",
+		},
+		Transient: config.TransientSettings{
+			Dbg: true,
+		},
+	}
+}
+
 func TestMakeSpamLogWriter(t *testing.T) {
 	setupLog(true, "super-secret-token")
 	t.Run("happy path", func(t *testing.T) {
@@ -96,13 +119,13 @@ func TestMakeSpamLogWriter(t *testing.T) {
 		require.NoError(t, err)
 		defer os.Remove(file.Name())
 
-		var opts options
-		opts.Logger.Enabled = true
-		opts.Logger.FileName = file.Name()
-		opts.Logger.MaxSize = "1M"
-		opts.Logger.MaxBackups = 1
+		settings := makeTestSettings()
+		settings.Logger.Enabled = true
+		settings.Logger.FileName = file.Name()
+		settings.Logger.MaxSize = "1M"
+		settings.Logger.MaxBackups = 1
 
-		writer, err := makeSpamLogWriter(opts)
+		writer, err := makeSpamLogWriter(settings)
 		require.NoError(t, err)
 
 		_, err = writer.Write([]byte("Test log entry\n"))
@@ -119,79 +142,128 @@ func TestMakeSpamLogWriter(t *testing.T) {
 	})
 
 	t.Run("failed on wrong size", func(t *testing.T) {
-		var opts options
-		opts.Logger.Enabled = true
-		opts.Logger.FileName = "/tmp"
-		opts.Logger.MaxSize = "1f"
-		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter(opts)
+		settings := makeTestSettings()
+		settings.Logger.Enabled = true
+		settings.Logger.FileName = "/tmp"
+		settings.Logger.MaxSize = "1f"
+		settings.Logger.MaxBackups = 1
+
+		writer, err := makeSpamLogWriter(settings)
 		require.Error(t, err)
 		t.Log(err)
 		assert.Nil(t, writer)
 	})
 
 	t.Run("disabled", func(t *testing.T) {
-		var opts options
-		opts.Logger.Enabled = false
-		opts.Logger.FileName = "/tmp"
-		opts.Logger.MaxSize = "10M"
-		opts.Logger.MaxBackups = 1
-		writer, err := makeSpamLogWriter(opts)
+		settings := makeTestSettings()
+		settings.Logger.Enabled = false
+		settings.Logger.FileName = "/tmp"
+		settings.Logger.MaxSize = "10M"
+		settings.Logger.MaxBackups = 1
+
+		writer, err := makeSpamLogWriter(settings)
 		require.NoError(t, err)
 		assert.IsType(t, nopWriteCloser{}, writer)
 	})
 }
 
 func Test_makeDetector(t *testing.T) {
-	t.Run("no options", func(t *testing.T) {
-		var opts options
-		res := makeDetector(opts)
+	t.Run("basic settings", func(t *testing.T) {
+		settings := makeTestSettings()
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 	})
 
 	t.Run("with first msgs count", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.SamplesDataPath = "/tmp"
-		opts.Files.DynamicDataPath = "/tmp"
-		opts.FirstMessagesCount = 10
-		res := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.OpenAI.Token = "123"
+		settings.Files.SamplesDataPath = "/tmp"
+		settings.Files.DynamicDataPath = "/tmp"
+		settings.FirstMessagesCount = 10
+
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 10, res.FirstMessagesCount)
 		assert.True(t, res.FirstMessageOnly)
 	})
 
 	t.Run("with first msgs count and paranoid", func(t *testing.T) {
-		var opts options
-		opts.OpenAI.Token = "123"
-		opts.Files.SamplesDataPath = "/tmp"
-		opts.Files.DynamicDataPath = "/tmp"
-		opts.FirstMessagesCount = 10
-		opts.ParanoidMode = true
-		res := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.OpenAI.Token = "123"
+		settings.Files.SamplesDataPath = "/tmp"
+		settings.Files.DynamicDataPath = "/tmp"
+		settings.FirstMessagesCount = 10
+		settings.ParanoidMode = true
+
+		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
 		assert.False(t, res.FirstMessageOnly)
 	})
 }
 
+func Test_initLuaPlugins(t *testing.T) {
+	t.Run("basic plugin initialization", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = "/path/to/plugins"
+		settings.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
+		settings.LuaPlugins.DynamicReload = true
+
+		detector := makeDetector(makeTestSettings()) // create a clean detector
+
+		// run the function to test
+		initLuaPlugins(detector, settings)
+
+		// verify that the detector's config matches the settings
+		assert.True(t, detector.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
+		assert.Equal(t, []string{"plugin1", "plugin2"}, detector.LuaPlugins.EnabledPlugins)
+		assert.True(t, detector.LuaPlugins.DynamicReload)
+
+		// verify the Lua engine was initialized
+		// we can't directly check detector.luaEngine since it's unexported
+		// but we can infer it's initialized because the settings were applied
+	})
+
+	t.Run("all enabled plugins", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = "/path/to/plugins"
+		// no specific plugins enabled - should enable all
+		settings.LuaPlugins.DynamicReload = false
+
+		detector := makeDetector(makeTestSettings()) // create a clean detector
+
+		// run the function to test
+		initLuaPlugins(detector, settings)
+
+		// verify the settings were transferred
+		assert.True(t, detector.LuaPlugins.Enabled)
+		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
+		assert.Empty(t, detector.LuaPlugins.EnabledPlugins)
+		assert.False(t, detector.LuaPlugins.DynamicReload)
+	})
+}
+
 func Test_makeSpamBot(t *testing.T) {
 	ctx := t.Context()
 
-	t.Run("no options", func(t *testing.T) {
-		var opts options
-		_, err := makeSpamBot(ctx, opts, nil, nil)
+	t.Run("no settings", func(t *testing.T) {
+		settings := makeTestSettings()
+		_, err := makeSpamBot(ctx, settings, nil, nil)
 		assert.Error(t, err)
 	})
 
-	t.Run("with valid options", func(t *testing.T) {
-		var opts options
+	t.Run("with valid settings", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		opts.Files.SamplesDataPath = tmpDir
-		opts.Files.DynamicDataPath = tmpDir
-		opts.InstanceID = "gr1"
-		detector := makeDetector(opts)
+		settings := makeTestSettings()
+		settings.Files.SamplesDataPath = tmpDir
+		settings.Files.DynamicDataPath = tmpDir
+		settings.InstanceID = "gr1"
+
+		detector := makeDetector(settings)
 		db, err := engine.NewSqlite(path.Join(tmpDir, "tg-spam.db"), "gr1")
 		require.NoError(t, err)
 		defer db.Close()
@@ -203,7 +275,7 @@ func Test_makeSpamBot(t *testing.T) {
 		err = samplesStore.Add(ctx, storage.SampleTypeHam, storage.SampleOriginPreset, "ham1")
 		require.NoError(t, err)
 
-		res, err := makeSpamBot(ctx, opts, db, detector)
+		res, err := makeSpamBot(ctx, settings, db, detector)
 		require.NoError(t, err)
 		assert.NotNil(t, res)
 	})
@@ -213,23 +285,25 @@ func Test_activateServerOnly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var opts options
-	opts.Server.Enabled = true
-	opts.Server.ListenAddr = ":9988"
-	opts.Server.AuthPasswd = "auto"
-	opts.InstanceID = "gr1"
-	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	settings := makeTestSettings()
+	settings.Server.Enabled = true
+	settings.Server.ListenAddr = ":9988"
+	settings.Transient.WebAuthPasswd = "auto"
+	settings.InstanceID = "gr1"
+	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
 
-	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
+	// create sample directories
+	settings.Files.SamplesDataPath = t.TempDir()
+	settings.Files.DynamicDataPath = t.TempDir()
 
 	// write some sample files
-	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
+	fh, err := os.Create(path.Join(settings.Files.SamplesDataPath, "spam-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
 	require.NoError(t, err)
 	fh.Close()
 
-	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
+	fh, err = os.Create(path.Join(settings.Files.SamplesDataPath, "ham-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("ham1\nham2\nham3\n")
 	require.NoError(t, err)
@@ -237,19 +311,19 @@ func Test_activateServerOnly(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		execErr := execute(ctx, opts)
+		execErr := execute(ctx, settings, nil)
 		assert.NoError(t, execErr)
 		close(done)
 	}()
 
 	// wait for server to be ready
 	require.Eventually(t, func() bool {
-		pingResp, pingErr := http.Get("http://localhost:9988/ping")
-		if pingErr != nil {
+		resp, getErr := http.Get("http://localhost:9988/ping")
+		if getErr != nil {
 			return false
 		}
-		defer pingResp.Body.Close()
-		return pingResp.StatusCode == http.StatusOK
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
 	}, time.Second*5, time.Millisecond*100, "server did not start")
 
 	resp, err := http.Get("http://localhost:9988/ping")
@@ -346,29 +420,30 @@ func Test_activateServerAuthHashOverridesExplicitPasswd(t *testing.T) {
 }
 
 // runActivateServerForTest boots the full execute() flow with a minimal set of
-// options sufficient for web-server-only mode, waits for /ping to respond, and
+// settings sufficient for web-server-only mode, waits for /ping to respond, and
 // returns the base URL. Cleanup (context cancel + goroutine join) is registered
 // via t.Cleanup.
 func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash string) string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var opts options
-	opts.Server.Enabled = true
-	opts.Server.ListenAddr = listenAddr
-	opts.Server.AuthPasswd = authPasswd
-	opts.Server.AuthHash = authHash
-	opts.InstanceID = "gr1"
-	opts.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
-	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = t.TempDir(), t.TempDir()
+	settings := makeTestSettings()
+	settings.Server.Enabled = true
+	settings.Server.ListenAddr = listenAddr
+	settings.Server.AuthHash = authHash
+	settings.Transient.WebAuthPasswd = authPasswd
+	settings.InstanceID = "gr1"
+	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	settings.Files.SamplesDataPath = t.TempDir()
+	settings.Files.DynamicDataPath = t.TempDir()
 
-	fh, err := os.Create(path.Join(opts.Files.SamplesDataPath, "spam-samples.txt"))
+	fh, err := os.Create(path.Join(settings.Files.SamplesDataPath, "spam-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("spam1\nspam2\nspam3\n")
 	require.NoError(t, err)
 	require.NoError(t, fh.Close())
 
-	fh, err = os.Create(path.Join(opts.Files.SamplesDataPath, "ham-samples.txt"))
+	fh, err = os.Create(path.Join(settings.Files.SamplesDataPath, "ham-samples.txt"))
 	require.NoError(t, err)
 	_, err = fh.WriteString("ham1\nham2\nham3\n")
 	require.NoError(t, err)
@@ -376,7 +451,7 @@ func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash str
 
 	done := make(chan struct{})
 	go func() {
-		execErr := execute(ctx, opts)
+		execErr := execute(ctx, settings, nil)
 		assert.NoError(t, execErr)
 		close(done)
 	}()
@@ -399,7 +474,7 @@ func runActivateServerForTest(t *testing.T, listenAddr, authPasswd, authHash str
 }
 
 func Test_checkVolumeMount(t *testing.T) {
-	prepEnvAndFileSystem := func(opts *options, envValue string, dynamicDataPath string, notMountedExists bool) func() {
+	prepEnvAndFileSystem := func(settings *config.Settings, envValue string, dynamicDataPath string, notMountedExists bool) func() {
 		os.Setenv("TGSPAM_IN_DOCKER", envValue)
 
 		tempDir, _ := os.MkdirTemp("", "test")
@@ -414,7 +489,7 @@ func Test_checkVolumeMount(t *testing.T) {
 		if dynamicDataPath == "" {
 			dynamicDataPath = "dynamic"
 		}
-		opts.Files.DynamicDataPath = filepath.Join(tempDir, dynamicDataPath)
+		settings.Files.DynamicDataPath = filepath.Join(tempDir, dynamicDataPath)
 
 		return func() {
 			os.RemoveAll(tempDir)
@@ -466,11 +541,11 @@ func Test_checkVolumeMount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := options{}
-			cleanup := prepEnvAndFileSystem(&opts, tt.envValue, tt.dynamicDataPath, tt.notMountedExists)
+			settings := makeTestSettings()
+			cleanup := prepEnvAndFileSystem(settings, tt.envValue, tt.dynamicDataPath, tt.notMountedExists)
 			defer cleanup()
 
-			ok := checkVolumeMount(opts)
+			ok := checkVolumeMount(settings)
 			assert.Equal(t, tt.expectedOk, ok)
 		})
 	}
@@ -519,11 +594,41 @@ func Test_expandPath(t *testing.T) {
 	}
 }
 
+func Test_normalizeFilePaths(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	t.Run("expands tilde and applies samples fallback when empty", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "~/tg-data", SamplesDataPath: ""}}
+		normalizeFilePaths(s)
+		assert.Equal(t, filepath.Join(home, "tg-data"), s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(home, "tg-data"), s.Files.SamplesDataPath,
+			"empty samples path must inherit the normalized dynamic path")
+	})
+
+	t.Run("expands relative dynamic path to absolute", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "data", SamplesDataPath: ""}}
+		normalizeFilePaths(s)
+		assert.Equal(t, filepath.Join(wd, "data"), s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(wd, "data"), s.Files.SamplesDataPath)
+	})
+
+	t.Run("expands non-empty samples path independently", func(t *testing.T) {
+		s := &config.Settings{Files: config.FilesSettings{DynamicDataPath: "/var/dynamic", SamplesDataPath: "~/samples"}}
+		normalizeFilePaths(s)
+		assert.Equal(t, "/var/dynamic", s.Files.DynamicDataPath)
+		assert.Equal(t, filepath.Join(home, "samples"), s.Files.SamplesDataPath,
+			"non-empty samples path must be expanded, not replaced by dynamic path")
+	})
+}
+
 func Test_migrateSamples(t *testing.T) {
 	tmpDir := t.TempDir()
-	opts := options{}
-	opts.Files.SamplesDataPath, opts.Files.DynamicDataPath = tmpDir, tmpDir
-	opts.InstanceID = "gr1"
+	settings := makeTestSettings()
+	settings.Files.SamplesDataPath, settings.Files.DynamicDataPath = tmpDir, tmpDir
+	settings.InstanceID = "gr1"
 
 	t.Run("full migration", func(t *testing.T) {
 		db, err := engine.NewSqlite(":memory:", "gr1")
@@ -533,26 +638,26 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create new files for migration, all 4 files should be migrated
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile),
 			[]byte("new spam1\nnew spam2\nnew spam 3"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, samplesHamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, samplesHamFile),
 			[]byte("new ham1\nnew ham2"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, dynamicSpamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, dynamicSpamFile),
 			[]byte("new dspam1\nnew dspam2\nnew dspam3"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile),
 			[]byte("new dham1\nnew dham2"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		require.NoError(t, err)
 
 		// verify all files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile))
 		require.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, samplesHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, samplesHamFile))
 		require.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, dynamicSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, dynamicSpamFile))
 		require.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
 		require.Error(t, err, "original file should be renamed")
 
 		s, err := store.Stats(context.Background())
@@ -569,7 +674,7 @@ func Test_migrateSamples(t *testing.T) {
 	})
 
 	t.Run("nil storage", func(t *testing.T) {
-		err := migrateSamples(context.Background(), opts, nil)
+		err := migrateSamples(context.Background(), settings, nil)
 		assert.Error(t, err)
 	})
 
@@ -581,21 +686,21 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create already loaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"),
 			[]byte("old spam"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile+".loaded"),
 			[]byte("old ham"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		require.NoError(t, err)
 
 		// verify old files untouched
-		data, err := os.ReadFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"))
+		data, err := os.ReadFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"))
 		require.NoError(t, err)
 		assert.Equal(t, "old spam", string(data))
 
 		// verify new files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile))
 		assert.Error(t, err, "original file should be renamed")
 	})
 
@@ -607,16 +712,16 @@ func Test_migrateSamples(t *testing.T) {
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile+".loaded"), []byte("old spam"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile), []byte("new ham"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile+".loaded"), []byte("old spam"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte("new ham"), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		require.NoError(t, err)
 
 		// verify only unloaded files migrated
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile))
 		require.Error(t, err, "unloaded file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile+".loaded"))
 		require.NoError(t, err)
 
 		s, err := store.Stats(context.Background())
@@ -632,22 +737,22 @@ func Test_migrateSamples(t *testing.T) {
 		store, err := storage.NewSamples(context.Background(), db)
 		require.NoError(t, err)
 
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile), []byte(""), 0o600))
 
-		err = migrateSamples(context.Background(), opts, store)
+		err = migrateSamples(context.Background(), settings, store)
 		assert.NoError(t, err)
 	})
 }
 
 func Test_migrateDicts(t *testing.T) {
 	tmpDir := t.TempDir()
-	opts := options{}
-	opts.Files.SamplesDataPath = tmpDir
-	opts.InstanceID = "gr1"
+	settings := makeTestSettings()
+	settings.Files.SamplesDataPath = tmpDir
+	settings.InstanceID = "gr1"
 
 	t.Run("nil dictionary", func(t *testing.T) {
-		err := migrateDicts(context.Background(), opts, nil)
+		err := migrateDicts(context.Background(), settings, nil)
 		assert.Error(t, err)
 	})
 
@@ -659,23 +764,23 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create new files for migration
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
 			[]byte("stop1\nstop2\nstop3"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("token1\ntoken2"), 0o600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		require.NoError(t, err)
 
 		// verify files renamed and moved correctly
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile))
 		require.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"))
 		require.NoError(t, err)
 
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
 		require.Error(t, err, "original file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
 		require.NoError(t, err)
 
 		// verify data imported correctly
@@ -693,18 +798,18 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create already loaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
 			[]byte("old stop1\nold stop2"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"),
 			[]byte("old token1"), 0o600))
 
 		// create new files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile),
 			[]byte("new stop1\nnew stop2"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("new token1\nnew token2"), 0o600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		require.NoError(t, err)
 
 		// verify import happened correctly
@@ -714,7 +819,7 @@ func Test_migrateDicts(t *testing.T) {
 		assert.Equal(t, 2, s.TotalIgnoredWords)
 
 		// verify old files overwritten
-		data, err := os.ReadFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"))
+		data, err := os.ReadFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"))
 		require.NoError(t, err)
 		assert.Equal(t, "new stop1\nnew stop2", string(data))
 	})
@@ -727,10 +832,10 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create empty files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile), []byte(""), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile), []byte(""), 0o600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		require.NoError(t, err)
 
 		// verify stats
@@ -748,18 +853,18 @@ func Test_migrateDicts(t *testing.T) {
 		require.NoError(t, err)
 
 		// create mix of loaded and unloaded files
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, stopWordsFile+".loaded"),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, stopWordsFile+".loaded"),
 			[]byte("old stop1\nold stop2"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile),
+		require.NoError(t, os.WriteFile(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile),
 			[]byte("token1\ntoken2"), 0o600))
 
-		err = migrateDicts(context.Background(), opts, dict)
+		err = migrateDicts(context.Background(), settings, dict)
 		require.NoError(t, err)
 
 		// verify only unloaded file migrated
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile))
 		require.Error(t, err, "unloaded file should be renamed")
-		_, err = os.Stat(filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile+".loaded"))
+		_, err = os.Stat(filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile+".loaded"))
 		require.NoError(t, err)
 
 		// verify stats reflect only migrated data
@@ -916,4 +1021,167 @@ func TestBackupDB(t *testing.T) {
 		err := backupDB(nonExistentFile, "v1", 1)
 		require.NoError(t, err)
 	})
+}
+
+// integration test: verifies the end-to-end flow through activateServer
+// produces a non-empty bcrypt hash on settings.Server.AuthHash when both DB
+// and CLI start out empty. Uses execute() because activateServer needs a
+// fully constructed bot.SpamFilter, locator and DB engine — replicating that
+// setup directly is more brittle than reusing the production wiring.
+func Test_activateServerEmptyAuthGeneratesBcryptHash(t *testing.T) {
+	settings := makeTestSettings()
+	settings.Server.Enabled = true
+	settings.Server.ListenAddr = ":9991"
+	settings.Server.AuthHash = ""
+	settings.Transient.WebAuthPasswd = ""
+	settings.Transient.AuthFromCLI = false
+	settings.InstanceID = "gr1"
+	settings.Transient.DataBaseURL = fmt.Sprintf("sqlite://%s", path.Join(t.TempDir(), "tg-spam.db"))
+	settings.Files.SamplesDataPath = t.TempDir()
+	settings.Files.DynamicDataPath = t.TempDir()
+	require.NoError(t, os.WriteFile(path.Join(settings.Files.SamplesDataPath, "spam-samples.txt"), []byte("spam1\n"), 0o644))
+	require.NoError(t, os.WriteFile(path.Join(settings.Files.SamplesDataPath, "ham-samples.txt"), []byte("ham1\n"), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		execErr := execute(ctx, settings, nil)
+		assert.NoError(t, execErr)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		resp, getErr := http.Get("http://localhost:9991/ping")
+		if getErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, time.Second*5, time.Millisecond*100, "server did not start")
+
+	cancel()
+	<-done
+
+	assert.NotEmpty(t, settings.Server.AuthHash, "auto-auth fallback should have populated AuthHash with a bcrypt hash")
+	assert.True(t, strings.HasPrefix(settings.Server.AuthHash, "$2a$") || strings.HasPrefix(settings.Server.AuthHash, "$2b$"),
+		"AuthHash should be a bcrypt hash (got %q)", settings.Server.AuthHash)
+}
+
+func TestREADMEAllOptionsMatchesHelp(t *testing.T) {
+	// guards drift between CLI flags/env vars and the "All Application Options"
+	// block in README.md. parses options struct via go-flags to enumerate every
+	// long flag and env var, then asserts each appears in the README block.
+	// also verifies the trailing "Available commands" section is present.
+
+	readmeBytes, err := os.ReadFile("../README.md")
+	require.NoError(t, err)
+	readme := string(readmeBytes)
+
+	// extract the fenced "All Application Options" code block
+	const headerMarker = "## All Application Options"
+	headerIdx := strings.Index(readme, headerMarker)
+	require.NotEqual(t, -1, headerIdx, "README must contain ## All Application Options heading")
+
+	tail := readme[headerIdx+len(headerMarker):]
+	openIdx := strings.Index(tail, "```")
+	require.NotEqual(t, -1, openIdx, "README must contain a fenced code block after All Application Options")
+	tail = tail[openIdx+3:]
+	closeIdx := strings.Index(tail, "```")
+	require.NotEqual(t, -1, closeIdx, "README options code block must be closed")
+	optionsBlock := tail[:closeIdx]
+
+	// build parser identical to main() so option enumeration matches help output
+	var opts options
+	parser := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	parser.SubcommandsOptional = true
+	_, err = parser.AddCommand("save-config", "Save current configuration to database",
+		"Saves all current settings to the database for future use with --confdb", &struct{}{})
+	require.NoError(t, err)
+
+	// walk all groups recursively and collect flags + env vars
+	var (
+		flagNames = map[string]string{} // long name -> namespace path for diagnostics
+		envVars   = map[string]string{}
+		groups    []string // group short descriptions used as section headers in help
+	)
+	var walk func(g *flags.Group, namePrefix, envPrefix string)
+	walk = func(g *flags.Group, namePrefix, envPrefix string) {
+		if g.Hidden {
+			return
+		}
+		for _, opt := range g.Options() {
+			if opt.Hidden || opt.LongName == "" {
+				continue
+			}
+			fullName := opt.LongName
+			if namePrefix != "" {
+				fullName = namePrefix + "." + opt.LongName
+			}
+			flagNames["--"+fullName] = fullName
+			if opt.EnvDefaultKey != "" {
+				envKey := opt.EnvDefaultKey
+				if envPrefix != "" {
+					envKey = envPrefix + "_" + envKey
+				}
+				envVars["[$"+envKey+"]"] = fullName
+			}
+		}
+		for _, sub := range g.Groups() {
+			if sub.Hidden {
+				continue
+			}
+			subNamePrefix := namePrefix
+			if sub.Namespace != "" {
+				if subNamePrefix == "" {
+					subNamePrefix = sub.Namespace
+				} else {
+					subNamePrefix = subNamePrefix + "." + sub.Namespace
+				}
+			}
+			subEnvPrefix := envPrefix
+			if sub.EnvNamespace != "" {
+				if subEnvPrefix == "" {
+					subEnvPrefix = sub.EnvNamespace
+				} else {
+					subEnvPrefix = subEnvPrefix + "_" + sub.EnvNamespace
+				}
+			}
+			if sub.ShortDescription != "" && sub.Namespace != "" {
+				groups = append(groups, sub.ShortDescription+":")
+			}
+			walk(sub, subNamePrefix, subEnvPrefix)
+		}
+	}
+	walk(parser.Group, "", "")
+
+	// every long flag must appear in the README options block
+	for flag := range flagNames {
+		assert.Contains(t, optionsBlock, flag, "README All Application Options block missing flag %s", flag)
+	}
+
+	// every env var must appear in the README options block
+	for env := range envVars {
+		assert.Contains(t, optionsBlock, env, "README All Application Options block missing env var %s", env)
+	}
+
+	// each group header (e.g. "telegram:", "openai:") must be present
+	for _, header := range groups {
+		assert.Contains(t, optionsBlock, header, "README options block missing group header %q", header)
+	}
+
+	// available commands block must include save-config
+	require.Contains(t, optionsBlock, "Available commands:",
+		`README options block must include "Available commands:" section`)
+	require.Regexp(t, `(?m)^\s+save-config\s+Save current configuration to database`,
+		optionsBlock, "README options block must list save-config command")
+
+	// reverse direction: catch stale entries in README that no longer exist as flags.
+	// extract every "--<long-name>" token from the options block (not in code spans
+	// inside descriptions) and assert each is a known flag.
+	flagPattern := regexp.MustCompile(`(?m)^\s+(--[a-zA-Z][a-zA-Z0-9.-]*)`)
+	for _, match := range flagPattern.FindAllStringSubmatch(optionsBlock, -1) {
+		token := match[1]
+		assert.Contains(t, flagNames, token,
+			"README options block lists flag %s that is not defined in options struct", token)
+	}
 }

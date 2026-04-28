@@ -1807,6 +1807,112 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
+
+	t.Run("with openai and MinMsgLen - short message skips openai by default (repeat)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// checkShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.False(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		// verify openai was NOT called
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.True(t, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.True(t, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called for long message
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
+	})
+
+	t.Run("with openai and MinMsgLen - short message checked when flag is true (repeat)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// explicitly set CheckShortMessagesWithOpenAI to true
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.True(t, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.True(t, cr[1].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
+		// verify openai WAS called even for short message
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.True(t, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.True(t, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called this time too
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 2)
+	})
+
+	t.Run("with openai and MinMsgLen - short message already spam skips openai (with LoadResult assert)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// set CheckShortMessagesWithOpenAI to true but it should still skip if already spam
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// load a stop word that will be present in the short message
+		lr, err := d.LoadStopWords(strings.NewReader("spam"))
+		require.NoError(t, err)
+		assert.Equal(t, LoadResult{StopWords: 1}, lr)
+
+		// test with short message that contains stop word
+		spam, cr := d.Check(spamcheck.Request{Msg: "spam msg"})
+		assert.True(t, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+		assert.Equal(t, "spam", cr[0].Details)
+		assert.Equal(t, "message length", cr[1].Name)
+		assert.False(t, cr[1].Spam)
+		assert.Equal(t, "too short", cr[1].Details)
+		// verify openai was NOT called since spam was already detected
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
+	})
 }
 
 func TestDetector_CheckWithMeta(t *testing.T) {

@@ -224,6 +224,43 @@ This option is disabled by default. If `--space.enabled` is set or `env:SPACE_EN
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
 - `--space.min-words` (default:5) - the minimum number of words in the message to trigger the check
 
+### Sensitive Information Encryption in Database
+
+The bot supports encryption of sensitive fields when storing configuration in the database. This is useful when you want to store API tokens and other credentials securely. To enable encryption, set the `--confdb-encrypt-key` parameter or `CONFDB_ENCRYPT_KEY` environment variable to a secure master key.
+
+```bash
+# Enable encryption with environment variable (preferred method)
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam --confdb ...
+
+# Or with command line parameter (less secure, visible in process list)
+./tg-spam --confdb-encrypt-key="your-secure-master-key-at-least-20-chars" --confdb ...
+```
+
+When encryption is enabled, sensitive fields like Telegram token, OpenAI token, Gemini token, and server auth hash are automatically encrypted in the database and decrypted when loaded. This provides an extra layer of protection for your credentials, especially in shared database environments.
+
+Every settings group is persisted in `--confdb` mode, including the groups added with the master merge: Gemini, LLM consensus, Report, Duplicates, Delete join/leave messages, Meta contact-only and giveaway checks, and aggressive cleanup. For example, the `save-config` subcommand can bootstrap a database with Gemini enabled:
+
+```bash
+# Bootstrap a scratch DB with Gemini persisted, then run with --confdb
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam save-config --gemini.token=your-gemini-key --gemini.model=gemini-2.0-flash \
+    --llm.consensus=all --report.enabled --duplicates.threshold=3 \
+    --telegram.token=your-telegram-token --telegram.group=your-group
+./tg-spam --confdb --telegram.group=your-group
+```
+
+On subsequent `--confdb` starts the bot loads every persisted group from the database; transient flags (paths, server listen address, debug flags) still come from the CLI. See [db-conf.md](db-conf.md) for the full persisted settings inventory and the CLI/DB precedence rules. Note that not every persisted field has a form input on the `/settings` page — connection settings, message templates, OpenAI/Gemini prompt and tuning, abnormal-spacing thresholds, and several others require a CLI restart or `save-config` round-trip to change. The "Settings UI vs CLI-only Fields" section in db-conf.md lists the full inventory.
+
+#### Security Details
+
+- Uses industry-standard AES-GCM encryption with Argon2id key derivation
+- Creates instance-specific encryption keys to prevent cross-instance decryption
+- Requires a minimum key length of 20 characters to ensure adequate security
+- Environment variables are preferred over command-line parameters to prevent key exposure
+
+> **Important**: The encryption key must be kept secure and consistent across restarts. If the key changes, previously encrypted settings cannot be decrypted. For production use, consider using a secrets management system.
+
 ### Database Migration for samples (spam and ham), stop words and exclude tokens, after version (v1.16.0+)
 
 Starting from version 1.16.0, the bot has transitioned from using multiple text files to a fully database-driven architecture. Previously separate files for spam/ham samples, stop words, and excluded tokens are now stored directly in the database alongside other bot data.
@@ -488,6 +525,8 @@ Success! The new status is: DISABLED. /help
 ```
       --instance-id=                    instance id (default: tg-spam) [$INSTANCE_ID]
       --db=                             database URL, if empty uses sqlite (default: tg-spam.db) [$DB]
+      --confdb                          load configuration from database [$CONFDB]
+      --confdb-encrypt-key=             encryption key for sensitive config values in database [$CONFDB_ENCRYPT_KEY]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
@@ -622,11 +661,14 @@ message:
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
       --server.listen=                  listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                    basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
-      --server.auth-hash=               basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
+      --server.auth=                    basic auth password (default: auto) [$SERVER_AUTH]
+      --server.auth-hash=               basic auth password hash [$SERVER_AUTH_HASH]
 
 Help Options:
   -h, --help                            Show this help message
+
+Available commands:
+  save-config  Save current configuration to database
 ```
 
 ### Application Options in details
@@ -687,6 +729,7 @@ openssl passwd -apr1 your_password
 
 In case if both `--server.auth` and `--server.auth-hash` are set, the hash will be used.
 
+In `--confdb` mode, if the server is enabled but the database has no stored auth hash AND the operator did not pass any `--server.auth*` flag on the CLI, a random password is generated automatically and logged at startup (the same behavior as the default legacy mode). The automatic fallback never overrides an explicit `--server.auth=` (empty) intent — passing an empty `--server.auth` deliberately leaves the UI unauthenticated.
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
