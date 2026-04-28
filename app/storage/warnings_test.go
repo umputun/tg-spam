@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/umputun/tg-spam/app/storage/engine"
@@ -222,4 +224,55 @@ func (s *StorageTestSuite) TestWarnings_CleanupOld() {
 			})
 		})
 	}
+}
+
+// TestWarnings_CleanupOldGIDIsolation verifies that one tenant's cleanup does not
+// prune another tenant's old rows when both share the same physical database.
+// uses a single sqlite file with two SQL connections holding different gids.
+func (s *StorageTestSuite) TestWarnings_CleanupOldGIDIsolation() {
+	ctx := context.Background()
+
+	tmpFile := filepath.Join(os.TempDir(), "warnings_cleanup_isolation.sqlite")
+	defer os.Remove(tmpFile)
+
+	dbA, err := engine.NewSqlite(tmpFile, "tenantA")
+	s.Require().NoError(err)
+	defer dbA.Close()
+	dbB, err := engine.NewSqlite(tmpFile, "tenantB")
+	s.Require().NoError(err)
+	defer dbB.Close()
+
+	wA, err := NewWarnings(ctx, dbA)
+	s.Require().NoError(err)
+	wB, err := NewWarnings(ctx, dbB)
+	s.Require().NoError(err)
+
+	// seed tenantA with an aged row (older than retention) that should NOT be touched
+	// when tenantB's Add triggers cleanupOld.
+	err = wA.Add(ctx, 700, "tenantA-user")
+	s.Require().NoError(err)
+	updateQuery := wA.Adopt("UPDATE warnings SET created_at = ? WHERE user_id = ? AND gid = ?")
+	_, err = wA.ExecContext(ctx, updateQuery,
+		time.Now().Add(-warningsRetention-48*time.Hour), int64(700), wA.GID())
+	s.Require().NoError(err)
+
+	// trigger tenantB cleanup via Add
+	err = wB.Add(ctx, 800, "tenantB-user")
+	s.Require().NoError(err)
+
+	// tenantA's aged row must still be present (cleanup is gid-scoped)
+	var aCount int
+	countQuery := wA.Adopt("SELECT COUNT(*) FROM warnings WHERE gid = ? AND user_id = ?")
+	err = wA.GetContext(ctx, &aCount, countQuery, wA.GID(), int64(700))
+	s.Require().NoError(err)
+	s.Equal(1, aCount, "tenantA aged row must survive tenantB cleanup")
+
+	// also verify each tenant only sees its own active rows via CountWithin
+	cA, err := wA.CountWithin(ctx, 700, 365*24*time.Hour)
+	s.Require().NoError(err)
+	s.Equal(0, cA, "tenantA aged row is older than max query window")
+
+	cB, err := wB.CountWithin(ctx, 800, time.Hour)
+	s.Require().NoError(err)
+	s.Equal(1, cB)
 }

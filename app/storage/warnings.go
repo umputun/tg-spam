@@ -67,7 +67,7 @@ var warningsQueries = engine.NewQueryMap().
 	}).
 	AddSame(CmdCountWarningsWithin,
 		"SELECT COUNT(*) FROM warnings WHERE gid = ? AND user_id = ? AND created_at > ?").
-	AddSame(CmdCleanupWarnings, "DELETE FROM warnings WHERE created_at < ?")
+	AddSame(CmdCleanupWarnings, "DELETE FROM warnings WHERE gid = ? AND created_at < ?")
 
 // NewWarnings creates a new Warnings storage and initializes the underlying table
 func NewWarnings(ctx context.Context, db *engine.SQL) (*Warnings, error) {
@@ -148,7 +148,7 @@ func (w *Warnings) cleanupOld(ctx context.Context) error {
 	query = w.Adopt(query)
 
 	cutoff := time.Now().Add(-warningsRetention)
-	result, err := w.ExecContext(ctx, query, cutoff)
+	result, err := w.ExecContext(ctx, query, w.GID(), cutoff)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old warnings: %w", err)
 	}

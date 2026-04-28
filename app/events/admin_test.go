@@ -965,6 +965,38 @@ func TestAdmin_DirectWarnReport_AutoBan(t *testing.T) {
 		require.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 	})
+
+	t.Run("anonymous admin post (SenderChat == primChat) skips auto-ban", func(t *testing.T) {
+		// when admins post "as the group" itself, msg.SenderChat.ID equals primChatID.
+		// the auto-ban path must not record a warn keyed under the group id, nor try
+		// to ban the group itself; otherwise BanChatSenderChatConfig would target the chat.
+		mockAPI, warningsMock, adm := setupTest()
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 5, nil // well above threshold
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "GroupAnonymousBot", ID: 1087968824},
+					SenderChat: &tbapi.Chat{ID: 123, Title: "primary group"}, // == primChatID
+					Text:       "post by anonymous admin",
+				},
+			},
+		}
+
+		err := adm.DirectWarnReport(update)
+		require.NoError(t, err)
+
+		assert.Empty(t, warningsMock.AddCalls(), "anonymous admin posts must not record a warn")
+		assert.Empty(t, warningsMock.CountWithinCalls(), "anonymous admin posts must not query count")
+		assert.Equal(t, 0, countMemberBans(mockAPI), "must not ban anything")
+		assert.Equal(t, 0, countChannelBans(mockAPI), "must not ban the group itself")
+	})
 }
 
 func TestAdmin_InlineCallbacks(t *testing.T) {
