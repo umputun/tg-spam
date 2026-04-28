@@ -56,7 +56,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// start server in web-only mode (no telegram token needed)
+	// start server in web-only mode (no telegram token needed). cas.api is
+	// blanked so the spam check path does not depend on the external CAS service
+	// being reachable, which would otherwise add up to 5s per check and make
+	// playwright assertions flaky when the network to api.cas.chat is slow.
 	serverCmd = exec.Command("/tmp/tg-spam-e2e",
 		"--server.enabled",
 		"--server.listen=:18090",
@@ -64,6 +67,7 @@ func TestMain(m *testing.M) {
 		"--db="+testDBPath,
 		"--files.samples="+testDataPath,
 		"--files.dynamic="+testDataPath,
+		"--cas.api=",
 		"--dbg",
 	)
 	serverCmd.Stdout = os.Stdout
@@ -248,6 +252,117 @@ func TestSettings_PageLoads(t *testing.T) {
 	title, err := page.Title()
 	require.NoError(t, err)
 	assert.Contains(t, title, "Settings")
+}
+
+func TestSettings_WarnAutoBanPersists(t *testing.T) {
+	const (
+		warnPort       = 18091
+		warnDBPath     = "/tmp/tg-spam-e2e-warn.db"
+		warnDataPath   = "/tmp/tg-spam-e2e-warn-data"
+		warnPassword   = "e2e-warn-password"
+		warnUser       = "tg-spam"
+		warnThreshold  = "5"
+		warnWindowText = "168h0m0s"
+	)
+	warnURL := fmt.Sprintf("http://localhost:%d", warnPort)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(warnDBPath)
+	_ = os.RemoveAll(warnDataPath)
+	require.NoError(t, os.MkdirAll(warnDataPath, 0o755))
+	require.NoError(t, os.WriteFile(warnDataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(warnDataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled (so
+	// the validate step accepts the absence of telegram credentials and the
+	// process runs in web-only mode at startup)
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+warnDBPath,
+		"--files.samples="+warnDataPath,
+		"--files.dynamic="+warnDataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", warnPort),
+		"--server.auth="+warnPassword,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", warnPort),
+		"--server.auth="+warnPassword,
+		"--db="+warnDBPath,
+		"--files.samples="+warnDataPath,
+		"--files.dynamic="+warnDataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(warnDBPath)
+		_ = os.RemoveAll(warnDataPath)
+	})
+
+	require.NoError(t, waitForServer(warnURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: warnUser,
+			Password: warnPassword,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(warnURL + "/list_settings")
+	require.NoError(t, err)
+
+	// switch to the Bot Behavior tab where the warn auto-ban inputs live
+	require.NoError(t, page.Locator("#behavior-tab").Click())
+	waitVisible(t, page.Locator("#warnThreshold"))
+	waitVisible(t, page.Locator("#warnWindow"))
+
+	// verify defaults rendered (threshold defaults to 0, window defaults to 720h)
+	defaultThreshold, err := page.Locator("#warnThreshold").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0", defaultThreshold)
+	defaultWindow, err := page.Locator("#warnWindow").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "720h0m0s", defaultWindow)
+
+	// change values and save
+	require.NoError(t, page.Locator("#warnThreshold").Fill(warnThreshold))
+	require.NoError(t, page.Locator("#warnWindow").Fill(warnWindowText))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the values persisted
+	_, err = page.Goto(warnURL + "/list_settings")
+	require.NoError(t, err)
+	require.NoError(t, page.Locator("#behavior-tab").Click())
+	waitVisible(t, page.Locator("#warnThreshold"))
+
+	got, err := page.Locator("#warnThreshold").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, warnThreshold, got)
+	got, err = page.Locator("#warnWindow").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, warnWindowText, got)
 }
 
 // --- navigation tests ---

@@ -294,10 +294,10 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `app/webapi/assets/settings.html`
 - Modify or create: an `e2e-ui/` test file (extend existing settings e2e if present, or add `warn_threshold_test.go`)
 
-- [ ] add a "Warn auto-ban" subsection in `settings.html` with two inputs: `warnThreshold` (number, min=0) and `warnWindow` (text, default `720h`), labeled with brief help text
-- [ ] follow existing styling/accessibility patterns from the report and reactions sections (e.g., the `reportAutoBanThreshold` input around `settings.html:506`)
-- [ ] add an e2e test verifying: render with default values, change threshold + window, save, reload, values persist correctly (project uses Go-based Playwright tests in `e2e-ui/` with build tag `e2e`)
-- [ ] run e2e: `make e2e-ui` (equivalent to `go test -v -count=1 -timeout=5m -tags=e2e ./e2e-ui/...`, see `Makefile:48-53`) — must pass before next task
+- [x] add a "Warn auto-ban" subsection in `settings.html` with two inputs: `warnThreshold` (number, min=0) and `warnWindow` (text, default `720h`), labeled with brief help text
+- [x] follow existing styling/accessibility patterns from the report and reactions sections (e.g., the `reportAutoBanThreshold` input around `settings.html:506`)
+- [x] add an e2e test verifying: render with default values, change threshold + window, save, reload, values persist correctly (project uses Go-based Playwright tests in `e2e-ui/` with build tag `e2e`)
+- [x] run e2e: `make e2e-ui` (equivalent to `go test -v -count=1 -timeout=5m -tags=e2e ./e2e-ui/...`, see `Makefile:48-53`) — must pass before next task
 
 ### Task 8: Verify acceptance criteria
 
