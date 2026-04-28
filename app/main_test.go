@@ -152,6 +152,27 @@ func TestValidateSettings(t *testing.T) {
 			},
 			wantErr: "",
 		},
+		{
+			name: "warn window equal to storage retention is valid",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 2, Window: storage.WarningsRetention},
+			},
+			wantErr: "",
+		},
+		{
+			name: "warn window above storage retention is rejected",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 2, Window: storage.WarningsRetention + time.Hour},
+			},
+			wantErr: "exceeds storage retention",
+		},
+		{
+			name: "warn window above storage retention with disabled threshold is valid",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 0, Window: storage.WarningsRetention + time.Hour},
+			},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {

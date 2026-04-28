@@ -396,6 +396,10 @@ func validateSettings(s *config.Settings) error {
 		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
 			s.Warn.Threshold, s.Warn.Window)
 	}
+	if s.Warn.Threshold > 0 && s.Warn.Window > storage.WarningsRetention {
+		return fmt.Errorf("warn.window (%v) exceeds storage retention (%v); older rows are pruned and would not be counted",
+			s.Warn.Window, storage.WarningsRetention)
+	}
 	return nil
 }
 

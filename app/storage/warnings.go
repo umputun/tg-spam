@@ -27,9 +27,11 @@ type Warning struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-// warningsRetention is the storage cap for warning rows; not the user-configured window.
+// WarningsRetention is the storage cap for warning rows; not the user-configured window.
 // older rows are pruned opportunistically on Add to bound storage growth.
-const warningsRetention = 365 * 24 * time.Hour
+// the configured warn window must not exceed this value, otherwise CountWithin would
+// silently undercount because relevant rows have already been pruned.
+const WarningsRetention = 365 * 24 * time.Hour
 
 // warnings-related command constants
 const (
@@ -142,7 +144,7 @@ func (w *Warnings) CountWithin(ctx context.Context, userID int64, window time.Du
 	return count, nil
 }
 
-// cleanupOld deletes warning rows older than warningsRetention. called from Add (already locked).
+// cleanupOld deletes warning rows older than WarningsRetention. called from Add (already locked).
 func (w *Warnings) cleanupOld(ctx context.Context) error {
 	query, err := warningsQueries.Pick(w.Type(), CmdCleanupWarnings)
 	if err != nil {
@@ -150,13 +152,13 @@ func (w *Warnings) cleanupOld(ctx context.Context) error {
 	}
 	query = w.Adopt(query)
 
-	cutoff := time.Now().Add(-warningsRetention)
+	cutoff := time.Now().Add(-WarningsRetention)
 	result, err := w.ExecContext(ctx, query, w.GID(), cutoff)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old warnings: %w", err)
 	}
 	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
-		log.Printf("[DEBUG] cleaned up %d old warnings (retention: %s)", rowsAffected, warningsRetention)
+		log.Printf("[DEBUG] cleaned up %d old warnings (retention: %s)", rowsAffected, WarningsRetention)
 	}
 	return nil
 }

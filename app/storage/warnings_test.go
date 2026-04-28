@@ -190,13 +190,13 @@ func (s *StorageTestSuite) TestWarnings_CleanupOld() {
 				query := warnings.Adopt(
 					"UPDATE warnings SET created_at = ? WHERE user_id = ? AND gid = ?")
 				_, err = warnings.ExecContext(ctx, query,
-					time.Now().Add(-warningsRetention-24*time.Hour), int64(1000), warnings.GID())
+					time.Now().Add(-WarningsRetention-24*time.Hour), int64(1000), warnings.GID())
 				s.Require().NoError(err)
 
 				err = warnings.Add(ctx, 1001, "trigger")
 				s.Require().NoError(err)
 
-				cOld, err := warnings.CountWithin(ctx, 1000, warningsRetention+48*time.Hour)
+				cOld, err := warnings.CountWithin(ctx, 1000, WarningsRetention+48*time.Hour)
 				s.Require().NoError(err)
 				s.Equal(0, cOld)
 
@@ -253,7 +253,7 @@ func (s *StorageTestSuite) TestWarnings_CleanupOldGIDIsolation() {
 	s.Require().NoError(err)
 	updateQuery := wA.Adopt("UPDATE warnings SET created_at = ? WHERE user_id = ? AND gid = ?")
 	_, err = wA.ExecContext(ctx, updateQuery,
-		time.Now().Add(-warningsRetention-48*time.Hour), int64(700), wA.GID())
+		time.Now().Add(-WarningsRetention-48*time.Hour), int64(700), wA.GID())
 	s.Require().NoError(err)
 
 	// trigger tenantB cleanup via Add
