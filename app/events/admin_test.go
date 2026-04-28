@@ -745,6 +745,19 @@ func TestAdmin_DirectWarnReport_AutoBan(t *testing.T) {
 		assert.Equal(t, 0, countMemberBans(mockAPI))
 	})
 
+	t.Run("negative threshold is treated as disabled", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		adm.warnThreshold = -1
+
+		err := adm.DirectWarnReport(createReplyUpdate("user", 222))
+		require.NoError(t, err)
+
+		assert.Empty(t, warningsMock.AddCalls())
+		assert.Empty(t, warningsMock.CountWithinCalls())
+		require.Len(t, mockAPI.SendCalls(), 1) // only warn message
+		assert.Equal(t, 0, countMemberBans(mockAPI))
+	})
+
 	t.Run("nil warnings storage behaves like disabled", func(t *testing.T) {
 		mockAPI, _, adm := setupTest()
 		adm.warnings = nil

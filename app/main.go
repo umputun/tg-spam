@@ -392,6 +392,9 @@ func validateSettings(s *config.Settings) error {
 		return fmt.Errorf("auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
 			s.Report.AutoBanThreshold, s.Report.Threshold)
 	}
+	if s.Warn.Threshold < 0 {
+		return fmt.Errorf("warn.threshold (%d) must be >= 0 (0 disables auto-ban)", s.Warn.Threshold)
+	}
 	if s.Warn.Threshold > 0 && s.Warn.Window <= 0 {
 		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
 			s.Warn.Threshold, s.Warn.Window)

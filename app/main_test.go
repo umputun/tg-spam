@@ -125,6 +125,13 @@ func TestValidateSettings(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "warn threshold negative is rejected",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: -1, Window: 720 * time.Hour},
+			},
+			wantErr: "warn.threshold (-1) must be >= 0 (0 disables auto-ban)",
+		},
+		{
 			name: "warn threshold positive but window zero",
 			s: &config.Settings{
 				Warn: config.WarnSettings{Threshold: 2, Window: 0},

@@ -392,7 +392,7 @@ All reports are stored in the database for audit purposes and can help identify 
 
 The admin `/warn` command can optionally escalate to an automatic ban once a user has accumulated enough warnings within a sliding time window. This complements `--report.auto-ban-threshold` (which aggregates user `/report` submissions for one message) by tracking admin warnings per user across messages.
 
-The feature is disabled by default. To enable it, set `--warn.threshold=, [$WARN_THRESHOLD]` to a positive number and adjust `--warn.window=, [$WARN_WINDOW]` (default: `720h`). When enabled:
+The feature is disabled by default. To enable it, set `--warn.threshold` / `$WARN_THRESHOLD` to a positive number and adjust `--warn.window` / `$WARN_WINDOW` (default: `720h`). When enabled:
 
 1. Each `/warn` issued by an admin is recorded in the `warnings` table together with the user/channel id and timestamp
 2. After recording the warning, the bot counts how many warnings the same user has received within the configured window

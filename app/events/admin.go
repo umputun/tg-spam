@@ -418,7 +418,7 @@ func (a *admin) resolveWarnTarget(origMsg *tbapi.Message) (warnTarget, bool) {
 // returns nil unless the ban itself fails - storage failures are logged but not propagated
 // because the warning message has already been posted (best-effort).
 func (a *admin) trackWarnAndMaybeBan(origMsg *tbapi.Message) error {
-	if a.warnThreshold == 0 || a.warnings == nil {
+	if a.warnThreshold <= 0 || a.warnings == nil {
 		return nil
 	}
 	target, ok := a.resolveWarnTarget(origMsg)
