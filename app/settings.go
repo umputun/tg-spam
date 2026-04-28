@@ -118,6 +118,11 @@ func optToSettings(opts options) *config.Settings {
 			RatePeriod:       opts.Report.RatePeriod,
 		},
 
+		Warn: config.WarnSettings{
+			Threshold: opts.Warn.Threshold,
+			Window:    opts.Warn.Window,
+		},
+
 		LuaPlugins: config.LuaPluginsSettings{
 			Enabled:        opts.LuaPlugins.Enabled,
 			PluginsDir:     opts.LuaPlugins.PluginsDir,

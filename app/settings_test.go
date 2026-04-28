@@ -356,6 +356,9 @@ func TestOptToSettings(t *testing.T) {
 		o.Report.RateLimit = 20
 		o.Report.RatePeriod = 30 * time.Minute
 
+		o.Warn.Threshold = 3
+		o.Warn.Window = 12 * time.Hour
+
 		o.LuaPlugins.Enabled = true
 		o.LuaPlugins.PluginsDir = "/custom/plugins"
 		o.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
@@ -499,6 +502,10 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, 20, settings.Report.RateLimit)
 				assert.Equal(t, 30*time.Minute, settings.Report.RatePeriod)
 
+				// warn settings
+				assert.Equal(t, 3, settings.Warn.Threshold)
+				assert.Equal(t, 12*time.Hour, settings.Warn.Window)
+
 				// lua plugins settings
 				assert.True(t, settings.LuaPlugins.Enabled)
 				assert.Equal(t, "/custom/plugins", settings.LuaPlugins.PluginsDir)
@@ -553,6 +560,8 @@ func TestOptToSettings(t *testing.T) {
 				assert.Empty(t, settings.Telegram.Token)
 				assert.Empty(t, settings.Gemini.Token)
 				assert.False(t, settings.Report.Enabled)
+				assert.Equal(t, 0, settings.Warn.Threshold)
+				assert.Equal(t, time.Duration(0), settings.Warn.Window)
 				assert.Equal(t, 0, settings.Duplicates.Threshold)
 				assert.False(t, settings.Delete.JoinMessages)
 				assert.False(t, settings.AggressiveCleanup)
@@ -568,6 +577,14 @@ func TestOptToSettings(t *testing.T) {
 			tc.validate(t, result)
 		})
 	}
+
+	t.Run("warn struct-tag defaults flow through", func(t *testing.T) {
+		var o options
+		require.NoError(t, applyStructTagDefaults(reflect.ValueOf(&o).Elem()))
+		settings := optToSettings(o)
+		assert.Equal(t, 0, settings.Warn.Threshold, "default threshold must be 0 (disabled)")
+		assert.Equal(t, 720*time.Hour, settings.Warn.Window, "default window must match struct tag")
+	})
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {

@@ -227,17 +227,17 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `app/settings_test.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] add `Warn struct {...} \`group:"warn" namespace:"warn" env-namespace:"WARN"\`` block to the opts struct in `app/main.go`, with `Threshold int \`long:"threshold" env:"THRESHOLD" default:"0"...\`` and `Window time.Duration \`long:"window" env:"WINDOW" default:"720h"...\`` (yields `--warn.threshold`/`WARN_THRESHOLD` and `--warn.window`/`WARN_WINDOW`, matching the `Report`, `Files`, `Reactions` group conventions)
-- [ ] define `WarnSettings` struct in `app/config/settings.go` with `Threshold int` (`json:"threshold" yaml:"threshold" db:"warn_threshold"`) and `Window time.Duration` (`json:"window" yaml:"window" db:"warn_window"`)
-- [ ] add `Warn WarnSettings \`json:"warn" yaml:"warn" db:"warn"\`` field to top-level `Settings` struct
-- [ ] add `"Warn.Threshold": true` entry to `zeroAwarePaths` with a `// app/main.go:NN, app/events/admin.go:NN (>0): 0 disables` comment matching existing entries
-- [ ] do NOT add `Warn.Window` to `zeroAwarePaths` (zero is invalid, caught by startup validation)
-- [ ] add `Warn: config.WarnSettings{Threshold: opts.Warn.Threshold, Window: opts.Warn.Window}` block in `optToSettings` in `app/settings.go`
-- [ ] add `appSettings.Warn.Threshold > 0 && appSettings.Warn.Window <= 0` validation in `app/main.go` near the existing `AutoBanThreshold` validation; log fatal if violated
-- [ ] write/extend tests in `app/settings_test.go` covering the new CLI→Settings mapping and zero-aware behavior
-- [ ] write/extend tests in `app/config/settings_test.go` covering the new struct's serialization (json + yaml + db), `zeroAwarePaths` honor for `Warn.Threshold`, and merge behavior
-- [ ] write/extend test in `app/main_test.go` for the validation fatal case (threshold>0 && window<=0)
-- [ ] run `go test -race ./app/... -run 'Settings|Config|Validate'` — must pass before next task
+- [x] add `Warn struct {...} \`group:"warn" namespace:"warn" env-namespace:"WARN"\`` block to the opts struct in `app/main.go`, with `Threshold int \`long:"threshold" env:"THRESHOLD" default:"0"...\`` and `Window time.Duration \`long:"window" env:"WINDOW" default:"720h"...\`` (yields `--warn.threshold`/`WARN_THRESHOLD` and `--warn.window`/`WARN_WINDOW`, matching the `Report`, `Files`, `Reactions` group conventions)
+- [x] define `WarnSettings` struct in `app/config/settings.go` with `Threshold int` (`json:"threshold" yaml:"threshold" db:"warn_threshold"`) and `Window time.Duration` (`json:"window" yaml:"window" db:"warn_window"`)
+- [x] add `Warn WarnSettings \`json:"warn" yaml:"warn" db:"warn"\`` field to top-level `Settings` struct
+- [x] add `"Warn.Threshold": true` entry to `zeroAwarePaths` with a `// app/main.go:NN, app/events/admin.go:NN (>0): 0 disables` comment matching existing entries
+- [x] do NOT add `Warn.Window` to `zeroAwarePaths` (zero is invalid, caught by startup validation)
+- [x] add `Warn: config.WarnSettings{Threshold: opts.Warn.Threshold, Window: opts.Warn.Window}` block in `optToSettings` in `app/settings.go`
+- [x] add `appSettings.Warn.Threshold > 0 && appSettings.Warn.Window <= 0` validation in `app/main.go` near the existing `AutoBanThreshold` validation; log fatal if violated
+- [x] write/extend tests in `app/settings_test.go` covering the new CLI→Settings mapping and zero-aware behavior
+- [x] write/extend tests in `app/config/settings_test.go` covering the new struct's serialization (json + yaml + db), `zeroAwarePaths` honor for `Warn.Threshold`, and merge behavior
+- [x] write/extend test in `app/main_test.go` for the validation fatal case (threshold>0 && window<=0)
+- [x] run `go test -race ./app/... -run 'Settings|Config|Validate'` — must pass before next task
 
 ### Task 4: Wire `Warnings` through `TelegramListener` into admin construction
 

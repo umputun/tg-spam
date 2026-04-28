@@ -220,6 +220,9 @@ func newPopulatedSettings() *Settings {
 	s.Report.RateLimit = 5
 	s.Report.RatePeriod = 90 * time.Second
 
+	s.Warn.Threshold = 3
+	s.Warn.Window = 12 * time.Hour
+
 	s.AggressiveCleanup = true
 	s.AggressiveCleanupLimit = 50
 
@@ -239,6 +242,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, jsonStr, `"duplicates"`)
 	assert.Contains(t, jsonStr, `"reactions"`)
 	assert.Contains(t, jsonStr, `"report"`)
+	assert.Contains(t, jsonStr, `"warn"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup"`)
 	assert.Contains(t, jsonStr, `"aggressive_cleanup_limit"`)
 	assert.Contains(t, jsonStr, `"contact_only"`)
@@ -253,6 +257,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Duplicates, restored.Duplicates)
 	assert.Equal(t, original.Reactions, restored.Reactions)
 	assert.Equal(t, original.Report, restored.Report)
+	assert.Equal(t, original.Warn, restored.Warn)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
 	assert.True(t, restored.Meta.ContactOnly)
@@ -272,6 +277,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, yamlStr, "duplicates:")
 	assert.Contains(t, yamlStr, "reactions:")
 	assert.Contains(t, yamlStr, "report:")
+	assert.Contains(t, yamlStr, "warn:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup:")
 	assert.Contains(t, yamlStr, "aggressive_cleanup_limit:")
 	assert.Contains(t, yamlStr, "contact_only:")
@@ -286,6 +292,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.Duplicates, restored.Duplicates)
 	assert.Equal(t, original.Reactions, restored.Reactions)
 	assert.Equal(t, original.Report, restored.Report)
+	assert.Equal(t, original.Warn, restored.Warn)
 	assert.Equal(t, original.AggressiveCleanup, restored.AggressiveCleanup)
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
 	assert.True(t, restored.Meta.ContactOnly)
@@ -397,6 +404,14 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Report.AutoBanThreshold) },
 		},
 		{
+			name: "Warn.Threshold",
+			setup: func(target, template *Settings) {
+				target.Warn.Threshold = 0
+				template.Warn.Threshold = 3
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Warn.Threshold) },
+		},
+		{
 			name: "Report.RateLimit",
 			setup: func(target, template *Settings) {
 				target.Report.RateLimit = 0
@@ -455,6 +470,25 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			tt.assertFn(t, target)
 		})
 	}
+}
+
+func TestSettings_ApplyDefaults_FillsWarnWindow(t *testing.T) {
+	// warn.Window is NOT zero-aware: zero is invalid (caught by startup
+	// validation), so the regular merge semantics must fill it from the
+	// template when the persisted blob has zero.
+	target := New()
+	target.Warn.Threshold = 5 // non-zero (preserved either way)
+	template := &Settings{
+		Warn: WarnSettings{
+			Threshold: 1,
+			Window:    720 * time.Hour,
+		},
+	}
+
+	target.ApplyDefaults(template)
+
+	assert.Equal(t, 5, target.Warn.Threshold, "non-zero target threshold preserved")
+	assert.Equal(t, 720*time.Hour, target.Warn.Window, "zero target window filled from template")
 }
 
 func TestSettings_ApplyDefaults_NestedStructs(t *testing.T) {

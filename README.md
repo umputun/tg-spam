@@ -647,6 +647,10 @@ report:
       --report.rate-limit=              max reports per user per period (default: 10) [$REPORT_RATE_LIMIT]
       --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
 
+warn:
+      --warn.threshold=                 auto-ban after N warns within window (0=disabled) (default: 0) [$WARN_THRESHOLD]
+      --warn.window=                    sliding window for counting warns (default: 720h) [$WARN_WINDOW]
+
 files:
       --files.samples=                  samples data path, defaults to dynamic data path [$FILES_SAMPLES]
       --files.dynamic=                  dynamic data path (default: data) [$FILES_DYNAMIC]

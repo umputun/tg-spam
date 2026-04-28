@@ -164,6 +164,11 @@ type options struct {
 		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
 	} `group:"report" namespace:"report" env-namespace:"REPORT"`
 
+	Warn struct {
+		Threshold int           `long:"threshold" env:"THRESHOLD" default:"0" description:"auto-ban after N warns within window (0=disabled)"`
+		Window    time.Duration `long:"window" env:"WINDOW" default:"720h" description:"sliding window for counting warns"`
+	} `group:"warn" namespace:"warn" env-namespace:"WARN"`
+
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" description:"samples data path, defaults to dynamic data path"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
@@ -355,10 +360,8 @@ func main() {
 
 	log.Printf("[DEBUG] settings: %+v", appSettings)
 
-	// validate auto-ban threshold
-	if appSettings.Report.AutoBanThreshold > 0 && appSettings.Report.AutoBanThreshold < appSettings.Report.Threshold {
-		log.Fatalf("[ERROR] auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
-			appSettings.Report.AutoBanThreshold, appSettings.Report.Threshold)
+	if err := validateSettings(appSettings); err != nil {
+		log.Fatalf("[ERROR] %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -379,6 +382,21 @@ func main() {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
 	}
+}
+
+// validateSettings checks cross-field invariants on resolved settings.
+// Returns an error describing the first violation, or nil when settings are
+// internally consistent. Called from main once per startup before execute.
+func validateSettings(s *config.Settings) error {
+	if s.Report.AutoBanThreshold > 0 && s.Report.AutoBanThreshold < s.Report.Threshold {
+		return fmt.Errorf("auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
+			s.Report.AutoBanThreshold, s.Report.Threshold)
+	}
+	if s.Warn.Threshold > 0 && s.Warn.Window <= 0 {
+		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
+			s.Warn.Threshold, s.Warn.Window)
+	}
+	return nil
 }
 
 // execute runs the main application loop. The reloadNormalize callback, when

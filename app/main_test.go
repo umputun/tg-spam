@@ -92,6 +92,81 @@ func TestMakeSpamLogger(t *testing.T) {
 
 }
 
+func TestValidateSettings(t *testing.T) {
+	tests := []struct {
+		name    string
+		s       *config.Settings
+		wantErr string
+	}{
+		{
+			name:    "all zero is valid (defaults disabled)",
+			s:       &config.Settings{},
+			wantErr: "",
+		},
+		{
+			name: "report auto-ban threshold below regular threshold",
+			s: &config.Settings{
+				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 2},
+			},
+			wantErr: "auto-ban-threshold (2) must be >= threshold (4)",
+		},
+		{
+			name: "report auto-ban threshold zero is valid (disabled)",
+			s: &config.Settings{
+				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 0},
+			},
+			wantErr: "",
+		},
+		{
+			name: "report auto-ban threshold equal to threshold is valid",
+			s: &config.Settings{
+				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 4},
+			},
+			wantErr: "",
+		},
+		{
+			name: "warn threshold positive but window zero",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 2, Window: 0},
+			},
+			wantErr: "warn.threshold (2) is set but warn.window (0s) is not positive",
+		},
+		{
+			name: "warn threshold positive but window negative",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 1, Window: -time.Hour},
+			},
+			wantErr: "warn.threshold (1) is set but warn.window (-1h0m0s) is not positive",
+		},
+		{
+			name: "warn threshold zero with zero window is valid (disabled)",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 0, Window: 0},
+			},
+			wantErr: "",
+		},
+		{
+			name: "warn threshold positive with positive window is valid",
+			s: &config.Settings{
+				Warn: config.WarnSettings{Threshold: 3, Window: 24 * time.Hour},
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSettings(tt.s)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 // Helper function to create settings for testing
 func makeTestSettings() *config.Settings {
 	return &config.Settings{
