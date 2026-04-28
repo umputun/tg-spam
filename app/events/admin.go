@@ -16,6 +16,14 @@ import (
 	"github.com/umputun/tg-spam/app/bot"
 )
 
+//go:generate moq --out mocks/warnings.go --pkg mocks --with-resets --skip-ensure . Warnings
+
+// Warnings is an interface for admin /warn records storage used by the warn auto-ban feature
+type Warnings interface {
+	Add(ctx context.Context, userID int64, userName string) error
+	CountWithin(ctx context.Context, userID int64, window time.Duration) (int, error)
+}
+
 // admin is a helper to handle all admin-group related stuff, created by listener
 // public methods kept public (on a private struct) to be able to recognize the api
 type admin struct {
@@ -31,6 +39,9 @@ type admin struct {
 	warnMsg                string
 	aggressiveCleanup      bool
 	aggressiveCleanupLimit int
+	warnings               Warnings      // storage for /warn records, used by DirectWarnReport auto-ban path
+	warnThreshold          int           // auto-ban after N /warn within warnWindow (0 disables auto-ban)
+	warnWindow             time.Duration // sliding window for counting warns
 }
 
 const (
@@ -343,23 +354,138 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 
 	// make a warning message and replay to origMsg.MessageID
-	warnTarget := "@" + origMsg.From.UserName
+	warnTargetName := "@" + origMsg.From.UserName
 	if origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0 && origMsg.SenderChat.ID != a.primChatID {
 		chName := a.channelDisplayName(origMsg.SenderChat)
 		if origMsg.SenderChat.UserName != "" {
-			warnTarget = "@" + chName
+			warnTargetName = "@" + chName
 		} else {
-			warnTarget = chName
+			warnTargetName = chName
 		}
 	}
 	warnMsg := fmt.Sprintf("warning from %s\n\n%s %s", update.Message.From.UserName,
-		warnTarget, a.warnMsg)
+		warnTargetName, a.warnMsg)
 	if err := send(tbapi.NewMessage(a.primChatID, escapeMarkDownV1Text(warnMsg)), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
 
+	if banErr := a.trackWarnAndMaybeBan(origMsg); banErr != nil {
+		errs = multierror.Append(errs, banErr)
+	}
+
 	if err := errs.ErrorOrNil(); err != nil {
 		return fmt.Errorf("direct warn report failed: %w", err)
+	}
+	return nil
+}
+
+// warnTarget identifies the entity (user or channel) that a warn applies to.
+// channelID is 0 for plain users; for channel posts it equals the SenderChat ID.
+type warnTarget struct {
+	userID    int64
+	userName  string
+	channelID int64
+}
+
+// resolveWarnTarget extracts the warn target from the original message.
+// returns (target, true) for plain users and channel posts; (target, false) for
+// anonymous admin posts (SenderChat == group itself, From is shared GroupAnonymousBot)
+// and updates with no resolvable identity.
+func (a *admin) resolveWarnTarget(origMsg *tbapi.Message) (warnTarget, bool) {
+	if origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0 {
+		// anonymous admin posts have SenderChat.ID == primChatID; From identity is the
+		// shared GroupAnonymousBot user. tracking warns against either is meaningless
+		// (banning the group itself or a shared bot id), so skip entirely.
+		if origMsg.SenderChat.ID == a.primChatID {
+			return warnTarget{}, false
+		}
+		return warnTarget{
+			userID:    origMsg.SenderChat.ID,
+			userName:  a.channelDisplayName(origMsg.SenderChat),
+			channelID: origMsg.SenderChat.ID,
+		}, true
+	}
+	if origMsg.From != nil && origMsg.From.ID != 0 {
+		return warnTarget{userID: origMsg.From.ID, userName: origMsg.From.UserName}, true
+	}
+	return warnTarget{}, false
+}
+
+// trackWarnAndMaybeBan records the warning and triggers an auto-ban when the
+// configured threshold is reached within the sliding window. it is a no-op when
+// the feature is disabled (threshold == 0), warnings storage is unwired, or the
+// target cannot be resolved (anonymous admin posts, missing From/SenderChat).
+// returns nil unless the ban itself fails - storage failures are logged but not propagated
+// because the warning message has already been posted (best-effort).
+func (a *admin) trackWarnAndMaybeBan(origMsg *tbapi.Message) error {
+	if a.warnThreshold <= 0 || a.warnings == nil {
+		return nil
+	}
+	target, ok := a.resolveWarnTarget(origMsg)
+	if !ok {
+		return nil
+	}
+	ctx := context.TODO()
+	if err := a.warnings.Add(ctx, target.userID, target.userName); err != nil {
+		log.Printf("[WARN] failed to record warn for %q (%d): %v", target.userName, target.userID, err)
+		return nil
+	}
+	count, err := a.warnings.CountWithin(ctx, target.userID, a.warnWindow)
+	if err != nil {
+		log.Printf("[WARN] failed to count warns for %q (%d): %v", target.userName, target.userID, err)
+		return nil
+	}
+	if count < a.warnThreshold {
+		return nil
+	}
+	return a.executeWarnBan(target, count)
+}
+
+// executeWarnBan bans a user or channel after the warn-threshold is reached within warnWindow.
+// it respects dry, training, and softBan modes, and posts an admin-chat notification.
+// it does not update spam samples - a warn is not necessarily spam content.
+func (a *admin) executeWarnBan(target warnTarget, count int) error {
+	log.Printf("[INFO] warn auto-ban triggered for %q (%d): %d warns within %v",
+		target.userName, target.userID, count, a.warnWindow)
+
+	banReq := banRequest{
+		duration:  bot.PermanentBanDuration,
+		userID:    target.userID,
+		channelID: target.channelID,
+		chatID:    a.primChatID,
+		tbAPI:     a.tbAPI,
+		dry:       a.dry,
+		training:  a.trainingMode,
+		userName:  target.userName,
+		restrict:  a.softBan,
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		return fmt.Errorf("failed to auto-ban %q (%d) after %d warns: %w",
+			target.userName, target.userID, count, err)
+	}
+
+	if a.adminChatID == 0 {
+		return nil
+	}
+
+	action := "banned"
+	switch {
+	case a.dry:
+		action = "would have banned"
+	case a.trainingMode:
+		action = "would have banned (training)"
+	case a.softBan && target.channelID == 0:
+		action = "restricted"
+	}
+
+	displayName := target.userName
+	if target.channelID == 0 && target.userName != "" {
+		displayName = "@" + target.userName
+	}
+	notification := fmt.Sprintf("**warn auto-%s** %s (%d) after %d warns within %v",
+		action, escapeMarkDownV1Text(displayName), target.userID, count, a.warnWindow)
+	if err := send(tbapi.NewMessage(a.adminChatID, notification), a.tbAPI); err != nil {
+		return fmt.Errorf("failed to send warn auto-ban notification: %w", err)
 	}
 	return nil
 }

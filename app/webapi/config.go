@@ -469,6 +469,21 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
+	// warn auto-ban. warnThreshold mirrors reportAutoBanThreshold (parse on non-empty,
+	// 0 is a valid "disabled" value the operator may post explicitly). warnWindow
+	// mirrors reactionsWindow (gate on r.Form key presence so unrelated saves preserve
+	// the existing window).
+	if val := r.FormValue("warnThreshold"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Warn.Threshold = n
+		}
+	}
+	if _, ok := r.Form["warnWindow"]; ok {
+		if d, err := time.ParseDuration(r.FormValue("warnWindow")); err == nil {
+			settings.Warn.Window = d
+		}
+	}
+
 	// service-message deletion. These flags are not rendered in the ConfigDB UI
 	// form; gate the writes on form presence so unrelated saves don't wipe them.
 	if _, ok := r.Form["deleteJoinMessages"]; ok {

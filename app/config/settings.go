@@ -33,6 +33,7 @@ type Settings struct {
 	Duplicates    DuplicatesSettings    `json:"duplicates" yaml:"duplicates" db:"duplicates"`
 	Reactions     ReactionsSettings     `json:"reactions" yaml:"reactions" db:"reactions"`
 	Report        ReportSettings        `json:"report" yaml:"report" db:"report"`
+	Warn          WarnSettings          `json:"warn" yaml:"warn" db:"warn"`
 
 	// spam detection settings
 	SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
@@ -181,6 +182,12 @@ type ReportSettings struct {
 	RatePeriod       time.Duration `json:"rate_period" yaml:"rate_period" db:"report_rate_period"`
 }
 
+// WarnSettings contains admin /warn auto-ban settings
+type WarnSettings struct {
+	Threshold int           `json:"threshold" yaml:"threshold" db:"warn_threshold"`
+	Window    time.Duration `json:"window" yaml:"window" db:"warn_window"`
+}
+
 // LuaPluginsSettings contains Lua plugins settings
 type LuaPluginsSettings struct {
 	Enabled        bool     `json:"enabled" yaml:"enabled" db:"lua_plugins_enabled"`
@@ -238,7 +245,7 @@ type TransientSettings struct {
 	// temporary auth password (used only to generate hash)
 	WebAuthPasswd string `json:"-" yaml:"-"`
 
-	// AuthFromCLI marks web auth (hash or password) as held in memory rather
+	// authFromCLI marks web auth (hash or password) as held in memory rather
 	// than authoritative in the database. It is set by applyCLIOverrides for
 	// explicit --server.auth/--server.auth-hash overrides, and by
 	// applyAutoAuthFallback for the auto-generated password safety net. When
@@ -303,6 +310,7 @@ var zeroAwarePaths = map[string]bool{
 	"Duplicates.Threshold":    true, // app/main.go:717 (> 0): 0 disables
 	"Report.AutoBanThreshold": true, // app/main.go:336, app/events/reports.go:191 (> 0): 0 disables
 	"Report.RateLimit":        true, // app/events/reports.go:154 (<= 0): 0 disables rate limiting
+	"Warn.Threshold":          true, // app/main.go, app/events/admin.go (> 0): 0 disables
 	"OpenAI.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"Gemini.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"FirstMessagesCount":      true, // app/main.go:703, lib/tgspam/detector.go:205,208 (> 0): 0 disables

@@ -164,6 +164,11 @@ type options struct {
 		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
 	} `group:"report" namespace:"report" env-namespace:"REPORT"`
 
+	Warn struct {
+		Threshold int           `long:"threshold" env:"THRESHOLD" default:"0" description:"auto-ban after N warns within window (0=disabled)"`
+		Window    time.Duration `long:"window" env:"WINDOW" default:"720h" description:"sliding window for counting warns"`
+	} `group:"warn" namespace:"warn" env-namespace:"WARN"`
+
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" description:"samples data path, defaults to dynamic data path"`
 		DynamicDataPath string        `long:"dynamic" env:"DYNAMIC" default:"data" description:"dynamic data path"`
@@ -355,10 +360,8 @@ func main() {
 
 	log.Printf("[DEBUG] settings: %+v", appSettings)
 
-	// validate auto-ban threshold
-	if appSettings.Report.AutoBanThreshold > 0 && appSettings.Report.AutoBanThreshold < appSettings.Report.Threshold {
-		log.Fatalf("[ERROR] auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
-			appSettings.Report.AutoBanThreshold, appSettings.Report.Threshold)
+	if err := validateSettings(appSettings); err != nil {
+		log.Fatalf("[ERROR] %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -379,6 +382,28 @@ func main() {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
 	}
+}
+
+// validateSettings checks cross-field invariants on resolved settings.
+// Returns an error describing the first violation, or nil when settings are
+// internally consistent. Called from main once per startup before execute.
+func validateSettings(s *config.Settings) error {
+	if s.Report.AutoBanThreshold > 0 && s.Report.AutoBanThreshold < s.Report.Threshold {
+		return fmt.Errorf("auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
+			s.Report.AutoBanThreshold, s.Report.Threshold)
+	}
+	if s.Warn.Threshold < 0 {
+		return fmt.Errorf("warn.threshold (%d) must be >= 0 (0 disables auto-ban)", s.Warn.Threshold)
+	}
+	if s.Warn.Threshold > 0 && s.Warn.Window <= 0 {
+		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
+			s.Warn.Threshold, s.Warn.Window)
+	}
+	if s.Warn.Threshold > 0 && s.Warn.Window > storage.WarningsRetention {
+		return fmt.Errorf("warn.window (%v) exceeds storage retention (%v); older rows are pruned and would not be counted",
+			s.Warn.Window, storage.WarningsRetention)
+	}
+	return nil
 }
 
 // execute runs the main application loop. The reloadNormalize callback, when
@@ -446,6 +471,15 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		}
 	}
 
+	// make warnings storage if warn auto-ban feature is enabled
+	var warningsStore *storage.Warnings
+	if settings.Warn.Threshold > 0 {
+		warningsStore, err = storage.NewWarnings(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make warnings store, %w", err)
+		}
+	}
+
 	// activate web server if enabled, server-only mode (no telegram token)
 	if settings.Server.Enabled && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		// server starts in background goroutine without DM users provider
@@ -509,6 +543,9 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		Dry:                     settings.Dry,
 		AggressiveCleanup:       settings.AggressiveCleanup,
 		AggressiveCleanupLimit:  settings.AggressiveCleanupLimit,
+		WarnThreshold:           settings.Warn.Threshold,
+		WarnWindow:              settings.Warn.Window,
+		Warnings:                warningsStore,
 	}
 
 	if settings.Delete.JoinMessages {

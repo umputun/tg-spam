@@ -90,6 +90,16 @@
 - Deletion errors are logged but don't fail the operation (messages might be already deleted or too old)
 - Design principle: When a spammer is detected, aggressively clean up ALL their spam messages, not just the triggering one
 
+### Warn Auto-Ban
+- `/warn` admin command optionally records each warning to `warnings` table and bans the user when count within `warn.window` reaches `warn.threshold`
+- Disabled by default (`warn.threshold=0`); enabling preserves the existing warn message + delete behavior and adds the count/ban path on top
+- Threshold semantics match `Report.AutoBanThreshold`: `count >= threshold` triggers ban (so threshold=2 bans on the 2nd warn)
+- Storage layer (`app/storage/warnings.go`) opportunistically prunes rows older than 1 year on each `Add`; the 1y cap is a storage bound, NOT the configured window — `CountWithin` enforces the window at query time
+- Ban does NOT delete the warning rows: subsequent `/warn` on an already-banned user re-triggers the ban path. Telegram's `BanChatMemberConfig` is idempotent, so the repeat ban is a no-op API call but produces a fresh admin-chat notification (audit visibility for repeat offenders)
+- Warn auto-ban does NOT update spam samples (`bot.UpdateSpam` is not called) — warnings reflect admin policy, not spam content
+- `executeWarnBan` mirrors `executeAutoBan` for dry/training/soft-ban handling but does not share an abstraction (the two diverge on spam-sample updates and on `From` vs `SenderChat` resolution)
+- Settings: only `Warn.Threshold` is in `zeroAwarePaths` (0=disabled, must survive merges); `Warn.Window` zero is invalid and rejected by startup validation
+
 ### LLM Checker Structure
 - Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`
 - Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc
