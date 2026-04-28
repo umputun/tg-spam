@@ -316,10 +316,10 @@ Only `Warn.Threshold` belongs in `zeroAwarePaths` (0 means "disabled, do not ove
 - Modify: `README.md`
 - Modify: `CLAUDE.md` (if new patterns warrant)
 
-- [ ] add `--warn.threshold` and `--warn.window` to the "All Application Options" section, matching `--help` output exactly (with `WARN_THRESHOLD` and `WARN_WINDOW` env vars)
-- [ ] add a short paragraph under the admin commands / spam detection section explaining the warn-driven auto-ban (default off, sliding-window behavior, ban path, repeat-ban behavior, no spam-sample update)
-- [ ] update `CLAUDE.md` with a brief subsection under "Spam Detection Architecture" describing the warnings storage and the threshold/window semantics — only if it adds value beyond what the code conveys
-- [ ] move this plan to `docs/plans/completed/`
+- [x] add `--warn.threshold` and `--warn.window` to the "All Application Options" section, matching `--help` output exactly (with `WARN_THRESHOLD` and `WARN_WINDOW` env vars)
+- [x] add a short paragraph under the admin commands / spam detection section explaining the warn-driven auto-ban (default off, sliding-window behavior, ban path, repeat-ban behavior, no spam-sample update)
+- [x] update `CLAUDE.md` with a brief subsection under "Spam Detection Architecture" describing the warnings storage and the threshold/window semantics — only if it adds value beyond what the code conveys
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

@@ -388,6 +388,26 @@ The reporting system includes rate limiting to prevent abuse. Each user can subm
 
 All reports are stored in the database for audit purposes and can help identify patterns of spam or abuse over time.
 
+### Warn-Driven Auto-Ban
+
+The admin `/warn` command can optionally escalate to an automatic ban once a user has accumulated enough warnings within a sliding time window. This complements `--report.auto-ban-threshold` (which aggregates user `/report` submissions for one message) by tracking admin warnings per user across messages.
+
+The feature is disabled by default. To enable it, set `--warn.threshold=, [$WARN_THRESHOLD]` to a positive number and adjust `--warn.window=, [$WARN_WINDOW]` (default: `720h`). When enabled:
+
+1. Each `/warn` issued by an admin is recorded in the `warnings` table together with the user/channel id and timestamp
+2. After recording the warning, the bot counts how many warnings the same user has received within the configured window
+3. If the count reaches `--warn.threshold=`, the bot bans the user immediately, respecting `--training`, `--dry`, and `--soft-ban` modes
+4. A notification is posted to the admin chat: `auto-ban: @user banned after N warnings within <window>`
+
+Example: `--warn.threshold=3 --warn.window=168h` bans a user once they accumulate three warnings within a week.
+
+Notes:
+
+- The default `--warn.threshold=0` preserves the original `/warn` behavior exactly: a warning message is posted and the offending message is deleted, but no warning is recorded and no auto-ban is performed.
+- Warnings issued before the window expires are counted; older rows are pruned opportunistically by the storage layer (storage cap is one year, independent of the configured window).
+- Unlike `/spam`, `/warn` does not update spam samples — warnings reflect admin policy, not spam content.
+- Repeat bans are intentional: if an already-banned user is warned again, the threshold check fires again and re-bans them. Telegram treats banning an already-banned user as a no-op, so this is safe and serves as audit visibility for repeat offenders.
+
 ### Lua Plugins Support
 
 TG-Spam supports custom spam detection through Lua plugins. This allows users to extend the spam detection capabilities without modifying the Go codebase.
