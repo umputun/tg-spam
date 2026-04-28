@@ -346,17 +346,17 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 
 	// make a warning message and replay to origMsg.MessageID
-	warnTarget := "@" + origMsg.From.UserName
+	warnTargetName := "@" + origMsg.From.UserName
 	if origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0 && origMsg.SenderChat.ID != a.primChatID {
 		chName := a.channelDisplayName(origMsg.SenderChat)
 		if origMsg.SenderChat.UserName != "" {
-			warnTarget = "@" + chName
+			warnTargetName = "@" + chName
 		} else {
-			warnTarget = chName
+			warnTargetName = chName
 		}
 	}
 	warnMsg := fmt.Sprintf("warning from %s\n\n%s %s", update.Message.From.UserName,
-		warnTarget, a.warnMsg)
+		warnTargetName, a.warnMsg)
 	if err := send(tbapi.NewMessage(a.primChatID, escapeMarkDownV1Text(warnMsg)), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
@@ -405,7 +405,8 @@ func (a *admin) resolveWarnTarget(origMsg *tbapi.Message) (warnTarget, bool) {
 
 // trackWarnAndMaybeBan records the warning and triggers an auto-ban when the
 // configured threshold is reached within the sliding window. it is a no-op when
-// the feature is disabled (threshold == 0) or warnings storage is unwired.
+// the feature is disabled (threshold == 0), warnings storage is unwired, or the
+// target cannot be resolved (anonymous admin posts, missing From/SenderChat).
 // returns nil unless the ban itself fails - storage failures are logged but not propagated
 // because the warning message has already been posted (best-effort).
 func (a *admin) trackWarnAndMaybeBan(origMsg *tbapi.Message) error {

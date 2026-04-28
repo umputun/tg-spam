@@ -396,17 +396,18 @@ The feature is disabled by default. To enable it, set `--warn.threshold=, [$WARN
 
 1. Each `/warn` issued by an admin is recorded in the `warnings` table together with the user/channel id and timestamp
 2. After recording the warning, the bot counts how many warnings the same user has received within the configured window
-3. If the count reaches `--warn.threshold=`, the bot bans the user immediately, respecting `--training`, `--dry`, and `--soft-ban` modes
-4. A notification is posted to the admin chat: `auto-ban: @user banned after N warnings within <window>`
+3. If the count reaches `--warn.threshold=` (i.e. `count >= threshold`), the bot bans the user immediately, respecting `--training`, `--dry`, and `--soft-ban` modes
+4. A notification is posted to the admin chat in the form `**warn auto-banned** @user (12345) after N warns within <window>`. The verb adapts to the active mode: `auto-would have banned` in dry mode, `auto-would have banned (training)` in training mode, and `auto-restricted` for users in soft-ban mode (channels still fall through to `auto-banned` because Telegram has no restrict variant for channel senders).
 
-Example: `--warn.threshold=3 --warn.window=168h` bans a user once they accumulate three warnings within a week.
+Example: `--warn.threshold=3 --warn.window=168h` bans a user once they accumulate three warnings within a week (the third warn triggers the ban).
 
 Notes:
 
 - The default `--warn.threshold=0` preserves the original `/warn` behavior exactly: a warning message is posted and the offending message is deleted, but no warning is recorded and no auto-ban is performed.
-- Warnings issued before the window expires are counted; older rows are pruned opportunistically by the storage layer (storage cap is one year, independent of the configured window).
+- Warnings issued before the window expires are counted; older rows are pruned opportunistically by the storage layer. The storage retention is capped at one year, so configuring `--warn.window` beyond `8760h` is not supported.
 - Unlike `/spam`, `/warn` does not update spam samples — warnings reflect admin policy, not spam content.
 - Repeat bans are intentional: if an already-banned user is warned again, the threshold check fires again and re-bans them. Telegram treats banning an already-banned user as a no-op, so this is safe and serves as audit visibility for repeat offenders.
+- Toggling `--warn.threshold` from `0` to a positive value (or vice versa) requires a process restart: the warnings storage is wired only at startup. Runtime changes via the settings UI are persisted but take effect only after the next restart.
 
 ### Lua Plugins Support
 

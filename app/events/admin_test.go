@@ -997,6 +997,120 @@ func TestAdmin_DirectWarnReport_AutoBan(t *testing.T) {
 		assert.Equal(t, 0, countMemberBans(mockAPI), "must not ban anything")
 		assert.Equal(t, 0, countChannelBans(mockAPI), "must not ban the group itself")
 	})
+
+	t.Run("soft-ban with channel target falls through to banned (no restrict for channels)", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		adm.softBan = true
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 2, nil
+		}
+
+		err := adm.DirectWarnReport(createChannelReplyUpdate(-100999888, "spam_channel"))
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, countChannelBans(mockAPI), "channel target must use BanChatSenderChatConfig even in soft-ban mode")
+		restrictCalls := 0
+		for _, c := range mockAPI.RequestCalls() {
+			if _, ok := c.C.(tbapi.RestrictChatMemberConfig); ok {
+				restrictCalls++
+			}
+		}
+		assert.Equal(t, 0, restrictCalls, "channels cannot be restricted, must hard-ban")
+
+		var adminMsgs []tbapi.MessageConfig
+		for _, c := range mockAPI.SendCalls() {
+			if m, ok := c.C.(tbapi.MessageConfig); ok && m.ChatID == 456 {
+				adminMsgs = append(adminMsgs, m)
+			}
+		}
+		require.Len(t, adminMsgs, 1)
+		assert.Contains(t, adminMsgs[0].Text, "warn auto-banned")
+		assert.NotContains(t, adminMsgs[0].Text, "restricted")
+	})
+
+	t.Run("empty username renders without orphaned @ in notification", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 2, nil
+		}
+
+		err := adm.DirectWarnReport(createReplyUpdate("", 222))
+		require.NoError(t, err)
+
+		var adminMsgs []tbapi.MessageConfig
+		for _, c := range mockAPI.SendCalls() {
+			if m, ok := c.C.(tbapi.MessageConfig); ok && m.ChatID == 456 {
+				adminMsgs = append(adminMsgs, m)
+			}
+		}
+		require.Len(t, adminMsgs, 1)
+		assert.NotContains(t, adminMsgs[0].Text, "@ ", "must not render orphaned @ when username is empty")
+		assert.Contains(t, adminMsgs[0].Text, "(222)")
+		assert.Contains(t, adminMsgs[0].Text, "warn auto-banned")
+	})
+
+	t.Run("ban API failure surfaces error to caller", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+				return nil, fmt.Errorf("ban api boom")
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 2, nil
+		}
+
+		err := adm.DirectWarnReport(createReplyUpdate("user", 222))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to auto-ban")
+	})
+
+	t.Run("admin notification send failure surfaces error to caller", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		mockAPI.SendFunc = func(c tbapi.Chattable) (tbapi.Message, error) {
+			if m, ok := c.(tbapi.MessageConfig); ok && m.ChatID == 456 {
+				return tbapi.Message{}, fmt.Errorf("admin send boom")
+			}
+			return tbapi.Message{}, nil
+		}
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 2, nil
+		}
+
+		err := adm.DirectWarnReport(createReplyUpdate("user", 222))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to send warn auto-ban notification")
+		// the ban itself still happened
+		assert.Equal(t, 1, countMemberBans(mockAPI))
+	})
+
+	t.Run("missing identity (no SenderChat, From.ID == 0) skips auto-ban", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 5, nil
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 0, UserName: ""},
+					Text:      "ghost message",
+				},
+			},
+		}
+
+		err := adm.DirectWarnReport(update)
+		require.NoError(t, err)
+
+		assert.Empty(t, warningsMock.AddCalls(), "must not record warn for missing identity")
+		assert.Empty(t, warningsMock.CountWithinCalls(), "must not query count for missing identity")
+		assert.Equal(t, 0, countMemberBans(mockAPI), "must not ban anyone")
+	})
 }
 
 func TestAdmin_InlineCallbacks(t *testing.T) {

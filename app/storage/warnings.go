@@ -11,7 +11,8 @@ import (
 	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
-// Warnings is a storage for admin /warn events used to drive auto-ban decisions
+// Warnings is a storage for admin /warn events used to drive auto-ban decisions.
+// methods are safe for concurrent use: Add takes a write lock and CountWithin takes a read lock.
 type Warnings struct {
 	*engine.SQL
 	engine.RWLocker
@@ -93,8 +94,9 @@ func (w *Warnings) migrate(_ context.Context, _ *sqlx.Tx, _ string) error {
 	return nil
 }
 
-// Add records a single warning for the given user and prunes rows older than the storage retention.
-// gid and created_at are populated internally to match the Reports.Add convention.
+// Add records a single warning for the given user and prunes rows older than the storage retention
+// (1 year, independent of the configured warn window). gid and created_at are populated internally
+// to match the Reports.Add convention. pruning errors are logged but do not fail the call.
 func (w *Warnings) Add(ctx context.Context, userID int64, userName string) error {
 	w.Lock()
 	defer w.Unlock()
@@ -120,7 +122,8 @@ func (w *Warnings) Add(ctx context.Context, userID int64, userName string) error
 	return nil
 }
 
-// CountWithin returns the number of warning rows for the given user newer than now-window
+// CountWithin returns the number of warning rows for the given user newer than now-window.
+// window must be positive; non-positive values yield meaningless results (callers must pre-validate).
 func (w *Warnings) CountWithin(ctx context.Context, userID int64, window time.Duration) (int, error) {
 	w.RLock()
 	defer w.RUnlock()
