@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -342,6 +343,9 @@ func (l *Locator) MsgHash(msg string) string {
 
 // GetUserMessageIDs returns message IDs from a user for bulk deletion
 func (l *Locator) GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error) {
+	l.RLock()
+	defer l.RUnlock()
+
 	query := l.Adopt(`SELECT msg_id FROM messages WHERE user_id = ? AND gid = ? ORDER BY time DESC LIMIT ?`)
 	var msgIDs []int
 	err := l.SelectContext(ctx, &msgIDs, query, userID, l.GID(), limit)
@@ -349,6 +353,35 @@ func (l *Locator) GetUserMessageIDs(ctx context.Context, userID int64, limit int
 		return nil, fmt.Errorf("failed to get user message IDs: %w", err)
 	}
 	return msgIDs, nil
+}
+
+// CountUserMessages returns the number of messages stored for the given user within the current gid.
+// userID is parsed as int64 to match the spamcheck.Request.UserID string form.
+func (l *Locator) CountUserMessages(ctx context.Context, userID string) (int, error) {
+	uid, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user id %q: %w", userID, err)
+	}
+
+	l.RLock()
+	defer l.RUnlock()
+
+	query := l.Adopt(`SELECT COUNT(*) FROM messages WHERE gid = ? AND user_id = ?`)
+	var count int
+	if err := l.GetContext(ctx, &count, query, l.GID(), uid); err != nil {
+		return 0, fmt.Errorf("failed to count user messages: %w", err)
+	}
+	return count, nil
+}
+
+// UserMessageIDs returns message IDs from a user, newest first, capped by limit.
+// userID is parsed as int64 to match the spamcheck.Request.UserID string form.
+func (l *Locator) UserMessageIDs(ctx context.Context, userID string, limit int) ([]int, error) {
+	uid, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id %q: %w", userID, err)
+	}
+	return l.GetUserMessageIDs(ctx, uid, limit)
 }
 
 // cleanupMessages removes old messages. Messages with expired ttl are removed if the total number of messages exceeds minSize.

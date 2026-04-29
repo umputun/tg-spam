@@ -82,6 +82,122 @@ func (s *StorageTestSuite) TestLocator_GetUserMessageIDs() {
 	}
 }
 
+func (s *StorageTestSuite) TestLocator_CountUserMessages() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			locator, err := NewLocator(ctx, time.Hour, 1000, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE messages")
+			defer db.Exec("DROP TABLE spam")
+
+			userID := int64(100)
+
+			// initially zero
+			count, err := locator.CountUserMessages(ctx, strconv.FormatInt(userID, 10))
+			s.Require().NoError(err)
+			s.Equal(0, count)
+
+			// add 3 messages for user 100
+			for i, msgID := range []int{10, 20, 30} {
+				s.Require().NoError(locator.AddMessage(ctx, fmt.Sprintf("msg-%d", i), 123, userID, "user1", msgID))
+			}
+
+			// add a message for a different user
+			s.Require().NoError(locator.AddMessage(ctx, "other", 123, 200, "user2", 60))
+
+			count, err = locator.CountUserMessages(ctx, strconv.FormatInt(userID, 10))
+			s.Require().NoError(err)
+			s.Equal(3, count)
+
+			// verify other user counted independently
+			count, err = locator.CountUserMessages(ctx, "200")
+			s.Require().NoError(err)
+			s.Equal(1, count)
+
+			// non-existent user yields zero
+			count, err = locator.CountUserMessages(ctx, "999")
+			s.Require().NoError(err)
+			s.Equal(0, count)
+
+			// invalid user id string fails
+			_, err = locator.CountUserMessages(ctx, "not-a-number")
+			s.Require().Error(err)
+		})
+	}
+}
+
+func (s *StorageTestSuite) TestLocator_CountUserMessages_GIDIsolation() {
+	db1, err := engine.NewSqlite(":memory:", "gr1")
+	s.Require().NoError(err)
+	defer db1.Close()
+
+	db2, err := engine.NewSqlite(":memory:", "gr2")
+	s.Require().NoError(err)
+	defer db2.Close()
+
+	ctx := context.Background()
+
+	locator1, err := NewLocator(ctx, time.Hour, 5, db1)
+	s.Require().NoError(err)
+	locator2, err := NewLocator(ctx, time.Hour, 5, db2)
+	s.Require().NoError(err)
+
+	// add messages for the same user id under different gids
+	s.Require().NoError(locator1.AddMessage(ctx, "m1", 1, 42, "u", 1))
+	s.Require().NoError(locator1.AddMessage(ctx, "m2", 1, 42, "u", 2))
+	s.Require().NoError(locator2.AddMessage(ctx, "m3", 2, 42, "u", 3))
+
+	count1, err := locator1.CountUserMessages(ctx, "42")
+	s.Require().NoError(err)
+	s.Equal(2, count1, "locator1 should count only its own gid messages")
+
+	count2, err := locator2.CountUserMessages(ctx, "42")
+	s.Require().NoError(err)
+	s.Equal(1, count2, "locator2 should count only its own gid messages")
+}
+
+func (s *StorageTestSuite) TestLocator_UserMessageIDs() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			locator, err := NewLocator(ctx, time.Hour, 1000, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE messages")
+			defer db.Exec("DROP TABLE spam")
+
+			userID := int64(100)
+			msgIDs := []int{10, 20, 30, 40, 50}
+			for i, msgID := range msgIDs {
+				s.Require().NoError(locator.AddMessage(ctx, fmt.Sprintf("m-%d", i), 123, userID, "user1", msgID))
+				time.Sleep(10 * time.Millisecond) // ensure ordering by time
+			}
+
+			// fetch all, newest first
+			ids, err := locator.UserMessageIDs(ctx, "100", 100)
+			s.Require().NoError(err)
+			s.Require().Len(ids, 5)
+			s.Equal([]int{50, 40, 30, 20, 10}, ids)
+
+			// limit honored
+			ids, err = locator.UserMessageIDs(ctx, "100", 3)
+			s.Require().NoError(err)
+			s.Equal([]int{50, 40, 30}, ids)
+
+			// non-existent user yields empty
+			ids, err = locator.UserMessageIDs(ctx, "999", 10)
+			s.Require().NoError(err)
+			s.Empty(ids)
+
+			// invalid user id string fails
+			_, err = locator.UserMessageIDs(ctx, "abc", 10)
+			s.Require().Error(err)
+		})
+	}
+}
+
 func (s *StorageTestSuite) TestLocator_AddAndRetrieveMessage() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {

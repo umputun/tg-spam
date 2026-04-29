@@ -30,6 +30,7 @@ import (
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure --with-resets . SampleUpdater
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure --with-resets . HTTPClient
 //go:generate moq --out mocks/user_storage.go --pkg mocks --skip-ensure --with-resets . UserStorage
+//go:generate moq --out mocks/message_counter.go --pkg mocks --skip-ensure --with-resets . MessageCounter
 //go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
 
 // Detector is a spam detector, thread-safe.
@@ -52,6 +53,7 @@ type Detector struct {
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
 	userStorage    UserStorage
+	messageCounter MessageCounter
 
 	// history of recent messages to keep in memory
 	// can be passed to checkers supporting history
@@ -102,6 +104,7 @@ type detectorLLMResult struct {
 type Config struct {
 	SimilarityThreshold float64          // threshold for spam similarity, 0.0 - 1.0
 	MinMsgLen           int              // minimum message length to check
+	MaxShortMsgCount    int              // ban unapproved user after N short messages without graduation (0 disables)
 	MaxAllowedEmoji     int              // maximum number of emojis allowed in a message
 	CasAPI              string           // CAS API URL
 	CasUserAgent        string           // CAS API User-Agent header value, set only if non-empty
@@ -158,6 +161,13 @@ type UserStorage interface {
 	Read(ctx context.Context) ([]approved.UserInfo, error) // read approved users from storage
 	Write(ctx context.Context, au approved.UserInfo) error // write approved user to storage
 	Delete(ctx context.Context, id string) error           // delete approved user from storage
+}
+
+// MessageCounter is an interface for per-user message counts and IDs used by the
+// short-message flood check. Implemented by *storage.Locator.
+type MessageCounter interface {
+	CountUserMessages(ctx context.Context, userID string) (int, error)
+	UserMessageIDs(ctx context.Context, userID string, limit int) ([]int, error)
 }
 
 // HTTPClient is an interface for http client, satisfied by http.Client.
@@ -236,6 +246,18 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
 		// include previous check results (e.g., duplicate check) in the response
 		return false, append(cr, spamcheck.Response{Name: "pre-approved", Spam: false, Details: "user already approved"})
+	}
+
+	// short-message flood: ban unapproved users posting too many short messages.
+	// LLM consensus is intentionally bypassed: this is a behavioral signal that does
+	// not depend on content, and an LLM looking at the latest single short message
+	// has no information that would justify overriding the count.
+	if d.MaxShortMsgCount > 0 && d.messageCounter != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
+		if resp := d.isShortMsgFlood(req); resp.Spam {
+			cr = append(cr, resp)
+			d.spamHistory.Push(req)
+			return true, cr
+		}
 	}
 
 	// all the remaining checks are performed sequentially, so we can collect all the results
@@ -577,6 +599,13 @@ func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 		d.approvedUsers[user.UserID] = user
 	}
 	return len(users), nil
+}
+
+// WithMessageCounter sets a MessageCounter used by the short-message flood check.
+func (d *Detector) WithMessageCounter(mc MessageCounter) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.messageCounter = mc
 }
 
 // WithMetaChecks sets a list of meta-checkers.
@@ -1021,6 +1050,69 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 
 	return spamcheck.Response{Name: "classifier", Spam: isSpam,
 		Details: fmt.Sprintf("probability of %s: %s%%", class, probStr)}
+}
+
+// isShortMsgFlood checks whether an unapproved user has accumulated too many short
+// messages without graduating to approved status. Returns Spam=true with ExtraDeleteIDs
+// populated for cleanup when the per-user count of non-graduating messages reaches
+// MaxShortMsgCount. Returns Spam=false on the count-error fast-bail and on every other
+// non-triggering condition: empty UserID, CheckOnly request, message length >= MinMsgLen,
+// or user already approved. An ID-fetch error is logged at WARN and produces Spam=true
+// with empty ExtraDeleteIDs (the listener still bans and deletes the triggering message).
+// Expected to be called from Check while d.lock is held as a read lock.
+func (d *Detector) isShortMsgFlood(req spamcheck.Request) spamcheck.Response {
+	const name = "short-msg-flood"
+	notSpam := func(details string) spamcheck.Response {
+		return spamcheck.Response{Name: name, Spam: false, Details: details}
+	}
+
+	if req.UserID == "" || req.CheckOnly {
+		return notSpam("skipped")
+	}
+	if len([]rune(req.Msg)) >= d.MinMsgLen {
+		return notSpam("message not short")
+	}
+	approvedCount := d.approvedUsers[req.UserID].Count
+	if approvedCount >= d.FirstMessagesCount {
+		return notSpam("user already approved")
+	}
+
+	ctx, cancel := d.ctxWithStoreTimeout()
+	defer cancel()
+	total, err := d.messageCounter.CountUserMessages(ctx, req.UserID)
+	if err != nil {
+		log.Printf("[WARN] short-msg-flood: count failed for user %s: %v", req.UserID, err)
+		return notSpam("count error")
+	}
+	excess := total - approvedCount
+	if excess < d.MaxShortMsgCount {
+		return notSpam(fmt.Sprintf("%d/%d", excess, d.MaxShortMsgCount))
+	}
+
+	var extraIDs []int
+	ids, err := d.messageCounter.UserMessageIDs(ctx, req.UserID, d.MaxShortMsgCount*2)
+	if err != nil {
+		log.Printf("[WARN] short-msg-flood: ids fetch failed for user %s: %v", req.UserID, err)
+	} else {
+		// the locator stored the current message before OnMessage runs, so the
+		// returned slice includes the triggering ID; the listener deletes it
+		// separately via resp.ReplyTo, and feeding it back through ExtraDeleteIDs
+		// would issue a second delete that races against the first.
+		extraIDs = make([]int, 0, len(ids))
+		for _, id := range ids {
+			if id == req.Meta.MessageID {
+				continue
+			}
+			extraIDs = append(extraIDs, id)
+		}
+	}
+
+	return spamcheck.Response{
+		Name:           name,
+		Spam:           true,
+		Details:        fmt.Sprintf("%d messages without approval (threshold %d)", excess, d.MaxShortMsgCount),
+		ExtraDeleteIDs: extraIDs,
+	}
 }
 
 // isStopWord checks if a given message or username contains any of the stop words.

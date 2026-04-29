@@ -261,6 +261,7 @@ func TestOptToSettings(t *testing.T) {
 		var o options
 		o.InstanceID = "test-instance"
 		o.MinMsgLen = 100
+		o.MaxShortMsgCount = 4
 		o.MaxEmoji = 5
 		o.MinSpamProbability = 0.8
 		o.SimilarityThreshold = 0.9
@@ -399,6 +400,7 @@ func TestOptToSettings(t *testing.T) {
 				// verify all fields are correctly mapped
 				assert.Equal(t, "test-instance", settings.InstanceID)
 				assert.Equal(t, 100, settings.MinMsgLen)
+				assert.Equal(t, 4, settings.MaxShortMsgCount)
 				assert.Equal(t, 5, settings.MaxEmoji)
 				assert.InEpsilon(t, 0.8, settings.MinSpamProbability, 0.0001)
 				assert.InEpsilon(t, 0.9, settings.SimilarityThreshold, 0.0001)
@@ -554,6 +556,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "default-instance", settings.InstanceID)
 				// verify some defaults are applied
 				assert.Equal(t, 0, settings.MinMsgLen)
+				assert.Equal(t, 0, settings.MaxShortMsgCount)
 				assert.Equal(t, 0, settings.MaxEmoji)
 				assert.False(t, settings.NoSpamReply)
 				assert.False(t, settings.ParanoidMode)

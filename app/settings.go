@@ -158,6 +158,7 @@ func optToSettings(opts options) *config.Settings {
 
 		SimilarityThreshold:    opts.SimilarityThreshold,
 		MinMsgLen:              opts.MinMsgLen,
+		MaxShortMsgCount:       opts.MaxShortMsgCount,
 		MaxEmoji:               opts.MaxEmoji,
 		MinSpamProbability:     opts.MinSpamProbability,
 		MultiLangWords:         opts.MultiLangWords,

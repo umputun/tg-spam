@@ -924,6 +924,51 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, 5, settings.FirstMessagesCount)
 	})
 
+	t.Run("maxShortMsgCount parses non-empty numeric", func(t *testing.T) {
+		settings := &config.Settings{MaxShortMsgCount: 0}
+
+		form := url.Values{}
+		form.Add("maxShortMsgCount", "5")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+		assert.Equal(t, 5, settings.MaxShortMsgCount)
+	})
+
+	t.Run("maxShortMsgCount empty preserves existing value", func(t *testing.T) {
+		settings := &config.Settings{MaxShortMsgCount: 3}
+
+		form := url.Values{}
+		form.Add("maxShortMsgCount", "")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+		assert.Equal(t, 3, settings.MaxShortMsgCount, "empty value must not reset to zero")
+	})
+
+	t.Run("maxShortMsgCount non-numeric preserves existing value", func(t *testing.T) {
+		settings := &config.Settings{MaxShortMsgCount: 7}
+
+		form := url.Values{}
+		form.Add("maxShortMsgCount", "not-a-number")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		updateSettingsFromForm(settings, req)
+		assert.Equal(t, 7, settings.MaxShortMsgCount, "non-numeric value must not change setting")
+	})
+
 	t.Run("super users parsing", func(t *testing.T) {
 		settings := &config.Settings{
 			Admin: config.AdminSettings{

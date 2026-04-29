@@ -459,6 +459,14 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			},
 			assertFn: func(t *testing.T, target *Settings) { assert.InDelta(t, 0.0, target.MinSpamProbability, 0.0001) },
 		},
+		{
+			name: "MaxShortMsgCount",
+			setup: func(target, template *Settings) {
+				target.MaxShortMsgCount = 0
+				template.MaxShortMsgCount = 3
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MaxShortMsgCount) },
+		},
 	}
 
 	for _, tt := range tests {
@@ -470,6 +478,27 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			tt.assertFn(t, target)
 		})
 	}
+}
+
+func TestSettings_MaxShortMsgCount_RoundTrip(t *testing.T) {
+	original := New()
+	original.MaxShortMsgCount = 5
+
+	jsonData, err := json.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"max_short_msg_count":5`)
+
+	var fromJSON Settings
+	require.NoError(t, json.Unmarshal(jsonData, &fromJSON))
+	assert.Equal(t, 5, fromJSON.MaxShortMsgCount)
+
+	yamlData, err := yaml.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(yamlData), "max_short_msg_count: 5")
+
+	var fromYAML Settings
+	require.NoError(t, yaml.Unmarshal(yamlData, &fromYAML))
+	assert.Equal(t, 5, fromYAML.MaxShortMsgCount)
 }
 
 func TestSettings_ApplyDefaults_FillsWarnWindow(t *testing.T) {

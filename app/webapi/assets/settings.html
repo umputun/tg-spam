@@ -181,24 +181,32 @@
 
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
+                    <label for="maxShortMsgCount" class="form-label">Max Short Msgs (Unapproved)</label>
+                    <input type="number" min="0" class="form-control" id="maxShortMsgCount" name="maxShortMsgCount" value="{{.MaxShortMsgCount}}">
+                    <div class="form-text">Treat as spam after N messages without graduation (0 disables)</div>
+                </div>
+                <div class="col-md-6 mb-3">
                     <label for="firstMessagesCount" class="form-label">First Messages Count</label>
                     <input type="number" min="0" class="form-control" id="firstMessagesCount" name="firstMessagesCount" value="{{.FirstMessagesCount}}">
                     <div class="form-text">Number of messages to be considered as first messages</div>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="multiLangWords" class="form-label">Multi Lingual Words</label>
-                    <input type="number" min="0" class="form-control" id="multiLangWords" name="multiLangWords" value="{{.MultiLangWords}}">
-                    <div class="form-text">Limit for different languages in a message</div>
                 </div>
             </div>
 
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
+                    <label for="multiLangWords" class="form-label">Multi Lingual Words</label>
+                    <input type="number" min="0" class="form-control" id="multiLangWords" name="multiLangWords" value="{{.MultiLangWords}}">
+                    <div class="form-text">Limit for different languages in a message</div>
+                </div>
+                <div class="col-md-6 mb-3">
                     <label for="historySize" class="form-label">History Size</label>
                     <input type="number" min="0" class="form-control" id="historySize" name="historySize" value="{{.History.Size}}">
                     <div class="form-text">Number of messages to store in history</div>
                 </div>
-                <div class="col-md-6 mb-3">
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-12 mb-3">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="abnormalSpacingEnabled" name="abnormalSpacingEnabled" {{if .AbnormalSpace.Enabled}}checked{{end}}>
                         <label class="form-check-label" for="abnormalSpacingEnabled">Abnormal Spacing Enabled</label>
@@ -252,6 +260,7 @@
                     <tbody>
                         <tr><th style="width: 30%">Similarity Threshold</th><td>{{.SimilarityThreshold}}</td></tr>
                         <tr><th>Min Message Length</th><td>{{.MinMsgLen}}</td></tr>
+                        <tr><th>Max Short Msgs (Unapproved)</th><td>{{if eq .MaxShortMsgCount 0}}disabled{{else}}{{.MaxShortMsgCount}}{{end}}</td></tr>
                         <tr><th>Max Emoji</th><td>{{.MaxEmoji}}</td></tr>
                         <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}%</td></tr>
                         <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>

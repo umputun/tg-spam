@@ -177,6 +177,7 @@ type options struct {
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
 	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
+	MaxShortMsgCount    int     `long:"max-short-msg-count" env:"MAX_SHORT_MSG_COUNT" default:"0" description:"ban unapproved user after N short messages without graduation (0 disables)"`
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
 	MinSpamProbability  float64 `long:"min-probability" env:"MIN_PROBABILITY" default:"50" description:"min spam probability percent to ban"`
 	MultiLangWords      int     `long:"multi-lang" env:"MULTI_LANG" default:"0" description:"number of words in different languages to consider as spam"`
@@ -403,6 +404,15 @@ func validateSettings(s *config.Settings) error {
 		return fmt.Errorf("warn.window (%v) exceeds storage retention (%v); older rows are pruned and would not be counted",
 			s.Warn.Window, storage.WarningsRetention)
 	}
+	if s.MaxShortMsgCount < 0 {
+		return fmt.Errorf("max-short-msg-count (%d) must be >= 0 (0 disables)", s.MaxShortMsgCount)
+	}
+	// MaxShortMsgCount needs the detector's first-message-only path active. ParanoidMode
+	// in makeDetector forces FirstMessageOnly=false and FirstMessagesCount=0 regardless
+	// of the configured FirstMessagesCount, which would silently disable this check.
+	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
+		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
+	}
 	return nil
 }
 
@@ -461,6 +471,7 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 	if err != nil {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
+	detector.WithMessageCounter(locator)
 
 	// make reports storage if feature is enabled
 	var reportsStore *storage.Reports
@@ -748,6 +759,7 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 	detectorConfig := tgspam.Config{
 		MaxAllowedEmoji:     settings.MaxEmoji,
 		MinMsgLen:           settings.MinMsgLen,
+		MaxShortMsgCount:    settings.MaxShortMsgCount,
 		SimilarityThreshold: settings.SimilarityThreshold,
 		MinSpamProbability:  settings.MinSpamProbability,
 		CasAPI:              settings.CAS.API,

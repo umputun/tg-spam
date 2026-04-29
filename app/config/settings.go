@@ -38,6 +38,7 @@ type Settings struct {
 	// spam detection settings
 	SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold" db:"similarity_threshold"`
 	MinMsgLen           int     `json:"min_msg_len" yaml:"min_msg_len" db:"min_msg_len"`
+	MaxShortMsgCount    int     `json:"max_short_msg_count" yaml:"max_short_msg_count" db:"max_short_msg_count"`
 	MaxEmoji            int     `json:"max_emoji" yaml:"max_emoji" db:"max_emoji"`
 	MinSpamProbability  float64 `json:"min_spam_probability" yaml:"min_spam_probability" db:"min_spam_probability"`
 	MultiLangWords      int     `json:"multi_lang_words" yaml:"multi_lang_words" db:"multi_lang_words"`
@@ -316,6 +317,7 @@ var zeroAwarePaths = map[string]bool{
 	"FirstMessagesCount":      true, // app/main.go:703, lib/tgspam/detector.go:205,208 (> 0): 0 disables
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
+	"MaxShortMsgCount":        true, // lib/tgspam/detector.go:253 (> 0): 0 disables
 }
 
 // ApplyDefaults fills zero-valued fields in s with the corresponding values from
