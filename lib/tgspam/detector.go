@@ -1073,6 +1073,10 @@ func (d *Detector) isShortMsgFlood(req spamcheck.Request) spamcheck.Response {
 		return notSpam("message not short")
 	}
 	approvedCount := d.approvedUsers[req.UserID].Count
+	// defensive: in app/main.go FirstMessageOnly is forced true whenever FirstMessagesCount > 0,
+	// so approved users short-circuit at the pre-approved branch in Check and never reach this.
+	// the guard matters for library consumers that construct Detector with FirstMessageOnly=false
+	// and FirstMessagesCount > 0, where approved users would otherwise fall through to here.
 	if approvedCount >= d.FirstMessagesCount {
 		return notSpam("user already approved")
 	}

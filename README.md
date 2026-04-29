@@ -206,31 +206,12 @@ Configure with:
 
 **Short-message flood detection**
 
-This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. It targets the evasion pattern where a spammer probes a channel by posting innocuous short messages ("hi", "hello", "yo", "ok"): each individual message is too short for content checks (`--min-msg-len`), and the messages are different so the duplicate detector does not trigger.
+This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
 
-The trigger formula derives the count from existing state without any new in-memory tracking:
-
-```
-(messages_from_user - approved_count) >= max-short-msg-count
-  AND user is still unapproved (approved_count < first-messages-count)
-  AND the current message is short (length < min-msg-len)
-```
-
-`messages_from_user` comes from the on-disk locator (the same store that powers duplicate detection), and `approved_count` is the in-memory count of long ham messages that contributed to user approval. The difference — messages that did *not* graduate the user — is overwhelmingly short messages.
-
-When triggered, the result follows the standard spam pipeline: ban + delete the current message + delete the prior messages via `ExtraDeleteIDs` cleanup. `--training`, `--dry`, and `--soft-ban` all intercept the action just like with any other check.
-
-**Important**: this check returns immediately when triggered and bypasses LLM consensus (`--llm.consensus`) by design. The signal is behavioral, not content-based; an LLM looking at a single short message has no information that would justify overriding the count. Operators who expect consensus to apply uniformly should be aware of this asymmetry.
-
-**Important**: this check requires the detector's first-message evaluation path to be active. By default (`--first-messages-count=1`) it is active and no extra configuration is needed. `--paranoid` mode is incompatible — it disables the first-message path entirely and clears the count, leaving this check no window to operate in. The bot will refuse to start with `--max-short-msg-count > 0` together with `--paranoid`.
-
-**Naturally terse legitimate users**: a user posting only short messages during their first few messages can trip this check before they graduate. The risk is bounded to the evaluation window (`--first-messages-count` messages) — once approved, the check skips entirely for that user's lifetime. Recommended baselines: `--max-short-msg-count >= 3` paired with a low `--first-messages-count` (1 or 2).
-
-**Rollout note**: on first activation against a populated database, existing unapproved users with N or more rows in the locator will trip on their next message. This is intended (those users are exhibiting the pattern), but be aware of it during rollout.
+**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
 Configure with:
 - `--max-short-msg-count=, [$MAX_SHORT_MSG_COUNT]` (default: 0, disabled) - Ban after N short messages from an unapproved user
-- Pair with `--first-messages-count` and a meaningful `--min-msg-len` (paranoid mode is incompatible)
 
 Recommended config: `--max-short-msg-count=3 --first-messages-count=2 --min-msg-len=50`.
 
