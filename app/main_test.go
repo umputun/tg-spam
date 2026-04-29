@@ -180,6 +180,36 @@ func TestValidateSettings(t *testing.T) {
 			},
 			wantErr: "",
 		},
+		{
+			name:    "max-short-msg-count negative is rejected",
+			s:       &config.Settings{MaxShortMsgCount: -1},
+			wantErr: "max-short-msg-count (-1) must be >= 0 (0 disables)",
+		},
+		{
+			name:    "max-short-msg-count zero is valid (disabled)",
+			s:       &config.Settings{MaxShortMsgCount: 0},
+			wantErr: "",
+		},
+		{
+			name:    "max-short-msg-count positive with paranoid mode is rejected",
+			s:       &config.Settings{MaxShortMsgCount: 3, ParanoidMode: true},
+			wantErr: "max-short-msg-count is incompatible with paranoid mode",
+		},
+		{
+			name:    "max-short-msg-count positive with default first-message-only mode is valid",
+			s:       &config.Settings{MaxShortMsgCount: 3},
+			wantErr: "",
+		},
+		{
+			name:    "max-short-msg-count positive with paranoid mode and first-messages-count is rejected",
+			s:       &config.Settings{MaxShortMsgCount: 3, ParanoidMode: true, FirstMessagesCount: 2},
+			wantErr: "max-short-msg-count is incompatible with paranoid mode",
+		},
+		{
+			name:    "max-short-msg-count positive with first-messages-count is valid",
+			s:       &config.Settings{MaxShortMsgCount: 3, FirstMessagesCount: 2},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -302,6 +332,25 @@ func Test_makeDetector(t *testing.T) {
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
 		assert.False(t, res.FirstMessageOnly)
+	})
+
+	t.Run("with max short msg count", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.MaxShortMsgCount = 3
+		settings.FirstMessagesCount = 2
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		assert.Equal(t, 3, res.MaxShortMsgCount)
+		assert.Equal(t, 2, res.FirstMessagesCount)
+	})
+
+	t.Run("max short msg count default zero", func(t *testing.T) {
+		settings := makeTestSettings()
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		assert.Equal(t, 0, res.MaxShortMsgCount)
 	})
 }
 

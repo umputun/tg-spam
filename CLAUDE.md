@@ -21,6 +21,12 @@
 - When adding new CLI parameters or environment variables, update BOTH:
   1. The "All Application Options" section in README.md (should match `--help` output exactly)
   2. The appropriate descriptive section in README.md (e.g., spam detection modules, OpenAI integration, etc.)
+- When adding a new configurable parameter (CLI flag, env var, or any user-tunable knob), wire it through ALL of these layers — missing any one leaves the feature partially broken:
+  1. **CLI/env definition**: `app/main.go` (flag + env var) and `app/settings.go` `optToSettings` mapping (CLI → Settings)
+  2. **DB-backed config**: `app/config/settings.go` — add to the typed `Settings` struct with `json`/`yaml`/`db` tags. If `0`/empty must survive merges as a meaningful "disabled" value, add the dotted path to `zeroAwarePaths`. Add startup validation if needed.
+  3. **Web settings UI**: `app/webapi/assets/settings.html` — add the form input (edit panel) AND the read-only display row. `app/webapi/config.go` — parse the new form field exactly like an existing analogous field (look for the closest sibling: int → `reportAutoBanThreshold`, duration → `reactionsWindow`, bool → existing checkboxes).
+  4. **e2e UI test**: `e2e-ui/e2e_test.go` — add to the settings round-trip test so the form field is exercised.
+  5. **Docs**: README.md (both options-table and descriptive section, per the rule above).
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
 - Don't add "Test plan" section to PRs
 
@@ -99,6 +105,23 @@
 - Warn auto-ban does NOT update spam samples (`bot.UpdateSpam` is not called) — warnings reflect admin policy, not spam content
 - `executeWarnBan` mirrors `executeAutoBan` for dry/training/soft-ban handling but does not share an abstraction (the two diverge on spam-sample updates and on `From` vs `SenderChat` resolution)
 - Settings: only `Warn.Threshold` is in `zeroAwarePaths` (0=disabled, must survive merges); `Warn.Window` zero is invalid and rejected by startup validation
+
+### Short Message Flood Detection
+- `--max-short-msg-count` (Settings.MaxShortMsgCount) bans an unapproved user who accumulates too many short messages without graduating to approved status; closes the gap left by content-based checks for spammers probing with innocuous one-word messages
+- Disabled by default (`MaxShortMsgCount=0`); incompatible with paranoid mode (paranoid forces `FirstMessageOnly=false` and `FirstMessagesCount=0` in `makeDetector`, which would silently disable this check). Startup validation in `app/main.go` rejects `MaxShortMsgCount > 0 && ParanoidMode`
+- `Settings.MaxShortMsgCount` is in `zeroAwarePaths` (0=disabled must survive merges); validation rejects negative values
+- Trigger formula: `excess := total - approvedCount; spam := excess >= MaxShortMsgCount` where `total` is `CountUserMessages` from the locator and `approvedCount` is the in-memory `approvedUsers[id].Count` (incremented only on long ham messages, see the block at `detector.go:386-400`)
+- Stateless within the detector — no cache, no separate struct. The check is an internal method `(d *Detector) isShortMsgFlood(req)` (`lib/tgspam/detector.go:1059`) called inline in `Detector.Check` after the duplicate-detector branch and before the stop-word/emoji/metachecks block, gated by an outer guard so disabled mode does no work
+- Dependency: `MessageCounter` interface (consumer-side, defined in `lib/tgspam/detector.go`) implemented by `app/storage/locator.go` via `CountUserMessages` and `UserMessageIDs`. Wired in `app/main.go` with `detector.WithMessageCounter(locator)` after the locator is constructed
+- Count query uses index `idx_messages_gid_user_id_time` (locator.go:70 sqlite, :74 postgres) — pure index scan, gid-scoped per the listener's locator
+- Locator TTL pruning is rare for actively-evaluated unapproved users (cleanup only kicks in when `total > minSize`); accepted as a known limitation
+- On flag, the response carries `ExtraDeleteIDs` populated from `UserMessageIDs(ctx, userID, MaxShortMsgCount*2)` so the listener cleans up prior messages alongside the triggering one (same pattern as duplicate detector)
+- Bypasses LLM consensus by design: returns `true, cr` immediately when flagged instead of letting the unified `spamDetected`/LLM-consensus flow evaluate. Rationale: short-message flood is a behavioral signal that does not depend on content, and an LLM looking at the latest single short message has no information that would justify overriding the count
+- Edge cases (handled via fast-bail returns in `isShortMsgFlood`): empty `req.UserID`, `req.CheckOnly`, message length ≥ `MinMsgLen`, user already approved (`approvedCount >= FirstMessagesCount`), locator error (logged at WARN, falls through to normal checks)
+- Channel `SenderChat` flow works transparently: `bot.OnMessage` already maps `checkUserID = msg.SenderChat.ID` and the locator stores under the same ID; anonymous admin and linked-channel posts skip `OnMessage` entirely (listener.go:387)
+- Edits: locator keys by `hash(text)` with `INSERT OR REPLACE` — no-op edits do not increment count; content-changing edits create a new row (consistent with `duplicateDetector`)
+- Training/dry/soft-ban: feature emits a normal spam result through the existing pipeline, so the listener's mode handling intercepts identically to other spam checks (no special-casing)
+- Naturally-terse legitimate users carry a bounded false-positive risk during the evaluation window only; once the user crosses `FirstMessagesCount` they are approved and immune. Recommended baseline: `MaxShortMsgCount >= 3` with low `FirstMessagesCount` (1–2)
 
 ### LLM Checker Structure
 - Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`

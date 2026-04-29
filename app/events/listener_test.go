@@ -18,6 +18,8 @@ import (
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
+	"github.com/umputun/tg-spam/lib/tgspam"
+	tgspamMocks "github.com/umputun/tg-spam/lib/tgspam/mocks"
 )
 
 func TestTelegramListener_Do(t *testing.T) {
@@ -722,6 +724,120 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 
 	// verify no ban/delete requests were issued for superuser
 	assert.Empty(t, mockAPI.RequestCalls(), "should not call Request for superuser")
+}
+
+func TestTelegramListener_DoWithShortMsgFlood(t *testing.T) {
+	// integration test: real *tgspam.Detector + *bot.SpamFilter wired into the listener
+	// with a mocked MessageCounter. Three short messages from a fresh unapproved user;
+	// only the third message must trip short-msg-flood and propagate ExtraDeleteIDs to
+	// the listener for cleanup of the prior two.
+	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+
+	deletedMessages := []int{}
+	bannedUsers := []int64{}
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "user"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			switch v := c.(type) {
+			case tbapi.DeleteMessageConfig:
+				deletedMessages = append(deletedMessages, v.MessageID)
+			case tbapi.BanChatMemberConfig:
+				bannedUsers = append(bannedUsers, v.UserID)
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+
+	// successive message IDs queued to the listener
+	msgIDs := []int{10, 20, 30}
+
+	// MessageCounter mock: counter advances on each Detector.Check; UserMessageIDs
+	// mirrors the real locator and returns ALL stored IDs including the current one
+	// (locator.AddMessage runs BEFORE detector.Check in the listener pipeline). The
+	// detector is responsible for filtering out the triggering message ID before
+	// populating ExtraDeleteIDs so the listener doesn't issue duplicate deletes.
+	var counter int
+	mc := &tgspamMocks.MessageCounterMock{
+		CountUserMessagesFunc: func(ctx context.Context, userID string) (int, error) {
+			counter++
+			return counter, nil
+		},
+		UserMessageIDsFunc: func(ctx context.Context, userID string, limit int) ([]int, error) {
+			return append([]int(nil), msgIDs[:counter]...), nil
+		},
+	}
+
+	detector := tgspam.NewDetector(tgspam.Config{
+		MaxShortMsgCount:   3,
+		FirstMessagesCount: 2,
+		FirstMessageOnly:   true,
+		MinMsgLen:          50,
+		MaxAllowedEmoji:    -1, // disable emoji check
+	})
+	detector.WithMessageCounter(mc)
+	spamFilter := bot.NewSpamFilter(detector, bot.SpamConfig{SpamMsg: "detected", SpamDryMsg: "detected dry"})
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: mockLogger,
+		TbAPI:      mockAPI,
+		Bot:        spamFilter,
+		Group:      "gr",
+		Locator:    locator,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	updChan := make(chan tbapi.Update, len(msgIDs))
+	for i, text := range []string{"hi", "yo", "ok"} {
+		updChan <- tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: msgIDs[i],
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      text,
+				From:      &tbapi.User{UserName: "user", ID: 1},
+				Date:      int(time.Now().Unix()),
+			},
+		}
+	}
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	err := l.Do(ctx)
+	require.EqualError(t, err, "telegram update chan closed")
+
+	// detector queried the locator on every message; only the last one fetched IDs
+	assert.Len(t, mc.CountUserMessagesCalls(), 3, "CountUserMessages must be called once per message")
+	assert.Len(t, mc.UserMessageIDsCalls(), 1, "UserMessageIDs only fetched on the triggering message")
+	assert.Equal(t, 6, mc.UserMessageIDsCalls()[0].Limit, "limit passed to UserMessageIDs is 2*MaxShortMsgCount")
+
+	// only message 3 produced a SpamLogger save
+	require.Len(t, mockLogger.SaveCalls(), 1)
+	assert.Equal(t, "ok", mockLogger.SaveCalls()[0].Msg.Text, "only the triggering message is logged")
+	require.Len(t, mockLogger.SaveCalls()[0].Response.CheckResults, 1)
+	assert.Equal(t, "short-msg-flood", mockLogger.SaveCalls()[0].Response.CheckResults[0].Name)
+	assert.True(t, mockLogger.SaveCalls()[0].Response.CheckResults[0].Spam)
+	assert.Equal(t, []int{10, 20}, mockLogger.SaveCalls()[0].Response.CheckResults[0].ExtraDeleteIDs,
+		"ExtraDeleteIDs must contain prior message IDs")
+
+	// listener deleted both prior messages and the triggering message itself
+	assert.Contains(t, deletedMessages, 10, "should delete prior message 1 from ExtraDeleteIDs")
+	assert.Contains(t, deletedMessages, 20, "should delete prior message 2 from ExtraDeleteIDs")
+	assert.Contains(t, deletedMessages, 30, "should delete the triggering spam message")
+
+	// user banned exactly once
+	assert.Equal(t, []int64{1}, bannedUsers, "user 1 must be banned once on the third message")
 }
 
 func TestTelegramListener_DoWithForwarded(t *testing.T) {

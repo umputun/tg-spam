@@ -365,6 +365,110 @@ func TestSettings_WarnAutoBanPersists(t *testing.T) {
 	assert.Equal(t, warnWindowText, got)
 }
 
+func TestSettings_MaxShortMsgCountPersists(t *testing.T) {
+	const (
+		port              = 18092
+		dbPath            = "/tmp/tg-spam-e2e-maxshort.db"
+		dataPath          = "/tmp/tg-spam-e2e-maxshort-data"
+		password          = "e2e-maxshort-password"
+		user              = "tg-spam"
+		maxShortMsgCount  = "4"
+		firstMessagesText = "2"
+	)
+	settingsURL := fmt.Sprintf("http://localhost:%d", port)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(dbPath)
+	_ = os.RemoveAll(dataPath)
+	require.NoError(t, os.MkdirAll(dataPath, 0o755))
+	require.NoError(t, os.WriteFile(dataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(dataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled.
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(dbPath)
+		_ = os.RemoveAll(dataPath)
+	})
+
+	require.NoError(t, waitForServer(settingsURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: user,
+			Password: password,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+
+	waitVisible(t, page.Locator("#maxShortMsgCount"))
+	waitVisible(t, page.Locator("#firstMessagesCount"))
+
+	// verify default rendered (0=disabled)
+	defaultMax, err := page.Locator("#maxShortMsgCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0", defaultMax)
+
+	// fill new values and save; firstMessagesCount must be > 0 for the feature
+	// to be effective, mirroring the startup validation rule
+	require.NoError(t, page.Locator("#maxShortMsgCount").Fill(maxShortMsgCount))
+	require.NoError(t, page.Locator("#firstMessagesCount").Fill(firstMessagesText))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the value persisted
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	waitVisible(t, page.Locator("#maxShortMsgCount"))
+
+	got, err := page.Locator("#maxShortMsgCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, maxShortMsgCount, got)
+	got, err = page.Locator("#firstMessagesCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, firstMessagesText, got)
+}
+
 // --- navigation tests ---
 
 func TestNavbar_NavigationWorks(t *testing.T) {

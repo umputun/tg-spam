@@ -528,6 +528,12 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
+	if val := r.FormValue("maxShortMsgCount"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.MaxShortMsgCount = n
+		}
+	}
+
 	if val := r.FormValue("maxEmoji"); val != "" {
 		if count, err := strconv.Atoi(val); err == nil {
 			settings.MaxEmoji = count

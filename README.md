@@ -204,6 +204,17 @@ Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
 - `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 
+**Short-message flood detection**
+
+This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
+
+**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
+
+Configure with:
+- `--max-short-msg-count=, [$MAX_SHORT_MSG_COUNT]` (default: 0, disabled) - Ban after N short messages from an unapproved user
+
+Recommended config: `--max-short-msg-count=3 --first-messages-count=2 --min-msg-len=50`.
+
 **Reaction spam detection**
 
 This option is disabled by default. When enabled, the bot tracks emoji reactions from each user and marks them as a spammer if they exceed the reaction threshold within a time window. This targets bots that never post messages but mass-react to posts to attract attention to their profile (which contains spam in the bio).
@@ -559,6 +570,7 @@ Success! The new status is: DISABLED. /help
       --suppress-join-message           delete join message if user is kicked out [$SUPPRESS_JOIN_MESSAGE]
       --similarity-threshold=           spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=                    min message length to check (default: 50) [$MIN_MSG_LEN]
+      --max-short-msg-count=            ban unapproved user after N short messages without graduation (0 disables) (default: 0) [$MAX_SHORT_MSG_COUNT]
       --max-emoji=                      max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=                min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
