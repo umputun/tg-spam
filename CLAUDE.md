@@ -21,6 +21,12 @@
 - When adding new CLI parameters or environment variables, update BOTH:
   1. The "All Application Options" section in README.md (should match `--help` output exactly)
   2. The appropriate descriptive section in README.md (e.g., spam detection modules, OpenAI integration, etc.)
+- When adding a new configurable parameter (CLI flag, env var, or any user-tunable knob), wire it through ALL of these layers — missing any one leaves the feature partially broken:
+  1. **CLI/env definition**: `app/main.go` (flag + env var) and `app/settings.go` `optToSettings` mapping (CLI → Settings)
+  2. **DB-backed config**: `app/config/settings.go` — add to the typed `Settings` struct with `json`/`yaml`/`db` tags. If `0`/empty must survive merges as a meaningful "disabled" value, add the dotted path to `zeroAwarePaths`. Add startup validation if needed.
+  3. **Web settings UI**: `app/webapi/assets/settings.html` — add the form input (edit panel) AND the read-only display row. `app/webapi/config.go` — parse the new form field exactly like an existing analogous field (look for the closest sibling: int → `reportAutoBanThreshold`, duration → `reactionsWindow`, bool → existing checkboxes).
+  4. **e2e UI test**: `e2e-ui/e2e_test.go` — add to the settings round-trip test so the form field is exercised.
+  5. **Docs**: README.md (both options-table and descriptive section, per the rule above).
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
 - Don't add "Test plan" section to PRs
 
