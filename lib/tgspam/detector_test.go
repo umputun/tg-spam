@@ -3461,6 +3461,54 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		// IsApprovedUser returns false because count (2) is not > FirstMessagesCount (2)
 		assert.False(t, d.IsApprovedUser("111"))
 	})
+
+	t.Run("short messages cleared as ham by LLM still don't count towards approval", func(t *testing.T) {
+		// guards against approving a user when the LLM (with CheckShortMessagesWithOpenAI=true)
+		// returns ham for a short message - the message is still too short to be a "real check",
+		// so the approval counter must NOT increment and storage must NOT be written
+		mockUserStore := &mocks.UserStorageMock{
+			ReadFunc: func(context.Context) ([]approved.UserInfo, error) {
+				return []approved.UserInfo{}, nil
+			},
+			WriteFunc:  func(_ context.Context, au approved.UserInfo) error { return nil },
+			DeleteFunc: func(_ context.Context, id string) error { return nil },
+		}
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks fine", "confidence":40}`},
+					}},
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{MinMsgLen: 50, FirstMessagesCount: 2, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+		_, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// send 3 short messages, LLM clears each as ham
+		for range 3 {
+			spam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "222"})
+			assert.False(t, spam)
+		}
+
+		// LLM was called 3 times (once per short message)
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 3)
+
+		// approval counter must remain at 0 in memory
+		d.lock.RLock()
+		actualCount := d.approvedUsers["222"].Count
+		d.lock.RUnlock()
+		assert.Equal(t, 0, actualCount, "short messages cleared by LLM must not increment approval counter")
+
+		// user must not be approved
+		assert.False(t, d.IsApprovedUser("222"))
+
+		// storage must not be written for short messages even when LLM cleared them
+		assert.Empty(t, mockUserStore.WriteCalls(), "storage must not be written for short messages even when LLM clears them")
+	})
 }
 
 func TestDetectorRecordReaction(t *testing.T) {
