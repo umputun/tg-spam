@@ -643,7 +643,7 @@ func (d *Detector) IsApprovedUser(userID string) bool {
 	if !ok {
 		return false
 	}
-	return ui.Count > d.FirstMessagesCount
+	return ui.Count >= d.FirstMessagesCount
 }
 
 // AddApprovedUser adds user IDs to the list of approved users.
