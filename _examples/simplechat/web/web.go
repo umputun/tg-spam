@@ -209,7 +209,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 		if checkCredentials(username, password) {
 			sessionID := createSession(username)
-			http.SetCookie(w, &http.Cookie{Name: "session", Value: sessionID, Path: "/"})
+			http.SetCookie(w, &http.Cookie{ // #nosec G124 - simplechat can run over plain HTTP; keep Secure conditional
+				Name:     "session",
+				Value:    sessionID,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil,
+				SameSite: http.SameSiteLaxMode,
+			})
 			w.Header().Set("HX-Redirect", "/")
 			fmt.Fprint(w, "Login successful")
 		} else {
