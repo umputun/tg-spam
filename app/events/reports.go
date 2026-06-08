@@ -80,6 +80,11 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 
 	// validate reported user is not super user (check both username and ID)
 	if r.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+		// still delete the /report command to keep chat clean
+		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  update.Message.MessageID,
+			ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
+		}})
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 

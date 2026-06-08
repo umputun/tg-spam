@@ -219,8 +219,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
-	t.Run("reported user is superuser - should return error", func(t *testing.T) {
-		mockAPI := &mocks.TbAPIMock{}
+	t.Run("reported user is superuser - should delete command and return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
@@ -248,7 +252,11 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "from super-user")
-		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		require.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report command")
+		delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+		require.True(t, ok, "request should be a delete message config")
+		assert.Equal(t, 789, delReq.MessageID, "should delete the /report command message")
+		assert.Equal(t, int64(123), delReq.ChatID, "should delete from primary chat")
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
