@@ -385,7 +385,7 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
 4. Admins can review the reported message and take action using inline buttons:
    - **Approve Ban**: Immediately ban the reported user and delete the reported message
    - **Reject**: Reject this report without taking action
-   - **Ban Reporter**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+   - **Ban Reporters**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
 
 #### Advanced Reporting Features
 
