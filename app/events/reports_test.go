@@ -1063,11 +1063,15 @@ func TestUserReports_CheckReportThreshold(t *testing.T) {
 
 func TestUserReports_AutoBan(t *testing.T) {
 	t.Run("auto-ban triggers at correct threshold", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
 		mockAPI := &mocks.TbAPIMock{
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 				return &tbapi.APIResponse{Ok: true}, nil
 			},
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if m, ok := c.(tbapi.MessageConfig); ok {
+					sentMsg = m
+				}
 				return tbapi.Message{MessageID: 123}, nil
 			},
 		}
@@ -1116,6 +1120,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 		assert.Len(t, mockReports.DeleteByMessageCalls(), 1, "should delete reports")
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should delete message")
 		assert.Len(t, mockAPI.SendCalls(), 1, "should send auto-ban notification")
+		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 	})
 
 	t.Run("auto-ban respects soft-ban mode", func(t *testing.T) {
