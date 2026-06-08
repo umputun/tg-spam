@@ -1190,6 +1190,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 					}
 					assert.Contains(t, editMsg.Text, "auto-banned", "should mention auto-ban in updated text")
 					assert.Contains(t, editMsg.Text, "5 reports", "should show report count")
+					assert.Contains(t, editMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 				}
 				return tbapi.Message{MessageID: 123}, nil
 			},
@@ -1383,6 +1384,8 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 		{"with display name", "Елена Дроздова", 8788140656, "[Елена Дроздова (8788140656)](tg://user?id=8788140656)"},
 		{"empty name falls back to user<id>", "", 8250189078, "[user8250189078 (8250189078)](tg://user?id=8250189078)"},
 		{"markdown chars escaped", "spam_user*bot", 666, "[spam\\_user\\*bot (666)](tg://user?id=666)"},
+		{"link delimiter injection escaped", "bad](http://evil)", 666, "[bad\\](http://evil) (666)](tg://user?id=666)"},
+		{"backslash escaped", "a\\b", 666, "[a\\\\b (666)](tg://user?id=666)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1428,7 +1431,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Equal(t, int64(456), sentMsg.ChatID, "should send to admin chat")
 		assert.Equal(t, tbapi.ModeMarkdown, sentMsg.ParseMode, "should use markdown")
 		assert.Contains(t, sentMsg.Text, "User spam reported (1 reports)", "should contain report count")
-		assert.Contains(t, sentMsg.Text, "spammer", "should contain reported user name")
+		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 		assert.Contains(t, sentMsg.Text, "spam message", "should contain message text")
 		assert.Contains(t, sentMsg.Text, "reporter1", "should contain reporter name")
 
@@ -1443,6 +1446,26 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Equal(t, "R-666:100", *keyboard.InlineKeyboard[0][1].CallbackData)
 		assert.Equal(t, "⛔️ Ban Reporters", keyboard.InlineKeyboard[0][2].Text)
 		assert.Equal(t, "R?666:100", *keyboard.InlineKeyboard[0][2].CallbackData)
+	})
+
+	t.Run("empty reported name falls back to user<id> link", func(t *testing.T) {
+		var sentMsg tbapi.MessageConfig
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				sentMsg = c.(tbapi.MessageConfig)
+				return tbapi.Message{MessageID: 999}, nil
+			},
+		}
+		mockReports := &mocks.ReportsMock{
+			UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
+		}
+		rep := &userReports{tbAPI: mockAPI, adminChatID: 456, ReportConfig: ReportConfig{Storage: mockReports}}
+
+		reports := []storage.Report{
+			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam"},
+		}
+		require.NoError(t, rep.sendReportNotification(context.Background(), reports))
+		assert.Contains(t, sentMsg.Text, "[user666 (666)](tg://user?id=666)", "blank name should fall back to user<id> link")
 	})
 
 	t.Run("successful notification with multiple reports", func(t *testing.T) {
@@ -1740,7 +1763,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		assert.Equal(t, 888, editedMsg.MessageID, "should edit correct message")
 		assert.Equal(t, tbapi.ModeMarkdown, editedMsg.ParseMode, "should use markdown")
 		assert.Contains(t, editedMsg.Text, "User spam reported (3 reports)", "should contain updated report count")
-		assert.Contains(t, editedMsg.Text, "spammer", "should contain reported user name")
+		assert.Contains(t, editedMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 		assert.Contains(t, editedMsg.Text, "spam message", "should contain message text")
 		assert.Contains(t, editedMsg.Text, "reporter1", "should contain first reporter")
 		assert.Contains(t, editedMsg.Text, "reporter2", "should contain second reporter")

@@ -334,7 +334,13 @@ func (r *userReports) reportedUserMD(name string, id int64) string {
 	if name == "" {
 		name = fmt.Sprintf("user%d", id)
 	}
-	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", escapeMarkDownV1Text(name), id, id)
+	// escape for a markdown-v1 link label: backslash first, then the markdown specials, then "]" which
+	// escapeMarkDownV1Text does not handle and which would otherwise close the label early (link injection
+	// via an arbitrary first+last display name)
+	label := strings.ReplaceAll(name, "\\", "\\\\")
+	label = escapeMarkDownV1Text(label)
+	label = strings.ReplaceAll(label, "]", "\\]")
+	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", label, id, id)
 }
 
 // sendAutoBanNotification sends notification to admin chat about automatic ban
