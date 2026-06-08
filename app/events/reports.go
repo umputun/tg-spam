@@ -141,6 +141,14 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("reports storage not initialized")
 	}
 
+	// resolve reported user name to match the ban report format: @username, then first+last name
+	reportedName := ""
+	if origMsg.From.UserName != "" {
+		reportedName = "@" + origMsg.From.UserName
+	} else {
+		reportedName = strings.TrimSpace(origMsg.From.FirstName + " " + origMsg.From.LastName)
+	}
+
 	// create report
 	report := storage.Report{
 		MsgID:            origMsg.MessageID,
@@ -148,7 +156,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		ReporterUserID:   update.Message.From.ID,
 		ReporterUserName: update.Message.From.UserName,
 		ReportedUserID:   origMsg.From.ID,
-		ReportedUserName: origMsg.From.UserName,
+		ReportedUserName: reportedName,
 		MsgText:          msgTxt,
 	}
 
@@ -320,6 +328,15 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 	return nil
 }
 
+// reportedUserMD formats the reported user as a markdown link "name (id)", matching the ban report format.
+// falls back to "user<id>" when the name is empty so the link label is never blank.
+func (r *userReports) reportedUserMD(name string, id int64) string {
+	if name == "" {
+		name = fmt.Sprintf("user%d", id)
+	}
+	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", escapeMarkDownV1Text(name), id, id)
+}
+
 // sendAutoBanNotification sends notification to admin chat about automatic ban
 func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 	if len(reports) == 0 {
@@ -350,11 +367,10 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 		actionType = "restricted"
 	}
 
-	notificationText := fmt.Sprintf("**Auto-%s user after %d reports**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s",
+	notificationText := fmt.Sprintf("**Auto-%s user after %d reports**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
 		actionType,
 		len(reports),
-		escapeMarkDownV1Text(reportedUserName),
-		reportedUserID,
+		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"))
 
@@ -408,11 +424,10 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) err
 	}
 
 	// create updated notification text with auto-ban confirmation
-	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n"+
+	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n"+
 		"**Reporters:**\n%s\n\n_auto-%s after reaching %d reports_",
 		len(reports),
-		escapeMarkDownV1Text(reportedUserName),
-		reportedUserID,
+		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"),
 		actionType,
@@ -466,10 +481,9 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 	}
 
 	// format notification message
-	notificationText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s",
+	notificationText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
 		len(reports),
-		escapeMarkDownV1Text(reportedUserName),
-		reportedUserID,
+		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"))
 
@@ -483,7 +497,7 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporters", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 		),
 	)
 
@@ -547,7 +561,7 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 
 	// create notification message
 	notification := fmt.Sprintf("**User spam reported (%d reports)**\n\n", len(reports)) +
-		fmt.Sprintf("[%s](tg://user?id=%d)\n\n", escapeMarkDownV1Text(reportedUserName), reportedUserID) +
+		fmt.Sprintf("%s\n\n", r.reportedUserMD(reportedUserName, reportedUserID)) +
 		fmt.Sprintf("%s\n\n", msgText) +
 		fmt.Sprintf("**Reporters:**\n%s", strings.Join(reporterList, "\n"))
 
@@ -560,7 +574,7 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporters", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 		),
 	)
 
@@ -842,10 +856,9 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 				escapeMarkDownV1Text(rName), report.ReporterUserID))
 		}
 
-		updText := fmt.Sprintf("**User spam reported (%d reports)**\n\n[%s](tg://user?id=%d)\n\n%s\n\n**Reporters:**\n%s",
+		updText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
 			len(remainingReports),
-			escapeMarkDownV1Text(reportedUserName),
-			reportedUserID,
+			r.reportedUserMD(reportedUserName, reportedUserID),
 			msgText,
 			strings.Join(reporterList, "\n"))
 		updText += fmt.Sprintf("\n\n_reporter %s banned by %s_", escapeMarkDownV1Text(reporterName), query.From.UserName)
@@ -859,7 +872,7 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			tbapi.NewInlineKeyboardRow(
 				tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 				tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-				tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+				tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporters", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 			),
 		)
 
@@ -889,7 +902,7 @@ func (r *userReports) callbackReportCancel(_ context.Context, query *tbapi.Callb
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
 			tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
-			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporter", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporters", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
 		),
 	)
 

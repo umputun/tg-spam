@@ -136,7 +136,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				assert.Equal(t, int64(111), report.ReporterUserID)
 				assert.Equal(t, "reporter", report.ReporterUserName)
 				assert.Equal(t, int64(666), report.ReportedUserID)
-				assert.Equal(t, "spammer", report.ReportedUserName)
+				assert.Equal(t, "@spammer", report.ReportedUserName, "username should be prefixed with @")
 				assert.Equal(t, "spam message", report.MsgText)
 				return nil
 			},
@@ -184,6 +184,52 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Len(t, mockAPI.RequestCalls(), 1, "should delete /report message")
 		assert.Len(t, mockReports.AddCalls(), 1, "should add report to storage")
 		assert.Len(t, mockReports.GetReporterCountSinceCalls(), 1, "should check rate limit")
+	})
+
+	t.Run("reported user without username - resolves first+last name", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+		mockReports := &mocks.ReportsMock{
+			AddFunc: func(ctx context.Context, report storage.Report) error {
+				assert.Equal(t, int64(666), report.ReportedUserID)
+				assert.Equal(t, "Елена Дроздова", report.ReportedUserName, "should fall back to first+last name")
+				return nil
+			},
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{}, nil
+			},
+		}
+		mockBot := &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return true }}
+
+		rep := &userReports{
+			tbAPI:        mockAPI,
+			bot:          mockBot,
+			primChatID:   123,
+			adminChatID:  456,
+			superUsers:   SuperUsers{},
+			ReportConfig: ReportConfig{Storage: mockReports, Threshold: 2},
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "reporter", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					From:      &tbapi.User{ID: 666, FirstName: "Елена", LastName: "Дроздова"},
+					Text:      "spam message",
+				},
+			},
+		}
+
+		err := rep.DirectUserReport(context.Background(), update)
+		require.NoError(t, err)
+		require.Len(t, mockReports.AddCalls(), 1, "should add report to storage")
 	})
 
 	t.Run("reporter is superuser - should return error", func(t *testing.T) {
@@ -1325,6 +1371,26 @@ func TestUserReports_AutoBan(t *testing.T) {
 	})
 }
 
+func TestUserReports_reportedUserMD(t *testing.T) {
+	rep := &userReports{}
+	tests := []struct {
+		name     string
+		userName string
+		id       int64
+		want     string
+	}{
+		{"with username", "@spammer", 666, "[@spammer (666)](tg://user?id=666)"},
+		{"with display name", "Елена Дроздова", 8788140656, "[Елена Дроздова (8788140656)](tg://user?id=8788140656)"},
+		{"empty name falls back to user<id>", "", 8250189078, "[user8250189078 (8250189078)](tg://user?id=8250189078)"},
+		{"markdown chars escaped", "spam_user*bot", 666, "[spam\\_user\\*bot (666)](tg://user?id=666)"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, rep.reportedUserMD(tc.userName, tc.id))
+		})
+	}
+}
+
 func TestUserReports_SendReportNotification(t *testing.T) {
 	t.Run("successful notification with single report", func(t *testing.T) {
 		var sentMsg tbapi.MessageConfig
@@ -1375,7 +1441,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Equal(t, "R+666:100", *keyboard.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", keyboard.InlineKeyboard[0][1].Text)
 		assert.Equal(t, "R-666:100", *keyboard.InlineKeyboard[0][1].CallbackData)
-		assert.Equal(t, "⛔️ Ban Reporter", keyboard.InlineKeyboard[0][2].Text)
+		assert.Equal(t, "⛔️ Ban Reporters", keyboard.InlineKeyboard[0][2].Text)
 		assert.Equal(t, "R?666:100", *keyboard.InlineKeyboard[0][2].CallbackData)
 	})
 
@@ -1688,7 +1754,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		assert.Equal(t, "R+666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 		assert.Equal(t, "❌ Reject", editedMsg.ReplyMarkup.InlineKeyboard[0][1].Text)
 		assert.Equal(t, "R-666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
-		assert.Equal(t, "⛔️ Ban Reporter", editedMsg.ReplyMarkup.InlineKeyboard[0][2].Text)
+		assert.Equal(t, "⛔️ Ban Reporters", editedMsg.ReplyMarkup.InlineKeyboard[0][2].Text)
 		assert.Equal(t, "R?666:100", *editedMsg.ReplyMarkup.InlineKeyboard[0][2].CallbackData)
 	})
 
@@ -2301,7 +2367,7 @@ func TestUserReports_CallbackReportCancel(t *testing.T) {
 					assert.Equal(t, "R+666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][0].CallbackData)
 					assert.Equal(t, "❌ Reject", editMarkup.ReplyMarkup.InlineKeyboard[0][1].Text)
 					assert.Equal(t, "R-666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][1].CallbackData)
-					assert.Equal(t, "⛔️ Ban Reporter", editMarkup.ReplyMarkup.InlineKeyboard[0][2].Text)
+					assert.Equal(t, "⛔️ Ban Reporters", editMarkup.ReplyMarkup.InlineKeyboard[0][2].Text)
 					assert.Equal(t, "R?666:100", *editMarkup.ReplyMarkup.InlineKeyboard[0][2].CallbackData)
 				}
 				return tbapi.Message{}, nil
