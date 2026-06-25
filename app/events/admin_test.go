@@ -1228,6 +1228,24 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		assert.Equal(t, int64(123), lastCall.C.(tbapi.DeleteMessageConfig).ChatID)
 	})
 
+	t.Run("callbackBanConfirmed_TrainingMode_reactionNoMsgID", func(t *testing.T) {
+		mockAPI, _, adm, query := setupCallback(true, false)
+		query.Data = "+12345:0" // reaction ban has no underlying message to delete
+
+		err := adm.callbackBanConfirmed(query)
+		require.NoError(t, err)
+
+		banned := false
+		for _, c := range mockAPI.RequestCalls() {
+			_, isDelete := c.C.(tbapi.DeleteMessageConfig)
+			assert.False(t, isDelete, "no message deletion when msgID is 0")
+			if _, ok := c.C.(tbapi.BanChatMemberConfig); ok {
+				banned = true
+			}
+		}
+		assert.True(t, banned, "user still banned for real on training-mode confirm")
+	})
+
 	t.Run("callbackBanConfirmed_SoftBan", func(t *testing.T) {
 		mockAPI, botMock, adm, query := setupCallback(false, true)
 

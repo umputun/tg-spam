@@ -4561,6 +4561,50 @@ func TestProcReaction(t *testing.T) {
 		assert.Equal(t, "[reaction spam]", spamLoggerMock.SaveCalls()[0].Msg.Text)
 	})
 
+	t.Run("admin notification includes change-ban and info buttons", func(t *testing.T) {
+		mockAPI := makeAPI(t)
+		locatorMock := &mocks.LocatorMock{
+			AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+		}
+		spamLoggerMock := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+		botMock := &mocks.BotMock{
+			OnReactionFunc: func(userID int64, userName string) bot.Response {
+				return bot.Response{
+					BanInterval:  bot.PermanentBanDuration,
+					User:         bot.User{ID: 42, Username: "spammer"},
+					CheckResults: []spamcheck.Response{{Name: "reactions", Spam: true, Details: "5 reactions in 1s"}},
+				}
+			},
+		}
+		l := TelegramListener{TbAPI: mockAPI, Bot: botMock, Locator: locatorMock, SpamLogger: spamLoggerMock}
+		l.chatID = 123
+		l.adminChatID = 999
+		l.adminHandler = &admin{tbAPI: mockAPI, bot: botMock, locator: locatorMock, adminChatID: 999, primChatID: 123}
+
+		err := l.procReaction(context.Background(), &tbapi.MessageReactionUpdated{
+			Chat:        tbapi.Chat{ID: 123},
+			User:        &tbapi.User{ID: 42, UserName: "spammer"},
+			NewReaction: []tbapi.ReactionType{{Type: "emoji", Emoji: "👍"}},
+		})
+		require.NoError(t, err)
+
+		require.Len(t, mockAPI.SendCalls(), 1, "notification should be sent to admin chat")
+		sentMsg, ok := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		require.True(t, ok)
+		assert.Equal(t, int64(999), sentMsg.ChatID)
+		assert.Contains(t, sentMsg.Text, "permanently banned reaction spammer")
+		assert.Contains(t, sentMsg.Text, "tg://user?id=42")
+
+		markup, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.True(t, ok, "notification should carry inline keyboard")
+		require.Len(t, markup.InlineKeyboard, 1)
+		require.Len(t, markup.InlineKeyboard[0], 2, "should have change-ban and info buttons")
+		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
+		require.NotNil(t, markup.InlineKeyboard[0][1].CallbackData)
+		assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData, "change-ban callback, msgID 0 for reactions")
+		assert.Equal(t, "!42:0", *markup.InlineKeyboard[0][1].CallbackData, "info callback, msgID 0 for reactions")
+	})
+
 	t.Run("superuser reaction ignored", func(t *testing.T) {
 		mockAPI := makeAPI(t)
 		botMock := &mocks.BotMock{}

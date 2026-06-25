@@ -88,6 +88,22 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
+// ReportReactionBan sends a reaction-spammer ban notification to admin chat with the same unban/info buttons as ReportBan.
+// reactions have no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
+func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
+	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
+	text := fmt.Sprintf("**permanently banned reaction spammer %s**\n\n", link)
+	switch {
+	case a.trainingMode:
+		text = fmt.Sprintf("**[training] reaction spammer detected: %s**\n\n", link)
+	case a.dry:
+		text = fmt.Sprintf("**[dry run] would ban reaction spammer %s**\n\n", link)
+	}
+	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
+		log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+	}
+}
+
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
 // the user will be banned even in training mode, but not in the dry mode.
@@ -1055,13 +1071,16 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 		}
 	}
 
+	// reaction bans have no underlying message (msgID 0), so there is nothing to delete.
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  msgID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
-	if err != nil {
-		return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+	if msgID != 0 {
+		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  msgID,
+			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+		}})
+		if err != nil {
+			return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+		}
 	}
 
 	// any errors happened above will be returned

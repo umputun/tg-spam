@@ -808,18 +808,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
 	}
 	if l.adminChatID != 0 && resp.User.ID != 0 {
-		// reactions don't have a message ID to delete, so send a plain notification without action buttons
-		notifText := fmt.Sprintf("permanently banned reaction spammer %s", banUserStr)
-		switch {
-		case l.TrainingMode:
-			notifText = fmt.Sprintf("[training] reaction spammer detected: %s", banUserStr)
-		case l.Dry:
-			notifText = fmt.Sprintf("[dry run] would ban reaction spammer %s", banUserStr)
-		}
-		notif := tbapi.NewMessage(l.adminChatID, notifText)
-		if _, err := l.TbAPI.Send(notif); err != nil {
-			log.Printf("[WARN] failed to send reaction ban notification: %v", err)
-		}
+		l.adminHandler.ReportReactionBan(banUserStr, resp.User)
 	}
 	return nil
 }
