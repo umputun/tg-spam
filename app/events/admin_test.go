@@ -126,6 +126,12 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 			expected: "",
 			err:      true,
 		},
+		{
+			name:     "reaction ban notification has no body",
+			input:    "permanently banned @spammer (42) reaction spammer",
+			expected: "",
+			err:      true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -173,6 +179,8 @@ func TestAdmin_extractUsername(t *testing.T) {
 		{name: "t.me channel link", banMessage: "**permanently banned [spamchannel](https://t.me/spamchannel)**\n\nspam text", expectedResult: "spamchannel"},
 		{name: "plain channel with ID", banMessage: "**permanently banned mychannel (-100999888)**\n\nspam text", expectedResult: "mychannel"},
 		{name: "plain channel multi-word title", banMessage: "**permanently banned Spam News Channel (-100999888)**\n\ntext", expectedResult: "Spam News Channel"},
+		{name: "reaction markdown", banMessage: "**permanently banned [spammer](tg://user?id=42) reaction spammer**\n\n", expectedResult: "spammer"},
+		{name: "reaction rendered", banMessage: "permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
 		{name: "invalid format", banMessage: "permanently banned John_Doe some message text", expectError: true},
 	}
 
@@ -1230,7 +1238,8 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 
 	t.Run("callbackBanConfirmed_TrainingMode_reactionNoMsgID", func(t *testing.T) {
 		mockAPI, _, adm, query := setupCallback(true, false)
-		query.Data = "+12345:0" // reaction ban has no underlying message to delete
+		query.Data = "+12345:0"                                                     // reaction ban has no underlying message to delete
+		query.Message.Text = "permanently banned @spammer (12345) reaction spammer" // reaction notif has no message body
 
 		err := adm.callbackBanConfirmed(query)
 		require.NoError(t, err)
@@ -1244,6 +1253,55 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 			}
 		}
 		assert.True(t, banned, "user still banned for real on training-mode confirm")
+
+		// admin message is edited to confirm the ban
+		require.GreaterOrEqual(t, len(mockAPI.SendCalls()), 1)
+		editMsg, ok := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
+		require.True(t, ok)
+		assert.Contains(t, editMsg.Text, "ban confirmed by admin")
+	})
+
+	t.Run("callbackUnbanConfirmed_reaction", func(t *testing.T) {
+		mockAPI, _, adm, _ := setupCallback(false, false)
+		botMock := &mocks.BotMock{
+			UpdateHamFunc:       func(msg string) error { return nil },
+			AddApprovedUserFunc: func(id int64, name string) error { return nil },
+		}
+		adm.bot = botMock
+
+		// reaction ban: msgID 0, rendered (markdown-stripped) notification text as telegram returns it on callback
+		query := &tbapi.CallbackQuery{
+			ID:   "test-callback-id",
+			Data: "42:0",
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "permanently banned @spammer (42) reaction spammer",
+				From:      &tbapi.User{UserName: "bot"},
+			},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+		}
+
+		err := adm.callbackUnbanConfirmed(query)
+		require.NoError(t, err)
+
+		// regular user unban uses UnbanChatMemberConfig (not channel), no message deletion for msgID 0
+		var foundUnban bool
+		for _, call := range mockAPI.RequestCalls() {
+			_, isDelete := call.C.(tbapi.DeleteMessageConfig)
+			assert.False(t, isDelete, "no message deletion on reaction unban")
+			if unbanCall, ok := call.C.(tbapi.UnbanChatMemberConfig); ok {
+				foundUnban = true
+				assert.Equal(t, int64(42), unbanCall.UserID)
+				assert.Equal(t, int64(123), unbanCall.ChatID)
+			}
+		}
+		assert.True(t, foundUnban, "expected UnbanChatMemberConfig for reaction spammer")
+
+		// approved user added with the clean extracted username, not "reaction spammer @spammer"
+		require.Len(t, botMock.AddApprovedUserCalls(), 1)
+		assert.Equal(t, int64(42), botMock.AddApprovedUserCalls()[0].ID)
+		assert.Equal(t, "@spammer", botMock.AddApprovedUserCalls()[0].Name)
 	})
 
 	t.Run("callbackBanConfirmed_SoftBan", func(t *testing.T) {

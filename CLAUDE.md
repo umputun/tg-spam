@@ -123,6 +123,12 @@
 - Training/dry/soft-ban: feature emits a normal spam result through the existing pipeline, so the listener's mode handling intercepts identically to other spam checks (no special-casing)
 - Naturally-terse legitimate users carry a bounded false-positive risk during the evaluation window only; once the user crosses `FirstMessagesCount` they are approved and immune. Recommended baseline: `MaxShortMsgCount >= 3` with low `FirstMessagesCount` (1–2)
 
+### Reaction Ban Notifications
+- Reaction-spammer bans (`procReaction` in `app/events/listener.go`) are reported to the admin chat via `admin.ReportReactionBan`, which reuses the same `change ban`/`info` inline keyboard as `ReportBan` (`sendWithUnbanMarkup`) so admins can unban+approve a wrongly banned reaction spammer
+- Reactions have no underlying message, so the callback carries `msgID = 0` as a sentinel. Two paths must honor it: `deleteAndBan` skips the Telegram delete when `msgID == 0` (removing the `if msgID != 0` guard would make every reaction-ban confirmation try to delete message 0), and `callbackUnbanConfirmed` already discards msgID (`userID, _, err := parseCallbackData(...)`)
+- The notification text keeps the `[user](tg://user?id=N)` link immediately after "permanently banned" because Telegram strips markdown from callback text; `extractUsername`'s plain-channel regex would otherwise capture any words placed between "permanently banned" and the trailing `(id)` as the approved-user name
+- `getCleanMessage` returns empty/error on the short reaction notification (no message body), so the unban path correctly skips `UpdateHam` — no `[reaction spam]` sample is learned
+
 ### LLM Checker Structure
 - Shared provider-agnostic LLM flow lives in `lib/tgspam/llm.go`
 - Keep provider-specific transport and request construction in `lib/tgspam/openai.go`, `lib/tgspam/gemini.go`, etc

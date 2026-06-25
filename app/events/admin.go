@@ -92,7 +92,9 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 // reactions have no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
 func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
 	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
-	text := fmt.Sprintf("**permanently banned reaction spammer %s**\n\n", link)
+	// keep the user link immediately after "permanently banned" so extractUsername parses it cleanly on unban;
+	// telegram strips markdown from callback text, so any words placed between the two get captured as the name
+	text := fmt.Sprintf("**permanently banned %s reaction spammer**\n\n", link)
 	switch {
 	case a.trainingMode:
 		text = fmt.Sprintf("**[training] reaction spammer detected: %s**\n\n", link)
@@ -1048,7 +1050,8 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 	return nil
 }
 
-// deleteAndBan deletes the message and bans the user
+// deleteAndBan bans the user and deletes the message; deletion is skipped when msgID is 0
+// (reaction bans have no underlying message).
 func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int) error {
 	errs := new(multierror.Error)
 	userName := a.locator.UserNameByID(context.TODO(), userID)
@@ -1079,7 +1082,7 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
 		}})
 		if err != nil {
-			return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+			return fmt.Errorf("failed to delete message %d: %w", msgID, err)
 		}
 	}
 
@@ -1093,10 +1096,14 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 		return errors.New(strings.Join(errMsgs, "\n")) // reformat to be md friendly
 	}
 
+	deletedPart := ""
+	if msgID != 0 {
+		deletedPart = fmt.Sprintf("message %d deleted, ", msgID)
+	}
 	if msgFromSuper {
-		log.Printf("[INFO] message %d deleted, user %q (%d) is super, not banned", msgID, userName, userID)
+		log.Printf("[INFO] %suser %q (%d) is super, not banned", deletedPart, userName, userID)
 	} else {
-		log.Printf("[INFO] message %d deleted, user %q (%d) banned", msgID, userName, userID)
+		log.Printf("[INFO] %suser %q (%d) banned", deletedPart, userName, userID)
 	}
 	return nil
 }

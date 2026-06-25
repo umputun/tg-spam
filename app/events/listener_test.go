@@ -4592,8 +4592,10 @@ func TestProcReaction(t *testing.T) {
 		sentMsg, ok := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
 		require.True(t, ok)
 		assert.Equal(t, int64(999), sentMsg.ChatID)
-		assert.Contains(t, sentMsg.Text, "permanently banned reaction spammer")
-		assert.Contains(t, sentMsg.Text, "tg://user?id=42")
+		assert.Contains(t, sentMsg.Text, "permanently banned")
+		assert.Contains(t, sentMsg.Text, "reaction spammer")
+		// user link sits immediately after "permanently banned" so extractUsername parses it cleanly on unban
+		assert.Contains(t, sentMsg.Text, "permanently banned [@spammer (42)](tg://user?id=42)")
 
 		markup, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.True(t, ok, "notification should carry inline keyboard")
@@ -4601,6 +4603,8 @@ func TestProcReaction(t *testing.T) {
 		require.Len(t, markup.InlineKeyboard[0], 2, "should have change-ban and info buttons")
 		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
 		require.NotNil(t, markup.InlineKeyboard[0][1].CallbackData)
+		assert.Contains(t, markup.InlineKeyboard[0][0].Text, "change ban", "first button is change ban")
+		assert.Contains(t, markup.InlineKeyboard[0][1].Text, "info", "second button is info")
 		assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData, "change-ban callback, msgID 0 for reactions")
 		assert.Equal(t, "!42:0", *markup.InlineKeyboard[0][1].CallbackData, "info callback, msgID 0 for reactions")
 	})
@@ -4804,6 +4808,11 @@ func TestProcReaction(t *testing.T) {
 		msg := sendCalls[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(456), msg.ChatID)
 		assert.Contains(t, msg.Text, "[dry run]")
+		// buttons are attached regardless of mode
+		markup, ok := msg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.True(t, ok, "dry-run notification should carry inline keyboard")
+		require.Len(t, markup.InlineKeyboard, 1)
+		require.Len(t, markup.InlineKeyboard[0], 2)
 	})
 
 	t.Run("threshold reached, training mode admin notified", func(t *testing.T) {
@@ -4844,5 +4853,10 @@ func TestProcReaction(t *testing.T) {
 		msg := sendCalls[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(456), msg.ChatID)
 		assert.Contains(t, msg.Text, "[training]")
+		// buttons are attached regardless of mode
+		markup, ok := msg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.True(t, ok, "training notification should carry inline keyboard")
+		require.Len(t, markup.InlineKeyboard, 1)
+		require.Len(t, markup.InlineKeyboard[0], 2)
 	})
 }
