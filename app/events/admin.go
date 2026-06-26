@@ -88,6 +88,24 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
+// ReportReactionBan sends a reaction-spammer ban notification to admin chat with the same unban/info buttons as ReportBan.
+// reactions have no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
+func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
+	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
+	// keep the user link immediately after "permanently banned" so extractUsername parses it cleanly on unban;
+	// telegram strips markdown from callback text, so any words placed between the two get captured as the name
+	text := fmt.Sprintf("**permanently banned %s reaction spammer**\n\n", link)
+	switch {
+	case a.trainingMode:
+		text = fmt.Sprintf("**[training] would have permanently banned %s reaction spammer**\n\n", link)
+	case a.dry:
+		text = fmt.Sprintf("**[dry run] would have permanently banned %s reaction spammer**\n\n", link)
+	}
+	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
+		log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+	}
+}
+
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
 // the user will be banned even in training mode, but not in the dry mode.
@@ -838,7 +856,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 
 	if a.trainingMode {
 		// in training mode, the user is not banned automatically, here we do the real ban & delete the message
-		if err := a.deleteAndBan(query, userID, msgID); err != nil {
+		if err := a.deleteAndBan(userID, msgID); err != nil {
 			return fmt.Errorf("failed to ban user %d: %w", userID, err)
 		}
 	}
@@ -1032,8 +1050,9 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 	return nil
 }
 
-// deleteAndBan deletes the message and bans the user
-func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int) error {
+// deleteAndBan bans the user and deletes the message; deletion is skipped when msgID is 0
+// (reaction bans have no underlying message).
+func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	errs := new(multierror.Error)
 	userName := a.locator.UserNameByID(context.TODO(), userID)
 	banReq := banRequest{
@@ -1055,13 +1074,16 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 		}
 	}
 
+	// reaction bans have no underlying message (msgID 0), so there is nothing to delete.
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  msgID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
-	if err != nil {
-		return fmt.Errorf("failed to delete message %d: %w", query.Message.MessageID, err)
+	if msgID != 0 {
+		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
+			MessageID:  msgID,
+			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
+		}})
+		if err != nil {
+			return fmt.Errorf("failed to delete message %d: %w", msgID, err)
+		}
 	}
 
 	// any errors happened above will be returned
@@ -1074,10 +1096,14 @@ func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int
 		return errors.New(strings.Join(errMsgs, "\n")) // reformat to be md friendly
 	}
 
+	deletedPart := ""
+	if msgID != 0 {
+		deletedPart = fmt.Sprintf("message %d deleted, ", msgID)
+	}
 	if msgFromSuper {
-		log.Printf("[INFO] message %d deleted, user %q (%d) is super, not banned", msgID, userName, userID)
+		log.Printf("[INFO] %suser %q (%d) is super, not banned", deletedPart, userName, userID)
 	} else {
-		log.Printf("[INFO] message %d deleted, user %q (%d) banned", msgID, userName, userID)
+		log.Printf("[INFO] %suser %q (%d) banned", deletedPart, userName, userID)
 	}
 	return nil
 }

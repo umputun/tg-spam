@@ -221,6 +221,8 @@ This option is disabled by default. When enabled, the bot tracks emoji reactions
 
 Only applies to unapproved users — approved users are exempt from reaction spam detection.
 
+Reaction bans are reported to the admin chat with the same `change ban` and `info` buttons as message-based bans, so a wrongly banned reaction spammer can be unbanned and approved straight from the notification (`change ban` opens an unban/keep-banned confirmation).
+
 Note: the bot always subscribes to `message_reaction` updates from Telegram on startup, regardless of whether `--reactions.max-reactions` is set. This is a change from previous versions where no reaction updates were requested.
 
 Configure with:
