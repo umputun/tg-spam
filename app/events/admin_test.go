@@ -179,8 +179,10 @@ func TestAdmin_extractUsername(t *testing.T) {
 		{name: "t.me channel link", banMessage: "**permanently banned [spamchannel](https://t.me/spamchannel)**\n\nspam text", expectedResult: "spamchannel"},
 		{name: "plain channel with ID", banMessage: "**permanently banned mychannel (-100999888)**\n\nspam text", expectedResult: "mychannel"},
 		{name: "plain channel multi-word title", banMessage: "**permanently banned Spam News Channel (-100999888)**\n\ntext", expectedResult: "Spam News Channel"},
-		{name: "reaction markdown", banMessage: "**permanently banned [spammer](tg://user?id=42) reaction spammer**\n\n", expectedResult: "spammer"},
+		{name: "reaction markdown", banMessage: "**permanently banned [@spammer (42)](tg://user?id=42) reaction spammer**\n\n", expectedResult: "@spammer (42)"},
 		{name: "reaction rendered", banMessage: "permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
+		{name: "reaction rendered dry", banMessage: "[dry run] would have permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
+		{name: "reaction rendered training", banMessage: "[training] would have permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
 		{name: "invalid format", banMessage: "permanently banned John_Doe some message text", expectError: true},
 	}
 

@@ -97,9 +97,9 @@ func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
 	text := fmt.Sprintf("**permanently banned %s reaction spammer**\n\n", link)
 	switch {
 	case a.trainingMode:
-		text = fmt.Sprintf("**[training] reaction spammer detected: %s**\n\n", link)
+		text = fmt.Sprintf("**[training] would have permanently banned %s reaction spammer**\n\n", link)
 	case a.dry:
-		text = fmt.Sprintf("**[dry run] would ban reaction spammer %s**\n\n", link)
+		text = fmt.Sprintf("**[dry run] would have permanently banned %s reaction spammer**\n\n", link)
 	}
 	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
 		log.Printf("[WARN] failed to send reaction ban notification: %v", err)
@@ -856,7 +856,7 @@ func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 
 	if a.trainingMode {
 		// in training mode, the user is not banned automatically, here we do the real ban & delete the message
-		if err := a.deleteAndBan(query, userID, msgID); err != nil {
+		if err := a.deleteAndBan(userID, msgID); err != nil {
 			return fmt.Errorf("failed to ban user %d: %w", userID, err)
 		}
 	}
@@ -1052,7 +1052,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 
 // deleteAndBan bans the user and deletes the message; deletion is skipped when msgID is 0
 // (reaction bans have no underlying message).
-func (a *admin) deleteAndBan(query *tbapi.CallbackQuery, userID int64, msgID int) error {
+func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	errs := new(multierror.Error)
 	userName := a.locator.UserNameByID(context.TODO(), userID)
 	banReq := banRequest{
