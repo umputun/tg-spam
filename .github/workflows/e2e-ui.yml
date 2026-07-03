@@ -23,6 +23,8 @@ jobs:
   e2e-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PLAYWRIGHT_GO_VERSION: v0.5200.1 # keep in sync with playwright-community/playwright-go in go.mod
 
     steps:
       - name: checkout
@@ -40,15 +42,15 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_GO_VERSION }}-${{ hashFiles('go.sum') }}
 
       - name: install playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install --with-deps chromium
+        run: go run github.com/playwright-community/playwright-go/cmd/playwright@${{ env.PLAYWRIGHT_GO_VERSION }} install --with-deps chromium
 
       - name: install playwright deps only
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install-deps chromium
+        run: go run github.com/playwright-community/playwright-go/cmd/playwright@${{ env.PLAYWRIGHT_GO_VERSION }} install-deps chromium
 
       - name: run e2e ui tests
         run: go test -v -count=1 -timeout=5m -tags=e2e ./e2e-ui/...
