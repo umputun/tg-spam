@@ -574,6 +574,88 @@ func TestDetector_CheckDuplicatesConcurrency(t *testing.T) {
 	assert.Equal(t, expectedCount+1, count, "count should be accurate with no race conditions")
 }
 
+func TestDetector_CheckApprovedUsersConcurrency(t *testing.T) {
+	d := NewDetector(Config{FirstMessageOnly: true, FirstMessagesCount: 1})
+
+	concurrency := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency * 2)
+
+	// writers: distinct users get added to approvedUsers via the Check approval path
+	for i := range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.Check(spamcheck.Request{
+					UserID: fmt.Sprintf("user-%d-%d", i, j),
+					Msg:    "long enough legitimate message to pass the approval path",
+				})
+			}
+		}()
+	}
+
+	// readers: exercise concurrent approvedUsers reads while writers update the map
+	for range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.IsApprovedUser(fmt.Sprintf("user-0-%d", j))
+				d.ApprovedUsers()
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, d.IsApprovedUser("user-0-0"), "user should be approved after first ham message")
+	assert.Len(t, d.ApprovedUsers(), concurrency*iterations)
+}
+
+func TestDetector_CheckApprovedUsersConcurrencySameUser(t *testing.T) {
+	d := NewDetector(Config{FirstMessageOnly: true, FirstMessagesCount: 2})
+
+	concurrency := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	// concurrent messages from one user: all can pass the pre-approved check before
+	// any increment lands, the count must still not exceed the approved level
+	for i := range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.Check(spamcheck.Request{
+					UserID: "same-user",
+					Msg:    fmt.Sprintf("long enough legitimate message %d-%d to pass the approval path", i, j),
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, d.IsApprovedUser("same-user"))
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.LessOrEqual(t, users[0].Count, d.FirstMessagesCount, "count must be capped at organic approval level")
+}
+
+func TestDetector_CheckApprovedCountCap(t *testing.T) {
+	// with FirstMessageOnly disabled the pre-approved branch never short-circuits,
+	// so every ham message hits the increment and the cap is exercised deterministically
+	d := NewDetector(Config{FirstMessagesCount: 2})
+
+	for i := range 10 {
+		d.Check(spamcheck.Request{UserID: "u1", Msg: fmt.Sprintf("long enough legitimate message %d", i)})
+	}
+
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.Equal(t, 2, users[0].Count, "count must be capped at FirstMessagesCount")
+}
+
 func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
 	d := NewDetector(Config{
 		DuplicateDetection: struct {

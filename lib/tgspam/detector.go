@@ -61,6 +61,10 @@ type Detector struct {
 	spamHistory *spamcheck.LastRequests
 
 	lock sync.RWMutex
+	// auLock guards approvedUsers map access. it is a leaf lock: safe to take while holding
+	// d.lock in either mode, never acquire d.lock while holding it. needed because Check
+	// updates the map while holding d.lock as a read lock only.
+	auLock sync.RWMutex
 }
 
 // LLMConsensusMode controls how eligible LLM checks flip the base decision.
@@ -243,7 +247,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	// approved user don't need content analysis checks, but only skip if no spam detected by behavioral checks
-	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
+	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedCount(req.UserID) >= d.FirstMessagesCount {
 		// include previous check results (e.g., duplicate check) in the response
 		return false, append(cr, spamcheck.Response{Name: "pre-approved", Spam: false, Details: "user already approved"})
 	}
@@ -388,13 +392,24 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly && !isShortMessage {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
+		d.auLock.Lock()
+		// cap the count at the organic approval level: concurrent first messages from the same
+		// user can all pass the pre-approved check before any increment lands, and an inflated
+		// count would weaken the short-msg-flood excess calculation. sequential flow never gets
+		// past FirstMessagesCount because the pre-approved branch short-circuits; the +1 sentinel
+		// is reserved for explicit AddApprovedUser and storage-loaded users
+		newCount := d.approvedUsers[req.UserID].Count + 1
+		if maxCount := max(d.FirstMessagesCount, 1); newCount > maxCount {
+			newCount = maxCount
+		}
 		au := approved.UserInfo{
-			Count:     d.approvedUsers[req.UserID].Count + 1,
+			Count:     newCount,
 			UserID:    req.UserID,
 			UserName:  req.UserName,
 			Timestamp: time.Now(),
 		}
 		d.approvedUsers[req.UserID] = au // update approved users status in memory
+		d.auLock.Unlock()
 		if d.userStorage != nil {
 			// update approved users status in storage
 			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
@@ -500,7 +515,9 @@ func (d *Detector) Reset() {
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
+	d.auLock.Lock()
 	d.approvedUsers = make(map[string]approved.UserInfo)
+	d.auLock.Unlock()
 	d.stopWords = []string{}
 
 	// close the Lua engine and reset Lua checks if it exists
@@ -584,7 +601,9 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
+	d.auLock.Lock()
 	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
+	d.auLock.Unlock()
 	d.userStorage = storage
 
 	ctx, cancel := d.ctxWithStoreTimeout()
@@ -594,10 +613,12 @@ func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read approved users from storage: %w", err)
 	}
+	d.auLock.Lock()
 	for _, user := range users {
 		user.Count = d.FirstMessagesCount + 1 // +1 to skip first message check if count is 0
 		d.approvedUsers[user.UserID] = user
 	}
+	d.auLock.Unlock()
 	return len(users), nil
 }
 
@@ -623,14 +644,23 @@ func (d *Detector) WithHamUpdater(s SampleUpdater) { d.hamSamplesUpd = s }
 func (d *Detector) ApprovedUsers() (res []approved.UserInfo) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
+	d.auLock.RLock()
 	res = make([]approved.UserInfo, 0, len(d.approvedUsers))
 	for _, info := range d.approvedUsers {
 		res = append(res, info)
 	}
+	d.auLock.RUnlock()
 	sort.Slice(res, func(i, j int) bool {
 		return res[i].Timestamp.After(res[j].Timestamp)
 	})
 	return res
+}
+
+// approvedCount returns the approved-messages count for a given user ID under auLock.
+func (d *Detector) approvedCount(userID string) int {
+	d.auLock.RLock()
+	defer d.auLock.RUnlock()
+	return d.approvedUsers[userID].Count
 }
 
 // IsApprovedUser checks if a given user ID is approved.
@@ -639,7 +669,9 @@ func (d *Detector) IsApprovedUser(userID string) bool {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
+	d.auLock.RLock()
 	ui, ok := d.approvedUsers[userID]
+	d.auLock.RUnlock()
 	if !ok {
 		return false
 	}
@@ -654,12 +686,14 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	d.auLock.Lock()
 	d.approvedUsers[user.UserID] = approved.UserInfo{
 		UserID:    user.UserID,
 		UserName:  user.UserName,
 		Count:     d.FirstMessagesCount + 1, // +1 to skip first message check if count is 0
 		Timestamp: ts,
 	}
+	d.auLock.Unlock()
 
 	if d.userStorage != nil {
 		ctx, cancel := d.ctxWithStoreTimeout()
@@ -674,7 +708,9 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 // RemoveApprovedUser removes approved user for given IDs
 func (d *Detector) RemoveApprovedUser(id string) error {
 	d.lock.Lock()
+	d.auLock.Lock()
 	delete(d.approvedUsers, id)
+	d.auLock.Unlock()
 	d.lock.Unlock()
 
 	if d.userStorage != nil {
@@ -1072,7 +1108,7 @@ func (d *Detector) isShortMsgFlood(req spamcheck.Request) spamcheck.Response {
 	if len([]rune(req.Msg)) >= d.MinMsgLen {
 		return notSpam("message not short")
 	}
-	approvedCount := d.approvedUsers[req.UserID].Count
+	approvedCount := d.approvedCount(req.UserID)
 	// defensive: in app/main.go FirstMessageOnly is forced true whenever FirstMessagesCount > 0,
 	// so approved users short-circuit at the pre-approved branch in Check and never reach this.
 	// the guard matters for library consumers that construct Detector with FirstMessageOnly=false
