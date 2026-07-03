@@ -52,7 +52,7 @@
 ## Code Style
 - Format: Use `gofmt` (enforced by linter) - exclude mocks: `gofmt -s -w $(find . -type f -name "*.go" -not -path "./vendor/*" -not -path "*/mocks/*")`
 - goimports: `goimports -w $(find . -type f -name "*.go" -not -path "./vendor/*" -not -path "*/mocks/*")`
-- Line length: Maximum 140 characters
+- Line length: Maximum 130 characters (enforced by the lll linter)
 - Error handling: Return errors with context, use multierror for aggregation
 - Naming: CamelCase for variables, PascalCase for exported types/functions
 - Test tables: Use table-driven tests with descriptive test cases
