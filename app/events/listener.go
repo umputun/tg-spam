@@ -175,7 +175,12 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	updates := l.TbAPI.GetUpdatesChan(u)
 	log.Printf("[DEBUG] start listening for updates")
+	// single reusable idle timer, re-armed each iteration: time.After in a loop leaks one
+	// live timer per update until it fires
+	idleTimer := time.NewTimer(l.IdleDuration)
+	defer idleTimer.Stop()
 	for {
+		idleTimer.Reset(l.IdleDuration)
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("listener context canceled: %w", ctx.Err())
@@ -331,7 +336,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-		case <-time.After(l.IdleDuration): // hit bots on idle timeout
+		case <-idleTimer.C: // hit bots on idle timeout
 			resp := l.Bot.OnMessage(bot.Message{Text: "idle"}, false)
 			if err := l.sendBotResponse(resp, l.chatID, NotificationSilent); err != nil {
 				log.Printf("[WARN] failed to respond on idle, %v", err)
