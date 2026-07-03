@@ -40,7 +40,7 @@ func (h *LastRequests) Push(req Request) {
 	h.requests = h.requests.Next()
 }
 
-// Last returns up to n last requests in chronological order (oldest to newest)
+// Last returns up to n most recent requests in chronological order (oldest to newest)
 func (h *LastRequests) Last(n int) []Request {
 	if n < 1 {
 		return []Request{}
@@ -63,7 +63,7 @@ func (h *LastRequests) Last(n int) []Request {
 	})
 
 	if len(result) > n {
-		result = result[:n]
+		result = result[len(result)-n:]
 	}
 	return result
 }
