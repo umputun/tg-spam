@@ -937,6 +937,8 @@ It is not possible to run the bot for multiple groups, as the bot is designed to
 
 At the same time, multiple instances of the bot can share the same set of samples and dynamic data files. To do so, user should mount the same directory with samples and dynamic data files to all the instances of the bot.
 
+> **Upgrade note for shared PostgreSQL databases:** the message locator tables (`messages`, `spam`) are keyed by `(instance-id, ...)` and are migrated to composite primary keys on first startup of an upgraded instance. While a shared database has instances on mixed versions, older binaries can fail their locator upserts against the migrated schema (the old single-column `ON CONFLICT` target no longer exists). Upgrade all instances sharing one database together.
+
 ## Using tg-spam as a library
 
 The bot can be used as a library as well. To do so, import the `github.com/umputun/tg-spam/lib` package and create a new instance of the `Detector` struct. Then, call the `Check` method with the message and userID to check. The method will return `true` if the message is spam and `false` otherwise. In addition, the `Check` method will return the list of applied rules as well as the spam-related details.
