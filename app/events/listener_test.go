@@ -155,6 +155,109 @@ func TestTelegramListener_DoNilFrom(t *testing.T) {
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 }
 
+func TestTelegramListener_DoUserReportCommand(t *testing.T) {
+	// covers the procUserReply dispatch from the Do loop: /report suppressed when the
+	// feature is disabled, delegated to the reports handler when enabled
+
+	prep := func(reports *mocks.ReportsMock, enabled bool) (*mocks.TbAPIMock, *mocks.BotMock, *TelegramListener, func()) {
+		mockAPI := &mocks.TbAPIMock{
+			GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+				return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: "answer", From: &tbapi.User{UserName: "bot"}}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+				return nil, nil
+			},
+		}
+		botMock := &mocks.BotMock{
+			OnMessageFunc:      func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+			IsApprovedUserFunc: func(userID int64) bool { return true },
+		}
+		locator, teardown := prepTestLocator(t)
+		l := &TelegramListener{
+			SpamLogger: &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}},
+			TbAPI:      mockAPI,
+			Bot:        botMock,
+			Group:      "gr",
+			Locator:    locator,
+			ReportConfig: ReportConfig{
+				Enabled:   enabled,
+				Storage:   reports,
+				Threshold: 2,
+			},
+		}
+		return mockAPI, botMock, l, teardown
+	}
+
+	reportUpdate := func() tbapi.Update {
+		return tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 50,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "/report",
+				From:      &tbapi.User{UserName: "user", ID: 2},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 40,
+					Chat:      tbapi.Chat{ID: 123},
+					Text:      "spam text",
+					From:      &tbapi.User{UserName: "spammer", ID: 3},
+				},
+				Date: int(time.Now().Unix()),
+			},
+		}
+	}
+
+	t.Run("report disabled suppresses the command", func(t *testing.T) {
+		reports := &mocks.ReportsMock{}
+		mockAPI, botMock, l, teardown := prep(reports, false)
+		defer teardown()
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- reportUpdate()
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		assert.Empty(t, botMock.OnMessageCalls(), "suppressed /report must not reach spam check")
+		assert.Empty(t, reports.AddCalls(), "no report should be stored when disabled")
+	})
+
+	t.Run("report enabled delegates to reports handler", func(t *testing.T) {
+		reports := &mocks.ReportsMock{
+			AddFunc: func(ctx context.Context, report storage.Report) error { return nil },
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{{MsgID: msgID, ChatID: chatID, ReporterUserID: 2}}, nil
+			},
+		}
+		mockAPI, botMock, l, teardown := prep(reports, true)
+		defer teardown()
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- reportUpdate()
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		assert.Empty(t, botMock.OnMessageCalls(), "handled /report must not reach spam check")
+		require.Len(t, reports.AddCalls(), 1, "report should be stored")
+		assert.Equal(t, 40, reports.AddCalls()[0].Report.MsgID)
+		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
+	})
+}
+
 func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
