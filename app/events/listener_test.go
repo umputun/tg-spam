@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -611,6 +612,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 
 	deletedMessages := []int{}
+	var deletedMu sync.Mutex
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
 			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
@@ -621,7 +623,9 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			// track deleted messages
 			if delConfig, ok := c.(tbapi.DeleteMessageConfig); ok {
+				deletedMu.Lock()
 				deletedMessages = append(deletedMessages, delConfig.MessageID)
+				deletedMu.Unlock()
 			}
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
@@ -686,9 +690,16 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 	err := l.Do(ctx)
 	require.EqualError(t, err, "telegram update chan closed")
 
-	// verify that extra messages were deleted
+	// extra deletions run in a goroutine, wait for them to land
+	require.Eventually(t, func() bool {
+		deletedMu.Lock()
+		defer deletedMu.Unlock()
+		return len(deletedMessages) == 2
+	}, time.Second, 10*time.Millisecond, "extra messages should be deleted")
+	deletedMu.Lock()
 	assert.Contains(t, deletedMessages, 100, "should delete first duplicate")
 	assert.Contains(t, deletedMessages, 101, "should delete second duplicate")
+	deletedMu.Unlock()
 
 	// verify ban was called + 2 delete requests for extra messages
 	assert.Len(t, mockAPI.RequestCalls(), 3, "should have 1 ban + 2 delete requests")
@@ -698,6 +709,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 
 	deletedMessages := []int{}
+	var deletedMu sync.Mutex
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
 			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
@@ -708,7 +720,9 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			// track deleted messages (should be none for superuser)
 			if delConfig, ok := c.(tbapi.DeleteMessageConfig); ok {
+				deletedMu.Lock()
 				deletedMessages = append(deletedMessages, delConfig.MessageID)
+				deletedMu.Unlock()
 			}
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
@@ -773,8 +787,11 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 	err := l.Do(ctx)
 	require.EqualError(t, err, "telegram update chan closed")
 
-	// verify that no extra messages were deleted for superuser
+	// extra deletions run in a goroutine, give it a moment before asserting absence
+	time.Sleep(200 * time.Millisecond)
+	deletedMu.Lock()
 	assert.Empty(t, deletedMessages, "superuser extra deletions should be skipped")
+	deletedMu.Unlock()
 
 	// verify no ban/delete requests were issued for superuser
 	assert.Empty(t, mockAPI.RequestCalls(), "should not call Request for superuser")
@@ -788,6 +805,7 @@ func TestTelegramListener_DoWithShortMsgFlood(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 
 	deletedMessages := []int{}
+	var deletedMu sync.Mutex
 	bannedUsers := []int64{}
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
@@ -799,7 +817,9 @@ func TestTelegramListener_DoWithShortMsgFlood(t *testing.T) {
 		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 			switch v := c.(type) {
 			case tbapi.DeleteMessageConfig:
+				deletedMu.Lock()
 				deletedMessages = append(deletedMessages, v.MessageID)
+				deletedMu.Unlock()
 			case tbapi.BanChatMemberConfig:
 				bannedUsers = append(bannedUsers, v.UserID)
 			}
@@ -885,10 +905,17 @@ func TestTelegramListener_DoWithShortMsgFlood(t *testing.T) {
 	assert.Equal(t, []int{10, 20}, mockLogger.SaveCalls()[0].Response.CheckResults[0].ExtraDeleteIDs,
 		"ExtraDeleteIDs must contain prior message IDs")
 
-	// listener deleted both prior messages and the triggering message itself
+	// listener deleted both prior messages (async goroutine) and the triggering message itself
+	require.Eventually(t, func() bool {
+		deletedMu.Lock()
+		defer deletedMu.Unlock()
+		return len(deletedMessages) == 3
+	}, time.Second, 10*time.Millisecond, "all three deletions should land")
+	deletedMu.Lock()
 	assert.Contains(t, deletedMessages, 10, "should delete prior message 1 from ExtraDeleteIDs")
 	assert.Contains(t, deletedMessages, 20, "should delete prior message 2 from ExtraDeleteIDs")
 	assert.Contains(t, deletedMessages, 30, "should delete the triggering spam message")
+	deletedMu.Unlock()
 
 	// user banned exactly once
 	assert.Equal(t, []int64{1}, bannedUsers, "user 1 must be banned once on the third message")

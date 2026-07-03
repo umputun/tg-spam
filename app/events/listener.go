@@ -80,6 +80,10 @@ type TelegramListener struct {
 		once sync.Once
 		ch   chan bot.Response
 	}
+
+	// serializes extra-message deletion goroutines so concurrent spam bursts still respect
+	// the per-request rate limiting inside deleteExtraMessages
+	extraDeletesMu sync.Mutex
 }
 
 // GetDMUsers returns the list of recent DM senders
@@ -444,8 +448,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 
-	// delete extra messages if spam detected (e.g., duplicates)
-	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
+	// delete extra messages if spam detected (e.g., duplicates); runs in a goroutine because the
+	// rate-limit sleeps between deletions would otherwise stall the single-threaded update loop,
+	// same pattern as admin's aggressiveCleanup
+	go l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
 
 	// delete message if requested by bot
 	canDelete := resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry &&
@@ -751,6 +757,10 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 		log.Printf("[DEBUG] skip extra deletions for superuser %s (%d)", username, userID)
 		return
 	}
+
+	// one deletion worker at a time keeps the overall delete rate at the intended limit
+	l.extraDeletesMu.Lock()
+	defer l.extraDeletesMu.Unlock()
 
 	for _, checkResult := range checkResults {
 		if !checkResult.Spam || len(checkResult.ExtraDeleteIDs) == 0 {
