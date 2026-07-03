@@ -187,7 +187,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 			// handle admin chat messages. can be just messages (MsgHandler will ignore those)
 			// or forwards of undetected spam by admins to admin's chat (in this case MsgHandler will process them and ban/train)
-			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
+			if update.Message != nil && update.Message.From != nil &&
+				l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
 				if l.DisableAdminSpamForward {
 					continue
 				}
@@ -280,6 +281,15 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				// immediately delete leave message if requested
 				if l.DeleteLeaveMessages {
 					l.deleteSystemMessage(update.Message.MessageID, update.Message.Chat.ID, "leave")
+				}
+				continue
+			}
+
+			// messages without a sender can't be matched against superusers or report commands,
+			// send them straight to the regular processing which handles nil From safely
+			if update.Message.From == nil {
+				if err := l.procEvents(update); err != nil {
+					log.Printf("[WARN] failed to process update: %v", err)
 				}
 				continue
 			}
