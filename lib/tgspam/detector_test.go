@@ -639,7 +639,21 @@ func TestDetector_CheckApprovedUsersConcurrencySameUser(t *testing.T) {
 	assert.True(t, d.IsApprovedUser("same-user"))
 	users := d.ApprovedUsers()
 	require.Len(t, users, 1)
-	assert.LessOrEqual(t, users[0].Count, d.FirstMessagesCount+1, "count must be capped at approved level")
+	assert.LessOrEqual(t, users[0].Count, d.FirstMessagesCount, "count must be capped at organic approval level")
+}
+
+func TestDetector_CheckApprovedCountCap(t *testing.T) {
+	// with FirstMessageOnly disabled the pre-approved branch never short-circuits,
+	// so every ham message hits the increment and the cap is exercised deterministically
+	d := NewDetector(Config{FirstMessagesCount: 2})
+
+	for i := range 10 {
+		d.Check(spamcheck.Request{UserID: "u1", Msg: fmt.Sprintf("long enough legitimate message %d", i)})
+	}
+
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.Equal(t, 2, users[0].Count, "count must be capped at FirstMessagesCount")
 }
 
 func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {

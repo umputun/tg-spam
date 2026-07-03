@@ -393,11 +393,13 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
 		d.auLock.Lock()
-		// cap the count at approved level: concurrent first messages from the same user can all
-		// pass the pre-approved check before any increment lands, and an inflated count would
-		// weaken the short-msg-flood excess calculation
+		// cap the count at the organic approval level: concurrent first messages from the same
+		// user can all pass the pre-approved check before any increment lands, and an inflated
+		// count would weaken the short-msg-flood excess calculation. sequential flow never gets
+		// past FirstMessagesCount because the pre-approved branch short-circuits; the +1 sentinel
+		// is reserved for explicit AddApprovedUser and storage-loaded users
 		newCount := d.approvedUsers[req.UserID].Count + 1
-		if maxCount := d.FirstMessagesCount + 1; newCount > maxCount {
+		if maxCount := max(d.FirstMessagesCount, 1); newCount > maxCount {
 			newCount = maxCount
 		}
 		au := approved.UserInfo{
