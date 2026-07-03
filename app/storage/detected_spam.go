@@ -70,7 +70,6 @@ var detectedSpamQueries = engine.NewQueryMap().
 	AddSame(CmdCreateDetectedSpamIndexes, `
       	CREATE INDEX IF NOT EXISTS idx_detected_spam_gid_ts ON detected_spam(gid, timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_detected_spam_user_id_gid ON detected_spam(user_id, gid);
-		CREATE INDEX IF NOT EXISTS idx_spam_gid_time ON detected_spam(gid, timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_detected_spam_gid ON detected_spam(gid)`,
 	).
 	Add(CmdAddGIDColumn, engine.Query{
@@ -182,6 +181,20 @@ func (ds *DetectedSpam) FindByUserID(ctx context.Context, userID int64) (*Detect
 }
 
 func (ds *DetectedSpam) migrate(ctx context.Context, tx *sqlx.Tx, gid string) error {
+	if err := ds.migrateGIDColumn(ctx, tx, gid); err != nil {
+		return err
+	}
+	// drop the stray idx_spam_gid_time on detected_spam left behind by older versions: it
+	// duplicated idx_detected_spam_gid_ts, and its name collides with the locator's
+	// spam(gid, time) index on postgres where index names are schema-wide
+	if err := ds.dropStrayIndex(ctx, tx); err != nil {
+		return fmt.Errorf("failed to drop stray detected_spam index: %w", err)
+	}
+	return nil
+}
+
+// migrateGIDColumn adds the gid column and backfills it with the provided gid
+func (ds *DetectedSpam) migrateGIDColumn(ctx context.Context, tx *sqlx.Tx, gid string) error {
 	// try to select with new structure, if works - already migrated
 	var count int
 	err := tx.GetContext(ctx, &count, "SELECT COUNT(*) FROM detected_spam WHERE gid = ''")
@@ -207,5 +220,32 @@ func (ds *DetectedSpam) migrate(ctx context.Context, tx *sqlx.Tx, gid string) er
 	}
 
 	log.Printf("[DEBUG] detected_spam table migrated")
+	return nil
+}
+
+// dropStrayIndex removes the idx_spam_gid_time index from detected_spam on existing databases.
+// on sqlite the locator never uses this name so it can only belong to detected_spam; on postgres
+// the locator legitimately owns it on the spam table, so it is dropped only when it belongs here.
+func (ds *DetectedSpam) dropStrayIndex(ctx context.Context, tx *sqlx.Tx) error {
+	switch ds.Type() {
+	case engine.Sqlite:
+		if _, err := tx.ExecContext(ctx, "DROP INDEX IF EXISTS idx_spam_gid_time"); err != nil {
+			return fmt.Errorf("sqlite drop failed: %w", err)
+		}
+	case engine.Postgres:
+		var count int
+		query := `SELECT COUNT(*) FROM pg_indexes
+			WHERE indexname = 'idx_spam_gid_time' AND tablename = 'detected_spam' AND schemaname = current_schema()`
+		if err := tx.GetContext(ctx, &count, query); err != nil {
+			return fmt.Errorf("postgres index lookup failed: %w", err)
+		}
+		if count > 0 {
+			if _, err := tx.ExecContext(ctx, "DROP INDEX idx_spam_gid_time"); err != nil {
+				return fmt.Errorf("postgres drop failed: %w", err)
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported database type %q", ds.Type())
+	}
 	return nil
 }
