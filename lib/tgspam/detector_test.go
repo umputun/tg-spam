@@ -612,6 +612,36 @@ func TestDetector_CheckApprovedUsersConcurrency(t *testing.T) {
 	assert.Len(t, d.ApprovedUsers(), concurrency*iterations)
 }
 
+func TestDetector_CheckApprovedUsersConcurrencySameUser(t *testing.T) {
+	d := NewDetector(Config{FirstMessageOnly: true, FirstMessagesCount: 2})
+
+	concurrency := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	// concurrent messages from one user: all can pass the pre-approved check before
+	// any increment lands, the count must still not exceed the approved level
+	for i := range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.Check(spamcheck.Request{
+					UserID: "same-user",
+					Msg:    fmt.Sprintf("long enough legitimate message %d-%d to pass the approval path", i, j),
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, d.IsApprovedUser("same-user"))
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.LessOrEqual(t, users[0].Count, d.FirstMessagesCount+1, "count must be capped at approved level")
+}
+
 func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
 	d := NewDetector(Config{
 		DuplicateDetection: struct {

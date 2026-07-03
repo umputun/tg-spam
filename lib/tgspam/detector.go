@@ -393,8 +393,15 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
 		d.auLock.Lock()
+		// cap the count at approved level: concurrent first messages from the same user can all
+		// pass the pre-approved check before any increment lands, and an inflated count would
+		// weaken the short-msg-flood excess calculation
+		newCount := d.approvedUsers[req.UserID].Count + 1
+		if maxCount := d.FirstMessagesCount + 1; newCount > maxCount {
+			newCount = maxCount
+		}
 		au := approved.UserInfo{
-			Count:     d.approvedUsers[req.UserID].Count + 1,
+			Count:     newCount,
 			UserID:    req.UserID,
 			UserName:  req.UserName,
 			Timestamp: time.Now(),
