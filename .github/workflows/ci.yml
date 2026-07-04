@@ -1,6 +1,8 @@
 name: build-app
 on:
   push:
+    branches: ["**"]
+    tags: ["**"]
     paths-ignore:
       - ".github/workflows/updater.yml"
       - "updater/**"
