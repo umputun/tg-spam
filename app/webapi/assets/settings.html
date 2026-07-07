@@ -318,6 +318,10 @@
                         <label class="form-check-label" for="metaLinksOnly">Meta Links Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaMentionOnly" name="metaMentionOnly" {{if .Meta.MentionOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaMentionOnly">Meta Mention Only</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
                         <input class="form-check-input" type="checkbox" id="metaImageOnly" name="metaImageOnly" {{if .Meta.ImageOnly}}checked{{end}}>
                         <label class="form-check-label" for="metaImageOnly">Meta Image Only</label>
                     </div>
@@ -346,6 +350,7 @@
                         <tr><th>Meta Links Limit</th><td>{{if eq .Meta.LinksLimit -1}}disabled{{else}}{{.Meta.LinksLimit}}{{end}}</td></tr>
                         <tr><th>Meta Mentions Limit</th><td>{{if eq .Meta.MentionsLimit -1}}disabled{{else}}{{.Meta.MentionsLimit}}{{end}}</td></tr>
                         <tr><th>Meta Links Only</th><td>{{.Meta.LinksOnly}}</td></tr>
+                        <tr><th>Meta Mention Only</th><td>{{.Meta.MentionOnly}}</td></tr>
                         <tr><th>Meta Image Only</th><td>{{.Meta.ImageOnly}}</td></tr>
                         <tr><th>Meta Video Only</th><td>{{.Meta.VideosOnly}}</td></tr>
                         <tr><th>Meta Audio Only</th><td>{{.Meta.AudiosOnly}}</td></tr>

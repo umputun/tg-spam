@@ -110,6 +110,7 @@ type MetaSettings struct {
 	MentionsLimit   int    `json:"mentions_limit" yaml:"mentions_limit" db:"meta_mentions_limit"`
 	ImageOnly       bool   `json:"image_only" yaml:"image_only" db:"meta_image_only"`
 	LinksOnly       bool   `json:"links_only" yaml:"links_only" db:"meta_links_only"`
+	MentionOnly     bool   `json:"mention_only" yaml:"mention_only" db:"meta_mention_only"`
 	VideosOnly      bool   `json:"videos_only" yaml:"videos_only" db:"meta_videos_only"`
 	AudiosOnly      bool   `json:"audios_only" yaml:"audios_only" db:"meta_audios_only"`
 	Forward         bool   `json:"forward" yaml:"forward" db:"meta_forward"`
@@ -272,6 +273,7 @@ func (s *Settings) IsMetaEnabled() bool {
 		s.Meta.LinksLimit >= 0 ||
 		s.Meta.MentionsLimit >= 0 ||
 		s.Meta.LinksOnly ||
+		s.Meta.MentionOnly ||
 		s.Meta.VideosOnly ||
 		s.Meta.AudiosOnly ||
 		s.Meta.Forward ||

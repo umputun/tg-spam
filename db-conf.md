@@ -265,7 +265,7 @@ encrypted JSON blob. Sensitive string fields are encrypted individually with an
 - `History` — duration, min size, size
 - `Logger` — enabled, filename, max size, max backups
 - `CAS` — API, timeout, user agent
-- `Meta` — links limit, mentions limit, image/links/videos/audios-only, forward, keyboard, username symbols, **`contact_only`**, **`giveaway`**
+- `Meta` — links limit, mentions limit, image/links/mention/videos/audios-only, forward, keyboard, username symbols, **`contact_only`**, **`giveaway`**
 - `OpenAI` — full config, token (encrypted)
 - `Gemini` — token (encrypted), veto, prompt, custom prompts, model, max tokens response (`int32`), max symbols request, retry count, history size, check short messages
 - `LLM` — consensus, request timeout

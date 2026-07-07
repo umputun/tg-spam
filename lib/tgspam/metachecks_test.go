@@ -122,6 +122,77 @@ func TestLinkOnlyCheck(t *testing.T) {
 	}
 }
 
+func TestMentionOnlyCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name:     "no mentions",
+			req:      spamcheck.Request{Msg: "just a plain message", Meta: spamcheck.MetaData{Mentions: 0}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "no mentions"},
+		},
+		{
+			name:     "bare number without mention",
+			req:      spamcheck.Request{Msg: "3", Meta: spamcheck.MetaData{Mentions: 0}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "no mentions"},
+		},
+		{
+			name:     "mention only",
+			req:      spamcheck.Request{Msg: "@blah", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with trailing number",
+			req:      spamcheck.Request{Msg: "@blah 3", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with several numbers",
+			req:      spamcheck.Request{Msg: "@blah 42 55", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "several mentions with number",
+			req:      spamcheck.Request{Msg: "@a @b 3", Meta: spamcheck.MetaData{Mentions: 2}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with punctuation only",
+			req:      spamcheck.Request{Msg: "@blah !!!", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with real word",
+			req:      spamcheck.Request{Msg: "@john thanks", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name:     "mention with non-latin word",
+			req:      spamcheck.Request{Msg: "@user привет", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name:     "mention with emoji",
+			req:      spamcheck.Request{Msg: "@user 😀", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name:     "mention count set but empty text",
+			req:      spamcheck.Request{Msg: "  ", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "empty message"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := MentionOnlyCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestImagesCheck(t *testing.T) {
 	tests := []struct {
 		name       string

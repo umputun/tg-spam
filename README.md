@@ -158,6 +158,10 @@ This option is disabled by default. If set to a positive number, the bot will ch
 
 This option is disabled by default. If `--meta.links-only` set or `env:META_LINKS_ONLY` is `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
 
+**Mention only check**
+
+This option is disabled by default. If `--meta.mention-only` set or `env:META_MENTION_ONLY` is `true`, the bot will check messages that contain at least one mention (@username). If the message is nothing but mentions with only trivial trailing content (digits, whitespace or punctuation, e.g. `@user 3`), it will be marked as spam. Messages with real words alongside the mention (e.g. `@user thanks`) are not affected.
+
 **Image only check**
 
 This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. This catches common spam patterns like promotional images with just "@username" as caption.
@@ -615,6 +619,7 @@ meta:
       --meta.mentions-limit=            max mentions in message, disabled by default (default: -1) [$META_MENTIONS_LIMIT]
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
+      --meta.mention-only               enable mention only check [$META_MENTION_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.contact-only               enable contact only check [$META_CONTACT_ONLY]

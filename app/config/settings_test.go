@@ -114,6 +114,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		linksLimit     int
 		mentionsLimit  int
 		linksOnly      bool
+		mentionOnly    bool
 		videosOnly     bool
 		audiosOnly     bool
 		forward        bool
@@ -128,6 +129,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		{name: "linksLimit enabled", linksLimit: 3, mentionsLimit: -1, expected: true},
 		{name: "mentionsLimit enabled", linksLimit: -1, mentionsLimit: 5, expected: true},
 		{name: "linksOnly enabled", linksLimit: -1, mentionsLimit: -1, linksOnly: true, expected: true},
+		{name: "mentionOnly enabled", linksLimit: -1, mentionsLimit: -1, mentionOnly: true, expected: true},
 		{name: "videosOnly enabled", linksLimit: -1, mentionsLimit: -1, videosOnly: true, expected: true},
 		{name: "audiosOnly enabled", linksLimit: -1, mentionsLimit: -1, audiosOnly: true, expected: true},
 		{name: "forward enabled", linksLimit: -1, mentionsLimit: -1, forward: true, expected: true},
@@ -145,6 +147,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 			s.Meta.LinksLimit = tt.linksLimit
 			s.Meta.MentionsLimit = tt.mentionsLimit
 			s.Meta.LinksOnly = tt.linksOnly
+			s.Meta.MentionOnly = tt.mentionOnly
 			s.Meta.VideosOnly = tt.videosOnly
 			s.Meta.AudiosOnly = tt.audiosOnly
 			s.Meta.Forward = tt.forward
