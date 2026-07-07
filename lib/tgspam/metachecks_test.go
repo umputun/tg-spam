@@ -179,6 +179,26 @@ func TestMentionOnlyCheck(t *testing.T) {
 			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
 		},
 		{
+			name:     "multiple mentions no other content",
+			req:      spamcheck.Request{Msg: "@a @b", Meta: spamcheck.MetaData{Mentions: 2}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with percent sign is punctuation",
+			req:      spamcheck.Request{Msg: "@user 100%", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"},
+		},
+		{
+			name:     "mention with ascii symbol is not trivial",
+			req:      spamcheck.Request{Msg: "@user +1", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
+		},
+		{
+			name:     "text_mention name without literal at is not stripped",
+			req:      spamcheck.Request{Msg: "Alice 3", Meta: spamcheck.MetaData{Mentions: 1}},
+			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"},
+		},
+		{
 			name:     "mention count set but empty text",
 			req:      spamcheck.Request{Msg: "  ", Meta: spamcheck.MetaData{Mentions: 1}},
 			expected: spamcheck.Response{Name: "mention-only", Spam: false, Details: "empty message"},

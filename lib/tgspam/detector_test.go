@@ -2093,6 +2093,27 @@ func TestDetector_CheckWithMeta(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckWithMentionOnly(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.WithMetaChecks(MentionOnlyCheck())
+
+	t.Run("mention with number is spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "@blah 3", Meta: spamcheck.MetaData{Mentions: 1}})
+		assert.True(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "mention-only", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+	})
+
+	t.Run("mention with real word is ham", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "@john thanks", Meta: spamcheck.MetaData{Mentions: 1}})
+		assert.False(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "mention-only", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+	})
+}
+
 func TestDetector_CheckMultiLang(t *testing.T) {
 	d := NewDetector(Config{MultiLangWords: 2, MaxAllowedEmoji: -1})
 	tests := []struct {

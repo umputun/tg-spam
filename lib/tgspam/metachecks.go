@@ -61,10 +61,15 @@ func LinkOnlyCheck() MetaCheck {
 var mentionRe = regexp.MustCompile(`@[a-zA-Z0-9_]+`)
 
 // MentionOnlyCheck is a function that returns a MetaCheck function that checks if the req.Msg
-// contains nothing but mentions, optionally followed by trivial content (digits, whitespace or
-// punctuation). It catches messages like "@user 3" where a spammer posts a bare mention and a
-// number and no real text. The check is gated on at least one mention being present, so messages
-// without mentions (e.g. a lone number) are never flagged.
+// contains nothing but mentions plus trivial content (digits, whitespace or punctuation) in any
+// position. It catches messages like "@user 3" where a spammer posts a bare mention and a number
+// and no real text. The check is gated on at least one mention being present, so messages without
+// mentions (e.g. a lone number) are never flagged.
+//
+// Limitations: only literal "@name" mentions are stripped, so a text_mention (a display-name
+// mention with no "@") keeps its name in the residue and is not flagged. The check also evaluates
+// req.Msg as given, which upstream includes quoted/reply-to text, so a mention-only message posted
+// alongside quoted text will not be flagged.
 func MentionOnlyCheck() MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
 		if req.Meta.Mentions == 0 {
@@ -79,7 +84,7 @@ func MentionOnlyCheck() MetaCheck {
 				continue
 			}
 			// a letter, emoji or other meaningful symbol remains, so it is more than mentions
-			return spamcheck.Response{Spam: false, Name: "mention-only", Details: "message contains text"}
+			return spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"}
 		}
 		return spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"}
 	}

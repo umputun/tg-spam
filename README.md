@@ -160,7 +160,7 @@ This option is disabled by default. If `--meta.links-only` set or `env:META_LINK
 
 **Mention only check**
 
-This option is disabled by default. If `--meta.mention-only` set or `env:META_MENTION_ONLY` is `true`, the bot will check messages that contain at least one mention (@username). If the message is nothing but mentions with only trivial trailing content (digits, whitespace or punctuation, e.g. `@user 3`), it will be marked as spam. Messages with real words alongside the mention (e.g. `@user thanks`) are not affected.
+This option is disabled by default. If `--meta.mention-only` set or `env:META_MENTION_ONLY` is `true`, the bot will check messages that contain at least one mention (@username). If the message is nothing but mentions plus trivial content (digits, whitespace or punctuation in any position, e.g. `@user 3`), it will be marked as spam. Messages with real words alongside the mention (e.g. `@user thanks`) are not affected.
 
 **Image only check**
 
