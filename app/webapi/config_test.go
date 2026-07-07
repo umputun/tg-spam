@@ -733,6 +733,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		form.Add("metaLinksLimit", "3")
 		form.Add("metaMentionsLimit", "5")
 		form.Add("metaLinksOnly", "on")
+		form.Add("metaMentionOnly", "on")
 		form.Add("metaImageOnly", "on")
 		form.Add("metaUsernameSymbols", "@#")
 		form.Add("casEnabled", "on")
@@ -763,6 +764,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		assert.Equal(t, 3, settings.Meta.LinksLimit)
 		assert.Equal(t, 5, settings.Meta.MentionsLimit)
 		assert.True(t, settings.Meta.LinksOnly)
+		assert.True(t, settings.Meta.MentionOnly)
 		assert.True(t, settings.Meta.ImageOnly)
 		assert.Equal(t, "@#", settings.Meta.UsernameSymbols)
 		assert.Equal(t, "https://api.cas.chat", settings.CAS.API)
@@ -1718,7 +1720,7 @@ func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	// when the meta master toggle is off (metaEnabled absent) and the form
 	// contains at least one meta-related field, the server-side authoritative
-	// toggle must clear ALL 11 fields used by IsMetaEnabled so a checked
+	// toggle must clear ALL 12 fields used by IsMetaEnabled so a checked
 	// per-feature box (e.g., metaImageOnly) cannot keep meta enabled
 	settings := &config.Settings{
 		Meta: config.MetaSettings{
@@ -1727,6 +1729,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 			UsernameSymbols: "@",
 			ImageOnly:       true,
 			LinksOnly:       true,
+			MentionOnly:     true,
 			VideosOnly:      true,
 			AudiosOnly:      true,
 			Forward:         true,
@@ -1742,6 +1745,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	form.Add("metaUsernameSymbols", "@")
 	form.Add("metaImageOnly", "on")
 	form.Add("metaLinksOnly", "on")
+	form.Add("metaMentionOnly", "on")
 	form.Add("metaVideoOnly", "on")
 	form.Add("metaAudioOnly", "on")
 	form.Add("metaForwarded", "on")
@@ -1761,6 +1765,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	assert.Empty(t, settings.Meta.UsernameSymbols, "UsernameSymbols must be cleared")
 	assert.False(t, settings.Meta.ImageOnly, "ImageOnly must be cleared")
 	assert.False(t, settings.Meta.LinksOnly, "LinksOnly must be cleared")
+	assert.False(t, settings.Meta.MentionOnly, "MentionOnly must be cleared")
 	assert.False(t, settings.Meta.VideosOnly, "VideosOnly must be cleared")
 	assert.False(t, settings.Meta.AudiosOnly, "AudiosOnly must be cleared")
 	assert.False(t, settings.Meta.Forward, "Forward must be cleared")
@@ -1805,7 +1810,7 @@ func TestUpdateSettingsFromForm_MetaEnabled_HonorsAllFields(t *testing.T) {
 
 func TestUpdateSettingsFromForm_NoMetaFields_PreservesExisting(t *testing.T) {
 	// when the form contains zero meta-related fields, the meta block is
-	// skipped entirely so partial saves preserve all 11 fields
+	// skipped entirely so partial saves preserve all 12 fields
 	settings := &config.Settings{
 		Meta: config.MetaSettings{
 			LinksLimit:  10,

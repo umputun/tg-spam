@@ -277,18 +277,18 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 
 	// meta checks: server-side authoritative master toggle. Behavior:
 	//   - form contains zero meta-related fields → skip the entire block so
-	//     unrelated saves preserve all 11 IsMetaEnabled-contributing fields
+	//     unrelated saves preserve all 12 IsMetaEnabled-contributing fields
 	//   - metaEnabled=on → write rendered fields from form; rendered booleans
 	//     follow presence-of-on (absent == unchecked == false), unrendered
 	//     booleans (metaContactOnly, metaGiveaway) and the optional
 	//     metaUsernameSymbols are gated on r.Form presence so submits without
 	//     them preserve existing values
-	//   - metaEnabled absent → master toggle off, clear ALL 11 fields used by
+	//   - metaEnabled absent → master toggle off, clear ALL 12 fields used by
 	//     isMetaEnabled() so a checked per-feature box (e.g., metaImageOnly)
 	//     cannot keep meta enabled
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
-		"metaLinksOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
+		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
 		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway",
 	}
 	hasMetaForm := false
@@ -317,6 +317,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 				settings.Meta.UsernameSymbols = r.FormValue("metaUsernameSymbols")
 			}
 			settings.Meta.LinksOnly = r.FormValue("metaLinksOnly") == "on"
+			settings.Meta.MentionOnly = r.FormValue("metaMentionOnly") == "on"
 			settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
 			settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
 			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
@@ -338,6 +339,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.MentionsLimit = -1
 			settings.Meta.UsernameSymbols = ""
 			settings.Meta.LinksOnly = false
+			settings.Meta.MentionOnly = false
 			settings.Meta.ImageOnly = false
 			settings.Meta.VideosOnly = false
 			settings.Meta.AudiosOnly = false

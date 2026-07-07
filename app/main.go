@@ -88,6 +88,7 @@ type options struct {
 		MentionsLimit   int    `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
 		ImageOnly       bool   `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
+		MentionOnly     bool   `long:"mention-only" env:"MENTION_ONLY" description:"enable mention only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 		AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		ContactOnly     bool   `long:"contact-only" env:"CONTACT_ONLY" description:"enable contact only check"`
@@ -886,6 +887,10 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 	if settings.Meta.LinksOnly {
 		log.Printf("[INFO] links only check enabled")
 		metaChecks = append(metaChecks, tgspam.LinkOnlyCheck())
+	}
+	if settings.Meta.MentionOnly {
+		log.Printf("[INFO] mention only check enabled")
+		metaChecks = append(metaChecks, tgspam.MentionOnlyCheck())
 	}
 	if settings.Meta.Forward {
 		log.Printf("[INFO] forward check enabled")
