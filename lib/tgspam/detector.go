@@ -1220,6 +1220,27 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 				continue
 			}
 
+			// ascii fast path: avoids scanning the ~170 unicode.Scripts tables for the most
+			// common runes. mirrors the slow path exactly: ascii letters are Latin, the rest
+			// of ascii belongs to Common, so it falls through to the same Other_Math check
+			// (which catches '^') and then to punctuation/symbol handling
+			if r < 128 {
+				switch {
+				case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+					scripts["Latin"] = true
+				case unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic):
+					scripts["Mathematical"] = true
+				case !unicode.IsPunct(r) && !unicode.IsSymbol(r):
+					scripts["Other"] = true
+				default:
+					continue // punctuation and symbols carry no script
+				}
+				if len(scripts) > 1 {
+					return true
+				}
+				continue
+			}
+
 			scriptFound := false
 			for name, table := range unicode.Scripts {
 				if unicode.Is(table, r) {
