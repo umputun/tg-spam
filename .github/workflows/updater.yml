@@ -1,8 +1,8 @@
 name: build-updater
 on:
   push:
-    branches:
-    tags:
+    branches: ["**"]
+    tags: ["**"]
     paths:
       - "updater/**"
       - ".github/workflows/updater.yml"
