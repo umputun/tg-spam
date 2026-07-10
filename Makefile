@@ -46,7 +46,7 @@ unfuck-ai-comments:
 
 # install playwright browsers (run once or after playwright-go version update)
 e2e-ui-setup:
-	go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install --with-deps chromium
+	go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
 
 # run e2e ui tests headless (default, for CI and quick checks)
 e2e-ui:
