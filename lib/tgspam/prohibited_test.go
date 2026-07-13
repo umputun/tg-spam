@@ -67,3 +67,33 @@ func TestResolveProhibitedScripts_ErrorNamesOffender(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "klingon")
 }
+
+func TestValidateProhibitedLangs(t *testing.T) {
+	tests := []struct {
+		name     string
+		langs    string
+		minCount int
+		wantErr  string
+	}{
+		{name: "empty disabled", langs: "", minCount: 0, wantErr: ""},
+		{name: "whitespace-only disabled", langs: "  ", minCount: 0, wantErr: ""},
+		{name: "delimiter-only disabled", langs: " , ", minCount: 0, wantErr: ""},
+		{name: "alias with valid min", langs: "chinese", minCount: 3, wantErr: ""},
+		{name: "multiple with valid min", langs: "chinese, cyrillic, Arabic", minCount: 2, wantErr: ""},
+		{name: "unknown script rejected", langs: "klingon", minCount: 3, wantErr: `prohibited-langs: unknown prohibited script or language: "klingon"`},
+		{name: "non-empty with min zero rejected", langs: "chinese", minCount: 0, wantErr: "prohibited-langs-min (0) must be >= 1 when prohibited-langs is set"},
+		{name: "non-empty with min negative rejected", langs: "chinese", minCount: -1, wantErr: "prohibited-langs-min (-1) must be >= 1 when prohibited-langs is set"},
+		{name: "disabled ignores min zero", langs: " , ", minCount: 0, wantErr: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateProhibitedLangs(tt.langs, tt.minCount)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+		})
+	}
+}

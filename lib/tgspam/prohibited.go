@@ -53,3 +53,21 @@ func ResolveProhibitedScripts(names []string) (map[string]*unicode.RangeTable, e
 	}
 	return result, nil
 }
+
+// ValidateProhibitedLangs resolves the comma-separated prohibited language/script
+// list and enforces that minCount is >= 1 whenever the list resolves to at least
+// one script. an empty, blank, or delimiter-only list resolves to no scripts and
+// disables the feature, so it imposes no minimum. the gate is the resolver's
+// result, not the raw string, so " , " is correctly treated as disabled. returns
+// nil when the configuration is valid. shared by startup validation, the
+// save-config command, and the web settings save path.
+func ValidateProhibitedLangs(langs string, minCount int) error {
+	resolved, err := ResolveProhibitedScripts(strings.Split(langs, ","))
+	if err != nil {
+		return fmt.Errorf("prohibited-langs: %w", err)
+	}
+	if len(resolved) > 0 && minCount < 1 {
+		return fmt.Errorf("prohibited-langs-min (%d) must be >= 1 when prohibited-langs is set", minCount)
+	}
+	return nil
+}

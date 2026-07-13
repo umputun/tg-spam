@@ -697,6 +697,81 @@ func TestUpdateConfigHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Failed to save configuration")
 	})
 
+	t.Run("invalid prohibited-langs rejected and not persisted", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "russian",
+			ProhibitedLangsMin: 2,
+		}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "klingon")
+		form.Add("prohibitedLangsMin", "3")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "unknown prohibited script or language")
+		assert.Empty(t, settingsStore.SaveCalls(), "invalid config must not be saved")
+		// in-memory settings must be rolled back to their prior values
+		assert.Equal(t, "russian", appSettings.ProhibitedLangs)
+		assert.Equal(t, 2, appSettings.ProhibitedLangsMin)
+	})
+
+	t.Run("prohibited-langs min below one rejected", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{InstanceID: "test-instance"}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "chinese")
+		form.Add("prohibitedLangsMin", "0")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "prohibited-langs-min")
+		assert.Empty(t, settingsStore.SaveCalls(), "invalid config must not be saved")
+		assert.Empty(t, appSettings.ProhibitedLangs, "in-memory settings must be rolled back")
+	})
+
+	t.Run("valid prohibited-langs saved", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{InstanceID: "test-instance"}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "chinese")
+		form.Add("prohibitedLangsMin", "3")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Len(t, settingsStore.SaveCalls(), 1)
+		assert.Equal(t, "chinese", appSettings.ProhibitedLangs)
+		assert.Equal(t, 3, appSettings.ProhibitedLangsMin)
+	})
+
 	t.Run("complex settings update", func(t *testing.T) {
 		appSettings := &config.Settings{
 			InstanceID: "test-instance",

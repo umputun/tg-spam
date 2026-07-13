@@ -352,14 +352,7 @@ func main() {
 
 	// handle save-config command (after setupLog so any error output is masked)
 	if p.Active != nil && p.Active.Name == "save-config" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		exitCode := 0
-		if err := saveConfigToDB(ctx, appSettings); err != nil {
-			log.Printf("[ERROR] failed to save configuration to database: %v", err)
-			exitCode = 1
-		}
-		cancel()
-		os.Exit(exitCode)
+		os.Exit(runSaveConfig(appSettings))
 	}
 
 	log.Printf("[DEBUG] settings: %+v", appSettings)
@@ -416,14 +409,31 @@ func validateSettings(s *config.Settings) error {
 	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
 		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
 	}
-	langs := strings.Split(s.ProhibitedLangs, ",")
-	if _, err := tgspam.ResolveProhibitedScripts(langs); err != nil {
-		return fmt.Errorf("prohibited-langs: %w", err)
-	}
-	if strings.TrimSpace(s.ProhibitedLangs) != "" && s.ProhibitedLangsMin < 1 {
-		return fmt.Errorf("prohibited-langs-min (%d) must be >= 1 when prohibited-langs is set", s.ProhibitedLangsMin)
+	// ValidateProhibitedLangs already returns a fully-formed, user-facing message
+	// shared with the web save path and save-config; return it verbatim.
+	if err := tgspam.ValidateProhibitedLangs(s.ProhibitedLangs, s.ProhibitedLangsMin); err != nil {
+		return err //nolint:wrapcheck // message is already contextual and shared across call sites
 	}
 	return nil
+}
+
+// runSaveConfig handles the save-config command: it validates settings first so
+// an invalid config (e.g. an unknown prohibited-langs script) is refused before
+// it can be persisted and break the next --confdb startup, then writes the config
+// to the database. Returns a process exit code: 0 on success, 1 on validation or
+// persistence failure.
+func runSaveConfig(appSettings *config.Settings) int {
+	if err := validateSettings(appSettings); err != nil {
+		log.Printf("[ERROR] invalid configuration, not saving: %v", err)
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := saveConfigToDB(ctx, appSettings); err != nil {
+		log.Printf("[ERROR] failed to save configuration to database: %v", err)
+		return 1
+	}
+	return 0
 }
 
 // execute runs the main application loop. The reloadNormalize callback, when

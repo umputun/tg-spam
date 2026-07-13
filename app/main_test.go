@@ -250,6 +250,11 @@ func TestValidateSettings(t *testing.T) {
 			s:       &config.Settings{ProhibitedLangs: "  ", ProhibitedLangsMin: 0},
 			wantErr: "",
 		},
+		{
+			name:    "prohibited-langs delimiter-only is valid (disabled)",
+			s:       &config.Settings{ProhibitedLangs: " , ", ProhibitedLangsMin: 0},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -263,6 +268,74 @@ func TestValidateSettings(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestRunSaveConfig(t *testing.T) {
+	setupLog(true)
+	ctx := context.Background()
+
+	t.Run("invalid prohibited-langs is refused before persistence", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "invalid.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "klingon",
+			ProhibitedLangsMin: 3,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		assert.Equal(t, 1, code, "invalid config must fail save with non-zero exit code")
+
+		// nothing should have been persisted: loading finds no config
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.Error(t, err, "invalid config must not have been persisted")
+	})
+
+	t.Run("min below one with non-empty list is refused", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "badmin.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "chinese",
+			ProhibitedLangsMin: 0,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		assert.Equal(t, 1, code, "non-empty list with min<1 must fail save")
+
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.Error(t, err, "invalid config must not have been persisted")
+	})
+
+	t.Run("valid config is persisted", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "valid.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "chinese",
+			ProhibitedLangsMin: 3,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		require.Equal(t, 0, code, "valid config must save successfully")
+
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.NoError(t, err, "valid config must be loadable after save")
+		assert.Equal(t, "chinese", loaded.ProhibitedLangs)
+		assert.Equal(t, 3, loaded.ProhibitedLangsMin)
+	})
 }
 
 // Helper function to create settings for testing

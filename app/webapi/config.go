@@ -12,6 +12,7 @@ import (
 	"github.com/go-pkgz/rest"
 
 	"github.com/umputun/tg-spam/app/config"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 //go:generate moq --out mocks/settings_store.go --pkg mocks --with-resets --skip-ensure . SettingsStore
@@ -148,6 +149,18 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if s.Detector != nil {
 		s.AppSettings.LuaPlugins.EnabledPlugins = normalizeLuaEnabledPlugins(
 			s.AppSettings.LuaPlugins.EnabledPlugins, s.Detector.GetLuaPluginNames())
+	}
+
+	// reject an invalid prohibited-langs list (unknown script, or a non-empty
+	// list with min < 1) before it is applied or persisted; otherwise the next
+	// --confdb startup would fail validateSettings via log.Fatalf and the bot
+	// wouldn't start. shares the same validator as startup and save-config.
+	if err := tgspam.ValidateProhibitedLangs(s.AppSettings.ProhibitedLangs, s.AppSettings.ProhibitedLangsMin); err != nil {
+		*s.AppSettings = snapshot // rollback in-memory mutation on validation failure
+		s.appSettingsMu.Unlock()
+		log.Printf("[WARN] rejected invalid prohibited-langs update: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	saveToDB := r.FormValue("saveToDb") == "true" && s.SettingsStore != nil
