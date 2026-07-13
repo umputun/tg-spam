@@ -3873,3 +3873,70 @@ func TestDetector_MaxShortMsgCount(t *testing.T) {
 		assert.Empty(t, mc.CountUserMessagesCalls())
 	})
 }
+
+func TestDetector_ProhibitedLang(t *testing.T) {
+	scripts, err := ResolveProhibitedScripts([]string{"chinese", "russian", "arabic"})
+	require.NoError(t, err)
+
+	t.Run("isProhibitedLang counting", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		tests := []struct {
+			name    string
+			input   string
+			spam    bool
+			details string
+		}{
+			{"han at threshold", "汉语汉", true, "Han: 3"},
+			{"han above threshold", "汉语汉字消息", true, "Han: 3"},
+			{"cyrillic at threshold", "абв", true, "Cyrillic: 3"},
+			{"arabic at threshold", "سلا", true, "Arabic: 3"},
+			{"below threshold", "hello 汉 world", false, "Han: 1/3"},
+			{"single foreign char in english", "just a normal message ф here", false, "Cyrillic: 1/3"},
+			{"digits punctuation emoji do not count", "汉字 12345 !!! 😀😀😀", false, "Han: 2/3"},
+			{"letters counted across non-letter separators", "汉1字2汉3", true, "Han: 3"},
+			{"pure english passes", "this is a normal english message", false, "0/3"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				resp := d.isProhibitedLang(tt.input)
+				assert.Equal(t, "prohibited-language", resp.Name)
+				assert.Equal(t, tt.spam, resp.Spam)
+				assert.Equal(t, tt.details, resp.Details)
+			})
+		}
+	})
+
+	t.Run("disabled by default is no-op", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.False(t, spam)
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("hard-return spam via Check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "Han: 3", resp.Details)
+	})
+
+	t.Run("CheckOnly request still runs the check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉", CheckOnly: true})
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("approved user bypass before prohibited check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3,
+			FirstMessagesCount: 2, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+		require.NoError(t, d.AddApprovedUser(approved.UserInfo{UserID: "123", UserName: "ham"}))
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息", UserID: "123"})
+		assert.False(t, spam)
+		assert.NotNil(t, findResponseByName(cr, "pre-approved"))
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+}

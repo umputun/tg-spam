@@ -130,13 +130,13 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Modify: `lib/tgspam/detector.go`
 - Modify: `lib/tgspam/detector_test.go`
 
-- [ ] add `ProhibitedScripts map[string]*unicode.RangeTable` and `ProhibitedLangsMin int` to `Config` (detector.go:108), each with a godoc comment starting with the field name (exported fields); they flow into the `Detector` via the embedded config
-- [ ] add method `(d *Detector) isProhibitedLang(msg string) spamcheck.Response` — letters-only rune walk, per-script count, early-return `Spam:true` at `ProhibitedLangsMin`, `Details` reports `"<script>: <count>"`; NO `req.CheckOnly` bail
-- [ ] wire the hard-return block into `Check` after the short-msg-flood block (~:265), gated by `len(d.ProhibitedScripts) > 0`, pushing `spamHistory` and returning `true, cr`
-- [ ] write tests: han/cyrillic/arabic messages at/above threshold flagged; below-threshold not flagged; mixed English+few CJK below threshold passes; digits/punctuation/emoji do not count toward the letter count; `Details` names the script
-- [ ] write test: with no prohibited scripts configured the check is a no-op (feature off by default)
-- [ ] write test: approved user bypass — with `FirstMessageOnly=true` and an approved user, `Check` returns pre-approved before the prohibited-lang check runs
-- [ ] run `go test ./lib/tgspam/ -race` — must pass before task 3
+- [x] add `ProhibitedScripts map[string]*unicode.RangeTable` and `ProhibitedLangsMin int` to `Config` (detector.go:108), each with a godoc comment starting with the field name (exported fields); they flow into the `Detector` via the embedded config
+- [x] add method `(d *Detector) isProhibitedLang(msg string) spamcheck.Response` — letters-only rune walk, per-script count, early-return `Spam:true` at `ProhibitedLangsMin`, `Details` reports `"<script>: <count>"`; NO `req.CheckOnly` bail
+- [x] wire the hard-return block into `Check` after the short-msg-flood block (~:265), gated by `len(d.ProhibitedScripts) > 0`, pushing `spamHistory` and returning `true, cr`
+- [x] write tests: han/cyrillic/arabic messages at/above threshold flagged; below-threshold not flagged; mixed English+few CJK below threshold passes; digits/punctuation/emoji do not count toward the letter count; `Details` names the script
+- [x] write test: with no prohibited scripts configured the check is a no-op (feature off by default)
+- [x] write test: approved user bypass — with `FirstMessageOnly=true` and an approved user, `Check` returns pre-approved before the prohibited-lang check runs
+- [x] run `go test ./lib/tgspam/ -race` — must pass before task 3
 
 ### Task 3: DB-backed Settings (typed fields first, so later layers compile)
 
