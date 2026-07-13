@@ -42,6 +42,8 @@ type Settings struct {
 	MaxEmoji            int     `json:"max_emoji" yaml:"max_emoji" db:"max_emoji"`
 	MinSpamProbability  float64 `json:"min_spam_probability" yaml:"min_spam_probability" db:"min_spam_probability"`
 	MultiLangWords      int     `json:"multi_lang_words" yaml:"multi_lang_words" db:"multi_lang_words"`
+	ProhibitedLangs     string  `json:"prohibited_langs" yaml:"prohibited_langs" db:"prohibited_langs"`
+	ProhibitedLangsMin  int     `json:"prohibited_langs_min" yaml:"prohibited_langs_min" db:"prohibited_langs_min"`
 
 	// bot behavior settings
 	NoSpamReply         bool `json:"no_spam_reply" yaml:"no_spam_reply" db:"no_spam_reply"`
@@ -320,6 +322,7 @@ var zeroAwarePaths = map[string]bool{
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
 	"MaxShortMsgCount":        true, // lib/tgspam/detector.go:253 (> 0): 0 disables
+	"ProhibitedLangs":         true, // lib/tgspam/detector.go:276 (len > 0): empty disables
 }
 
 // ApplyDefaults fills zero-valued fields in s with the corresponding values from

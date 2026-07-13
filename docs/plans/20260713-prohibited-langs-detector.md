@@ -144,11 +144,11 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Modify: `app/config/settings.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] add `ProhibitedLangs string` (`json/yaml/db:"prohibited_langs"`) and `ProhibitedLangsMin int` (`json/yaml/db:"prohibited_langs_min"`) to the typed `Settings` struct
-- [ ] add `"ProhibitedLangs"` to `zeroAwarePaths` (empty = disabled must survive merges); comment referencing the detector gate. `ProhibitedLangsMin` stays OUT (default 3; zero is not a meaningful "disabled")
-- [ ] write tests: round-trip (marshal/unmarshal) of both fields
-- [ ] write test: merge guard — build an explicit template with `ProhibitedLangs="chinese"` and a target with `ProhibitedLangs=""`, assert the merge keeps it `""` (the CLI default is empty, so the template value must be set artificially to exercise the guard; mirrors the `MaxShortMsgCount` zeroAwarePaths precedent)
-- [ ] run `go test ./app/config/ -race` — must pass before task 4
+- [x] add `ProhibitedLangs string` (`json/yaml/db:"prohibited_langs"`) and `ProhibitedLangsMin int` (`json/yaml/db:"prohibited_langs_min"`) to the typed `Settings` struct
+- [x] add `"ProhibitedLangs"` to `zeroAwarePaths` (empty = disabled must survive merges); comment referencing the detector gate. `ProhibitedLangsMin` stays OUT (default 3; zero is not a meaningful "disabled")
+- [x] write tests: round-trip (marshal/unmarshal) of both fields
+- [x] write test: merge guard — build an explicit template with `ProhibitedLangs="chinese"` and a target with `ProhibitedLangs=""`, assert the merge keeps it `""` (the CLI default is empty, so the template value must be set artificially to exercise the guard; mirrors the `MaxShortMsgCount` zeroAwarePaths precedent)
+- [x] run `go test ./app/config/ -race` — must pass before task 4
 
 ### Task 4: CLI flags, env, settings mapping, startup validation
 

@@ -470,6 +470,14 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			},
 			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MaxShortMsgCount) },
 		},
+		{
+			name: "ProhibitedLangs",
+			setup: func(target, template *Settings) {
+				target.ProhibitedLangs = ""
+				template.ProhibitedLangs = "chinese"
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Empty(t, target.ProhibitedLangs) },
+		},
 	}
 
 	for _, tt := range tests {
@@ -502,6 +510,32 @@ func TestSettings_MaxShortMsgCount_RoundTrip(t *testing.T) {
 	var fromYAML Settings
 	require.NoError(t, yaml.Unmarshal(yamlData, &fromYAML))
 	assert.Equal(t, 5, fromYAML.MaxShortMsgCount)
+}
+
+func TestSettings_ProhibitedLangs_RoundTrip(t *testing.T) {
+	original := New()
+	original.ProhibitedLangs = "chinese,russian"
+	original.ProhibitedLangsMin = 4
+
+	jsonData, err := json.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"prohibited_langs":"chinese,russian"`)
+	assert.Contains(t, string(jsonData), `"prohibited_langs_min":4`)
+
+	var fromJSON Settings
+	require.NoError(t, json.Unmarshal(jsonData, &fromJSON))
+	assert.Equal(t, "chinese,russian", fromJSON.ProhibitedLangs)
+	assert.Equal(t, 4, fromJSON.ProhibitedLangsMin)
+
+	yamlData, err := yaml.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(yamlData), "prohibited_langs: chinese,russian")
+	assert.Contains(t, string(yamlData), "prohibited_langs_min: 4")
+
+	var fromYAML Settings
+	require.NoError(t, yaml.Unmarshal(yamlData, &fromYAML))
+	assert.Equal(t, "chinese,russian", fromYAML.ProhibitedLangs)
+	assert.Equal(t, 4, fromYAML.ProhibitedLangsMin)
 }
 
 func TestSettings_ApplyDefaults_FillsWarnWindow(t *testing.T) {
