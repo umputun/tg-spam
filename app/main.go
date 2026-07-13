@@ -764,8 +764,14 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		HistorySize:         settings.History.Size, // how many last request stored in memory
 	}
 
-	// prohibited scripts already validated in validateSettings, so the error is ignored here
-	prohibitedScripts, _ := tgspam.ResolveProhibitedScripts(strings.Split(settings.ProhibitedLangs, ","))
+	// prohibited scripts are validated earlier in Settings.Validate (log.Fatalf on a bad
+	// name), so this cannot fail in normal startup; handle the error defensively anyway —
+	// on error the resolver returns a nil map, which disables the check.
+	prohibitedScripts, err := tgspam.ResolveProhibitedScripts(strings.Split(settings.ProhibitedLangs, ","))
+	if err != nil {
+		log.Printf("[WARN] failed to resolve prohibited scripts %q: %v; prohibited-language check disabled",
+			settings.ProhibitedLangs, err)
+	}
 	detectorConfig.ProhibitedScripts = prohibitedScripts
 	detectorConfig.ProhibitedLangsMin = settings.ProhibitedLangsMin
 	if len(prohibitedScripts) > 0 {

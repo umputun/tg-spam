@@ -84,16 +84,15 @@ func TestRequestString(t *testing.T) {
 }
 
 func TestRequest_AuthoredText(t *testing.T) {
-	authored := "hello"
-	empty := ""
 	tests := []struct {
 		name     string
 		request  Request
 		expected string
 	}{
-		{name: "nil authored falls back to Msg", request: Request{Msg: "combined"}, expected: "combined"},
-		{name: "set authored overrides Msg", request: Request{Msg: "combined\nquoted", AuthoredMsg: &authored}, expected: "hello"},
-		{name: "empty authored is honored, not fallback", request: Request{Msg: "quoted only", AuthoredMsg: &empty}, expected: ""},
+		{name: "no quote returns Msg", request: Request{Msg: "hello"}, expected: "hello"},
+		{name: "quote stripped from Msg", request: Request{Msg: "hello\n汉语汉字", Quote: "汉语汉字"}, expected: "hello"},
+		{name: "empty authored with quote yields empty", request: Request{Msg: "\nquoted only", Quote: "quoted only"}, expected: ""},
+		{name: "quote set but Msg lacks the suffix returns Msg unchanged", request: Request{Msg: "hello", Quote: "other"}, expected: "hello"},
 	}
 
 	for _, tt := range tests {

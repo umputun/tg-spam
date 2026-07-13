@@ -3983,22 +3983,20 @@ func TestDetector_ProhibitedLang(t *testing.T) {
 
 	t.Run("quoted foreign text is not attributed to the replying user", func(t *testing.T) {
 		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
-		authored := "thanks!"
-		// Msg carries the concatenated quote; AuthoredText() is the user's own text only
-		spam, cr := d.Check(spamcheck.Request{Msg: "thanks!\n汉语汉字消息", AuthoredMsg: &authored})
+		// Msg carries the concatenated quote; AuthoredText() drops it via Quote
+		spam, cr := d.Check(spamcheck.Request{Msg: "thanks!\n汉语汉字消息", Quote: "汉语汉字消息"})
 		assert.False(t, spam, "foreign script is only in the quoted portion, not authored by the user")
 		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
 	})
 
 	t.Run("authored foreign text is still flagged when a quote is present", func(t *testing.T) {
 		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
-		authored := "汉语汉字消息"
-		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息\nquoted english", AuthoredMsg: &authored})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息\nquoted english", Quote: "quoted english"})
 		assert.True(t, spam)
 		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
 	})
 
-	t.Run("nil authored text falls back to Msg", func(t *testing.T) {
+	t.Run("no quote uses Msg", func(t *testing.T) {
 		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
 		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"}) // library/API caller sets only Msg
 		assert.True(t, spam)

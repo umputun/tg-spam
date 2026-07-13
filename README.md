@@ -204,6 +204,8 @@ This option is disabled by default (empty list). For a chat that expects a singl
 
 The blocklist accepts friendly aliases: `chinese` (Han), `russian` and `ukrainian` (both Cyrillic), `arabic` (Arabic), `korean` (Hangul), `japanese` (Hiragana and Katakana), `hebrew`, `thai`, and `greek`. Raw `unicode.Scripts` names, such as `Cyrillic`, `Arabic`, or `Devanagari`, are also accepted, and names are matched case-insensitively. An unknown script or alias name is rejected and the bot refuses to start.
 
+The check works at the Unicode script level, not the language level, so languages that share a script cannot be told apart: English, French, and German all use the Latin script. It is meant for a chat that expects one script and wants to block others (for example a Latin-script chat blocking Han or Cyrillic), so you list the scripts you never expect to see rather than individual Latin-alphabet languages.
+
 Note: `chinese` resolves to the Han script, which is shared with Japanese kanji, so a blocklist that includes `chinese` also matches kanji in Japanese text.
 
 Only letters count toward the threshold; digits, punctuation, and emoji are ignored. There is no minimum-length gate, so even a short message reaches the threshold with only a few prohibited-script letters; raise `--prohibited-langs-min` if the check is too aggressive for a chat that occasionally mixes scripts. The check is a hard block: when it triggers, the message is marked as spam immediately and the LLM checks are bypassed, so a confirmed prohibited-script message cannot be vetoed. In the default configuration it applies to non-approved users only; in `--paranoid` mode, or with `--first-message-only` disabled, it also applies to approved users, like every other content check.

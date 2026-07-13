@@ -2653,7 +2653,9 @@ func TestAdmin_DirectSpamReport_QuoteHandling(t *testing.T) {
 		require.Len(t, botMock.UpdateSpamCalls(), 1)
 		assert.Equal(t, "Thank you\nBuy cheap stuff at spam.com", botMock.UpdateSpamCalls()[0].Msg)
 		require.Len(t, botMock.OnMessageCalls(), 1)
-		assert.Equal(t, "Thank you\nBuy cheap stuff at spam.com", botMock.OnMessageCalls()[0].Msg.Text)
+		// diagnostic gets authored text and quote separately so its checks match the live path
+		assert.Equal(t, "Thank you", botMock.OnMessageCalls()[0].Msg.Text)
+		assert.Equal(t, "Buy cheap stuff at spam.com", botMock.OnMessageCalls()[0].Msg.Quote)
 	})
 
 	t.Run("message with empty quote text", func(t *testing.T) {
