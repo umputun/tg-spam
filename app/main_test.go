@@ -92,137 +92,72 @@ func TestMakeSpamLogger(t *testing.T) {
 
 }
 
-func TestValidateSettings(t *testing.T) {
-	tests := []struct {
-		name    string
-		s       *config.Settings
-		wantErr string
-	}{
-		{
-			name:    "all zero is valid (defaults disabled)",
-			s:       &config.Settings{},
-			wantErr: "",
-		},
-		{
-			name: "report auto-ban threshold below regular threshold",
-			s: &config.Settings{
-				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 2},
-			},
-			wantErr: "auto-ban-threshold (2) must be >= threshold (4)",
-		},
-		{
-			name: "report auto-ban threshold zero is valid (disabled)",
-			s: &config.Settings{
-				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 0},
-			},
-			wantErr: "",
-		},
-		{
-			name: "report auto-ban threshold equal to threshold is valid",
-			s: &config.Settings{
-				Report: config.ReportSettings{Threshold: 4, AutoBanThreshold: 4},
-			},
-			wantErr: "",
-		},
-		{
-			name: "warn threshold negative is rejected",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: -1, Window: 720 * time.Hour},
-			},
-			wantErr: "warn.threshold (-1) must be >= 0 (0 disables auto-ban)",
-		},
-		{
-			name: "warn threshold positive but window zero",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 2, Window: 0},
-			},
-			wantErr: "warn.threshold (2) is set but warn.window (0s) is not positive",
-		},
-		{
-			name: "warn threshold positive but window negative",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 1, Window: -time.Hour},
-			},
-			wantErr: "warn.threshold (1) is set but warn.window (-1h0m0s) is not positive",
-		},
-		{
-			name: "warn threshold zero with zero window is valid (disabled)",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 0, Window: 0},
-			},
-			wantErr: "",
-		},
-		{
-			name: "warn threshold positive with positive window is valid",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 3, Window: 24 * time.Hour},
-			},
-			wantErr: "",
-		},
-		{
-			name: "warn window equal to storage retention is valid",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 2, Window: storage.WarningsRetention},
-			},
-			wantErr: "",
-		},
-		{
-			name: "warn window above storage retention is rejected",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 2, Window: storage.WarningsRetention + time.Hour},
-			},
-			wantErr: "exceeds storage retention",
-		},
-		{
-			name: "warn window above storage retention with disabled threshold is valid",
-			s: &config.Settings{
-				Warn: config.WarnSettings{Threshold: 0, Window: storage.WarningsRetention + time.Hour},
-			},
-			wantErr: "",
-		},
-		{
-			name:    "max-short-msg-count negative is rejected",
-			s:       &config.Settings{MaxShortMsgCount: -1},
-			wantErr: "max-short-msg-count (-1) must be >= 0 (0 disables)",
-		},
-		{
-			name:    "max-short-msg-count zero is valid (disabled)",
-			s:       &config.Settings{MaxShortMsgCount: 0},
-			wantErr: "",
-		},
-		{
-			name:    "max-short-msg-count positive with paranoid mode is rejected",
-			s:       &config.Settings{MaxShortMsgCount: 3, ParanoidMode: true},
-			wantErr: "max-short-msg-count is incompatible with paranoid mode",
-		},
-		{
-			name:    "max-short-msg-count positive with default first-message-only mode is valid",
-			s:       &config.Settings{MaxShortMsgCount: 3},
-			wantErr: "",
-		},
-		{
-			name:    "max-short-msg-count positive with paranoid mode and first-messages-count is rejected",
-			s:       &config.Settings{MaxShortMsgCount: 3, ParanoidMode: true, FirstMessagesCount: 2},
-			wantErr: "max-short-msg-count is incompatible with paranoid mode",
-		},
-		{
-			name:    "max-short-msg-count positive with first-messages-count is valid",
-			s:       &config.Settings{MaxShortMsgCount: 3, FirstMessagesCount: 2},
-			wantErr: "",
-		},
-	}
+func TestRunSaveConfig(t *testing.T) {
+	setupLog(true)
+	ctx := context.Background()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateSettings(tt.s)
-			if tt.wantErr == "" {
-				assert.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
-		})
-	}
+	t.Run("invalid prohibited-langs is refused before persistence", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "invalid.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "klingon",
+			ProhibitedLangsMin: 3,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		assert.Equal(t, 1, code, "invalid config must fail save with non-zero exit code")
+
+		// nothing should have been persisted: loading finds no config
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.Error(t, err, "invalid config must not have been persisted")
+	})
+
+	t.Run("min below one with non-empty list is refused", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "badmin.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "chinese",
+			ProhibitedLangsMin: 0,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		assert.Equal(t, 1, code, "non-empty list with min<1 must fail save")
+
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.Error(t, err, "invalid config must not have been persisted")
+	})
+
+	t.Run("valid config is persisted", func(t *testing.T) {
+		dbFile := filepath.Join(t.TempDir(), "valid.db")
+		settings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "chinese",
+			ProhibitedLangsMin: 3,
+			Transient:          config.TransientSettings{DataBaseURL: dbFile},
+		}
+
+		code := runSaveConfig(settings)
+		require.Equal(t, 0, code, "valid config must save successfully")
+
+		loaded := &config.Settings{
+			InstanceID: "test-instance",
+			Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+		}
+		err := loadConfigFromDB(ctx, loaded, nil)
+		require.NoError(t, err, "valid config must be loadable after save")
+		assert.Equal(t, "chinese", loaded.ProhibitedLangs)
+		assert.Equal(t, 3, loaded.ProhibitedLangsMin)
+	})
 }
 
 // Helper function to create settings for testing
@@ -351,6 +286,27 @@ func Test_makeDetector(t *testing.T) {
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.MaxShortMsgCount)
+	})
+
+	t.Run("with prohibited langs", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.ProhibitedLangs = "chinese,russian"
+		settings.ProhibitedLangsMin = 4
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		require.Len(t, res.ProhibitedScripts, 2)
+		assert.Contains(t, res.ProhibitedScripts, "Han")
+		assert.Contains(t, res.ProhibitedScripts, "Cyrillic")
+		assert.Equal(t, 4, res.ProhibitedLangsMin)
+	})
+
+	t.Run("prohibited langs empty by default", func(t *testing.T) {
+		settings := makeTestSettings()
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		assert.Empty(t, res.ProhibitedScripts)
 	})
 }
 

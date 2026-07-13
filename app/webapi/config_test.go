@@ -697,6 +697,81 @@ func TestUpdateConfigHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Failed to save configuration")
 	})
 
+	t.Run("invalid prohibited-langs rejected and not persisted", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{
+			InstanceID:         "test-instance",
+			ProhibitedLangs:    "russian",
+			ProhibitedLangsMin: 2,
+		}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "klingon")
+		form.Add("prohibitedLangsMin", "3")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "unknown prohibited script or language")
+		assert.Empty(t, settingsStore.SaveCalls(), "invalid config must not be saved")
+		// in-memory settings must be rolled back to their prior values
+		assert.Equal(t, "russian", appSettings.ProhibitedLangs)
+		assert.Equal(t, 2, appSettings.ProhibitedLangsMin)
+	})
+
+	t.Run("prohibited-langs min below one rejected", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{InstanceID: "test-instance"}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "chinese")
+		form.Add("prohibitedLangsMin", "0")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "prohibited-langs-min")
+		assert.Empty(t, settingsStore.SaveCalls(), "invalid config must not be saved")
+		assert.Empty(t, appSettings.ProhibitedLangs, "in-memory settings must be rolled back")
+	})
+
+	t.Run("valid prohibited-langs saved", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
+		}
+		appSettings := &config.Settings{InstanceID: "test-instance"}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		form := url.Values{}
+		form.Add("prohibitedLangs", "chinese")
+		form.Add("prohibitedLangsMin", "3")
+		form.Add("saveToDb", "true")
+
+		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		srv.updateConfigHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Len(t, settingsStore.SaveCalls(), 1)
+		assert.Equal(t, "chinese", appSettings.ProhibitedLangs)
+		assert.Equal(t, 3, appSettings.ProhibitedLangsMin)
+	})
+
 	t.Run("complex settings update", func(t *testing.T) {
 		appSettings := &config.Settings{
 			InstanceID: "test-instance",
@@ -1715,6 +1790,57 @@ func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 	updateSettingsFromForm(settings, req)
 
 	assert.Empty(t, settings.Meta.UsernameSymbols, "empty form value must clear the setting")
+}
+
+func TestUpdateSettingsFromForm_ProhibitedLangs(t *testing.T) {
+	settings := &config.Settings{}
+
+	form := url.Values{}
+	form.Add("prohibitedLangs", "chinese, cyrillic")
+	form.Add("prohibitedLangsMin", "4")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, "chinese, cyrillic", settings.ProhibitedLangs)
+	assert.Equal(t, 4, settings.ProhibitedLangsMin)
+}
+
+func TestUpdateSettingsFromForm_ProhibitedLangsEmptyDisables(t *testing.T) {
+	// the field is presence-gated so an empty submit clears the list and disables
+	// the check; the naive "val != ''" gate would keep the existing value here.
+	settings := &config.Settings{ProhibitedLangs: "chinese"}
+
+	form := url.Values{}
+	form.Add("prohibitedLangs", "")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Empty(t, settings.ProhibitedLangs, "empty form value must clear the prohibited languages list")
+}
+
+func TestUpdateSettingsFromForm_ProhibitedLangsMinEmptyPreserves(t *testing.T) {
+	// prohibitedLangsMin is value-gated (parse on non-empty), so an empty submit
+	// keeps the existing value rather than resetting it to zero.
+	settings := &config.Settings{ProhibitedLangsMin: 5}
+
+	form := url.Values{}
+	form.Add("prohibitedLangsMin", "")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 5, settings.ProhibitedLangsMin, "empty form value must preserve the existing min")
 }
 
 func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {

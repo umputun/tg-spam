@@ -150,6 +150,19 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 			s.AppSettings.LuaPlugins.EnabledPlugins, s.Detector.GetLuaPluginNames())
 	}
 
+	// reject any invalid settings combination (unknown prohibited-langs script, a
+	// non-empty list with min < 1, an auto-ban/warn/short-msg mismatch, etc.) before
+	// it is applied or persisted; otherwise the next --confdb startup would fail
+	// Validate via log.Fatalf and the bot wouldn't start. shares the same validator
+	// as startup and save-config.
+	if err := s.AppSettings.Validate(); err != nil {
+		*s.AppSettings = snapshot // rollback in-memory mutation on validation failure
+		s.appSettingsMu.Unlock()
+		log.Printf("[WARN] rejected invalid settings update: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	saveToDB := r.FormValue("saveToDb") == "true" && s.SettingsStore != nil
 	if saveToDB {
 		log.Printf("[DEBUG] saving settings to database")
@@ -571,6 +584,18 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	if val := r.FormValue("multiLangWords"); val != "" {
 		if limit, err := strconv.Atoi(val); err == nil {
 			settings.MultiLangWords = limit
+		}
+	}
+
+	// gate on r.Form presence so an empty submit clears the list (disables the
+	// prohibited-language check); submits without the field preserve the value.
+	if _, ok := r.Form["prohibitedLangs"]; ok {
+		settings.ProhibitedLangs = r.FormValue("prohibitedLangs")
+	}
+
+	if val := r.FormValue("prohibitedLangsMin"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.ProhibitedLangsMin = n
 		}
 	}
 

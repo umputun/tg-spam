@@ -598,13 +598,21 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 
 	// this is a replayed message, it is an example of missed spam
 	// we need to update spam filter with this message
-	msgTxt := origMsg.Text
-	if msgTxt == "" { // if no text, try to get it from the transformed message
+	authoredTxt := origMsg.Text
+	if authoredTxt == "" { // if no text, try to get it from the transformed message
 		m := transform(origMsg)
-		msgTxt = m.Text
+		authoredTxt = m.Text
 	}
+	quoteTxt := ""
 	if origMsg.Quote != nil && origMsg.Quote.Text != "" {
-		msgTxt = msgTxt + "\n" + origMsg.Quote.Text
+		quoteTxt = origMsg.Quote.Text
+	}
+	// msgTxt is the full text (authored + quote) used for logging and spam-sample updates;
+	// the diagnostic OnMessage below gets authored and quote separately so its checks match
+	// the live path (the prohibited-language hard block scores authored text only)
+	msgTxt := authoredTxt
+	if quoteTxt != "" {
+		msgTxt = authoredTxt + "\n" + quoteTxt
 	}
 	log.Printf("[DEBUG] reported spam message from superuser %q (%d): %q",
 		update.Message.From.UserName, update.Message.From.ID, msgTxt)
@@ -639,7 +647,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	spamInfo := []string{}
 	// check only, don't update the storage with the new approved user as all we care here is to get checks results.
 	// pass SenderChat for channel posts so diagnostics match runtime spam checks
-	diagMsg := bot.Message{Text: msgTxt, From: bot.User{ID: origMsg.From.ID}}
+	diagMsg := bot.Message{Text: authoredTxt, Quote: quoteTxt, From: bot.User{ID: origMsg.From.ID}}
 	if origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0 {
 		diagMsg.SenderChat = bot.SenderChat{ID: origMsg.SenderChat.ID, UserName: origMsg.SenderChat.UserName}
 	}

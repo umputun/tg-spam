@@ -125,6 +125,13 @@ type Config struct {
 	MultiLangWords      int              // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration    // timeout for storage operations, if not set - no timeout
 
+	// ProhibitedScripts maps a unicode.Scripts name to its range table; a message with
+	// ProhibitedLangsMin or more letters in any of these scripts is flagged as spam. an
+	// empty map disables the check.
+	ProhibitedScripts map[string]*unicode.RangeTable
+	// ProhibitedLangsMin is the minimum count of prohibited-script letters that flags a message.
+	ProhibitedLangsMin int
+
 	LuaPlugins struct {
 		Enabled        bool     // if true, enable Lua plugins
 		PluginsDir     string   // directory with Lua plugins
@@ -258,6 +265,22 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	// has no information that would justify overriding the count.
 	if d.MaxShortMsgCount > 0 && d.messageCounter != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		if resp := d.isShortMsgFlood(req); resp.Spam {
+			cr = append(cr, resp)
+			d.spamHistory.Push(req)
+			return true, cr
+		}
+	}
+
+	// prohibited-language: hard block on configured foreign scripts. bypasses the LLM
+	// (policy rule the LLM can't override), mirroring the short-msg-flood block above.
+	// scans req.AuthoredText() (the user's own text) rather than req.Msg so quoted or
+	// reply-to content the user did not write can't drive an unvetoable permanent ban;
+	// the softer content checks below still see the full concatenated req.Msg.
+	// ProhibitedLangsMin==0 is treated as disabled: without it a direct library consumer
+	// that sets ProhibitedScripts but leaves the min at its zero value would flag every
+	// single foreign letter (counts[s]++ -> 1 >= 0).
+	if len(d.ProhibitedScripts) > 0 && d.ProhibitedLangsMin > 0 {
+		if resp := d.isProhibitedLang(req.AuthoredText()); resp.Spam {
 			cr = append(cr, resp)
 			d.spamHistory.Push(req)
 			return true, cr
@@ -1153,6 +1176,48 @@ func (d *Detector) isShortMsgFlood(req spamcheck.Request) spamcheck.Response {
 		Details:        fmt.Sprintf("%d messages without approval (threshold %d)", excess, d.MaxShortMsgCount),
 		ExtraDeleteIDs: extraIDs,
 	}
+}
+
+// isProhibitedLang counts letters that belong to any configured prohibited script and
+// flags the message as spam once a single script reaches ProhibitedLangsMin. Only
+// unicode.IsLetter runes count; digits, punctuation, emoji and spaces are ignored.
+// Details names the script that reached the threshold. Unlike isShortMsgFlood this is a
+// pure content check and does NOT bail on req.CheckOnly, so the web /check UI exercises it.
+func (d *Detector) isProhibitedLang(msg string) spamcheck.Response {
+	const name = "prohibited-language"
+	scriptNames := make([]string, 0, len(d.ProhibitedScripts))
+	for s := range d.ProhibitedScripts {
+		scriptNames = append(scriptNames, s)
+	}
+	sort.Strings(scriptNames) // deterministic reported name and tie-breaking
+
+	counts := make(map[string]int, len(scriptNames))
+	for _, r := range msg {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		for _, s := range scriptNames { // scripts are disjoint, so at most one matches per rune
+			if unicode.Is(d.ProhibitedScripts[s], r) {
+				counts[s]++
+				if counts[s] >= d.ProhibitedLangsMin {
+					return spamcheck.Response{Name: name, Spam: true, Details: fmt.Sprintf("%s: %d", s, counts[s])}
+				}
+				break
+			}
+		}
+	}
+
+	topName, topCount := "", 0
+	for _, s := range scriptNames {
+		if counts[s] > topCount {
+			topName, topCount = s, counts[s]
+		}
+	}
+	details := fmt.Sprintf("%d/%d", topCount, d.ProhibitedLangsMin)
+	if topName != "" {
+		details = fmt.Sprintf("%s: %d/%d", topName, topCount, d.ProhibitedLangsMin)
+	}
+	return spamcheck.Response{Name: name, Spam: false, Details: details}
 }
 
 // isStopWord checks if a given message or username contains any of the stop words.

@@ -5,8 +5,12 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"time"
+
+	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 // Settings represents application configuration independent of source (CLI, DB, etc)
@@ -42,6 +46,8 @@ type Settings struct {
 	MaxEmoji            int     `json:"max_emoji" yaml:"max_emoji" db:"max_emoji"`
 	MinSpamProbability  float64 `json:"min_spam_probability" yaml:"min_spam_probability" db:"min_spam_probability"`
 	MultiLangWords      int     `json:"multi_lang_words" yaml:"multi_lang_words" db:"multi_lang_words"`
+	ProhibitedLangs     string  `json:"prohibited_langs" yaml:"prohibited_langs" db:"prohibited_langs"`
+	ProhibitedLangsMin  int     `json:"prohibited_langs_min" yaml:"prohibited_langs_min" db:"prohibited_langs_min"`
 
 	// bot behavior settings
 	NoSpamReply         bool `json:"no_spam_reply" yaml:"no_spam_reply" db:"no_spam_reply"`
@@ -262,6 +268,44 @@ func New() *Settings {
 	return &Settings{}
 }
 
+// Validate checks cross-field invariants that must hold regardless of the config
+// source (CLI flags, database, or the web UI). It is the single validation entry
+// point shared by startup, save-config, and the web save handler, so an invalid
+// combination entered anywhere is rejected before it is persisted rather than
+// bricking the next --confdb startup.
+func (s *Settings) Validate() error {
+	if s.Report.AutoBanThreshold > 0 && s.Report.AutoBanThreshold < s.Report.Threshold {
+		return fmt.Errorf("auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
+			s.Report.AutoBanThreshold, s.Report.Threshold)
+	}
+	if s.Warn.Threshold < 0 {
+		return fmt.Errorf("warn.threshold (%d) must be >= 0 (0 disables auto-ban)", s.Warn.Threshold)
+	}
+	if s.Warn.Threshold > 0 && s.Warn.Window <= 0 {
+		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
+			s.Warn.Threshold, s.Warn.Window)
+	}
+	if s.Warn.Threshold > 0 && s.Warn.Window > storage.WarningsRetention {
+		return fmt.Errorf("warn.window (%v) exceeds storage retention (%v); older rows are pruned and would not be counted",
+			s.Warn.Window, storage.WarningsRetention)
+	}
+	if s.MaxShortMsgCount < 0 {
+		return fmt.Errorf("max-short-msg-count (%d) must be >= 0 (0 disables)", s.MaxShortMsgCount)
+	}
+	// MaxShortMsgCount needs the detector's first-message-only path active. ParanoidMode
+	// in makeDetector forces FirstMessageOnly=false and FirstMessagesCount=0 regardless
+	// of the configured FirstMessagesCount, which would silently disable this check.
+	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
+		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
+	}
+	// ValidateProhibitedLangs already returns a fully-formed, user-facing message
+	// shared across all call sites; return it verbatim.
+	if err := tgspam.ValidateProhibitedLangs(s.ProhibitedLangs, s.ProhibitedLangsMin); err != nil {
+		return err //nolint:wrapcheck // message is already contextual and shared across call sites
+	}
+	return nil
+}
+
 // IsOpenAIEnabled returns true if OpenAI integration is enabled
 func (s *Settings) IsOpenAIEnabled() bool {
 	return s.OpenAI.APIBase != "" || s.OpenAI.Token != ""
@@ -320,6 +364,7 @@ var zeroAwarePaths = map[string]bool{
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
 	"MaxShortMsgCount":        true, // lib/tgspam/detector.go:253 (> 0): 0 disables
+	"ProhibitedLangs":         true, // lib/tgspam/detector.go:276 (len > 0): empty disables
 }
 
 // ApplyDefaults fills zero-valued fields in s with the corresponding values from

@@ -83,6 +83,25 @@ func TestRequestString(t *testing.T) {
 	}
 }
 
+func TestRequest_AuthoredText(t *testing.T) {
+	tests := []struct {
+		name     string
+		request  Request
+		expected string
+	}{
+		{name: "no quote returns Msg", request: Request{Msg: "hello"}, expected: "hello"},
+		{name: "quote stripped from Msg", request: Request{Msg: "hello\n汉语汉字", Quote: "汉语汉字"}, expected: "hello"},
+		{name: "empty authored with quote yields empty", request: Request{Msg: "\nquoted only", Quote: "quoted only"}, expected: ""},
+		{name: "quote set but Msg lacks the suffix returns Msg unchanged", request: Request{Msg: "hello", Quote: "other"}, expected: "hello"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.request.AuthoredText())
+		})
+	}
+}
+
 func TestChecksToString(t *testing.T) {
 	tests := []struct {
 		name     string

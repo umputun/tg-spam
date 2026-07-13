@@ -266,6 +266,8 @@ func TestOptToSettings(t *testing.T) {
 		o.MinSpamProbability = 0.8
 		o.SimilarityThreshold = 0.9
 		o.MultiLangWords = 3
+		o.ProhibitedLangs = "chinese,cyrillic"
+		o.ProhibitedLangsMin = 2
 		o.NoSpamReply = true
 		o.SuppressJoinMessage = true
 		o.ParanoidMode = true
@@ -406,6 +408,8 @@ func TestOptToSettings(t *testing.T) {
 				assert.InEpsilon(t, 0.8, settings.MinSpamProbability, 0.0001)
 				assert.InEpsilon(t, 0.9, settings.SimilarityThreshold, 0.0001)
 				assert.Equal(t, 3, settings.MultiLangWords)
+				assert.Equal(t, "chinese,cyrillic", settings.ProhibitedLangs)
+				assert.Equal(t, 2, settings.ProhibitedLangsMin)
 				assert.True(t, settings.NoSpamReply)
 				assert.True(t, settings.SuppressJoinMessage)
 				assert.True(t, settings.ParanoidMode)
@@ -559,6 +563,8 @@ func TestOptToSettings(t *testing.T) {
 				// verify some defaults are applied
 				assert.Equal(t, 0, settings.MinMsgLen)
 				assert.Equal(t, 0, settings.MaxShortMsgCount)
+				assert.Empty(t, settings.ProhibitedLangs)
+				assert.Equal(t, 0, settings.ProhibitedLangsMin)
 				assert.Equal(t, 0, settings.MaxEmoji)
 				assert.False(t, settings.NoSpamReply)
 				assert.False(t, settings.ParanoidMode)

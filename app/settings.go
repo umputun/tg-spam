@@ -163,6 +163,8 @@ func optToSettings(opts options) *config.Settings {
 		MaxEmoji:               opts.MaxEmoji,
 		MinSpamProbability:     opts.MinSpamProbability,
 		MultiLangWords:         opts.MultiLangWords,
+		ProhibitedLangs:        opts.ProhibitedLangs,
+		ProhibitedLangsMin:     opts.ProhibitedLangsMin,
 		NoSpamReply:            opts.NoSpamReply,
 		SuppressJoinMessage:    opts.SuppressJoinMessage,
 		AggressiveCleanup:      opts.AggressiveCleanup,

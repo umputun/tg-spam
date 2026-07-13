@@ -206,6 +206,19 @@
             </div>
 
             <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="prohibitedLangs" class="form-label">Prohibited Languages</label>
+                    <input type="text" class="form-control" id="prohibitedLangs" name="prohibitedLangs" value="{{.ProhibitedLangs}}">
+                    <div class="form-text">Comma-separated scripts/languages to block (e.g. chinese, cyrillic); empty disables</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="prohibitedLangsMin" class="form-label">Prohibited Languages Min</label>
+                    <input type="number" min="1" class="form-control" id="prohibitedLangsMin" name="prohibitedLangsMin" value="{{.ProhibitedLangsMin}}">
+                    <div class="form-text">Minimum prohibited-script letters to flag a message as spam</div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
                 <div class="col-md-12 mb-3">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="abnormalSpacingEnabled" name="abnormalSpacingEnabled" {{if .AbnormalSpace.Enabled}}checked{{end}}>
@@ -265,6 +278,8 @@
                         <tr><th>Min Spam Probability</th><td>{{.MinSpamProbability}}%</td></tr>
                         <tr><th>First Messages Count</th><td>{{.FirstMessagesCount}}</td></tr>
                         <tr><th>Multi Lingual Words</th><td>{{.MultiLangWords}}</td></tr>
+                        <tr><th>Prohibited Languages</th><td>{{if .ProhibitedLangs}}{{.ProhibitedLangs}}{{else}}disabled{{end}}</td></tr>
+                        <tr><th>Prohibited Languages Min</th><td>{{.ProhibitedLangsMin}}</td></tr>
                         <tr><th>LLM Consensus</th><td>{{.LLM.Consensus}}</td></tr>
                         <tr><th>Abnormal Spacing Enabled</th><td>{{.AbnormalSpace.Enabled}}</td></tr>
                         <tr><th>History Size</th><td>{{.History.Size}}</td></tr>

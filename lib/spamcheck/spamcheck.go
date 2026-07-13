@@ -7,14 +7,28 @@ import (
 
 // Request is a request to check a message for spam.
 type Request struct {
-	Msg       string   `json:"msg"`        // message to check
-	UserID    string   `json:"user_id"`    // user id
-	UserName  string   `json:"user_name"`  // user name
-	FirstName string   `json:"first_name"` // user's first name
-	LastName  string   `json:"last_name"`  // user's last name
-	IsPremium bool     `json:"is_premium"` // true if user has telegram premium
-	Meta      MetaData `json:"meta"`       // meta-info, provided by the client
-	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not write newly approved user to the database
+	Msg       string   `json:"msg"`             // message to check, includes any appended quoted/reply-to context
+	Quote     string   `json:"quote,omitempty"` // quoted/reply-to text appended to Msg, empty when the message has none
+	UserID    string   `json:"user_id"`         // user id
+	UserName  string   `json:"user_name"`       // user name
+	FirstName string   `json:"first_name"`      // user's first name
+	LastName  string   `json:"last_name"`       // user's last name
+	IsPremium bool     `json:"is_premium"`      // true if user has telegram premium
+	Meta      MetaData `json:"meta"`            // meta-info, provided by the client
+	CheckOnly bool     `json:"check_only"`      // if true, only check the message, do not write newly approved user to the database
+}
+
+// AuthoredText returns the text the user themselves wrote, excluding any quoted or
+// reply-to context. Msg carries the full text (authored text followed by "\n" and
+// Quote) so content checks see everything; hard policy checks that must not attribute
+// quoted content to the replying user (e.g. the prohibited-language block) call this to
+// drop the trailing quote. With no Quote it returns Msg unchanged, so API and library
+// callers that set only Msg are unaffected.
+func (r *Request) AuthoredText() string {
+	if r.Quote == "" {
+		return r.Msg
+	}
+	return strings.TrimSuffix(r.Msg, "\n"+r.Quote)
 }
 
 // MetaData is a meta-info about the message, provided by the client.

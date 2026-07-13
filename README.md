@@ -198,6 +198,18 @@ This option is disabled by default. If `--meta.giveaway` is set or `env:META_GIV
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
 
+**Prohibited languages**
+
+This option is disabled by default (empty list). For a chat that expects a single script, such as an English-only or Cyrillic-only group, the bot can block messages written in scripts that do not belong there. Set `--prohibited-langs=, [$PROHIBITED_LANGS]` to a comma-separated blocklist of scripts to enable it. A message is marked as spam once it contains at least `--prohibited-langs-min` (default 3) letters from any single prohibited script.
+
+The blocklist accepts friendly aliases: `chinese` (Han), `russian` and `ukrainian` (both Cyrillic), `arabic` (Arabic), `korean` (Hangul), `japanese` (Hiragana and Katakana), `hebrew`, `thai`, and `greek`. Raw `unicode.Scripts` names, such as `Cyrillic`, `Arabic`, or `Devanagari`, are also accepted, and names are matched case-insensitively. An unknown script or alias name is rejected and the bot refuses to start.
+
+The check works at the Unicode script level, not the language level, so languages that share a script cannot be told apart: English, French, and German all use the Latin script. It is meant for a chat that expects one script and wants to block others (for example a Latin-script chat blocking Han or Cyrillic), so you list the scripts you never expect to see rather than individual Latin-alphabet languages.
+
+Note: `chinese` resolves to the Han script, which is shared with Japanese kanji, so a blocklist that includes `chinese` also matches kanji in Japanese text.
+
+Only letters count toward the threshold; digits, punctuation, and emoji are ignored. There is no minimum-length gate, so even a short message reaches the threshold with only a few prohibited-script letters; raise `--prohibited-langs-min` if the check is too aggressive for a chat that occasionally mixes scripts. The check is a hard block: when it triggers, the message is marked as spam immediately and the LLM checks are bypassed, so a confirmed prohibited-script message cannot be vetoed. In the default configuration it applies to non-approved users only; in `--paranoid` mode, or with `--first-message-only` disabled, it also applies to approved users, like every other content check.
+
 **Duplicate message detection**
 
 This option is disabled by default. When enabled, the bot tracks messages from each user and marks as spam if the same message is repeated multiple times within a time window. This is useful for detecting spam bots that send the same message repeatedly.
@@ -580,6 +592,8 @@ Success! The new status is: DISABLED. /help
       --max-emoji=                      max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=                min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
+      --prohibited-langs=               comma-separated prohibited languages or scripts, e.g. chinese,cyrillic (empty disables) [$PROHIBITED_LANGS]
+      --prohibited-langs-min=           min prohibited-script letters in a message to consider as spam (default: 3) [$PROHIBITED_LANGS_MIN]
       --paranoid                        paranoid mode, check all messages [$PARANOID]
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --aggressive-cleanup              delete all messages from user when banned via /spam command [$AGGRESSIVE_CLEANUP]
