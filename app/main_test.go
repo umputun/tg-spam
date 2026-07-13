@@ -245,6 +245,11 @@ func TestValidateSettings(t *testing.T) {
 			s:       &config.Settings{ProhibitedLangs: "", ProhibitedLangsMin: 0},
 			wantErr: "",
 		},
+		{
+			name:    "prohibited-langs whitespace-only is valid (disabled)",
+			s:       &config.Settings{ProhibitedLangs: "  ", ProhibitedLangsMin: 0},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -386,6 +391,27 @@ func Test_makeDetector(t *testing.T) {
 		res := makeDetector(settings)
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.MaxShortMsgCount)
+	})
+
+	t.Run("with prohibited langs", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.ProhibitedLangs = "chinese,russian"
+		settings.ProhibitedLangsMin = 4
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		require.Len(t, res.ProhibitedScripts, 2)
+		assert.Contains(t, res.ProhibitedScripts, "Han")
+		assert.Contains(t, res.ProhibitedScripts, "Cyrillic")
+		assert.Equal(t, 4, res.ProhibitedLangsMin)
+	})
+
+	t.Run("prohibited langs empty by default", func(t *testing.T) {
+		settings := makeTestSettings()
+
+		res := makeDetector(settings)
+		assert.NotNil(t, res)
+		assert.Empty(t, res.ProhibitedScripts)
 	})
 }
 

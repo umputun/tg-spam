@@ -1751,6 +1751,23 @@ func TestUpdateSettingsFromForm_ProhibitedLangsEmptyDisables(t *testing.T) {
 	assert.Empty(t, settings.ProhibitedLangs, "empty form value must clear the prohibited languages list")
 }
 
+func TestUpdateSettingsFromForm_ProhibitedLangsMinEmptyPreserves(t *testing.T) {
+	// prohibitedLangsMin is value-gated (parse on non-empty), so an empty submit
+	// keeps the existing value rather than resetting it to zero.
+	settings := &config.Settings{ProhibitedLangsMin: 5}
+
+	form := url.Values{}
+	form.Add("prohibitedLangsMin", "")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, 5, settings.ProhibitedLangsMin, "empty form value must preserve the existing min")
+}
+
 func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	// when the meta master toggle is off (metaEnabled absent) and the form
 	// contains at least one meta-related field, the server-side authoritative

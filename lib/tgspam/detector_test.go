@@ -3894,6 +3894,7 @@ func TestDetector_ProhibitedLang(t *testing.T) {
 			{"single foreign char in english", "just a normal message ф here", false, "Cyrillic: 1/3"},
 			{"digits punctuation emoji do not count", "汉字 12345 !!! 😀😀😀", false, "Han: 2/3"},
 			{"letters counted across non-letter separators", "汉1字2汉3", true, "Han: 3"},
+			{"two scripts each below min do not combine", "汉字фы", false, "Cyrillic: 2/3"},
 			{"pure english passes", "this is a normal english message", false, "0/3"},
 		}
 		for _, tt := range tests {
@@ -3921,6 +3922,36 @@ func TestDetector_ProhibitedLang(t *testing.T) {
 		require.NotNil(t, resp)
 		assert.True(t, resp.Spam)
 		assert.Equal(t, "Han: 3", resp.Details)
+	})
+
+	t.Run("hard-return bypasses openai veto", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3,
+			MaxAllowedEmoji: -1, FirstMessageOnly: true, OpenAIVeto: true})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks fine", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls(),
+			"prohibited-language short-circuits before the LLM veto is consulted")
+	})
+
+	t.Run("min zero with scripts set is a no-op via Check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 0, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.False(t, spam)
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
 	})
 
 	t.Run("CheckOnly request still runs the check", func(t *testing.T) {
