@@ -172,12 +172,12 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Modify: `app/webapi/config.go`
 - Modify: `app/webapi/config_test.go`
 
-- [ ] add edit inputs to `settings.html`: text input `prohibitedLangs` bound to `{{.ProhibitedLangs}}` and number input `prohibitedLangsMin` bound to `{{.ProhibitedLangsMin}}` (mirror `multiLangWords` for the int)
-- [ ] add read-only display rows for both (mirror the `Multi Lingual Words` row)
-- [ ] parse `prohibitedLangs` with the CLEARABLE presence-gated pattern (like `metaUsernameSymbols`, config.go:316): `if _, ok := r.Form["prohibitedLangs"]; ok { settings.ProhibitedLangs = r.FormValue("prohibitedLangs") }` so an empty submit DISABLES the feature. Do NOT use the `if val := r.FormValue(); val != ""` gate (it can't clear). Parse `prohibitedLangsMin` as int like `reportAutoBanThreshold`
-- [ ] write test: form parse sets both fields
-- [ ] write test: clear-to-empty — set `prohibitedLangs` non-empty, then submit empty, assert the field is cleared (guards the disable path; the naive `val != ""` gate would fail this)
-- [ ] run `go test ./app/webapi/ -race` — must pass before task 6
+- [x] add edit inputs to `settings.html`: text input `prohibitedLangs` bound to `{{.ProhibitedLangs}}` and number input `prohibitedLangsMin` bound to `{{.ProhibitedLangsMin}}` (mirror `multiLangWords` for the int)
+- [x] add read-only display rows for both (mirror the `Multi Lingual Words` row)
+- [x] parse `prohibitedLangs` with the CLEARABLE presence-gated pattern (like `metaUsernameSymbols`, config.go:316): `if _, ok := r.Form["prohibitedLangs"]; ok { settings.ProhibitedLangs = r.FormValue("prohibitedLangs") }` so an empty submit DISABLES the feature. Do NOT use the `if val := r.FormValue(); val != ""` gate (it can't clear). Parse `prohibitedLangsMin` as int like `reportAutoBanThreshold`
+- [x] write test: form parse sets both fields
+- [x] write test: clear-to-empty — set `prohibitedLangs` non-empty, then submit empty, assert the field is cleared (guards the disable path; the naive `val != ""` gate would fail this)
+- [x] run `go test ./app/webapi/ -race` — must pass before task 6
 
 ### Task 6: e2e settings persistence
 

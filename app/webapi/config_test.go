@@ -1717,6 +1717,40 @@ func TestUpdateSettingsFromForm_MetaUsernameSymbolsEmptyDisables(t *testing.T) {
 	assert.Empty(t, settings.Meta.UsernameSymbols, "empty form value must clear the setting")
 }
 
+func TestUpdateSettingsFromForm_ProhibitedLangs(t *testing.T) {
+	settings := &config.Settings{}
+
+	form := url.Values{}
+	form.Add("prohibitedLangs", "chinese, cyrillic")
+	form.Add("prohibitedLangsMin", "4")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Equal(t, "chinese, cyrillic", settings.ProhibitedLangs)
+	assert.Equal(t, 4, settings.ProhibitedLangsMin)
+}
+
+func TestUpdateSettingsFromForm_ProhibitedLangsEmptyDisables(t *testing.T) {
+	// the field is presence-gated so an empty submit clears the list and disables
+	// the check; the naive "val != ''" gate would keep the existing value here.
+	settings := &config.Settings{ProhibitedLangs: "chinese"}
+
+	form := url.Values{}
+	form.Add("prohibitedLangs", "")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.Empty(t, settings.ProhibitedLangs, "empty form value must clear the prohibited languages list")
+}
+
 func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	// when the meta master toggle is off (metaEnabled absent) and the form
 	// contains at least one meta-related field, the server-side authoritative

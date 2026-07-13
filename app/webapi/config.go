@@ -574,6 +574,18 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
+	// gate on r.Form presence so an empty submit clears the list (disables the
+	// prohibited-language check); submits without the field preserve the value.
+	if _, ok := r.Form["prohibitedLangs"]; ok {
+		settings.ProhibitedLangs = r.FormValue("prohibitedLangs")
+	}
+
+	if val := r.FormValue("prohibitedLangsMin"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.ProhibitedLangsMin = n
+		}
+	}
+
 	if val := r.FormValue("historySize"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil {
 			settings.History.Size = size
