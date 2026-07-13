@@ -3970,4 +3970,38 @@ func TestDetector_ProhibitedLang(t *testing.T) {
 		assert.NotNil(t, findResponseByName(cr, "pre-approved"))
 		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
 	})
+
+	t.Run("approved user is checked when first-message-only is disabled (paranoid)", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, FirstMessageOnly: false, MaxAllowedEmoji: -1})
+		require.NoError(t, d.AddApprovedUser(approved.UserInfo{UserID: "123", UserName: "ham"}))
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息", UserID: "123"})
+		assert.True(t, spam, "paranoid mode (FirstMessageOnly=false) applies the check to approved users too")
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+	})
+
+	t.Run("quoted foreign text is not attributed to the replying user", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		authored := "thanks!"
+		// Msg carries the concatenated quote; AuthoredText() is the user's own text only
+		spam, cr := d.Check(spamcheck.Request{Msg: "thanks!\n汉语汉字消息", AuthoredMsg: &authored})
+		assert.False(t, spam, "foreign script is only in the quoted portion, not authored by the user")
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("authored foreign text is still flagged when a quote is present", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		authored := "汉语汉字消息"
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息\nquoted english", AuthoredMsg: &authored})
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("nil authored text falls back to Msg", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"}) // library/API caller sets only Msg
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
 }

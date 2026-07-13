@@ -527,6 +527,12 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			det := &mocks.DetectorMock{
 				CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 					if tc.wantRequest != (spamcheck.Request{}) {
+						// OnMessage separates the user's authored text (msg.Text) from any
+						// quoted/reply context appended to Msg; verify it, then normalize so
+						// the remaining fields can be compared against wantRequest.
+						require.NotNil(t, req.AuthoredMsg)
+						assert.Equal(t, tc.message.Text, *req.AuthoredMsg)
+						req.AuthoredMsg = nil
 						assert.Equal(t, tc.wantRequest, req)
 					}
 					if tc.message.Text == "good message" {

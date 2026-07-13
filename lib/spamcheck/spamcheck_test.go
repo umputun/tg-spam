@@ -83,6 +83,26 @@ func TestRequestString(t *testing.T) {
 	}
 }
 
+func TestRequest_AuthoredText(t *testing.T) {
+	authored := "hello"
+	empty := ""
+	tests := []struct {
+		name     string
+		request  Request
+		expected string
+	}{
+		{name: "nil authored falls back to Msg", request: Request{Msg: "combined"}, expected: "combined"},
+		{name: "set authored overrides Msg", request: Request{Msg: "combined\nquoted", AuthoredMsg: &authored}, expected: "hello"},
+		{name: "empty authored is honored, not fallback", request: Request{Msg: "quoted only", AuthoredMsg: &empty}, expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.request.AuthoredText())
+		})
+	}
+}
+
 func TestChecksToString(t *testing.T) {
 	tests := []struct {
 		name     string

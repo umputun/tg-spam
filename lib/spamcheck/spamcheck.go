@@ -7,14 +7,27 @@ import (
 
 // Request is a request to check a message for spam.
 type Request struct {
-	Msg       string   `json:"msg"`        // message to check
-	UserID    string   `json:"user_id"`    // user id
-	UserName  string   `json:"user_name"`  // user name
-	FirstName string   `json:"first_name"` // user's first name
-	LastName  string   `json:"last_name"`  // user's last name
-	IsPremium bool     `json:"is_premium"` // true if user has telegram premium
-	Meta      MetaData `json:"meta"`       // meta-info, provided by the client
-	CheckOnly bool     `json:"check_only"` // if true, only check the message, do not write newly approved user to the database
+	Msg         string   `json:"msg"`                    // message to check, may include appended quoted/reply-to context
+	AuthoredMsg *string  `json:"authored_msg,omitempty"` // text the user wrote without appended quote/reply context; nil when not separated
+	UserID      string   `json:"user_id"`                // user id
+	UserName    string   `json:"user_name"`              // user name
+	FirstName   string   `json:"first_name"`             // user's first name
+	LastName    string   `json:"last_name"`              // user's last name
+	IsPremium   bool     `json:"is_premium"`             // true if user has telegram premium
+	Meta        MetaData `json:"meta"`                   // meta-info, provided by the client
+	CheckOnly   bool     `json:"check_only"`             // if true, only check the message, do not write newly approved user to the database
+}
+
+// AuthoredText returns the text the user themselves wrote, excluding any quoted or
+// reply-to context appended to Msg. Hard policy checks that must not attribute quoted
+// content to the replying user (e.g. the prohibited-language block) read this instead
+// of Msg. It falls back to Msg when the caller did not separate authored text, so API
+// and library callers that set only Msg keep their existing behavior.
+func (r *Request) AuthoredText() string {
+	if r.AuthoredMsg != nil {
+		return *r.AuthoredMsg
+	}
+	return r.Msg
 }
 
 // MetaData is a meta-info about the message, provided by the client.

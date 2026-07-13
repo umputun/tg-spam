@@ -273,11 +273,14 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// prohibited-language: hard block on configured foreign scripts. bypasses the LLM
 	// (policy rule the LLM can't override), mirroring the short-msg-flood block above.
+	// scans req.AuthoredText() (the user's own text) rather than req.Msg so quoted or
+	// reply-to content the user did not write can't drive an unvetoable permanent ban;
+	// the softer content checks below still see the full concatenated req.Msg.
 	// ProhibitedLangsMin==0 is treated as disabled: without it a direct library consumer
 	// that sets ProhibitedScripts but leaves the min at its zero value would flag every
 	// single foreign letter (counts[s]++ -> 1 >= 0).
 	if len(d.ProhibitedScripts) > 0 && d.ProhibitedLangsMin > 0 {
-		if resp := d.isProhibitedLang(req.Msg); resp.Spam {
+		if resp := d.isProhibitedLang(req.AuthoredText()); resp.Spam {
 			cr = append(cr, resp)
 			d.spamHistory.Push(req)
 			return true, cr

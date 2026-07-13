@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/umputun/tg-spam/app/storage"
 )
 
 func TestSettings_JSON(t *testing.T) {
@@ -657,6 +659,114 @@ func TestSettings_IsStartupMessageEnabled(t *testing.T) {
 			s := New()
 			s.Message.Startup = tt.message
 			assert.Equal(t, tt.expected, s.IsStartupMessageEnabled())
+		})
+	}
+}
+
+func TestSettings_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		s       *Settings
+		wantErr string
+	}{
+		{name: "all zero is valid (defaults disabled)", s: &Settings{}, wantErr: ""},
+		{
+			name:    "report auto-ban threshold below regular threshold",
+			s:       &Settings{Report: ReportSettings{Threshold: 4, AutoBanThreshold: 2}},
+			wantErr: "auto-ban-threshold (2) must be >= threshold (4)",
+		},
+		{
+			name:    "report auto-ban threshold zero is valid (disabled)",
+			s:       &Settings{Report: ReportSettings{Threshold: 4, AutoBanThreshold: 0}},
+			wantErr: "",
+		},
+		{
+			name:    "report auto-ban threshold equal to threshold is valid",
+			s:       &Settings{Report: ReportSettings{Threshold: 4, AutoBanThreshold: 4}},
+			wantErr: "",
+		},
+		{
+			name:    "warn threshold negative is rejected",
+			s:       &Settings{Warn: WarnSettings{Threshold: -1, Window: 720 * time.Hour}},
+			wantErr: "warn.threshold (-1) must be >= 0 (0 disables auto-ban)",
+		},
+		{
+			name:    "warn threshold positive but window zero",
+			s:       &Settings{Warn: WarnSettings{Threshold: 2, Window: 0}},
+			wantErr: "warn.threshold (2) is set but warn.window (0s) is not positive",
+		},
+		{
+			name:    "warn threshold positive but window negative",
+			s:       &Settings{Warn: WarnSettings{Threshold: 1, Window: -time.Hour}},
+			wantErr: "warn.threshold (1) is set but warn.window (-1h0m0s) is not positive",
+		},
+		{
+			name:    "warn threshold zero with zero window is valid (disabled)",
+			s:       &Settings{Warn: WarnSettings{Threshold: 0, Window: 0}},
+			wantErr: "",
+		},
+		{
+			name:    "warn threshold positive with positive window is valid",
+			s:       &Settings{Warn: WarnSettings{Threshold: 3, Window: 24 * time.Hour}},
+			wantErr: "",
+		},
+		{
+			name:    "warn window equal to storage retention is valid",
+			s:       &Settings{Warn: WarnSettings{Threshold: 2, Window: storage.WarningsRetention}},
+			wantErr: "",
+		},
+		{
+			name:    "warn window above storage retention is rejected",
+			s:       &Settings{Warn: WarnSettings{Threshold: 2, Window: storage.WarningsRetention + time.Hour}},
+			wantErr: "exceeds storage retention",
+		},
+		{
+			name:    "warn window above storage retention with disabled threshold is valid",
+			s:       &Settings{Warn: WarnSettings{Threshold: 0, Window: storage.WarningsRetention + time.Hour}},
+			wantErr: "",
+		},
+		{name: "max-short-msg-count negative is rejected", s: &Settings{MaxShortMsgCount: -1}, wantErr: "max-short-msg-count (-1) must be >= 0 (0 disables)"},
+		{name: "max-short-msg-count zero is valid (disabled)", s: &Settings{MaxShortMsgCount: 0}, wantErr: ""},
+		{
+			name:    "max-short-msg-count positive with paranoid mode is rejected",
+			s:       &Settings{MaxShortMsgCount: 3, ParanoidMode: true},
+			wantErr: "max-short-msg-count is incompatible with paranoid mode",
+		},
+		{name: "max-short-msg-count positive with default first-message-only mode is valid", s: &Settings{MaxShortMsgCount: 3}, wantErr: ""},
+		{
+			name:    "max-short-msg-count positive with paranoid mode and first-messages-count is rejected",
+			s:       &Settings{MaxShortMsgCount: 3, ParanoidMode: true, FirstMessagesCount: 2},
+			wantErr: "max-short-msg-count is incompatible with paranoid mode",
+		},
+		{name: "max-short-msg-count positive with first-messages-count is valid", s: &Settings{MaxShortMsgCount: 3, FirstMessagesCount: 2}, wantErr: ""},
+		{name: "prohibited-langs empty is valid (disabled)", s: &Settings{ProhibitedLangs: ""}, wantErr: ""},
+		{name: "prohibited-langs alias accepted", s: &Settings{ProhibitedLangs: "chinese", ProhibitedLangsMin: 3}, wantErr: ""},
+		{name: "prohibited-langs raw script name accepted", s: &Settings{ProhibitedLangs: "Cyrillic", ProhibitedLangsMin: 3}, wantErr: ""},
+		{name: "prohibited-langs multiple names accepted", s: &Settings{ProhibitedLangs: "chinese, cyrillic, Arabic", ProhibitedLangsMin: 2}, wantErr: ""},
+		{
+			name:    "prohibited-langs unknown name rejected",
+			s:       &Settings{ProhibitedLangs: "klingon", ProhibitedLangsMin: 3},
+			wantErr: `prohibited-langs: unknown prohibited script or language: "klingon"`,
+		},
+		{
+			name:    "prohibited-langs set with min below one rejected",
+			s:       &Settings{ProhibitedLangs: "chinese", ProhibitedLangsMin: 0},
+			wantErr: "prohibited-langs-min (0) must be >= 1 when prohibited-langs is set",
+		},
+		{name: "prohibited-langs empty with min below one is valid", s: &Settings{ProhibitedLangs: "", ProhibitedLangsMin: 0}, wantErr: ""},
+		{name: "prohibited-langs whitespace-only is valid (disabled)", s: &Settings{ProhibitedLangs: "  ", ProhibitedLangsMin: 0}, wantErr: ""},
+		{name: "prohibited-langs delimiter-only is valid (disabled)", s: &Settings{ProhibitedLangs: " , ", ProhibitedLangsMin: 0}, wantErr: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.s.Validate()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }

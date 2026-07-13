@@ -357,7 +357,7 @@ func main() {
 
 	log.Printf("[DEBUG] settings: %+v", appSettings)
 
-	if err := validateSettings(appSettings); err != nil {
+	if err := appSettings.Validate(); err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}
 
@@ -384,46 +384,13 @@ func main() {
 // validateSettings checks cross-field invariants on resolved settings.
 // Returns an error describing the first violation, or nil when settings are
 // internally consistent. Called from main once per startup before execute.
-func validateSettings(s *config.Settings) error {
-	if s.Report.AutoBanThreshold > 0 && s.Report.AutoBanThreshold < s.Report.Threshold {
-		return fmt.Errorf("auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
-			s.Report.AutoBanThreshold, s.Report.Threshold)
-	}
-	if s.Warn.Threshold < 0 {
-		return fmt.Errorf("warn.threshold (%d) must be >= 0 (0 disables auto-ban)", s.Warn.Threshold)
-	}
-	if s.Warn.Threshold > 0 && s.Warn.Window <= 0 {
-		return fmt.Errorf("warn.threshold (%d) is set but warn.window (%v) is not positive",
-			s.Warn.Threshold, s.Warn.Window)
-	}
-	if s.Warn.Threshold > 0 && s.Warn.Window > storage.WarningsRetention {
-		return fmt.Errorf("warn.window (%v) exceeds storage retention (%v); older rows are pruned and would not be counted",
-			s.Warn.Window, storage.WarningsRetention)
-	}
-	if s.MaxShortMsgCount < 0 {
-		return fmt.Errorf("max-short-msg-count (%d) must be >= 0 (0 disables)", s.MaxShortMsgCount)
-	}
-	// MaxShortMsgCount needs the detector's first-message-only path active. ParanoidMode
-	// in makeDetector forces FirstMessageOnly=false and FirstMessagesCount=0 regardless
-	// of the configured FirstMessagesCount, which would silently disable this check.
-	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
-		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
-	}
-	// ValidateProhibitedLangs already returns a fully-formed, user-facing message
-	// shared with the web save path and save-config; return it verbatim.
-	if err := tgspam.ValidateProhibitedLangs(s.ProhibitedLangs, s.ProhibitedLangsMin); err != nil {
-		return err //nolint:wrapcheck // message is already contextual and shared across call sites
-	}
-	return nil
-}
-
 // runSaveConfig handles the save-config command: it validates settings first so
 // an invalid config (e.g. an unknown prohibited-langs script) is refused before
 // it can be persisted and break the next --confdb startup, then writes the config
 // to the database. Returns a process exit code: 0 on success, 1 on validation or
 // persistence failure.
 func runSaveConfig(appSettings *config.Settings) int {
-	if err := validateSettings(appSettings); err != nil {
+	if err := appSettings.Validate(); err != nil {
 		log.Printf("[ERROR] invalid configuration, not saving: %v", err)
 		return 1
 	}

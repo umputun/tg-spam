@@ -81,6 +81,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 
 	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
 	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion
+	authoredMsg := msg.Text // text the user actually wrote, kept separate so hard policy checks don't attribute quoted content
 	msgText := msg.Text
 	switch {
 	case msg.Quote != "":
@@ -100,7 +101,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		firstName, lastName, isPremium = "", "", false // channels don't have personal user fields
 	}
 
-	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
+	spamReq := spamcheck.Request{Msg: msgText, AuthoredMsg: &authoredMsg, CheckOnly: checkOnly,
 		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName,
 		FirstName: firstName, LastName: lastName, IsPremium: isPremium}
 	if msg.Image != nil {

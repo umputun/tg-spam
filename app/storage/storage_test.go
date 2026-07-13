@@ -3,7 +3,6 @@ package storage
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,8 +29,9 @@ func TestStorageSuite(t *testing.T) {
 func (s *StorageTestSuite) SetupSuite() {
 	s.dbs = make(map[string]*engine.SQL)
 
-	// setup SQLite with file-based db
-	s.sqliteFile = filepath.Join(os.TempDir(), "test.db")
+	// setup SQLite with file-based db in a per-run temp dir; a fixed shared path
+	// races with other packages' tests under `go test ./...` and yields SQLITE_BUSY
+	s.sqliteFile = filepath.Join(s.T().TempDir(), "test.db")
 	s.T().Logf("sqlite file: %s", s.sqliteFile)
 	sqliteDB, err := engine.NewSqlite(s.sqliteFile, "gr1")
 	s.Require().NoError(err)
@@ -62,11 +62,7 @@ func (s *StorageTestSuite) TearDownSuite() {
 		s.T().Log("terminating container")
 		s.pgContainer.Close(context.Background())
 	}
-	if s.sqliteFile != "" {
-		s.T().Logf("removing sqlite file: %s", s.sqliteFile)
-		err := os.Remove(s.sqliteFile)
-		s.Require().NoError(err)
-	}
+	// sqlite file lives under t.TempDir(), removed automatically when the suite ends
 }
 
 func (s *StorageTestSuite) getTestDB() []struct {
@@ -232,8 +228,7 @@ func TestNew(t *testing.T) {
 
 	// test creating SQLite file database
 	t.Run("sqlite file", func(t *testing.T) {
-		tmpFile := filepath.Join(os.TempDir(), "test-new-func.db")
-		defer os.Remove(tmpFile)
+		tmpFile := filepath.Join(t.TempDir(), "test-new-func.db")
 
 		db, err := New(ctx, tmpFile, "test-group")
 		if err != nil {
@@ -265,11 +260,10 @@ func TestNew(t *testing.T) {
 func (s *StorageTestSuite) TestIsolation() {
 	ctx := context.Background()
 	s.Run("sqlite isolation via separate files", func() {
-		// create two separate SQLite databases with different GIDs
-		tmpFile1 := filepath.Join(os.TempDir(), "test_db1.sqlite")
-		tmpFile2 := filepath.Join(os.TempDir(), "test_db2.sqlite")
-		defer os.Remove(tmpFile1)
-		defer os.Remove(tmpFile2)
+		// create two separate SQLite databases with different GIDs in a per-run temp dir
+		tmpDir := s.T().TempDir()
+		tmpFile1 := filepath.Join(tmpDir, "test_db1.sqlite")
+		tmpFile2 := filepath.Join(tmpDir, "test_db2.sqlite")
 
 		db1, err := engine.NewSqlite(tmpFile1, "gr1")
 		s.Require().NoError(err)
