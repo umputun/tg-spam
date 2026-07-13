@@ -580,6 +580,8 @@ Success! The new status is: DISABLED. /help
       --max-emoji=                      max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=                min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
+      --prohibited-langs=               comma-separated prohibited languages or scripts, e.g. chinese,cyrillic (empty disables) [$PROHIBITED_LANGS]
+      --prohibited-langs-min=           min prohibited-script letters in a message to consider as spam (default: 3) [$PROHIBITED_LANGS_MIN]
       --paranoid                        paranoid mode, check all messages [$PARANOID]
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --aggressive-cleanup              delete all messages from user when banned via /spam command [$AGGRESSIVE_CLEANUP]

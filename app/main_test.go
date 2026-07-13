@@ -210,6 +210,41 @@ func TestValidateSettings(t *testing.T) {
 			s:       &config.Settings{MaxShortMsgCount: 3, FirstMessagesCount: 2},
 			wantErr: "",
 		},
+		{
+			name:    "prohibited-langs empty is valid (disabled)",
+			s:       &config.Settings{ProhibitedLangs: ""},
+			wantErr: "",
+		},
+		{
+			name:    "prohibited-langs alias accepted",
+			s:       &config.Settings{ProhibitedLangs: "chinese", ProhibitedLangsMin: 3},
+			wantErr: "",
+		},
+		{
+			name:    "prohibited-langs raw script name accepted",
+			s:       &config.Settings{ProhibitedLangs: "Cyrillic", ProhibitedLangsMin: 3},
+			wantErr: "",
+		},
+		{
+			name:    "prohibited-langs multiple names accepted",
+			s:       &config.Settings{ProhibitedLangs: "chinese, cyrillic, Arabic", ProhibitedLangsMin: 2},
+			wantErr: "",
+		},
+		{
+			name:    "prohibited-langs unknown name rejected",
+			s:       &config.Settings{ProhibitedLangs: "klingon", ProhibitedLangsMin: 3},
+			wantErr: `prohibited-langs: unknown prohibited script or language: "klingon"`,
+		},
+		{
+			name:    "prohibited-langs set with min below one rejected",
+			s:       &config.Settings{ProhibitedLangs: "chinese", ProhibitedLangsMin: 0},
+			wantErr: "prohibited-langs-min (0) must be >= 1 when prohibited-langs is set",
+		},
+		{
+			name:    "prohibited-langs empty with min below one is valid",
+			s:       &config.Settings{ProhibitedLangs: "", ProhibitedLangsMin: 0},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {

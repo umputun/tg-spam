@@ -182,6 +182,8 @@ type options struct {
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
 	MinSpamProbability  float64 `long:"min-probability" env:"MIN_PROBABILITY" default:"50" description:"min spam probability percent to ban"`
 	MultiLangWords      int     `long:"multi-lang" env:"MULTI_LANG" default:"0" description:"number of words in different languages to consider as spam"`
+	ProhibitedLangs     string  `long:"prohibited-langs" env:"PROHIBITED_LANGS" default:"" description:"comma-separated prohibited languages or scripts, e.g. chinese,cyrillic (empty disables)"`
+	ProhibitedLangsMin  int     `long:"prohibited-langs-min" env:"PROHIBITED_LANGS_MIN" default:"3" description:"min prohibited-script letters in a message to consider as spam"`
 
 	ParanoidMode       bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 	FirstMessagesCount int  `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
@@ -413,6 +415,13 @@ func validateSettings(s *config.Settings) error {
 	// of the configured FirstMessagesCount, which would silently disable this check.
 	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
 		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
+	}
+	langs := strings.Split(s.ProhibitedLangs, ",")
+	if _, err := tgspam.ResolveProhibitedScripts(langs); err != nil {
+		return fmt.Errorf("prohibited-langs: %w", err)
+	}
+	if strings.TrimSpace(s.ProhibitedLangs) != "" && s.ProhibitedLangsMin < 1 {
+		return fmt.Errorf("prohibited-langs-min (%d) must be >= 1 when prohibited-langs is set", s.ProhibitedLangsMin)
 	}
 	return nil
 }
@@ -776,6 +785,15 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		LLMRequestTimeout:   settings.LLM.RequestTimeout,
 		MultiLangWords:      settings.MultiLangWords,
 		HistorySize:         settings.History.Size, // how many last request stored in memory
+	}
+
+	// prohibited scripts already validated in validateSettings, so the error is ignored here
+	prohibitedScripts, _ := tgspam.ResolveProhibitedScripts(strings.Split(settings.ProhibitedLangs, ","))
+	detectorConfig.ProhibitedScripts = prohibitedScripts
+	detectorConfig.ProhibitedLangsMin = settings.ProhibitedLangsMin
+	if len(prohibitedScripts) > 0 {
+		log.Printf("[INFO] prohibited languages check enabled, langs: %q, min letters: %d",
+			settings.ProhibitedLangs, settings.ProhibitedLangsMin)
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.

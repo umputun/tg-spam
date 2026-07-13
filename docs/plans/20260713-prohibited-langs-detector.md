@@ -158,12 +158,12 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Modify: `app/main_test.go`
 - Modify: `app/settings_test.go`
 
-- [ ] add `ProhibitedLangs string` (`--prohibited-langs` / `PROHIBITED_LANGS`, default `""`) and `ProhibitedLangsMin int` (`--prohibited-langs-min` / `PROHIBITED_LANGS_MIN`, default `3`) to the options struct in `app/main.go`
-- [ ] in `optToSettings` (app/settings.go, returns `*config.Settings`): map both opts → the `Settings` fields added in Task 3
-- [ ] in `validateSettings(s *config.Settings)` (app/main.go:392, runs in BOTH CLI and `--confdb` modes): split `s.ProhibitedLangs` on comma, call `tgspam.ResolveProhibitedScripts`, return error on unknown; if the list is non-empty require `s.ProhibitedLangsMin >= 1`
-- [ ] in `makeDetector(settings *config.Settings)` (no error return): resolve with `scripts, _ := tgspam.ResolveProhibitedScripts(...)` (error already caught by `validateSettings`) and set `Config.ProhibitedScripts` + `Config.ProhibitedLangsMin`. Keep this resolve block short/distinct from the `validateSettings` one to avoid a `dupl` false positive
-- [ ] write tests: `validateSettings` accepts known aliases/script names, rejects an unknown name, rejects `min < 1` with a non-empty list; `optToSettings` maps both fields
-- [ ] run `go test ./app/ -race` — must pass before task 5
+- [x] add `ProhibitedLangs string` (`--prohibited-langs` / `PROHIBITED_LANGS`, default `""`) and `ProhibitedLangsMin int` (`--prohibited-langs-min` / `PROHIBITED_LANGS_MIN`, default `3`) to the options struct in `app/main.go`
+- [x] in `optToSettings` (app/settings.go, returns `*config.Settings`): map both opts → the `Settings` fields added in Task 3
+- [x] in `validateSettings(s *config.Settings)` (app/main.go:392, runs in BOTH CLI and `--confdb` modes): split `s.ProhibitedLangs` on comma, call `tgspam.ResolveProhibitedScripts`, return error on unknown; if the list is non-empty require `s.ProhibitedLangsMin >= 1`
+- [x] in `makeDetector(settings *config.Settings)` (no error return): resolve with `scripts, _ := tgspam.ResolveProhibitedScripts(...)` (error already caught by `validateSettings`) and set `Config.ProhibitedScripts` + `Config.ProhibitedLangsMin`. Keep this resolve block short/distinct from the `validateSettings` one to avoid a `dupl` false positive
+- [x] write tests: `validateSettings` accepts known aliases/script names, rejects an unknown name, rejects `min < 1` with a non-empty list; `optToSettings` maps both fields
+- [x] run `go test ./app/ -race` — must pass before task 5
 
 ### Task 5: Web settings UI (edit + read-only) and form parsing
 
