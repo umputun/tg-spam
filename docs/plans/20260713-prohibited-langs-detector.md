@@ -117,12 +117,12 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Create: `lib/tgspam/prohibited.go`
 - Create: `lib/tgspam/prohibited_test.go`
 
-- [ ] create `lib/tgspam/prohibited.go` with `ResolveProhibitedScripts(names []string) (map[string]*unicode.RangeTable, error)` and an unexported `scriptAliases` map (alias → []scriptName)
-- [ ] add a godoc comment on `ResolveProhibitedScripts` starting with the name (exported symbol)
-- [ ] resolve each entry: trim + lowercase; skip empty; expand via `scriptAliases`, else match case-insensitively against `unicode.Scripts`; error on unknown with the offending name
-- [ ] write tests for aliases (chinese→Han, japanese→Hiragana+Katakana), raw script names (Cyrillic, Arabic), case-insensitivity, empty input, whitespace-only entries
-- [ ] write tests for error case (unknown name returns error naming it)
-- [ ] run `go test ./lib/tgspam/ -race` — must pass before task 2
+- [x] create `lib/tgspam/prohibited.go` with `ResolveProhibitedScripts(names []string) (map[string]*unicode.RangeTable, error)` and an unexported `scriptAliases` map (alias → []scriptName)
+- [x] add a godoc comment on `ResolveProhibitedScripts` starting with the name (exported symbol)
+- [x] resolve each entry: trim + lowercase; skip empty; expand via `scriptAliases`, else match case-insensitively against `unicode.Scripts`; error on unknown with the offending name
+- [x] write tests for aliases (chinese→Han, japanese→Hiragana+Katakana), raw script names (Cyrillic, Arabic), case-insensitivity, empty input, whitespace-only entries
+- [x] write tests for error case (unknown name returns error naming it)
+- [x] run `go test ./lib/tgspam/ -race` — must pass before task 2
 
 ### Task 2: Detector check and Config wiring
 
