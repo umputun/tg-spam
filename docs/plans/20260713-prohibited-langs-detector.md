@@ -193,10 +193,10 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - Modify: `README.md`
 - Modify: `CLAUDE.md`
 
-- [ ] README: add both flags to the "All Application Options" table (match `--help` exactly)
-- [ ] README: add a "Prohibited Languages" descriptive section — how it works, the alias set, the Han=Chinese-also-matches-Japanese-kanji caveat, count threshold + aggression note, hard-block/non-approved-scope behavior
-- [ ] CLAUDE.md: add a "Prohibited Languages Detection" subsection under Spam Detection Architecture (mirror the "Short Message Flood Detection" section) covering placement, hard-return, no-CheckOnly-bail, scope-in-paranoid-mode, resolver location, config knobs + zeroAwarePaths
-- [ ] no tests (docs only)
+- [x] README: add both flags to the "All Application Options" table (match `--help` exactly)
+- [x] README: add a "Prohibited Languages" descriptive section — how it works, the alias set, the Han=Chinese-also-matches-Japanese-kanji caveat, count threshold + aggression note, hard-block/non-approved-scope behavior
+- [x] CLAUDE.md: add a "Prohibited Languages Detection" subsection under Spam Detection Architecture (mirror the "Short Message Flood Detection" section) covering placement, hard-return, no-CheckOnly-bail, scope-in-paranoid-mode, resolver location, config knobs + zeroAwarePaths
+- [x] no tests (docs only)
 
 ### Task 8: Verify acceptance criteria
 - [ ] verify all Overview requirements are implemented (blocklist, count threshold, hard block, non-approved scope by placement, friendly-names+passthrough config)
