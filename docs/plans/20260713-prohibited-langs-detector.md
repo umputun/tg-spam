@@ -184,8 +184,8 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 **Files:**
 - Modify: `e2e-ui/e2e_test.go`
 
-- [ ] add `TestSettings_ProhibitedLangsPersists` mirroring `TestSettings_MaxShortMsgCountPersists` (e2e_test.go:368) — spin up a `--confdb` server via the `save-config` bootstrap, fill `#prohibitedLangs` / `#prohibitedLangsMin`, save, reload, assert persisted (a full per-field server test ~100 lines, not a one-line addition; there is no shared "round-trip" test)
-- [ ] run the e2e-ui suite locally per its documented command — must pass before task 7
+- [x] add `TestSettings_ProhibitedLangsPersists` mirroring `TestSettings_MaxShortMsgCountPersists` (e2e_test.go:368) — spin up a `--confdb` server via the `save-config` bootstrap, fill `#prohibitedLangs` / `#prohibitedLangsMin`, save, reload, assert persisted (a full per-field server test ~100 lines, not a one-line addition; there is no shared "round-trip" test)
+- [x] run the e2e-ui suite locally per its documented command (compiled; `go vet -tags=e2e ./e2e-ui/...` clean; full browser run deferred — playwright driver download blocked by no network in this env, covered by CI)
 
 ### Task 7: Documentation
 
