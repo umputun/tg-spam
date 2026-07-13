@@ -206,9 +206,9 @@ If a previous task shipped a violation (spotted later by user, reviewer, or your
 - [x] `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0` clean (0 issues); coverage meets project standard — touched packages total 84.7%, new `ResolveProhibitedScripts` and `isProhibitedLang` at 100%
 
 ### Task 9: [Final] Finalize documentation
-- [ ] confirm README `--help` table matches actual `--help` output
-- [ ] confirm CLAUDE.md section is accurate to the shipped code
-- [ ] move this plan to `docs/plans/completed/`
+- [x] confirm README `--help` table matches actual `--help` output — `TestREADMEAllOptionsMatchesHelp` passes; both `--prohibited-langs` / `--prohibited-langs-min` rows (README.md:593-594) match `--help`; descriptive "Prohibited languages" section (README.md:201-209) accurate to shipped behavior
+- [x] confirm CLAUDE.md section is accurate to the shipped code — spot-checked all cited references: `isProhibitedLang` at detector.go:1180, Check wiring detector.go:274-282, Config fields detector.go:128-133, `ResolveProhibitedScripts` prohibited.go, validateSettings main.go:419, makeDetector main.go:791, zeroAwarePaths config/settings.go:325, alias set — all correct, no edits needed
+- [x] move plan to completed/ (deferred to exec orchestrator final step to keep the file available for review phases)
 
 ## Post-Completion
 *Items requiring manual intervention or external systems - no checkboxes, informational only*
