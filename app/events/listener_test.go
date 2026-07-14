@@ -74,7 +74,7 @@ func TestTelegramListener_Do(t *testing.T) {
 			Chat: tbapi.Chat{ID: 123},
 			Text: "text 123",
 			From: &tbapi.User{UserName: "user"},
-			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestTelegramListener_DoNilFrom(t *testing.T) {
 		Message: &tbapi.Message{
 			Chat: tbapi.Chat{ID: 123, Type: "supergroup"},
 			Text: "text 123",
-			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 		},
 	}
 
@@ -208,7 +208,7 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 					Text:      "spam text",
 					From:      &tbapi.User{UserName: "spammer", ID: 3},
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 	}
@@ -314,7 +314,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 				Chat: tbapi.Chat{ID: 123},
 				Text: "text 123",
 				From: &tbapi.User{UserName: "user", ID: 123},
-				Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 			},
 		}
 
@@ -352,7 +352,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 					ID:       12345,
 					UserName: "test_bot",
 				},
-				Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 			},
 		}
 
@@ -396,7 +396,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 				Chat: tbapi.Chat{ID: 123},
 				Text: "text 543",
 				From: &tbapi.User{UserName: "admin", ID: 555},
-				Date: int(time.Date(2020, 2, 11, 19, 37, 55, 9, time.UTC).Unix()),
+				Date: time.Date(2020, 2, 11, 19, 37, 55, 9, time.UTC).Unix(),
 			},
 		}
 
@@ -429,7 +429,7 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 				Chat:          tbapi.Chat{ID: 123},
 				Text:          "text 123",
 				From:          &tbapi.User{UserName: "user", ID: 123},
-				Date:          int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+				Date:          time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Now().Unix()},
 			},
 		}
@@ -457,8 +457,8 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 				Chat:     tbapi.Chat{ID: 123},
 				Text:     "edited spam message",
 				From:     &tbapi.User{UserName: "edited_user", ID: 456},
-				Date:     int(time.Now().Unix()), // use current time for edited message
-				EditDate: int(time.Now().Unix()),
+				Date:     time.Now().Unix(), // use current time for edited message
+				EditDate: time.Now().Unix(),
 			},
 		}
 
@@ -544,7 +544,7 @@ func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {
 			Chat: tbapi.Chat{ID: 123},
 			Text: "text 123",
 			From: &tbapi.User{UserName: "user", ID: 123},
-			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 		},
 	}
 
@@ -617,7 +617,7 @@ func TestTelegramListener_DoWithTraining(t *testing.T) {
 				ID:       12345,
 				UserName: "test_bot",
 			},
-			Date: int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date: time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 		},
 	}
 
@@ -685,7 +685,7 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 			Chat:      tbapi.Chat{ID: 123},
 			Text:      "text 123",
 			From:      &tbapi.User{UserName: "user"},
-			Date:      int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date:      time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 			ReplyToMessage: &tbapi.Message{
 				SenderChat: &tbapi.Chat{
 					ID: 54321,
@@ -781,7 +781,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 			Chat:      tbapi.Chat{ID: 123},
 			Text:      "spam spam spam",
 			From:      &tbapi.User{UserName: "user", ID: 1},
-			Date:      int(time.Now().Unix()),
+			Date:      time.Now().Unix(),
 		},
 	}
 
@@ -878,7 +878,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 			Chat:      tbapi.Chat{ID: 123},
 			Text:      "spam spam spam",
 			From:      &tbapi.User{UserName: "user", ID: 1},
-			Date:      int(time.Now().Unix()),
+			Date:      time.Now().Unix(),
 		},
 	}
 
@@ -984,7 +984,7 @@ func TestTelegramListener_DoWithShortMsgFlood(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123},
 				Text:      text,
 				From:      &tbapi.User{UserName: "user", ID: 1},
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 	}
@@ -1084,7 +1084,7 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 			Chat:          tbapi.Chat{ID: 123},
 			Text:          "text 123",
 			From:          &tbapi.User{UserName: "umputun", ID: 77},
-			Date:          int(time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix()),
+			Date:          time.Date(2020, 2, 11, 19, 35, 55, 9, time.UTC).Unix(),
 			ForwardOrigin: &tbapi.MessageOrigin{SenderUserName: "forwarded_name"},
 			MessageID:     999999,
 		},
@@ -2681,7 +2681,7 @@ func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
 		Message: &tbapi.Message{
 			Chat:          tbapi.Chat{ID: 123},
 			From:          &tbapi.User{ID: 456, UserName: "spammer"},
-			Date:          int(time.Now().Unix()),
+			Date:          time.Now().Unix(),
 			Text:          "",                     // empty text
 			ForwardOrigin: &tbapi.MessageOrigin{}, // has forward origin
 			MessageID:     789,
@@ -2973,7 +2973,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 100,
 				Text:      "User spam reported",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1},
 		}
@@ -3028,7 +3028,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 100,
 				Text:      "permanently banned user",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1},
 		}
@@ -3102,7 +3102,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 100,
 				Text:      "User spam reported",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1},
 		}
@@ -3159,7 +3159,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 100,
 				Text:      "permanently banned user",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1},
 		}
@@ -3229,7 +3229,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 100,
 				Text:      "permanently banned [user](tg://user?id=999)\n\nspam message",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 			From: &tbapi.User{UserName: "admin", ID: 1},
 		}
@@ -3292,7 +3292,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 					ID:   -1001688024850, // same as group chat ID
 					Type: "supergroup",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -3352,7 +3352,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 					Type:     "channel",
 					UserName: "esnlausanne",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -3415,7 +3415,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 					Type:     "channel",
 					UserName: "esnlausanne",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -3473,7 +3473,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 				Chat: tbapi.Chat{ID: -1001688024850},
 				Text: "buy cheap products here",
 				From: &tbapi.User{ID: 12345, UserName: "spammer"},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -3525,7 +3525,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 					ID:   testingChatID, // same as testing chat ID
 					Type: "supergroup",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -3588,7 +3588,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123},
 				Text:      "/report",
 				From:      &tbapi.User{UserName: "regular_user", ID: 999},
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -3644,7 +3644,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123},
 				Text:      "report",
 				From:      &tbapi.User{UserName: "regular_user", ID: 999},
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -3700,7 +3700,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123},
 				Text:      "/report@some_bot",
 				From:      &tbapi.User{UserName: "regular_user", ID: 999},
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -3765,7 +3765,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 						Chat:      tbapi.Chat{ID: 123},
 						Text:      text,
 						From:      &tbapi.User{UserName: "regular_user", ID: 999},
-						Date:      int(time.Now().Unix()),
+						Date:      time.Now().Unix(),
 					},
 				}
 
@@ -3823,7 +3823,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123},
 				Text:      "/report",
 				From:      &tbapi.User{UserName: "superuser", ID: 888},
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -4184,7 +4184,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 					Type:     "channel",
 					UserName: "linked_channel",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4250,7 +4250,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 					Type:     "channel",
 					UserName: "random_channel",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4320,7 +4320,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 					Text:      "original message from a user",
 					From:      &tbapi.User{ID: 999, UserName: "some_user"},
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4392,7 +4392,7 @@ func TestTelegramListener_LinkedChannelGetChatFailure(t *testing.T) {
 				Type:     "channel",
 				UserName: "some_channel",
 			},
-			Date: int(time.Now().Unix()),
+			Date: time.Now().Unix(),
 		},
 	}
 
@@ -4456,7 +4456,7 @@ func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
 					FirstName: "Test",
 					LastName:  "User",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4480,7 +4480,7 @@ func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
 					UserName:  "spammer",
 					FirstName: "Spammer",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4512,7 +4512,7 @@ func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
 					UserName:  "alice",
 					FirstName: "Alice",
 				},
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4538,7 +4538,7 @@ func TestTelegramListener_PrivateChatStoresUser(t *testing.T) {
 				Chat: tbapi.Chat{ID: 666, Type: "private"},
 				Text: "hello",
 				From: nil,
-				Date: int(time.Now().Unix()),
+				Date: time.Now().Unix(),
 			},
 		}
 
@@ -4592,7 +4592,7 @@ func TestTelegramListener_PrivateChatViaDoLoop(t *testing.T) {
 				FirstName: "DM",
 				LastName:  "User",
 			},
-			Date: int(time.Now().Unix()),
+			Date: time.Now().Unix(),
 		},
 	}
 

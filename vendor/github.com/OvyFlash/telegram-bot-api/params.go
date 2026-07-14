@@ -2,6 +2,7 @@ package tgbotapi
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"strconv"
 )
@@ -37,6 +38,18 @@ func (p Params) AddBool(key string, value bool) {
 	}
 }
 
+// AddBoolValue adds a boolean value even when it is false.
+func (p Params) AddBoolValue(key string, value bool) {
+	p[key] = strconv.FormatBool(value)
+}
+
+// AddBoolPtr adds a value of a bool pointer if it is not nil.
+func (p Params) AddBoolPtr(key string, value *bool) {
+	if value != nil {
+		p[key] = strconv.FormatBool(*value)
+	}
+}
+
 // AddNonZeroFloat adds a floating point value that is not zero.
 func (p Params) AddNonZeroFloat(key string, value float64) {
 	if value != 0 {
@@ -45,8 +58,8 @@ func (p Params) AddNonZeroFloat(key string, value float64) {
 }
 
 // AddInterface adds an interface if it is not nil and can be JSON marshalled.
-func (p Params) AddInterface(key string, value interface{}) error {
-	if value == nil || (reflect.ValueOf(value).Kind() == reflect.Ptr && reflect.ValueOf(value).IsNil()) {
+func (p Params) AddInterface(key string, value any) error {
+	if isNilParamValue(value) {
 		return nil
 	}
 
@@ -60,10 +73,36 @@ func (p Params) AddInterface(key string, value interface{}) error {
 	return nil
 }
 
+// AddInterfaceNonZero adds an interface if it is not nil, not zero, and can be JSON marshalled.
+func (p Params) AddInterfaceNonZero(key string, value any) error {
+	if isNilParamValue(value) {
+		return nil
+	}
+	if reflect.ValueOf(value).IsZero() {
+		return nil
+	}
+
+	return p.AddInterface(key, value)
+}
+
+func isNilParamValue(value any) bool {
+	if value == nil {
+		return true
+	}
+
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 // AddFirstValid attempts to add the first item that is not a default value.
 //
 // For example, AddFirstValid(0, "", "test") would add "test".
-func (p Params) AddFirstValid(key string, args ...interface{}) error {
+func (p Params) AddFirstValid(key string, args ...any) error {
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case int:
@@ -98,7 +137,5 @@ func (p Params) AddFirstValid(key string, args ...interface{}) error {
 
 // Merge merges two sets of parameters. Overwrites old fields if present
 func (p *Params) Merge(p1 Params) {
-	for k, v := range p1 {
-		(*p)[k] = v
-	}
+	maps.Copy((*p), p1)
 }

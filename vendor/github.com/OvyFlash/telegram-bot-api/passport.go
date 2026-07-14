@@ -110,6 +110,14 @@ type (
 		// "identity_card" and "internal_passport". The file can be decrypted
 		// and verified using the accompanying EncryptedCredentials.
 		Selfie *PassportFile `json:"selfie,omitempty"`
+
+		// Array of encrypted files with translated versions of documents.
+		//
+		// optional
+		Translation []PassportFile `json:"translation,omitempty"`
+
+		// Base64-encoded element hash for data authentication.
+		Hash string `json:"hash"`
 	}
 
 	// EncryptedCredentials contains data required for decrypting and
@@ -132,7 +140,7 @@ type (
 
 	// PassportElementError represents an error in the Telegram Passport element
 	// which was submitted that should be resolved by the user.
-	PassportElementError interface{}
+	PassportElementError any
 
 	// PassportElementErrorDataField represents an issue in one of the data
 	// fields that was provided by the user. The error is considered resolved
@@ -243,6 +251,42 @@ type (
 		// List of base64-encoded file hashes
 		FileHashes []string `json:"file_hashes"`
 
+		// Error message
+		Message string `json:"message"`
+	}
+
+	// PassportElementErrorTranslationFile represents an issue with one translated file.
+	PassportElementErrorTranslationFile struct {
+		// Error source, must be translation_file
+		Source string `json:"source"`
+		// The section of the user's Telegram Passport which has the issue
+		Type string `json:"type"`
+		// Base64-encoded hash of the translated file
+		FileHash string `json:"file_hash"`
+		// Error message
+		Message string `json:"message"`
+	}
+
+	// PassportElementErrorTranslationFiles represents an issue with translated files list.
+	PassportElementErrorTranslationFiles struct {
+		// Error source, must be translation_files
+		Source string `json:"source"`
+		// The section of the user's Telegram Passport which has the issue
+		Type string `json:"type"`
+		// List of base64-encoded translated file hashes
+		FileHashes []string `json:"file_hashes"`
+		// Error message
+		Message string `json:"message"`
+	}
+
+	// PassportElementErrorUnspecified represents an issue in an unspecified place.
+	PassportElementErrorUnspecified struct {
+		// Error source, must be unspecified
+		Source string `json:"source"`
+		// Type of element with issue
+		Type string `json:"type"`
+		// Base64-encoded element hash
+		ElementHash string `json:"element_hash"`
 		// Error message
 		Message string `json:"message"`
 	}

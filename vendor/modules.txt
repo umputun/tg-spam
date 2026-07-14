@@ -33,7 +33,7 @@ github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
 github.com/Microsoft/go-winio/internal/stringbuffer
 github.com/Microsoft/go-winio/pkg/guid
-# github.com/OvyFlash/telegram-bot-api v0.0.0-20251112155921-e82db5fd534b
+# github.com/OvyFlash/telegram-bot-api v0.0.0-20260714195021-948927f23598
 ## explicit; go 1.23
 github.com/OvyFlash/telegram-bot-api
 # github.com/aws/aws-sdk-go-v2 v1.41.6

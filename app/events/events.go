@@ -180,7 +180,7 @@ func banUserOrChannel(r banRequest) error {
 		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
 			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
 			SenderChatID: r.channelID,
-			UntilDate:    int(time.Now().Add(r.duration).Unix()),
+			UntilDate:    time.Now().Add(r.duration).Unix(),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to ban channel: %w", err)
@@ -444,7 +444,7 @@ func channelIDFromCallback(id int64) int64 {
 
 // sinceQuery calculates time elapsed since callback query message was sent
 func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
-	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	res := time.Since(time.Unix(query.Message.Date, 0)).Round(time.Second)
 	// negative duration possible if clock is not in sync with tg times and a message is from the future
 	return max(res, 0)
 }

@@ -3,7 +3,7 @@ module github.com/umputun/tg-spam
 go 1.25.0
 
 require (
-	github.com/OvyFlash/telegram-bot-api v0.0.0-20251112155921-e82db5fd534b
+	github.com/OvyFlash/telegram-bot-api v0.0.0-20260714195021-948927f23598
 	github.com/didip/tollbooth/v8 v8.0.1
 	github.com/fatih/color v1.18.0
 	github.com/forPelevin/gomoji v1.4.1

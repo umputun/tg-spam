@@ -1998,7 +1998,7 @@ func TestUserReports_CallbackReportBan(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 999,
 				Text:      "**User spam reported (1 reports)**",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2188,7 +2188,7 @@ func TestUserReports_CallbackReportReject(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456},
 				MessageID: 999,
 				Text:      "**User spam reported (1 reports)**",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2324,7 +2324,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		query := &tbapi.CallbackQuery{
 			Data:    "R!111:100",
 			From:    &tbapi.User{UserName: "admin"},
-			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: time.Now().Unix()},
 		}
 
 		err := rep.callbackReportBanReporterConfirm(context.Background(), query)
@@ -2371,7 +2371,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		query := &tbapi.CallbackQuery{
 			Data:    "R!111:100",
 			From:    &tbapi.User{UserName: "admin"},
-			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: int(time.Now().Unix())},
+			Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Text: "Test", Date: time.Now().Unix()},
 		}
 
 		err := rep.callbackReportBanReporterConfirm(context.Background(), query)
@@ -2449,7 +2449,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 456}, // callback from admin chat
 				MessageID: 999,
 				Text:      "User spam reported",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2493,7 +2493,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 789}, // callback from different chat (not admin)
 				MessageID: 999,
 				Text:      "User spam reported",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2546,7 +2546,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 123}, // not admin chat
 				MessageID: 999,
 				Text:      "fake report",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2592,7 +2592,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 				Chat:      tbapi.Chat{ID: 999}, // not admin chat
 				MessageID: 888,
 				Text:      "fake report",
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2616,7 +2616,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 			Message: &tbapi.Message{
 				Chat:      tbapi.Chat{ID: 456}, // admin chat
 				MessageID: 999,
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
@@ -2637,7 +2637,7 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 			Message: &tbapi.Message{
 				Chat:      tbapi.Chat{ID: 456}, // admin chat
 				MessageID: 999,
-				Date:      int(time.Now().Unix()),
+				Date:      time.Now().Unix(),
 			},
 		}
 
