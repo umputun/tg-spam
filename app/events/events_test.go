@@ -653,10 +653,43 @@ func TestTelegramListener_transformRichMessage(t *testing.T) {
 			expected: "Лучший бесплатный ВПН!\nОбход белых списков\nПервые 3 дня бесплатно\nСтабильный доступ в интернет",
 		},
 		{
-			name: "nested spans keep anchor text, drop url and type",
-			rich: `{"blocks":[{"type":"paragraph","text":[{"type":"bold","text":"buy"},` +
-				`{"type":"url","text":"here","url":"http://spam.example"},"now"]}]}`,
-			expected: "buy\nhere\nnow",
+			name: "inline spans in one run concatenate so a split word rejoins",
+			rich: `{"blocks":[{"type":"paragraph","text":[{"type":"bold","text":"ка"},` +
+				`{"type":"italic","text":"зи"},"но"]}]}`,
+			expected: "казино",
+		},
+		{
+			name: "inline spans preserve spacing, url anchor kept and target dropped",
+			rich: `{"blocks":[{"type":"paragraph","text":["free ",` +
+				`{"type":"url","text":"vpn","url":"http://spam.example"}]}]}`,
+			expected: "free vpn",
+		},
+		{
+			name: "details block summary and body collected",
+			rich: `{"blocks":[{"type":"details","summary":"more",` +
+				`"blocks":[{"type":"paragraph","text":"body"}]}]}`,
+			expected: "body\nmore",
+		},
+		{
+			name:     "pull quotation credit and text in sorted-key order",
+			rich:     `{"blocks":[{"type":"pull_quotation","text":"quote","credit":"author"}]}`,
+			expected: "author\nquote",
+		},
+		{
+			name:     "math expression collected",
+			rich:     `{"blocks":[{"type":"mathematical_expression","expression":"E=mc^2"}]}`,
+			expected: "E=mc^2",
+		},
+		{
+			name:     "table caption collected",
+			rich:     `{"blocks":[{"type":"table","caption":"totals","cells":[[{"text":"c"}]]}]}`,
+			expected: "totals\nc",
+		},
+		{
+			name: "whitespace-only span dropped, padding trimmed",
+			rich: `{"blocks":[{"type":"paragraph","text":"   "},` +
+				`{"type":"paragraph","text":"  free vpn  "}]}`,
+			expected: "free vpn",
 		},
 		{
 			name: "table cells collected in row order",

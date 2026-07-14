@@ -408,6 +408,7 @@ func transform(msg *tbapi.Message) *bot.Message {
 			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
 			message.Text = rt
 		} else {
+			log.Printf("[DEBUG] rich message appended to text: %q", rt)
 			message.Text += "\n" + rt
 		}
 	}
@@ -417,10 +418,13 @@ func transform(msg *tbapi.Message) *bot.Message {
 
 // richMessageText flattens a telegram rich message (the client "article" compose type,
 // bot api 10.2) into plain text. the library decodes rich_message blocks as generic json
-// (RichBlock and RichText are `any`), so it walks the block tree and gathers the non-empty
-// string spans under text-bearing keys, dropping urls, types and list markers. maps are
-// visited in sorted key order for deterministic output; block and span arrays keep their
-// document order.
+// (RichBlock and RichText are `any`), so it walks the block tree gathering text under
+// text-bearing keys, dropping urls, types and list markers. inline spans within a single
+// text run are concatenated without a separator so a word split across formatting nodes
+// (e.g. bold+italic) rejoins instead of breaking apart; distinct blocks are joined with a
+// newline. maps are visited in sorted key order for deterministic output; arrays keep their
+// document order. each block line is trimmed and empty lines dropped, so inline whitespace
+// between spans is preserved but padding is not.
 func richMessageText(rm *tbapi.RichMessage) string {
 	if rm == nil {
 		return ""
@@ -433,13 +437,23 @@ func richMessageText(rm *tbapi.RichMessage) string {
 	collect = func(key string, node any) []string {
 		switch v := node.(type) {
 		case string:
-			if s := strings.TrimSpace(v); s != "" && richTextKeys[key] {
-				return []string{s}
+			if richTextKeys[key] {
+				return []string{v}
 			}
 		case []any:
+			if richTextKeys[key] {
+				// inline span run: concatenate the spans into one line so a word
+				// split across formatting nodes rejoins instead of breaking apart
+				var b strings.Builder
+				for _, e := range v {
+					b.WriteString(strings.Join(collect(key, e), ""))
+				}
+				return []string{b.String()}
+			}
+			// block array (blocks/items/cells): each element is its own block line
 			var out []string
 			for _, e := range v {
-				out = append(out, collect(key, e)...)
+				out = append(out, collect("", e)...)
 			}
 			return out
 		case map[string]any:
@@ -456,11 +470,15 @@ func richMessageText(rm *tbapi.RichMessage) string {
 		}
 		return nil
 	}
-	parts := make([]string, 0, len(rm.Blocks))
+	lines := make([]string, 0, len(rm.Blocks))
 	for _, block := range rm.Blocks {
-		parts = append(parts, collect("", block)...)
+		for _, line := range collect("", block) {
+			if s := strings.TrimSpace(line); s != "" {
+				lines = append(lines, s)
+			}
+		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(lines, "\n")
 }
 
 // parseCallbackData parses callback data format: [prefix]userID:msgID
