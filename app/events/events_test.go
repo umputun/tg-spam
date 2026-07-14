@@ -1,7 +1,9 @@
 package events
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -629,6 +631,100 @@ func TestTelegramListener_transformEntities(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, transform(tt.input))
+		})
+	}
+}
+
+func TestTelegramListener_transformRichMessage(t *testing.T) {
+	// rich_message (bot api 10.2 "article" compose type) decodes as generic json, so each
+	// case is unmarshaled from raw json to exercise the real decode->flatten path in transform
+	tests := []struct {
+		name     string
+		rich     string // rich_message json value (object or null)
+		baseText string // pre-existing msg.Text
+		expected string // expected flattened message.Text
+	}{
+		{
+			name: "paragraphs flattened in order",
+			rich: `{"blocks":[{"type":"paragraph","text":"Лучший бесплатный ВПН!"},` +
+				`{"type":"paragraph","text":"Обход белых списков"},` +
+				`{"type":"paragraph","text":"Первые 3 дня бесплатно"},` +
+				`{"type":"paragraph","text":"Стабильный доступ в интернет"}]}`,
+			expected: "Лучший бесплатный ВПН!\nОбход белых списков\nПервые 3 дня бесплатно\nСтабильный доступ в интернет",
+		},
+		{
+			name: "inline spans in one run concatenate so a split word rejoins",
+			rich: `{"blocks":[{"type":"paragraph","text":[{"type":"bold","text":"ка"},` +
+				`{"type":"italic","text":"зи"},"но"]}]}`,
+			expected: "казино",
+		},
+		{
+			name: "inline spans preserve spacing, url anchor kept and target dropped",
+			rich: `{"blocks":[{"type":"paragraph","text":["free ",` +
+				`{"type":"url","text":"vpn","url":"http://spam.example"}]}]}`,
+			expected: "free vpn",
+		},
+		{
+			name: "details block summary and body collected",
+			rich: `{"blocks":[{"type":"details","summary":"more",` +
+				`"blocks":[{"type":"paragraph","text":"body"}]}]}`,
+			expected: "body\nmore",
+		},
+		{
+			name:     "pull quotation credit and text in sorted-key order",
+			rich:     `{"blocks":[{"type":"pull_quotation","text":"quote","credit":"author"}]}`,
+			expected: "author\nquote",
+		},
+		{
+			name:     "math expression collected",
+			rich:     `{"blocks":[{"type":"mathematical_expression","expression":"E=mc^2"}]}`,
+			expected: "E=mc^2",
+		},
+		{
+			name:     "table caption collected",
+			rich:     `{"blocks":[{"type":"table","caption":"totals","cells":[[{"text":"c"}]]}]}`,
+			expected: "totals\nc",
+		},
+		{
+			name: "whitespace-only span dropped, padding trimmed",
+			rich: `{"blocks":[{"type":"paragraph","text":"   "},` +
+				`{"type":"paragraph","text":"  free vpn  "}]}`,
+			expected: "free vpn",
+		},
+		{
+			name: "table cells collected in row order",
+			rich: `{"blocks":[{"type":"table","cells":[[{"text":"test","is_header":true},{"text":"test"}],` +
+				`[{"text":"test2"},{"text":"test2"}]]}]}`,
+			expected: "test\ntest\ntest2\ntest2",
+		},
+		{
+			name: "list item block text collected, marker label ignored",
+			rich: `{"blocks":[{"type":"list","items":[{"label":"1.","blocks":[{"type":"paragraph","text":"first"}]},` +
+				`{"label":"2.","blocks":[{"type":"paragraph","text":"second"}]}]}]}`,
+			expected: "first\nsecond",
+		},
+		{
+			name:     "custom emoji alternative text collected",
+			rich:     `{"blocks":[{"type":"paragraph","text":[{"type":"custom_emoji","alternative_text":"👍","custom_emoji_id":"5"}]}]}`,
+			expected: "👍",
+		},
+		{
+			name:     "appended to existing text",
+			rich:     `{"blocks":[{"type":"paragraph","text":"free vpn"}]}`,
+			baseText: "hello",
+			expected: "hello\nfree vpn",
+		},
+		{name: "empty blocks leave text unchanged", rich: `{"blocks":[]}`, baseText: "keep me", expected: "keep me"},
+		{name: "no rich message leaves text unchanged", rich: `null`, baseText: "plain text", expected: "plain text"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := fmt.Sprintf(`{"message_id":1,"date":1578627415,"chat":{"id":1},"from":{"id":2},"text":%q,"rich_message":%s}`,
+				tt.baseText, tt.rich)
+			var msg tbapi.Message
+			require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+			assert.Equal(t, tt.expected, transform(&msg).Text)
 		})
 	}
 }

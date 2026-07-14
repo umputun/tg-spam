@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -399,7 +400,85 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	// handle rich messages (the client "article" compose type, bot api 10.2): their text
+	// lives in structured blocks with an empty msg.Text, so flatten it into the message text
+	// to let content checks and the llm see the content
+	if rt := richMessageText(msg.RichMessage); rt != "" {
+		if message.Text == "" {
+			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
+			message.Text = rt
+		} else {
+			log.Printf("[DEBUG] rich message appended to text: %q", rt)
+			message.Text += "\n" + rt
+		}
+	}
+
 	return &message
+}
+
+// richMessageText flattens a telegram rich message (the client "article" compose type,
+// bot api 10.2) into plain text. the library decodes rich_message blocks as generic json
+// (RichBlock and RichText are `any`), so it walks the block tree gathering text under
+// text-bearing keys, dropping urls, types and list markers. inline spans within a single
+// text run are concatenated without a separator so a word split across formatting nodes
+// (e.g. bold+italic) rejoins instead of breaking apart; distinct blocks are joined with a
+// newline. maps are visited in sorted key order for deterministic output; arrays keep their
+// document order. each block line is trimmed and empty lines dropped, so inline whitespace
+// between spans is preserved but padding is not.
+func richMessageText(rm *tbapi.RichMessage) string {
+	if rm == nil {
+		return ""
+	}
+	richTextKeys := map[string]bool{
+		"text": true, "caption": true, "credit": true,
+		"summary": true, "expression": true, "alternative_text": true,
+	}
+	var collect func(key string, node any) []string
+	collect = func(key string, node any) []string {
+		switch v := node.(type) {
+		case string:
+			if richTextKeys[key] {
+				return []string{v}
+			}
+		case []any:
+			if richTextKeys[key] {
+				// inline span run: concatenate the spans into one line so a word
+				// split across formatting nodes rejoins instead of breaking apart
+				var b strings.Builder
+				for _, e := range v {
+					b.WriteString(strings.Join(collect(key, e), ""))
+				}
+				return []string{b.String()}
+			}
+			// block array (blocks/items/cells): each element is its own block line
+			var out []string
+			for _, e := range v {
+				out = append(out, collect("", e)...)
+			}
+			return out
+		case map[string]any:
+			keys := make([]string, 0, len(v))
+			for k := range v {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var out []string
+			for _, k := range keys {
+				out = append(out, collect(k, v[k])...)
+			}
+			return out
+		}
+		return nil
+	}
+	lines := make([]string, 0, len(rm.Blocks))
+	for _, block := range rm.Blocks {
+		for _, line := range collect("", block) {
+			if s := strings.TrimSpace(line); s != "" {
+				lines = append(lines, s)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // parseCallbackData parses callback data format: [prefix]userID:msgID
