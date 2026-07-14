@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -399,7 +400,67 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	// handle rich messages (the client "article" compose type, bot api 10.2): their text
+	// lives in structured blocks with an empty msg.Text, so flatten it into the message text
+	// to let content checks and the llm see the content
+	if rt := richMessageText(msg.RichMessage); rt != "" {
+		if message.Text == "" {
+			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
+			message.Text = rt
+		} else {
+			message.Text += "\n" + rt
+		}
+	}
+
 	return &message
+}
+
+// richMessageText flattens a telegram rich message (the client "article" compose type,
+// bot api 10.2) into plain text. the library decodes rich_message blocks as generic json
+// (RichBlock and RichText are `any`), so it walks the block tree and gathers the non-empty
+// string spans under text-bearing keys, dropping urls, types and list markers. maps are
+// visited in sorted key order for deterministic output; block and span arrays keep their
+// document order.
+func richMessageText(rm *tbapi.RichMessage) string {
+	if rm == nil {
+		return ""
+	}
+	richTextKeys := map[string]bool{
+		"text": true, "caption": true, "credit": true,
+		"summary": true, "expression": true, "alternative_text": true,
+	}
+	var collect func(key string, node any) []string
+	collect = func(key string, node any) []string {
+		switch v := node.(type) {
+		case string:
+			if s := strings.TrimSpace(v); s != "" && richTextKeys[key] {
+				return []string{s}
+			}
+		case []any:
+			var out []string
+			for _, e := range v {
+				out = append(out, collect(key, e)...)
+			}
+			return out
+		case map[string]any:
+			keys := make([]string, 0, len(v))
+			for k := range v {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var out []string
+			for _, k := range keys {
+				out = append(out, collect(k, v[k])...)
+			}
+			return out
+		}
+		return nil
+	}
+	parts := make([]string, 0, len(rm.Blocks))
+	for _, block := range rm.Blocks {
+		parts = append(parts, collect("", block)...)
+	}
+	return strings.Join(parts, "\n")
 }
 
 // parseCallbackData parses callback data format: [prefix]userID:msgID
