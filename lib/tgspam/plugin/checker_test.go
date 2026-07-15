@@ -95,7 +95,7 @@ func TestChecker_MetaFields(t *testing.T) {
 	scriptPath := filepath.Join(tmpDir, "meta_fields.lua")
 	err := os.WriteFile(scriptPath, []byte(`
 		function check(req)
-			if req.meta.has_contact and req.meta.message_id == 42 and req.meta.has_giveaway then
+			if req.meta.has_contact and req.meta.message_id == 42 and req.meta.has_giveaway and req.meta.has_external_reply then
 				return true, "meta matched"
 			end
 			return false, "not matched"
@@ -114,7 +114,7 @@ func TestChecker_MetaFields(t *testing.T) {
 	t.Run("all meta fields set", func(t *testing.T) {
 		resp := checkFunc(spamcheck.Request{
 			Msg: "test", UserID: "1", UserName: "user",
-			Meta: spamcheck.MetaData{HasContact: true, MessageID: 42, HasGiveaway: true},
+			Meta: spamcheck.MetaData{HasContact: true, MessageID: 42, HasGiveaway: true, HasExternalReply: true},
 		})
 		assert.True(t, resp.Spam)
 		assert.Equal(t, "meta matched", resp.Details)

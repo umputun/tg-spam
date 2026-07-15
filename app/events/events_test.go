@@ -1000,6 +1000,43 @@ func TestTelegramListener_transformExternalReply(t *testing.T) {
 			},
 		},
 		{
+			name: "reply across forum topics within the same chat is not flagged",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+				ExternalReply: &tbapi.ExternalReplyInfo{
+					Chat:      &tbapi.Chat{ID: 456, Type: "supergroup"},
+					MessageID: 7,
+				},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: false,
+			},
+		},
+		{
+			name: "external reply with hidden origin chat is flagged",
+			in: &tbapi.Message{
+				MessageID:     1,
+				From:          &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:          tbapi.Chat{ID: 456},
+				Text:          "text",
+				ExternalReply: &tbapi.ExternalReplyInfo{MessageID: 4},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: true,
+			},
+		},
+		{
 			name: "no external reply",
 			in: &tbapi.Message{
 				MessageID: 1,

@@ -347,7 +347,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}
-	if msg.ExternalReply != nil { // reply to a message from another chat
+	// external_reply also fires for a reply across forum topics within the same chat; flag only
+	// genuinely cross-chat replies (an unknown/hidden origin chat counts as external)
+	if msg.ExternalReply != nil && (msg.ExternalReply.Chat == nil || msg.ExternalReply.Chat.ID != msg.Chat.ID) {
 		message.WithExternalReply = true
 	}
 	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
