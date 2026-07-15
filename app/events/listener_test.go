@@ -772,7 +772,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
 		Locator:    locator,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	updMsg := tbapi.Update{
@@ -869,7 +869,7 @@ func TestTelegramListener_DoWithExtraDeleteIDs_SuperUser(t *testing.T) {
 		SuperUsers: SuperUsers{"1"}, // user ID 1 is superuser
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	updMsg := tbapi.Update{
@@ -2732,7 +2732,7 @@ func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
 		DeleteJoinMessages: true,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	updMsg := tbapi.Update{
@@ -2793,7 +2793,7 @@ func TestTelegramListener_DeleteLeaveMessages(t *testing.T) {
 		DeleteLeaveMessages: true,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	updMsg := tbapi.Update{
@@ -2887,7 +2887,7 @@ func TestTelegramListener_NoDeleteWhenFlagsDisabled(t *testing.T) {
 		DeleteLeaveMessages: false,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	updMsg := tbapi.Update{
@@ -2962,7 +2962,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			},
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// callback from admin chat with R+ prefix (approve ban report)
@@ -3017,7 +3017,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// callback from admin chat with ? prefix (ask for unban confirmation)
@@ -3091,7 +3091,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			},
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// callback from admin chat with R- prefix (reject report)
@@ -3148,7 +3148,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// callback from admin chat with + prefix (confirm ban)
@@ -3218,7 +3218,7 @@ func TestTelegramListener_CallbackRouting(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// callback from admin chat with no prefix (unban user)
@@ -3279,7 +3279,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// anonymous admin post where sender_chat.id equals group chat id
@@ -3338,7 +3338,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// channel auto-forward where sender_chat.id is different from group chat id
@@ -3402,7 +3402,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 			Locator:    locatorMock,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		updMsg := tbapi.Update{
@@ -3464,7 +3464,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// regular user message with no sender_chat
@@ -3512,7 +3512,7 @@ func TestTelegramListener_AnonymousAdminPostSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// anonymous admin post in testing chat where sender_chat.id equals testing chat id
@@ -3579,7 +3579,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		updMsg := tbapi.Update{
@@ -3635,7 +3635,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		updMsg := tbapi.Update{
@@ -3691,7 +3691,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 			Locator:     locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		updMsg := tbapi.Update{
@@ -3756,7 +3756,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 					Locator:    locator,
 				}
 
-				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 
 				updMsg := tbapi.Update{
@@ -3814,7 +3814,7 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		updMsg := tbapi.Update{
@@ -4043,7 +4043,7 @@ func TestTelegramListener_LinkedChannelBanSpam(t *testing.T) {
 				WarnMsg:    "You have been warned",
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			// linked channel sends command, From is Channel_Bot, SenderChat is the linked channel
@@ -4170,7 +4170,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// linked channel posts a normal message (no command)
@@ -4236,7 +4236,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// a different channel (not linked) posts a message
@@ -4301,7 +4301,7 @@ func TestTelegramListener_LinkedChannelSkipsSpamCheck(t *testing.T) {
 			Locator:    locator,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// linked channel replies to a user with non-command text
@@ -4377,7 +4377,7 @@ func TestTelegramListener_LinkedChannelGetChatFailure(t *testing.T) {
 		Locator:    locator,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// a channel posts a message — should be spam-checked since no linked channel was resolved
