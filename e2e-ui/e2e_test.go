@@ -547,9 +547,10 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, checked, "mention-only must be unchecked by default")
 
-	// enable the meta master toggle and mention-only, then save
+	// enable the meta master toggle, mention-only and external-reply, then save
 	require.NoError(t, page.Locator("#metaEnabled").Check())
 	require.NoError(t, page.Locator("#metaMentionOnly").Check())
+	require.NoError(t, page.Locator("#metaExternalReply").Check())
 	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
 
 	// wait for the save success alert
@@ -567,6 +568,10 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	got, err := page.Locator("#metaMentionOnly").IsChecked()
 	require.NoError(t, err)
 	assert.True(t, got, "mention-only must stay checked after reload")
+
+	gotExternalReply, err := page.Locator("#metaExternalReply").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, gotExternalReply, "external-reply must stay checked after reload")
 }
 
 func TestSettings_ProhibitedLangsPersists(t *testing.T) {

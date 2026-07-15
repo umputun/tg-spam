@@ -194,6 +194,10 @@ This option is disabled by default. If `--meta.username-symbols` set or `env:MET
 
 This option is disabled by default. If `--meta.giveaway` is set or `env:META_GIVEAWAY` is true, the bot will check the message is a giveaway. If it is a giveaway, it will be marked as spam. 
 
+**External reply check**
+
+This option is disabled by default. If `--meta.external-reply` is set or `env:META_EXTERNAL_REPLY` is `true`, the bot will check if the message replies to a message from another chat (Telegram's `external_reply`). If it does, it will be marked as spam. This targets spammers who reply to a post in an external channel and add a short comment, since the referenced content itself is not available for content checks.
+
 **Multi-language words**
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
@@ -454,7 +458,7 @@ Each Lua plugin must define a `check` function that takes a request object and r
 ```lua
 function check(request)
     -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
-    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, message_id
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_external_reply, message_id
     
     -- Your custom spam detection logic here
     if string.match(request.msg, "some pattern") then
@@ -641,6 +645,7 @@ meta:
       --meta.keyboard                   enable keyboard check [$META_KEYBOARD]
       --meta.username-symbols=          prohibited symbols in username, disabled by default [$META_USERNAME_SYMBOLS]
       --meta.giveaway                   enable giveaway check [$META_GIVEAWAY]
+      --meta.external-reply             enable external reply check [$META_EXTERNAL_REPLY]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]

@@ -124,6 +124,7 @@ type MetaSettings struct {
 	UsernameSymbols string `json:"username_symbols" yaml:"username_symbols" db:"meta_username_symbols"`
 	ContactOnly     bool   `json:"contact_only" yaml:"contact_only" db:"meta_contact_only"`
 	Giveaway        bool   `json:"giveaway" yaml:"giveaway" db:"meta_giveaway"`
+	ExternalReply   bool   `json:"external_reply" yaml:"external_reply" db:"meta_external_reply"`
 }
 
 // OpenAISettings contains OpenAI integration settings
@@ -324,7 +325,8 @@ func (s *Settings) IsMetaEnabled() bool {
 		s.Meta.Keyboard ||
 		s.Meta.UsernameSymbols != "" ||
 		s.Meta.ContactOnly ||
-		s.Meta.Giveaway
+		s.Meta.Giveaway ||
+		s.Meta.ExternalReply
 }
 
 // IsCASEnabled returns true if CAS integration is enabled

@@ -124,6 +124,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		usernameSymbol string
 		contactOnly    bool
 		giveaway       bool
+		externalReply  bool
 		expected       bool
 	}{
 		{name: "all disabled", linksLimit: -1, mentionsLimit: -1, expected: false},
@@ -139,6 +140,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		{name: "usernameSymbols enabled", linksLimit: -1, mentionsLimit: -1, usernameSymbol: "@$", expected: true},
 		{name: "contactOnly enabled", linksLimit: -1, mentionsLimit: -1, contactOnly: true, expected: true},
 		{name: "giveaway enabled", linksLimit: -1, mentionsLimit: -1, giveaway: true, expected: true},
+		{name: "externalReply enabled", linksLimit: -1, mentionsLimit: -1, externalReply: true, expected: true},
 		{name: "multiple enabled", imageOnly: true, linksLimit: 5, mentionsLimit: 3, forward: true, expected: true},
 	}
 
@@ -157,6 +159,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 			s.Meta.UsernameSymbols = tt.usernameSymbol
 			s.Meta.ContactOnly = tt.contactOnly
 			s.Meta.Giveaway = tt.giveaway
+			s.Meta.ExternalReply = tt.externalReply
 			assert.Equal(t, tt.expected, s.IsMetaEnabled())
 		})
 	}
@@ -198,6 +201,7 @@ func newPopulatedSettings() *Settings {
 
 	s.Meta.ContactOnly = true
 	s.Meta.Giveaway = true
+	s.Meta.ExternalReply = true
 
 	s.Gemini.Token = "gemini-secret"
 	s.Gemini.Veto = true
@@ -252,6 +256,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, jsonStr, `"aggressive_cleanup_limit"`)
 	assert.Contains(t, jsonStr, `"contact_only"`)
 	assert.Contains(t, jsonStr, `"giveaway"`)
+	assert.Contains(t, jsonStr, `"external_reply"`)
 
 	var restored Settings
 	require.NoError(t, json.Unmarshal(data, &restored))
@@ -267,6 +272,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
 	assert.True(t, restored.Meta.ContactOnly)
 	assert.True(t, restored.Meta.Giveaway)
+	assert.True(t, restored.Meta.ExternalReply)
 }
 
 func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
@@ -287,6 +293,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, yamlStr, "aggressive_cleanup_limit:")
 	assert.Contains(t, yamlStr, "contact_only:")
 	assert.Contains(t, yamlStr, "giveaway:")
+	assert.Contains(t, yamlStr, "external_reply:")
 
 	var restored Settings
 	require.NoError(t, yaml.Unmarshal(data, &restored))
@@ -302,6 +309,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Equal(t, original.AggressiveCleanupLimit, restored.AggressiveCleanupLimit)
 	assert.True(t, restored.Meta.ContactOnly)
 	assert.True(t, restored.Meta.Giveaway)
+	assert.True(t, restored.Meta.ExternalReply)
 }
 
 func TestSettings_ApplyDefaults_FillsZeroFromTemplate(t *testing.T) {

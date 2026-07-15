@@ -62,6 +62,7 @@ func optToSettings(opts options) *config.Settings {
 			UsernameSymbols: opts.Meta.UsernameSymbols,
 			ContactOnly:     opts.Meta.ContactOnly,
 			Giveaway:        opts.Meta.Giveaway,
+			ExternalReply:   opts.Meta.ExternalReply,
 		},
 
 		OpenAI: config.OpenAISettings{

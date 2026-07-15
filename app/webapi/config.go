@@ -290,19 +290,19 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 
 	// meta checks: server-side authoritative master toggle. Behavior:
 	//   - form contains zero meta-related fields → skip the entire block so
-	//     unrelated saves preserve all 12 IsMetaEnabled-contributing fields
+	//     unrelated saves preserve all 13 IsMetaEnabled-contributing fields
 	//   - metaEnabled=on → write rendered fields from form; rendered booleans
 	//     follow presence-of-on (absent == unchecked == false), unrendered
 	//     booleans (metaContactOnly, metaGiveaway) and the optional
 	//     metaUsernameSymbols are gated on r.Form presence so submits without
 	//     them preserve existing values
-	//   - metaEnabled absent → master toggle off, clear ALL 12 fields used by
+	//   - metaEnabled absent → master toggle off, clear ALL 13 fields used by
 	//     isMetaEnabled() so a checked per-feature box (e.g., metaImageOnly)
 	//     cannot keep meta enabled
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
 		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
-		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway",
+		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway", "metaExternalReply",
 	}
 	hasMetaForm := false
 	for _, k := range metaFormFields {
@@ -336,6 +336,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 			settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 			settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
+			settings.Meta.ExternalReply = r.FormValue("metaExternalReply") == "on"
 			// metaContactOnly and metaGiveaway are not currently rendered in the ConfigDB
 			// UI form. Gate them behind form presence so saves that don't render them
 			// can't silently wipe values set via save-config CLI or external DB tooling.
@@ -360,6 +361,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.Keyboard = false
 			settings.Meta.ContactOnly = false
 			settings.Meta.Giveaway = false
+			settings.Meta.ExternalReply = false
 		}
 	}
 

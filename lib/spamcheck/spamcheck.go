@@ -42,16 +42,19 @@ type MetaData struct {
 	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
 	HasContact  bool `json:"has_contact"`  // true if the message has a shared contact
 	HasGiveaway bool `json:"has_giveaway"` // true if the message is a giveaway
-	MessageID   int  `json:"message_id"`   // telegram message ID
+	// HasExternalReply is true if the message replies to a message from another chat (external_reply)
+	HasExternalReply bool `json:"has_external_reply"`
+	MessageID        int  `json:"message_id"` // telegram message ID
 }
 
 func (r *Request) String() string {
 	return fmt.Sprintf("msg:%q, user:%q, id:%s, first_name:%q, last_name:%q, is_premium:%v, "+
 		"images:%d, links:%d, mentions:%d, "+
-		"has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v",
+		"has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v, has_external_reply:%v",
 		r.Msg, r.UserName, r.UserID, r.FirstName, r.LastName, r.IsPremium,
 		r.Meta.Images, r.Meta.Links, r.Meta.Mentions,
-		r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway)
+		r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway,
+		r.Meta.HasExternalReply)
 }
 
 // Response is a result of spam check.

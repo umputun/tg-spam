@@ -96,6 +96,7 @@ type options struct {
 		Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 		UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
 		Giveaway        bool   `long:"giveaway" env:"GIVEAWAY" description:"enable giveaway check"`
+		ExternalReply   bool   `long:"external-reply" env:"EXTERNAL_REPLY" description:"enable external reply check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -912,6 +913,10 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 	if settings.Meta.Giveaway {
 		log.Printf("[INFO] giveaway check enabled")
 		metaChecks = append(metaChecks, tgspam.GiveawayCheck())
+	}
+	if settings.Meta.ExternalReply {
+		log.Printf("[INFO] external reply check enabled")
+		metaChecks = append(metaChecks, tgspam.ExternalReplyCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 

@@ -1862,6 +1862,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 			Keyboard:        true,
 			ContactOnly:     true,
 			Giveaway:        true,
+			ExternalReply:   true,
 		},
 	}
 
@@ -1878,6 +1879,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	form.Add("metaKeyboard", "on")
 	form.Add("metaContactOnly", "on")
 	form.Add("metaGiveaway", "on")
+	form.Add("metaExternalReply", "on")
 	// metaEnabled deliberately absent (master toggle off)
 
 	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
@@ -1898,6 +1900,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	assert.False(t, settings.Meta.Keyboard, "Keyboard must be cleared")
 	assert.False(t, settings.Meta.ContactOnly, "ContactOnly must be cleared")
 	assert.False(t, settings.Meta.Giveaway, "Giveaway must be cleared")
+	assert.False(t, settings.Meta.ExternalReply, "ExternalReply must be cleared")
 	assert.False(t, settings.IsMetaEnabled(), "IsMetaEnabled must report false after master toggle off")
 }
 
@@ -1919,6 +1922,7 @@ func TestUpdateSettingsFromForm_MetaEnabled_HonorsAllFields(t *testing.T) {
 	form.Add("metaLinksLimit", "5")
 	form.Add("metaImageOnly", "on")
 	form.Add("metaContactOnly", "on")
+	form.Add("metaExternalReply", "on")
 
 	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1929,6 +1933,7 @@ func TestUpdateSettingsFromForm_MetaEnabled_HonorsAllFields(t *testing.T) {
 	assert.Equal(t, 5, settings.Meta.LinksLimit)
 	assert.True(t, settings.Meta.ImageOnly)
 	assert.True(t, settings.Meta.ContactOnly)
+	assert.True(t, settings.Meta.ExternalReply, "rendered boolean present in form must be true")
 	assert.False(t, settings.Meta.LinksOnly, "rendered boolean absent from form must be false")
 	assert.False(t, settings.Meta.Giveaway, "unrendered boolean absent from form must remain unchanged (was false)")
 	assert.True(t, settings.IsMetaEnabled())

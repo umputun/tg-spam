@@ -193,6 +193,25 @@ func ForwardedCheck() MetaCheck {
 	}
 }
 
+// ExternalReplyCheck is a function that returns a MetaCheck function.
+// It checks if the message replies to a message from another chat (external_reply).
+func ExternalReplyCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasExternalReply {
+			return spamcheck.Response{
+				Name:    "external-reply",
+				Spam:    true,
+				Details: "external reply",
+			}
+		}
+		return spamcheck.Response{
+			Name:    "external-reply",
+			Spam:    false,
+			Details: "not an external reply",
+		}
+	}
+}
+
 // KeyboardCheck is a function that returns a MetaCheck function.
 // It checks if the message has a keyboard (buttons).
 func KeyboardCheck() MetaCheck {

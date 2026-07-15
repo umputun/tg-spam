@@ -128,6 +128,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithGiveaway {
 		spamReq.Meta.HasGiveaway = true
 	}
+	if msg.WithExternalReply {
+		spamReq.Meta.HasExternalReply = true
+	}
 	spamReq.Meta.MessageID = msg.ID
 
 	// count mentions and links from entities (both regular and caption entities)

@@ -319,6 +319,7 @@ func TestOptToSettings(t *testing.T) {
 		o.Meta.UsernameSymbols = "@#$"
 		o.Meta.ContactOnly = true
 		o.Meta.Giveaway = true
+		o.Meta.ExternalReply = true
 
 		o.OpenAI.Token = "openai-token"
 		o.OpenAI.APIBase = "https://custom.api.com"
@@ -463,6 +464,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "@#$", settings.Meta.UsernameSymbols)
 				assert.True(t, settings.Meta.ContactOnly)
 				assert.True(t, settings.Meta.Giveaway)
+				assert.True(t, settings.Meta.ExternalReply)
 
 				// openai settings
 				assert.Equal(t, "openai-token", settings.OpenAI.Token)
