@@ -302,7 +302,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
 		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
-		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway",
+		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway", "metaExternalReply",
 	}
 	hasMetaForm := false
 	for _, k := range metaFormFields {
@@ -336,6 +336,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 			settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 			settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
+			settings.Meta.ExternalReply = r.FormValue("metaExternalReply") == "on"
 			// metaContactOnly and metaGiveaway are not currently rendered in the ConfigDB
 			// UI form. Gate them behind form presence so saves that don't render them
 			// can't silently wipe values set via save-config CLI or external DB tooling.
@@ -360,6 +361,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.Keyboard = false
 			settings.Meta.ContactOnly = false
 			settings.Meta.Giveaway = false
+			settings.Meta.ExternalReply = false
 		}
 	}
 

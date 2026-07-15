@@ -379,6 +379,32 @@ func TestForwardedCheck(t *testing.T) {
 	}
 }
 
+func TestExternalReplyCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      spamcheck.Request
+		expected spamcheck.Response
+	}{
+		{
+			name:     "message is an external reply",
+			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasExternalReply: true}},
+			expected: spamcheck.Response{Name: "external-reply", Spam: true, Details: "external reply"},
+		},
+		{
+			name:     "message is not an external reply",
+			req:      spamcheck.Request{Meta: spamcheck.MetaData{HasExternalReply: false}},
+			expected: spamcheck.Response{Name: "external-reply", Spam: false, Details: "not an external reply"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := ExternalReplyCheck()
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestAudioCheck(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -74,6 +74,28 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "spam with external reply",
+			message: Message{
+				Text:              "spam message",
+				From:              User{ID: 1, Username: "user1"},
+				WithExternalReply: true,
+			},
+			wantResponse: Response{
+				Text:          `detected: "user1" (1)`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{HasExternalReply: true},
+			},
+		},
+		{
 			name: "spam with video note",
 			message: Message{
 				Text:          "spam message",

@@ -352,6 +352,10 @@
                         <input class="form-check-input" type="checkbox" id="metaKeyboard" name="metaKeyboard" {{if .Meta.Keyboard}}checked{{end}}>
                         <label class="form-check-label" for="metaKeyboard">Meta Keyboard</label>
                     </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="metaExternalReply" name="metaExternalReply" {{if .Meta.ExternalReply}}checked{{end}}>
+                        <label class="form-check-label" for="metaExternalReply">Meta External Reply</label>
+                    </div>
                 </div>
             </div>
             {{else}}
@@ -370,6 +374,7 @@
                         <tr><th>Meta Video Only</th><td>{{.Meta.VideosOnly}}</td></tr>
                         <tr><th>Meta Audio Only</th><td>{{.Meta.AudiosOnly}}</td></tr>
                         <tr><th>Meta Keyboard</th><td>{{.Meta.Keyboard}}</td></tr>
+                        <tr><th>Meta External Reply</th><td>{{.Meta.ExternalReply}}</td></tr>
                         <tr><th>Meta Contact Only</th><td>{{.Meta.ContactOnly}}</td></tr>
                         <tr><th>Meta Username Symbols</th><td>{{if eq .Meta.UsernameSymbols ""}}disabled{{else}}{{.Meta.UsernameSymbols}}{{end}}</td></tr>
                         <tr><th>Meta Giveaway</th><td>{{.Meta.Giveaway}}</td></tr>

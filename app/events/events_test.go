@@ -971,6 +971,62 @@ func TestTelegramListener_transformForward(t *testing.T) {
 	}
 }
 
+func TestTelegramListener_transformExternalReply(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "reply to a message from another chat",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "Пришло быстро!",
+				Quote:     &tbapi.TextQuote{Text: "Написать менеджеру: @Beeline"},
+				ExternalReply: &tbapi.ExternalReplyInfo{
+					Chat:      &tbapi.Chat{ID: -1004353023986, Type: "channel", Title: "Билайн Информация", UserName: "belbvbotz"},
+					MessageID: 4,
+				},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "Пришло быстро!",
+				Quote:             "Написать менеджеру: @Beeline",
+				WithExternalReply: true,
+			},
+		},
+		{
+			name: "no external reply",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: false,
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.Text, res.Text)
+			assert.Equal(t, tt.out.Quote, res.Quote)
+			assert.Equal(t, tt.out.WithExternalReply, res.WithExternalReply)
+		})
+	}
+}
+
 func Test_parseCallbackData(t *testing.T) {
 	var tests = []struct {
 		name       string

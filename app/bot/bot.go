@@ -63,6 +63,8 @@ type Message struct {
 	WithKeyboard  bool `json:",omitempty"`
 	WithContact   bool `json:",omitempty"`
 	WithGiveaway  bool `json:",omitempty"`
+	// WithExternalReply is true if the message replies to a message from another chat (external_reply)
+	WithExternalReply bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.

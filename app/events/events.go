@@ -347,6 +347,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}
+	if msg.ExternalReply != nil { // reply to a message from another chat
+		message.WithExternalReply = true
+	}
 	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
 		message.WithKeyboard = true
 	}
