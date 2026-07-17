@@ -308,6 +308,46 @@ func Test_makeDetector(t *testing.T) {
 		assert.NotNil(t, res)
 		assert.Empty(t, res.ProhibitedScripts)
 	})
+
+	// the image-only threshold is captured inside an opaque metaCheck closure, so exercise the
+	// override-vs-fallback selection through Check and assert on the named "images" response
+	imagesResp := func(cr []spamcheck.Response) (spamcheck.Response, bool) {
+		for _, r := range cr {
+			if r.Name == "images" {
+				return r, true
+			}
+		}
+		return spamcheck.Response{}, false
+	}
+
+	t.Run("image-only uses image-text-len override", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.Meta.ImageOnly = true
+		settings.Meta.ImageTextLen = 40
+		settings.MinMsgLen = 50
+
+		det := makeDetector(settings)
+		// 45-rune caption sits above the 40 override but below the 50 fallback; with the
+		// override active the images check must not flag it
+		_, cr := det.Check(spamcheck.Request{Msg: strings.Repeat("a", 45), Meta: spamcheck.MetaData{Images: 1}})
+		img, ok := imagesResp(cr)
+		require.True(t, ok, "images check must run")
+		assert.False(t, img.Spam, "45-rune caption is above the 40 override, not spam")
+	})
+
+	t.Run("image-only falls back to min-msg-len when image-text-len is zero", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.Meta.ImageOnly = true
+		settings.Meta.ImageTextLen = 0 // fall back to MinMsgLen
+		settings.MinMsgLen = 50
+
+		det := makeDetector(settings)
+		// same 45-rune caption is below the 50 min-msg-len fallback, so it must be flagged
+		_, cr := det.Check(spamcheck.Request{Msg: strings.Repeat("a", 45), Meta: spamcheck.MetaData{Images: 1}})
+		img, ok := imagesResp(cr)
+		require.True(t, ok, "images check must run")
+		assert.True(t, img.Spam, "45-rune caption is below the 50 min-msg-len fallback, spam")
+	})
 }
 
 func Test_initLuaPlugins(t *testing.T) {

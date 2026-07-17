@@ -324,7 +324,7 @@
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label for="metaImageTextLen" class="form-label">Meta Image Text Len</label>
-                    <input type="number" class="form-control" id="metaImageTextLen" name="metaImageTextLen" value="{{.Meta.ImageTextLen}}">
+                    <input type="number" min="0" class="form-control" id="metaImageTextLen" name="metaImageTextLen" value="{{.Meta.ImageTextLen}}">
                     <div class="form-text">Min caption length for image-only check (0 uses min-msg-len)</div>
                 </div>
             </div>

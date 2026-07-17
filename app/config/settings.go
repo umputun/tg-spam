@@ -294,6 +294,9 @@ func (s *Settings) Validate() error {
 	if s.MaxShortMsgCount < 0 {
 		return fmt.Errorf("max-short-msg-count (%d) must be >= 0 (0 disables)", s.MaxShortMsgCount)
 	}
+	if s.Meta.ImageTextLen < 0 {
+		return fmt.Errorf("meta.image-text-len (%d) must be >= 0 (0 uses min-msg-len)", s.Meta.ImageTextLen)
+	}
 	// MaxShortMsgCount needs the detector's first-message-only path active. ParanoidMode
 	// in makeDetector forces FirstMessageOnly=false and FirstMessagesCount=0 regardless
 	// of the configured FirstMessagesCount, which would silently disable this check.
