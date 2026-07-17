@@ -53,6 +53,7 @@ func optToSettings(opts options) *config.Settings {
 			LinksLimit:      opts.Meta.LinksLimit,
 			MentionsLimit:   opts.Meta.MentionsLimit,
 			ImageOnly:       opts.Meta.ImageOnly,
+			ImageTextLen:    opts.Meta.ImageTextLen,
 			LinksOnly:       opts.Meta.LinksOnly,
 			MentionOnly:     opts.Meta.MentionOnly,
 			VideosOnly:      opts.Meta.VideosOnly,

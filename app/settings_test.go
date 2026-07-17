@@ -310,6 +310,7 @@ func TestOptToSettings(t *testing.T) {
 		o.Meta.LinksLimit = 2
 		o.Meta.MentionsLimit = 3
 		o.Meta.ImageOnly = true
+		o.Meta.ImageTextLen = 40
 		o.Meta.LinksOnly = true
 		o.Meta.MentionOnly = true
 		o.Meta.VideosOnly = true
@@ -455,6 +456,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, 2, settings.Meta.LinksLimit)
 				assert.Equal(t, 3, settings.Meta.MentionsLimit)
 				assert.True(t, settings.Meta.ImageOnly)
+				assert.Equal(t, 40, settings.Meta.ImageTextLen)
 				assert.True(t, settings.Meta.LinksOnly)
 				assert.True(t, settings.Meta.MentionOnly)
 				assert.True(t, settings.Meta.VideosOnly)

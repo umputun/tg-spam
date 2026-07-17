@@ -481,6 +481,14 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MaxShortMsgCount) },
 		},
 		{
+			name: "Meta.ImageTextLen",
+			setup: func(target, template *Settings) {
+				target.Meta.ImageTextLen = 0
+				template.Meta.ImageTextLen = 40
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Meta.ImageTextLen) },
+		},
+		{
 			name: "ProhibitedLangs",
 			setup: func(target, template *Settings) {
 				target.ProhibitedLangs = ""

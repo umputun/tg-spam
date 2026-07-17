@@ -301,6 +301,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	//     cannot keep meta enabled
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
+		"metaImageTextLen",
 		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
 		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway", "metaExternalReply",
 	}
@@ -321,6 +322,12 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			if val := r.FormValue("metaMentionsLimit"); val != "" {
 				if limit, err := strconv.Atoi(val); err == nil {
 					settings.Meta.MentionsLimit = limit
+				}
+			}
+			// image-text-len tunes the image-only check; 0 falls back to min-msg-len
+			if val := r.FormValue("metaImageTextLen"); val != "" {
+				if n, err := strconv.Atoi(val); err == nil {
+					settings.Meta.ImageTextLen = n
 				}
 			}
 			// honor the "leave empty to disable" UI hint: clear the setting whenever

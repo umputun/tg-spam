@@ -551,6 +551,7 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	require.NoError(t, page.Locator("#metaEnabled").Check())
 	require.NoError(t, page.Locator("#metaMentionOnly").Check())
 	require.NoError(t, page.Locator("#metaExternalReply").Check())
+	require.NoError(t, page.Locator("#metaImageTextLen").Fill("40"))
 	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
 
 	// wait for the save success alert
@@ -572,6 +573,10 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	gotExternalReply, err := page.Locator("#metaExternalReply").IsChecked()
 	require.NoError(t, err)
 	assert.True(t, gotExternalReply, "external-reply must stay checked after reload")
+
+	gotImageTextLen, err := page.Locator("#metaImageTextLen").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "40", gotImageTextLen, "image-text-len must persist after reload")
 }
 
 func TestSettings_ProhibitedLangsPersists(t *testing.T) {

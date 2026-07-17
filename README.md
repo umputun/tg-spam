@@ -166,6 +166,8 @@ This option is disabled by default. If `--meta.mention-only` set or `env:META_ME
 
 This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. This catches common spam patterns like promotional images with just "@username" as caption.
 
+By default the image caption threshold equals `--min-msg-len`. Use `--meta.image-text-len` (`env:META_IMAGE_TEXT_LEN`) to set a separate threshold for image captions without changing `--min-msg-len`; a value of `0` (the default) keeps using `--min-msg-len`. This is useful when spam hides the pitch inside the image and the caption is a short lure that lands right at the `--min-msg-len` boundary.
+
 **Video only check**
 
 This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
@@ -636,6 +638,7 @@ meta:
       --meta.links-limit=               max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
       --meta.mentions-limit=            max mentions in message, disabled by default (default: -1) [$META_MENTIONS_LIMIT]
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
+      --meta.image-text-len=            min text length for image messages, 0 uses min-msg-len (default: 0) [$META_IMAGE_TEXT_LEN]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.mention-only               enable mention only check [$META_MENTION_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]

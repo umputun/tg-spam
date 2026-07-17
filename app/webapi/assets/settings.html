@@ -323,6 +323,14 @@
 
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
+                    <label for="metaImageTextLen" class="form-label">Meta Image Text Len</label>
+                    <input type="number" min="0" class="form-control" id="metaImageTextLen" name="metaImageTextLen" value="{{.Meta.ImageTextLen}}">
+                    <div class="form-text">Min caption length for image-only check (0 uses min-msg-len)</div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
                     <label for="metaUsernameSymbols" class="form-label">Meta Username Symbols</label>
                     <input type="text" class="form-control" id="metaUsernameSymbols" name="metaUsernameSymbols" value="{{.Meta.UsernameSymbols}}">
                     <div class="form-text">Symbols to check in usernames (leave empty to disable)</div>
@@ -371,6 +379,7 @@
                         <tr><th>Meta Links Only</th><td>{{.Meta.LinksOnly}}</td></tr>
                         <tr><th>Meta Mention Only</th><td>{{.Meta.MentionOnly}}</td></tr>
                         <tr><th>Meta Image Only</th><td>{{.Meta.ImageOnly}}</td></tr>
+                        <tr><th>Meta Image Text Len</th><td>{{if eq .Meta.ImageTextLen 0}}min-msg-len{{else}}{{.Meta.ImageTextLen}}{{end}}</td></tr>
                         <tr><th>Meta Video Only</th><td>{{.Meta.VideosOnly}}</td></tr>
                         <tr><th>Meta Audio Only</th><td>{{.Meta.AudiosOnly}}</td></tr>
                         <tr><th>Meta Keyboard</th><td>{{.Meta.Keyboard}}</td></tr>

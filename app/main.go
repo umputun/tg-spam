@@ -87,6 +87,7 @@ type options struct {
 		LinksLimit      int    `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
 		MentionsLimit   int    `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
 		ImageOnly       bool   `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
+		ImageTextLen    int    `long:"image-text-len" env:"IMAGE_TEXT_LEN" default:"0" description:"min text length for image messages, 0 uses min-msg-len"`
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		MentionOnly     bool   `long:"mention-only" env:"MENTION_ONLY" description:"enable mention only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
@@ -867,8 +868,12 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 
 	metaChecks := []tgspam.MetaCheck{}
 	if settings.Meta.ImageOnly {
-		log.Printf("[INFO] image only check enabled, min text len: %d", settings.MinMsgLen)
-		metaChecks = append(metaChecks, tgspam.ImagesCheck(settings.MinMsgLen))
+		imageTextLen := settings.MinMsgLen
+		if settings.Meta.ImageTextLen > 0 {
+			imageTextLen = settings.Meta.ImageTextLen
+		}
+		log.Printf("[INFO] image only check enabled, min text len: %d", imageTextLen)
+		metaChecks = append(metaChecks, tgspam.ImagesCheck(imageTextLen))
 	}
 	if settings.Meta.VideosOnly {
 		log.Printf("[INFO] videos only check enabled, min text len: %d", settings.MinMsgLen)
