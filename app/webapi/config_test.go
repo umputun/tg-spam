@@ -1163,6 +1163,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		form.Add("metaMentionsLimit", "5")
 		form.Add("metaLinksOnly", "on")
 		form.Add("metaImageOnly", "on")
+		form.Add("metaImageTextLen", "40")
 		form.Add("metaUsernameSymbols", "@#")
 
 		req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
@@ -1176,6 +1177,7 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 		assert.Equal(t, 5, settings.Meta.MentionsLimit)
 		assert.True(t, settings.Meta.LinksOnly)
 		assert.True(t, settings.Meta.ImageOnly)
+		assert.Equal(t, 40, settings.Meta.ImageTextLen)
 		assert.Equal(t, "@#", settings.Meta.UsernameSymbols)
 	})
 

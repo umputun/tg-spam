@@ -115,6 +115,7 @@ type MetaSettings struct {
 	LinksLimit      int    `json:"links_limit" yaml:"links_limit" db:"meta_links_limit"`
 	MentionsLimit   int    `json:"mentions_limit" yaml:"mentions_limit" db:"meta_mentions_limit"`
 	ImageOnly       bool   `json:"image_only" yaml:"image_only" db:"meta_image_only"`
+	ImageTextLen    int    `json:"image_text_len" yaml:"image_text_len" db:"meta_image_text_len"`
 	LinksOnly       bool   `json:"links_only" yaml:"links_only" db:"meta_links_only"`
 	MentionOnly     bool   `json:"mention_only" yaml:"mention_only" db:"meta_mention_only"`
 	VideosOnly      bool   `json:"videos_only" yaml:"videos_only" db:"meta_videos_only"`
@@ -366,6 +367,7 @@ var zeroAwarePaths = map[string]bool{
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
 	"MaxShortMsgCount":        true, // lib/tgspam/detector.go:253 (> 0): 0 disables
+	"Meta.ImageTextLen":       true, // app/main.go image-only wiring (> 0): 0 falls back to MinMsgLen
 	"ProhibitedLangs":         true, // lib/tgspam/detector.go:276 (len > 0): empty disables
 }
 
