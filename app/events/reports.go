@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -343,6 +344,30 @@ func (r *userReports) reportedUserMD(name string, id int64) string {
 	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", label, id, id)
 }
 
+func (r *userReports) superUserAttention() string {
+	mentions := make([]string, 0, len(r.superUsers))
+	seen := make(map[string]struct{}, len(r.superUsers))
+	for _, super := range r.superUsers {
+		if _, err := strconv.ParseInt(super, 10, 64); err == nil {
+			continue
+		}
+		username := strings.TrimPrefix(super, "/")
+		key := strings.ToLower(username)
+		if username == "" {
+			continue
+		}
+		if _, found := seen[key]; found {
+			continue
+		}
+		seen[key] = struct{}{}
+		mentions = append(mentions, "@"+escapeMarkDownV1Text(username))
+	}
+	if len(mentions) == 0 {
+		return ""
+	}
+	return "attention " + strings.Join(mentions, " ")
+}
+
 // sendAutoBanNotification sends notification to admin chat about automatic ban
 func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 	if len(reports) == 0 {
@@ -379,6 +404,9 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"))
+	if attention := r.superUserAttention(); attention != "" {
+		notificationText += "\n\n" + attention
+	}
 
 	// send to admin chat (no buttons - action already taken)
 	tbMsg := tbapi.NewMessage(r.adminChatID, notificationText)
@@ -438,6 +466,9 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) err
 		strings.Join(reporterList, "\n"),
 		actionType,
 		len(reports))
+	if attention := r.superUserAttention(); attention != "" {
+		updatedText += "\n\n" + attention
+	}
 
 	// edit existing admin message, remove buttons
 	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, updatedText)
@@ -492,6 +523,9 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"))
+	if attention := r.superUserAttention(); attention != "" {
+		notificationText += "\n\n" + attention
+	}
 
 	// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
 	padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
@@ -570,6 +604,9 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 		fmt.Sprintf("%s\n\n", r.reportedUserMD(reportedUserName, reportedUserID)) +
 		fmt.Sprintf("%s\n\n", msgText) +
 		fmt.Sprintf("**Reporters:**\n%s", strings.Join(reporterList, "\n"))
+	if attention := r.superUserAttention(); attention != "" {
+		notification += "\n\n" + attention
+	}
 
 	// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
 	padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
