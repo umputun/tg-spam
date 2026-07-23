@@ -405,11 +405,13 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
 
 1. Users reply to suspicious messages with `/report` to flag them for review
 2. The bot tracks all reports for each message
-3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat
+3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat and mentions all superusers configured by username
 4. Admins can review the reported message and take action using inline buttons:
    - **Approve Ban**: Immediately ban the reported user and delete the reported message
    - **Reject**: Reject this report without taking action
    - **Ban Reporters**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+
+Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
 
 #### Advanced Reporting Features
 

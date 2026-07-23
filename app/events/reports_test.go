@@ -1106,6 +1106,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 			bot:         mockBot,
 			primChatID:  200,
 			adminChatID: 456,
+			superUsers:  SuperUsers{"super1", "/super2"},
 			ReportConfig: ReportConfig{
 				Storage:          mockReports,
 				Threshold:        2,
@@ -1121,6 +1122,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should delete message")
 		assert.Len(t, mockAPI.SendCalls(), 1, "should send auto-ban notification")
 		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+		assert.Contains(t, sentMsg.Text, "attention @super1 @super2", "should mention superusers")
 	})
 
 	t.Run("auto-ban respects soft-ban mode", func(t *testing.T) {
@@ -1196,6 +1198,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 					assert.Contains(t, editMsg.Text, "auto-banned", "should mention auto-ban in updated text")
 					assert.Contains(t, editMsg.Text, "5 reports", "should show report count")
 					assert.Contains(t, editMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+					assert.Contains(t, editMsg.Text, "attention @super1 @super2", "should mention superusers")
 				}
 				return tbapi.Message{MessageID: 123}, nil
 			},
@@ -1225,6 +1228,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 			bot:         mockBot,
 			primChatID:  200,
 			adminChatID: 456,
+			superUsers:  SuperUsers{"super1", "/super2"},
 			ReportConfig: ReportConfig{
 				Storage:          mockReports,
 				Threshold:        2,
@@ -1399,6 +1403,26 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 	}
 }
 
+func TestUserReports_superUserAttention(t *testing.T) {
+	tests := []struct {
+		name       string
+		superUsers SuperUsers
+		want       string
+	}{
+		{name: "usernames", superUsers: SuperUsers{"super1", "/super2"}, want: "attention @super1 @super2"},
+		{name: "numeric IDs skipped", superUsers: SuperUsers{"123", "-456"}, want: ""},
+		{name: "duplicates skipped", superUsers: SuperUsers{"super1", "/SUPER1", "super2"}, want: "attention @super1 @super2"},
+		{name: "empty list", superUsers: nil, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rep := &userReports{superUsers: tt.superUsers}
+			assert.Equal(t, tt.want, rep.superUserAttention())
+		})
+	}
+}
+
 func TestUserReports_SendReportNotification(t *testing.T) {
 	t.Run("successful notification with single report", func(t *testing.T) {
 		var sentMsg tbapi.MessageConfig
@@ -1422,6 +1446,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		rep := &userReports{
 			tbAPI:        mockAPI,
 			adminChatID:  456,
+			superUsers:   SuperUsers{"super1", "/super2"},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -1439,6 +1464,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 		assert.Contains(t, sentMsg.Text, "spam message", "should contain message text")
 		assert.Contains(t, sentMsg.Text, "reporter1", "should contain reporter name")
+		assert.Contains(t, sentMsg.Text, "attention @super1 @super2", "should mention superusers")
 
 		// verify inline keyboard
 		keyboard, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
@@ -1753,6 +1779,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		rep := &userReports{
 			tbAPI:       mockAPI,
 			adminChatID: 456,
+			superUsers:  SuperUsers{"super1", "/super2"},
 		}
 
 		reports := []storage.Report{
@@ -1773,6 +1800,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		assert.Contains(t, editedMsg.Text, "reporter1", "should contain first reporter")
 		assert.Contains(t, editedMsg.Text, "reporter2", "should contain second reporter")
 		assert.Contains(t, editedMsg.Text, "reporter3", "should contain third reporter")
+		assert.Contains(t, editedMsg.Text, "attention @super1 @super2", "should mention superusers")
 
 		// verify inline keyboard
 		require.NotNil(t, editedMsg.ReplyMarkup, "should have inline keyboard")
@@ -2287,8 +2315,10 @@ func TestUserReports_CallbackReportBanReporterAsk(t *testing.T) {
 
 func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 	t.Run("ban reporter with remaining reporters", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
 		mockAPI := &mocks.TbAPIMock{
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				editedMsg = c.(tbapi.EditMessageTextConfig)
 				return tbapi.Message{}, nil
 			},
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
@@ -2318,6 +2348,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		rep := &userReports{
 			tbAPI:        mockAPI,
 			primChatID:   200,
+			superUsers:   SuperUsers{"super1", "/super2"},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -2331,6 +2362,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, mockReports.GetByMessageCalls(), 2)
 		assert.Len(t, mockReports.DeleteReporterCalls(), 1)
+		assert.Contains(t, editedMsg.Text, "attention @super1 @super2")
 	})
 
 	t.Run("ban last reporter", func(t *testing.T) {
