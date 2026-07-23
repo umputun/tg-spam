@@ -2315,8 +2315,10 @@ func TestUserReports_CallbackReportBanReporterAsk(t *testing.T) {
 
 func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 	t.Run("ban reporter with remaining reporters", func(t *testing.T) {
+		var editedMsg tbapi.EditMessageTextConfig
 		mockAPI := &mocks.TbAPIMock{
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				editedMsg = c.(tbapi.EditMessageTextConfig)
 				return tbapi.Message{}, nil
 			},
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
@@ -2346,6 +2348,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		rep := &userReports{
 			tbAPI:        mockAPI,
 			primChatID:   200,
+			superUsers:   SuperUsers{"super1", "/super2"},
 			ReportConfig: ReportConfig{Storage: mockReports},
 		}
 
@@ -2359,6 +2362,7 @@ func TestUserReports_CallbackReportBanReporterConfirm(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, mockReports.GetByMessageCalls(), 2)
 		assert.Len(t, mockReports.DeleteReporterCalls(), 1)
+		assert.Contains(t, editedMsg.Text, "attention @super1 @super2")
 	})
 
 	t.Run("ban last reporter", func(t *testing.T) {

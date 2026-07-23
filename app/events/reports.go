@@ -905,6 +905,9 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			msgText,
 			strings.Join(reporterList, "\n"))
 		updText += fmt.Sprintf("\n\n_reporter %s banned by %s_", escapeMarkDownV1Text(reporterName), query.From.UserName)
+		if attention := r.superUserAttention(); attention != "" {
+			updText += "\n\n" + attention
+		}
 
 		// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
 		padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
