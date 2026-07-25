@@ -313,15 +313,16 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
-			// delete orphaned /report commands (sent without replying to a message)
+			// delete orphaned report commands (sent without replying to a message)
 			if !fromSuper && l.isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
-				log.Printf("[DEBUG] deleting orphaned /report command from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+				log.Printf("[DEBUG] deleting orphaned report command %q from %s (%d)",
+					update.Message.Text, update.Message.From.UserName, update.Message.From.ID)
 				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 					MessageID:  update.Message.MessageID,
 					ChatConfig: tbapi.ChatConfig{ChatID: update.Message.Chat.ID},
 				}})
 				if err != nil {
-					log.Printf("[WARN] failed to delete orphaned /report message %d: %v", update.Message.MessageID, err)
+					log.Printf("[WARN] failed to delete orphaned report message %d: %v", update.Message.MessageID, err)
 				}
 				continue
 			}
@@ -505,12 +506,14 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 	return false
 }
 
-// isReportCommand checks if message text is a /report command variant
+// isReportCommand checks if message text is a report command variant: report, /report,
+// /report@botname, and the spam, /spam aliases. superuser spam, /spam never reaches here, it is
+// handled earlier by procSuperReply
 func (l *TelegramListener) isReportCommand(text string) bool {
 	text = strings.TrimSpace(strings.ToLower(text))
 
-	// exact match for regular report commands
-	if text == "report" || text == "/report" {
+	// exact match for regular report commands, spam and /spam are aliases for non-superusers
+	if text == "report" || text == "/report" || text == "spam" || text == "/spam" {
 		return true
 	}
 
@@ -541,25 +544,12 @@ func (l *TelegramListener) isReportCommand(text string) bool {
 	return false
 }
 
-// isSpamReportAlias checks if message text is the "spam" alias for the user report command.
-// unlike isReportCommand it matches only when user reporting is enabled, so for a regular user the
-// plain word "spam" stays an ordinary message in chats without the feature. superuser "spam" is
-// handled earlier by procSuperReply and is not affected. not used by the orphaned-command cleanup,
-// which must not delete a standalone "spam" message.
-func (l *TelegramListener) isSpamReportAlias(text string) bool {
-	if !l.ReportConfig.Enabled {
-		return false
-	}
-	text = strings.TrimSpace(strings.ToLower(text))
-	return text == "spam" || text == "/spam"
-}
-
-// procUserReply processes regular user report commands sent as a reply: /report, report,
-// /report@botname and the spam, /spam alias. report commands are suppressed when the feature is off,
-// while the alias is simply not a command then, so isSpamReportAlias carries its own enabled check.
+// procUserReply processes regular user report commands sent as a reply: report, /report,
+// /report@botname and the spam, /spam aliases, all equivalent.
+// feature check is intentionally inside this function to keep command detection logic centralized.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
-	case l.isReportCommand(update.Message.Text) || l.isSpamReportAlias(update.Message.Text):
+	case l.isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
 			log.Printf("[DEBUG] user spam reporting disabled, ignoring report command from %s (%d)",
 				update.Message.From.UserName, update.Message.From.ID)
