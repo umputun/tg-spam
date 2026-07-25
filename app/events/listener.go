@@ -313,21 +313,25 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
-			// delete orphaned /report commands (sent without replying to a message)
+			// delete orphaned report commands (sent without replying to a message)
 			if !fromSuper && l.isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
-				log.Printf("[DEBUG] deleting orphaned /report command from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+				log.Printf("[DEBUG] deleting orphaned report command %q from %s (%d)",
+					update.Message.Text, update.Message.From.UserName, update.Message.From.ID)
 				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 					MessageID:  update.Message.MessageID,
 					ChatConfig: tbapi.ChatConfig{ChatID: update.Message.Chat.ID},
 				}})
 				if err != nil {
-					log.Printf("[WARN] failed to delete orphaned /report message %d: %v", update.Message.MessageID, err)
+					log.Printf("[WARN] failed to delete orphaned report message %d: %v", update.Message.MessageID, err)
 				}
 				continue
 			}
 
-			// handle spam reports from regular users
-			if update.Message.ReplyToMessage != nil && !fromSuper {
+			// handle spam reports from regular users. senders posting on behalf of a chat
+			// (anonymous admin, "post as channel") are excluded: their From is a telegram pseudo-user
+			// which can never be an approved reporter, so the report would be dropped after the
+			// command message is already deleted
+			if update.Message.ReplyToMessage != nil && !fromSuper && update.Message.SenderChat == nil {
 				if l.procUserReply(ctx, update) {
 					// user command processed, skip the rest
 					continue
@@ -502,12 +506,14 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 	return false
 }
 
-// isReportCommand checks if message text is a /report command variant
+// isReportCommand checks if message text is a report command variant: report, /report,
+// /report@botname, and the spam, /spam aliases. superuser spam, /spam never reaches here, it is
+// handled earlier by procSuperReply
 func (l *TelegramListener) isReportCommand(text string) bool {
 	text = strings.TrimSpace(strings.ToLower(text))
 
-	// exact match for "report" or "/report"
-	if text == "report" || text == "/report" {
+	// exact match for regular report commands, spam and /spam are aliases for non-superusers
+	if text == "report" || text == "/report" || text == "spam" || text == "/spam" {
 		return true
 	}
 
@@ -538,13 +544,14 @@ func (l *TelegramListener) isReportCommand(text string) bool {
 	return false
 }
 
-// procUserReply processes regular user commands (reply) /report.
+// procUserReply processes regular user report commands sent as a reply: report, /report,
+// /report@botname and the spam, /spam aliases, all equivalent.
 // feature check is intentionally inside this function to keep command detection logic centralized.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
 	case l.isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
-			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)",
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring report command from %s (%d)",
 				update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
 		}

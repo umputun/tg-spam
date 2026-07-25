@@ -367,7 +367,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **admin commands**
 
-* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
+* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future. The same `spam` or `/spam` text from a regular user posting under his own account does not mark the message as spam; it is an alias for `report` and behaves exactly like it (see [User Spam Reporting](#user-spam-reporting)).
 
 * Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
 
@@ -399,11 +399,11 @@ All samples are stored in the database, which can be specified using the `--db=,
 
 ### User Spam Reporting
 
-Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report` or `report`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
+Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report`, `report`, `/spam` or `spam`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
 
 To enable user spam reporting, set `--report.enabled` to `true` and configure an admin chat using `--admin.group=`. When enabled:
 
-1. Users reply to suspicious messages with `/report` to flag them for review
+1. Users reply to suspicious messages with `/report` or `/spam` to flag them for review
 2. The bot tracks all reports for each message
 3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat and mentions all superusers configured by username
 4. Admins can review the reported message and take action using inline buttons:
@@ -421,7 +421,7 @@ Only superusers configured by username can be included as Telegram `@username` m
 
   Example: `--report.threshold=2 --report.auto-ban-threshold=5` will notify admins after 2 reports but automatically ban after 5 reports.
 
-The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The `/report` command message is automatically deleted to keep the chat clean.
+The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The report command message is automatically deleted to keep the chat clean.
 
 All reports are stored in the database for audit purposes and can help identify patterns of spam or abuse over time.
 

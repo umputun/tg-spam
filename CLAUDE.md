@@ -101,6 +101,13 @@
 - Admin notification text in `directReport` shows channel display name and channel ID instead of Channel_Bot identity
 - `extractUsername` supports `tg://user` links, `t.me` channel links, plain channel name+ID, and `{id name...}` formats
 
+### Report Command Routing
+- `spam`, `/spam`, `report`, `/report` are equivalent for a non-superuser: all four are matched by `isReportCommand` (`app/events/listener.go`) and behave identically in every path. `/report@botname` is additionally accepted; there is no `/spam@botname` equivalent, deliberately (nothing autocompletes it, the bot never calls `SetMyCommands`)
+- The same text from a superuser or the linked channel never reaches `isReportCommand` — `procSuperReply` intercepts it earlier in the `Do` loop for ban + spam-sample training. Identical text, different handler, decided purely by sender privilege
+- **`isReportCommand` has TWO consumers**, and this is the trap: `procUserReply` (files the report) and the orphaned-command cleanup in `Do`, which deletes a matching message sent *without* a reply. Anything added to the predicate immediately becomes deletable as an orphaned command, in every chat the bot receives updates for, and that branch is NOT gated on `ReportConfig.Enabled` — unlike `procUserReply`, which suppresses the command when reporting is off
+- The user-report dispatch requires `update.Message.SenderChat == nil`. Senders posting on behalf of a chat (anonymous admin `GroupAnonymousBot`, "post as channel" `Channel_Bot`) carry a pseudo-user in `From` that can never be an approved reporter, so without the guard `DirectUserReport` deletes their command message and files nothing
+- Known gap, unrelated to the command forms: `DirectUserReport` never resolves `SenderChat` for the *reported* message, so a channel-origin spam post is filed and banned as the shared `Channel_Bot` identity rather than the channel. `admin.go`'s `directReport` handles this correctly; the user-report path does not
+
 ### ExtraDeleteIDs Feature
 - `spamcheck.Response` includes `ExtraDeleteIDs []int` field for additional message IDs to delete when spam is detected
 - Any spam checker can populate this field to request deletion of related messages
