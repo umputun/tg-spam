@@ -286,6 +286,46 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
 	})
 
+	t.Run("anonymous admin reply is left alone, not consumed as a report", func(t *testing.T) {
+		// From is the GroupAnonymousBot pseudo-user, which can never be an approved reporter. before
+		// the SenderChat guard the report handler deleted the command message and filed nothing
+		for _, command := range []string{"spam", "/spam", "/report"} {
+			t.Run(command, func(t *testing.T) {
+				reports := &mocks.ReportsMock{}
+				mockAPI, botMock, l, teardown := prep(reports, true)
+				defer teardown()
+
+				deleteCalled := false
+				mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.DeleteMessageConfig); ok {
+						deleteCalled = true
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				}
+				// the pseudo-user never reaches OnMessage, so it can never become approved
+				botMock.IsApprovedUserFunc = func(userID int64) bool { return false }
+
+				upd := reportUpdate(command)
+				upd.Message.From = &tbapi.User{UserName: "GroupAnonymousBot", ID: 1087968824}
+				upd.Message.SenderChat = &tbapi.Chat{ID: 123}
+
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- upd
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				err := l.Do(ctx)
+				require.EqualError(t, err, "telegram update chan closed")
+
+				assert.False(t, deleteCalled, "anonymous admin command must not be deleted")
+				assert.Empty(t, reports.AddCalls(), "no report should be filed for a pseudo-user reporter")
+				assert.Empty(t, botMock.OnMessageCalls(), "anonymous admin post skips the spam check")
+			})
+		}
+	})
+
 	t.Run("spam alias falls through to spam check when reporting is disabled", func(t *testing.T) {
 		// unlike /report, the alias is an ordinary word: with the feature off it must not be
 		// swallowed, it has to reach the spam check and the locator like any other message
@@ -1212,6 +1252,9 @@ func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 		StartupMsg: "startup",
 		SuperUsers: SuperUsers{"superuser1"}, // include a test superuser
 		Locator:    locator,
+		// user reporting on, so the spam alias is live: this pins that procSuperReply still wins
+		// for a superuser and the alias never steals an admin command
+		ReportConfig: ReportConfig{Enabled: true, Storage: &mocks.ReportsMock{}, Threshold: 2},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Minute)
