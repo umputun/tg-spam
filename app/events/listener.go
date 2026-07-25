@@ -506,8 +506,8 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 func (l *TelegramListener) isReportCommand(text string) bool {
 	text = strings.TrimSpace(strings.ToLower(text))
 
-	// exact match for "report" or "/report"
-	if text == "report" || text == "/report" {
+	// exact match for regular report commands; /spam is an alias for non-superusers
+	if text == "report" || text == "/report" || text == "spam" || text == "/spam" {
 		return true
 	}
 

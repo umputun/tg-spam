@@ -195,12 +195,12 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		return mockAPI, botMock, l, teardown
 	}
 
-	reportUpdate := func() tbapi.Update {
+	reportUpdate := func(command string) tbapi.Update {
 		return tbapi.Update{
 			Message: &tbapi.Message{
 				MessageID: 50,
 				Chat:      tbapi.Chat{ID: 123},
-				Text:      "/report",
+				Text:      command,
 				From:      &tbapi.User{UserName: "user", ID: 2},
 				ReplyToMessage: &tbapi.Message{
 					MessageID: 40,
@@ -219,7 +219,7 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		defer teardown()
 
 		updChan := make(chan tbapi.Update, 1)
-		updChan <- reportUpdate()
+		updChan <- reportUpdate("/report")
 		close(updChan)
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
@@ -243,7 +243,7 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		defer teardown()
 
 		updChan := make(chan tbapi.Update, 1)
-		updChan <- reportUpdate()
+		updChan <- reportUpdate("/report")
 		close(updChan)
 		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
 
@@ -253,6 +253,32 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		require.EqualError(t, err, "telegram update chan closed")
 
 		assert.Empty(t, botMock.OnMessageCalls(), "handled /report must not reach spam check")
+		require.Len(t, reports.AddCalls(), 1, "report should be stored")
+		assert.Equal(t, 40, reports.AddCalls()[0].Report.MsgID)
+		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
+	})
+
+	t.Run("non-admin spam delegates to reports handler", func(t *testing.T) {
+		reports := &mocks.ReportsMock{
+			AddFunc: func(ctx context.Context, report storage.Report) error { return nil },
+			GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+				return []storage.Report{{MsgID: msgID, ChatID: chatID, ReporterUserID: 2}}, nil
+			},
+		}
+		mockAPI, botMock, l, teardown := prep(reports, true)
+		defer teardown()
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- reportUpdate("/spam")
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		assert.Empty(t, botMock.OnMessageCalls(), "handled /spam must not reach spam check")
 		require.Len(t, reports.AddCalls(), 1, "report should be stored")
 		assert.Equal(t, 40, reports.AddCalls()[0].Report.MsgID)
 		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
@@ -3853,6 +3879,8 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		{name: "plain report with trailing space", botUsername: "mybot", text: "report ", want: true},
 		{name: "plain /report with leading space", botUsername: "mybot", text: " /report", want: true},
 		{name: "plain /report with both spaces", botUsername: "mybot", text: " /report ", want: true},
+		{name: "plain spam alias", botUsername: "mybot", text: "spam", want: true},
+		{name: "plain /spam alias", botUsername: "mybot", text: "/spam", want: true},
 
 		// backward compatibility - plain commands work even with empty botUsername
 		{name: "plain /report with empty botUsername", botUsername: "", text: "/report", want: true},
@@ -3886,7 +3914,6 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		{name: "@ command exact match but empty botUsername", botUsername: "", text: "/report@", want: false},
 
 		// non-report commands
-		{name: "not a report command /spam", botUsername: "mybot", text: "/spam", want: false},
 		{name: "report substring reportthis", botUsername: "mybot", text: "reportthis", want: false},
 		{name: "empty string", botUsername: "mybot", text: "", want: false},
 		{name: "just spaces", botUsername: "mybot", text: "   ", want: false},
