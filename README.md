@@ -367,7 +367,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **admin commands**
 
-* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future. The same `spam` or `/spam` text from a non-superuser does not mark the message as spam: with `--report.enabled` set it is handled as a user report instead (see [User Spam Reporting](#user-spam-reporting)), and with reporting disabled it stays an ordinary message and goes through the usual spam check.
+* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future. The same `spam` or `/spam` text from a regular user posting under his own account does not mark the message as spam: with `--report.enabled` set it is handled as a user report instead (see [User Spam Reporting](#user-spam-reporting)), and otherwise it stays an ordinary message and goes through the usual spam check.
 
 * Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
 
