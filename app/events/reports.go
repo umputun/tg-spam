@@ -50,7 +50,8 @@ type userReports struct {
 	dry          bool
 }
 
-// DirectUserReport handles messages replied with "/report" by regular users
+// DirectUserReport handles a regular user's report of the message he replied to. the listener decides
+// which command forms route here: /report, report, /report@botname and the spam, /spam alias
 func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update) error {
 	origMsg := update.Message.ReplyToMessage
 	if origMsg == nil {

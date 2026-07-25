@@ -157,8 +157,10 @@ func TestTelegramListener_DoNilFrom(t *testing.T) {
 }
 
 func TestTelegramListener_DoUserReportCommand(t *testing.T) {
-	// covers the procUserReply dispatch from the Do loop: /report suppressed when the
-	// feature is disabled, delegated to the reports handler when enabled
+	// covers the procUserReply dispatch from the Do loop: /report suppressed when the feature is
+	// disabled, delegated to the reports handler when enabled, and the spam alias which is only a
+	// regular-user command while reporting is enabled (superuser /spam goes through procSuperReply
+	// regardless, covered by TestTelegramListener_DoWithDirectSpamReport)
 
 	prep := func(reports *mocks.ReportsMock, enabled bool) (*mocks.TbAPIMock, *mocks.BotMock, *TelegramListener, func()) {
 		mockAPI := &mocks.TbAPIMock{
@@ -282,6 +284,31 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		require.Len(t, reports.AddCalls(), 1, "report should be stored")
 		assert.Equal(t, 40, reports.AddCalls()[0].Report.MsgID)
 		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
+	})
+
+	t.Run("spam alias falls through to spam check when reporting is disabled", func(t *testing.T) {
+		// unlike /report, the alias is an ordinary word: with the feature off it must not be
+		// swallowed, it has to reach the spam check and the locator like any other message
+		for _, command := range []string{"spam", "/spam"} {
+			t.Run(command, func(t *testing.T) {
+				reports := &mocks.ReportsMock{}
+				mockAPI, botMock, l, teardown := prep(reports, false)
+				defer teardown()
+
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- reportUpdate(command)
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				err := l.Do(ctx)
+				require.EqualError(t, err, "telegram update chan closed")
+
+				assert.Len(t, botMock.OnMessageCalls(), 1, "alias must reach spam check when reporting is off")
+				assert.Empty(t, reports.AddCalls(), "no report should be stored when disabled")
+			})
+		}
 	})
 }
 
@@ -3808,6 +3835,67 @@ func TestTelegramListener_OrphanedReportDeletion(t *testing.T) {
 		}
 	})
 
+	t.Run("does NOT delete standalone spam alias even with reporting enabled", func(t *testing.T) {
+		// the spam alias only routes replies. a standalone "spam" is an ordinary message and must
+		// reach the spam check instead of being swallowed by the orphaned-command cleanup
+		for _, text := range []string{"spam", "/spam", "Spam", " spam "} {
+			t.Run(text, func(t *testing.T) {
+				mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+				deleteCalled := false
+				mockAPI := &mocks.TbAPIMock{
+					GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+						return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+					},
+					RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+						if _, ok := c.(tbapi.DeleteMessageConfig); ok {
+							deleteCalled = true
+						}
+						return &tbapi.APIResponse{Ok: true}, nil
+					},
+					GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+						return []tbapi.ChatMember{}, nil
+					},
+				}
+				botMock := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{}
+				}}
+
+				locator, teardown := prepTestLocator(t)
+				defer teardown()
+
+				l := TelegramListener{
+					SpamLogger:   mockLogger,
+					TbAPI:        mockAPI,
+					Bot:          botMock,
+					SuperUsers:   SuperUsers{"super"},
+					Locator:      locator,
+					ReportConfig: ReportConfig{Enabled: true, Storage: &mocks.ReportsMock{}, Threshold: 2},
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- tbapi.Update{
+					Message: &tbapi.Message{
+						MessageID: 100,
+						Chat:      tbapi.Chat{ID: 123},
+						Text:      text,
+						From:      &tbapi.User{UserName: "regular_user", ID: 999},
+						Date:      time.Now().Unix(),
+					},
+				}
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				err := l.Do(ctx)
+				require.EqualError(t, err, "telegram update chan closed")
+				assert.False(t, deleteCalled, "standalone spam alias must not be deleted")
+				assert.Len(t, botMock.OnMessageCalls(), 1, "standalone spam alias should reach the spam check")
+			})
+		}
+	})
+
 	t.Run("does NOT delete orphaned /report from superuser", func(t *testing.T) {
 		mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 		deleteCalled := false
@@ -3879,8 +3967,6 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		{name: "plain report with trailing space", botUsername: "mybot", text: "report ", want: true},
 		{name: "plain /report with leading space", botUsername: "mybot", text: " /report", want: true},
 		{name: "plain /report with both spaces", botUsername: "mybot", text: " /report ", want: true},
-		{name: "plain spam alias", botUsername: "mybot", text: "spam", want: true},
-		{name: "plain /spam alias", botUsername: "mybot", text: "/spam", want: true},
 
 		// backward compatibility - plain commands work even with empty botUsername
 		{name: "plain /report with empty botUsername", botUsername: "", text: "/report", want: true},
@@ -3913,7 +3999,10 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 		{name: "@ command with empty botUsername", botUsername: "", text: "/report@somebot", want: false},
 		{name: "@ command exact match but empty botUsername", botUsername: "", text: "/report@", want: false},
 
-		// non-report commands
+		// non-report commands. the spam alias is matched by isSpamReportAlias, never here, so the
+		// orphaned-command cleanup in Do cannot delete a standalone "spam" message
+		{name: "not a report command spam", botUsername: "mybot", text: "spam", want: false},
+		{name: "not a report command /spam", botUsername: "mybot", text: "/spam", want: false},
 		{name: "report substring reportthis", botUsername: "mybot", text: "reportthis", want: false},
 		{name: "empty string", botUsername: "mybot", text: "", want: false},
 		{name: "just spaces", botUsername: "mybot", text: "   ", want: false},
@@ -3926,6 +4015,38 @@ func TestTelegramListener_isReportCommand(t *testing.T) {
 			}
 			got := l.isReportCommand(tt.text)
 			assert.Equal(t, tt.want, got, "isReportCommand(%q) with botUsername=%q", tt.text, tt.botUsername)
+		})
+	}
+}
+
+func TestTelegramListener_isSpamReportAlias(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+		text    string
+		want    bool
+	}{
+		{name: "spam", enabled: true, text: "spam", want: true},
+		{name: "/spam", enabled: true, text: "/spam", want: true},
+		{name: "uppercase SPAM", enabled: true, text: "SPAM", want: true},
+		{name: "mixed case /Spam", enabled: true, text: "/Spam", want: true},
+		{name: "surrounding spaces", enabled: true, text: " spam ", want: true},
+
+		// reporting off: the plain word stays an ordinary message and reaches the spam check
+		{name: "spam with reporting disabled", enabled: false, text: "spam", want: false},
+		{name: "/spam with reporting disabled", enabled: false, text: "/spam", want: false},
+
+		{name: "spam substring spammer", enabled: true, text: "spammer", want: false},
+		{name: "spam with extra text", enabled: true, text: "spam here", want: false},
+		{name: "/spam@botname not accepted", enabled: true, text: "/spam@mybot", want: false},
+		{name: "report is not the alias", enabled: true, text: "/report", want: false},
+		{name: "empty string", enabled: true, text: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{ReportConfig: ReportConfig{Enabled: tt.enabled}}
+			assert.Equal(t, tt.want, l.isSpamReportAlias(tt.text), "isSpamReportAlias(%q) enabled=%v", tt.text, tt.enabled)
 		})
 	}
 }

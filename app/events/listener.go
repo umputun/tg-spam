@@ -506,8 +506,8 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 func (l *TelegramListener) isReportCommand(text string) bool {
 	text = strings.TrimSpace(strings.ToLower(text))
 
-	// exact match for regular report commands; /spam is an alias for non-superusers
-	if text == "report" || text == "/report" || text == "spam" || text == "/spam" {
+	// exact match for regular report commands
+	if text == "report" || text == "/report" {
 		return true
 	}
 
@@ -538,13 +538,27 @@ func (l *TelegramListener) isReportCommand(text string) bool {
 	return false
 }
 
-// procUserReply processes regular user commands (reply) /report.
-// feature check is intentionally inside this function to keep command detection logic centralized.
+// isSpamReportAlias checks if message text is the "spam" alias for the user report command.
+// unlike isReportCommand it matches only when user reporting is enabled, so for a regular user the
+// plain word "spam" stays an ordinary message in chats without the feature. superuser "spam" is
+// handled earlier by procSuperReply and is not affected. not used by the orphaned-command cleanup,
+// which must not delete a standalone "spam" message.
+func (l *TelegramListener) isSpamReportAlias(text string) bool {
+	if !l.ReportConfig.Enabled {
+		return false
+	}
+	text = strings.TrimSpace(strings.ToLower(text))
+	return text == "spam" || text == "/spam"
+}
+
+// procUserReply processes regular user report commands sent as a reply: /report, report,
+// /report@botname and the spam, /spam alias. report commands are suppressed when the feature is off,
+// while the alias is simply not a command then, so isSpamReportAlias carries its own enabled check.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
-	case l.isReportCommand(update.Message.Text):
+	case l.isReportCommand(update.Message.Text) || l.isSpamReportAlias(update.Message.Text):
 		if !l.ReportConfig.Enabled {
-			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)",
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring report command from %s (%d)",
 				update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
 		}
