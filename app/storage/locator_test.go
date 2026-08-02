@@ -262,6 +262,36 @@ func (s *StorageTestSuite) TestLocator_AddAndRetrieveManyMessage() {
 	}
 }
 
+func (s *StorageTestSuite) TestLocator_AddMessage_EmptyTextNoCollision() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			locator, err := NewLocator(ctx, time.Hour, 1000, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE messages")
+			defer db.Exec("DROP TABLE spam")
+
+			// media-only messages
+			s.Require().NoError(locator.AddMessage(ctx, "", 100, 1, "user1", 111))
+			s.Require().NoError(locator.AddMessage(ctx, "", 100, 2, "user2", 222))
+			s.Require().NoError(locator.AddMessage(ctx, "", 100, 1, "user1", 333))
+
+			var count int
+			s.Require().NoError(db.Get(&count, db.Adopt("SELECT COUNT(*) FROM messages WHERE gid = ?"), db.GID()))
+			s.Equal(3, count)
+
+			ids, err := locator.GetUserMessageIDs(ctx, 1, 10)
+			s.Require().NoError(err)
+			s.ElementsMatch([]int{111, 333}, ids)
+
+			ids, err = locator.GetUserMessageIDs(ctx, 2, 10)
+			s.Require().NoError(err)
+			s.Equal([]int{222}, ids)
+		})
+	}
+}
+
 func (s *StorageTestSuite) TestLocator_AddAndRetrieveSpam() {
 	ctx := context.Background()
 	for _, dbt := range s.getTestDB() {
