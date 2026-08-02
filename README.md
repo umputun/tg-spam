@@ -230,6 +230,8 @@ Configure with:
 
 This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
 
+Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold.
+
 **Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
 Configure with:

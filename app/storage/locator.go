@@ -421,6 +421,9 @@ func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int
 
 	hash := l.MsgHash(msg)
 	if msg == "" {
+		// every text-less message hashes to sha256("") and they would collapse onto a single row
+		// under PRIMARY KEY (gid, hash), so caption-less media keys on the message identity instead.
+		// Message() only ever looks up non-empty text, so this key is never queried.
 		hash = l.MsgHash(fmt.Sprintf("%d:%d:%d", chatID, userID, msgID))
 	}
 	log.Printf("[DEBUG] add message to locator: %q, hash:%s, userID:%d, user name:%q, chatID:%d, msgID:%d",
