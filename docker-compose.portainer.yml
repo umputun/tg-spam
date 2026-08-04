@@ -1,8 +1,7 @@
 services:
   tg-spam-wb:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Image is built out of band so that stack updates stay fast and don't hit the
+    # reverse proxy timeout: docker build -t tg-spam-wb-compat:latest .
     image: tg-spam-wb-compat:latest
     container_name: tg-spam-wb
     restart: unless-stopped
@@ -19,14 +18,25 @@ services:
       MAX_EMOJI: ${MAX_EMOJI:-3}
       MIN_MSG_LEN: ${MIN_MSG_LEN:-20}
       SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.7}
+      # LLM checks run only for the first N messages of a user, and short-message
+      # checking below needs this above zero to happen at all.
+      FIRST_MESSAGES_COUNT: ${FIRST_MESSAGES_COUNT:-1}
 
       MESSAGE_SPAM: ${MESSAGE_SPAM:-Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.}
       MESSAGE_DRY: ${MESSAGE_DRY:-this is spam (dry mode)}
       MESSAGE_RESTORE: ${MESSAGE_RESTORE:-Прошу прощения, принял вас за спамера. Вот ваше сообщение:}
 
       OPENAI_TOKEN: ${OPENAI_TOKEN}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol}
       OPENAI_VETO: ${OPENAI_VETO:-true}
+      # Messages shorter than MIN_MSG_LEN are checked by OpenAI only when this is set.
+      OPENAI_CHECK_SHORT_MESSAGES: ${OPENAI_CHECK_SHORT_MESSAGES:-true}
+      # Thinking budget for reasoning models: none, low, medium or high. none turns
+      # thinking off entirely.
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-low}
+      # Reasoning tokens count against this limit, so a low value leaves the reply
+      # truncated and the check unusable.
+      OPENAI_MAX_TOKENS_RESPONSE: ${OPENAI_MAX_TOKENS_RESPONSE:-4096}
 
       LOGGER_ENABLED: ${LOGGER_ENABLED:-true}
       LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
