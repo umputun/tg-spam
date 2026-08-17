@@ -1104,6 +1104,43 @@ func Test_parseCallbackData(t *testing.T) {
 	}
 }
 
+func Test_parseCallbackDataWithSpamReply(t *testing.T) {
+	var tests = []struct {
+		name            string
+		data            string
+		wantUserID      int64
+		wantMsgID       int
+		wantSpamReplyID int
+		wantErr         bool
+	}{
+		{"all three ids", "12345:678:910", 12345, 678, 910, false},
+		{"two ids only, no spam reply", "12345:678", 12345, 678, 0, false},
+		{"prefix? with three ids", "?12345:678:910", 12345, 678, 910, false},
+		{"prefix! with three ids", "!12345:678:910", 12345, 678, 910, false},
+		{"prefix+ with three ids", "+12345:678:910", 12345, 678, 910, false},
+		{"two-char report prefix with three ids", "R?12345:678:910", 12345, 678, 910, false},
+		{"reaction sentinel, no message and no reply", "?42:0:0", 42, 0, 0, false},
+		{"negative channel ID", "?-100123456:678:910", -100123456, 678, 910, false},
+		{"invalid spamReplyID", "12345:678:xyz", 0, 0, 0, true},
+		{"invalid msgID", "12345:xyz:910", 0, 0, 0, true},
+		{"data too short", "12", 0, 0, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUserID, gotMsgID, gotSpamReplyID, err := parseCallbackDataWithSpamReply(tt.data)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantUserID, gotUserID)
+			assert.Equal(t, tt.wantMsgID, gotMsgID)
+			assert.Equal(t, tt.wantSpamReplyID, gotSpamReplyID)
+		})
+	}
+}
+
 func Test_channelIDFromCallback(t *testing.T) {
 	tests := []struct {
 		name string

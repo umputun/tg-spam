@@ -272,7 +272,7 @@ encrypted JSON blob. Sensitive string fields are encrypted individually with an
 - `LuaPlugins` — enabled, plugins dir, enabled plugins list, dynamic reload
 - `AbnormalSpace` — ratio thresholds, short-word parameters, min words
 - `Files` — samples path, dynamic path, watch interval
-- `Message` — startup, spam, dry, warn
+- `Message` — startup, spam, dry, warn, restore
 - `Server` — enabled, listen address, **`auth_user`**, auth hash (encrypted)
 - `Delete` — **`join_messages`**, **`leave_messages`**
 - `Duplicates` — threshold, window
@@ -376,7 +376,7 @@ the running process won't pick up the new value through the web UI.
   `Gemini.RetryCount`
 
 **Message templates** (user-facing strings, could reasonably be in UI):
-- `Message.Spam`, `Message.Dry`, `Message.Warn`, `Message.Startup`
+- `Message.Spam`, `Message.Dry`, `Message.Warn`, `Message.Startup`, `Message.Restore`
   (only the startup-message on/off toggle is in the UI)
 
 **Credentials** (intentionally never UI-editable, managed via CLI/env
