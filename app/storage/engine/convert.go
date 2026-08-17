@@ -57,7 +57,7 @@ func (c *Converter) SqliteToPostgres(ctx context.Context, w io.Writer) error {
 	}
 
 	// define the tables specific to tg-spam that we want to convert
-	tables := []string{"detected_spam", "approved_users", "samples", "dictionary"}
+	tables := []string{"detected_spam", "approved_users", "samples", "dictionary", "reports", "warnings"}
 
 	// for each table, export schema and data if it exists
 	for _, table := range tables {
@@ -178,6 +178,16 @@ func (c *Converter) convertTableSchema(tableName, sqliteStmt string) string {
 	case "dictionary":
 		// dictionary table has standard types and constraints
 		// no specific conversions are needed beyond the common ones applied to all tables
+
+	case "reports":
+		// telegram chat and user ids can exceed the 32-bit range
+		pgStmt = strings.ReplaceAll(pgStmt, "chat_id INTEGER", "chat_id BIGINT")
+		pgStmt = strings.ReplaceAll(pgStmt, "reporter_user_id INTEGER", "reporter_user_id BIGINT")
+		pgStmt = strings.ReplaceAll(pgStmt, "reported_user_id INTEGER", "reported_user_id BIGINT")
+
+	case "warnings":
+		// telegram user ids can exceed the 32-bit range
+		pgStmt = strings.ReplaceAll(pgStmt, "user_id INTEGER", "user_id BIGINT")
 	}
 
 	// final conversion of boolean defaults for any boolean columns in all tables
@@ -263,7 +273,7 @@ func (c *Converter) exportTableData(ctx context.Context, tx *sqlx.Tx, w io.Write
 			}
 
 			// special handling for boolean values in specific tables/columns
-			if table == "detected_spam" && col == "added" {
+			if (table == "detected_spam" && col == "added") || (table == "reports" && col == "notification_sent") {
 				// convert SQLite 0/1 integer boolean to PostgreSQL f/t text boolean
 				if v, ok := val.(int64); ok {
 					if v == 0 {

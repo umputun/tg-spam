@@ -30,6 +30,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/umputun/tg-spam/app/bot"
+	"github.com/umputun/tg-spam/app/config"
 	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/app/storage/engine"
@@ -39,8 +40,10 @@ import (
 )
 
 type options struct {
-	InstanceID  string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
-	DataBaseURL string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
+	InstanceID         string `long:"instance-id" env:"INSTANCE_ID" default:"tg-spam" description:"instance id"`
+	DataBaseURL        string `long:"db" env:"DB" default:"tg-spam.db" description:"database URL, if empty uses sqlite"`
+	ConfigDB           bool   `long:"confdb" env:"CONFDB" description:"load configuration from database"`
+	ConfigDBEncryptKey string `long:"confdb-encrypt-key" env:"CONFDB_ENCRYPT_KEY" description:"encryption key for sensitive config values in database"`
 
 	Telegram struct {
 		Token        string        `long:"token" env:"TOKEN" description:"telegram bot token"`
@@ -84,7 +87,9 @@ type options struct {
 		LinksLimit      int    `long:"links-limit" env:"LINKS_LIMIT" default:"-1" description:"max links in message, disabled by default"`
 		MentionsLimit   int    `long:"mentions-limit" env:"MENTIONS_LIMIT" default:"-1" description:"max mentions in message, disabled by default"`
 		ImageOnly       bool   `long:"image-only" env:"IMAGE_ONLY" description:"enable image only check"`
+		ImageTextLen    int    `long:"image-text-len" env:"IMAGE_TEXT_LEN" default:"0" description:"min text length for image messages, 0 uses min-msg-len"`
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
+		MentionOnly     bool   `long:"mention-only" env:"MENTION_ONLY" description:"enable mention only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
 		AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		ContactOnly     bool   `long:"contact-only" env:"CONTACT_ONLY" description:"enable contact only check"`
@@ -92,6 +97,7 @@ type options struct {
 		Keyboard        bool   `long:"keyboard" env:"KEYBOARD" description:"enable keyboard check"`
 		UsernameSymbols string `long:"username-symbols" env:"USERNAME_SYMBOLS" description:"prohibited symbols in username, disabled by default"`
 		Giveaway        bool   `long:"giveaway" env:"GIVEAWAY" description:"enable giveaway check"`
+		ExternalReply   bool   `long:"external-reply" env:"EXTERNAL_REPLY" description:"enable external reply check"`
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
@@ -148,6 +154,11 @@ type options struct {
 		Window    time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for duplicate detection"`
 	} `group:"duplicates" namespace:"duplicates" env-namespace:"DUPLICATES"`
 
+	Reactions struct {
+		MaxReactions int           `long:"max-reactions" env:"MAX_REACTIONS" default:"0" description:"max reactions per user in window to trigger spam ban (0=disabled)"`
+		Window       time.Duration `long:"window" env:"WINDOW" default:"1h" description:"time window for reaction spam detection"`
+	} `group:"reactions" namespace:"reactions" env-namespace:"REACTIONS"`
+
 	Report struct {
 		Enabled          bool          `long:"enabled" env:"ENABLED" description:"enable user spam reporting"`
 		Threshold        int           `long:"threshold" env:"THRESHOLD" default:"2" description:"number of reports to trigger admin notification"`
@@ -155,6 +166,11 @@ type options struct {
 		RateLimit        int           `long:"rate-limit" env:"RATE_LIMIT" default:"10" description:"max reports per user per period"`
 		RatePeriod       time.Duration `long:"rate-period" env:"RATE_PERIOD" default:"1h" description:"rate limit time period"`
 	} `group:"report" namespace:"report" env-namespace:"REPORT"`
+
+	Warn struct {
+		Threshold int           `long:"threshold" env:"THRESHOLD" default:"0" description:"auto-ban after N warns within window (0=disabled)"`
+		Window    time.Duration `long:"window" env:"WINDOW" default:"720h" description:"sliding window for counting warns"`
+	} `group:"warn" namespace:"warn" env-namespace:"WARN"`
 
 	Files struct {
 		SamplesDataPath string        `long:"samples" env:"SAMPLES" description:"samples data path, defaults to dynamic data path"`
@@ -164,9 +180,12 @@ type options struct {
 
 	SimilarityThreshold float64 `long:"similarity-threshold" env:"SIMILARITY_THRESHOLD" default:"0.5" description:"spam threshold"`
 	MinMsgLen           int     `long:"min-msg-len" env:"MIN_MSG_LEN" default:"50" description:"min message length to check"`
+	MaxShortMsgCount    int     `long:"max-short-msg-count" env:"MAX_SHORT_MSG_COUNT" default:"0" description:"ban unapproved user after N short messages without graduation (0 disables)"`
 	MaxEmoji            int     `long:"max-emoji" env:"MAX_EMOJI" default:"2" description:"max emoji count in message, -1 to disable check"`
 	MinSpamProbability  float64 `long:"min-probability" env:"MIN_PROBABILITY" default:"50" description:"min spam probability percent to ban"`
 	MultiLangWords      int     `long:"multi-lang" env:"MULTI_LANG" default:"0" description:"number of words in different languages to consider as spam"`
+	ProhibitedLangs     string  `long:"prohibited-langs" env:"PROHIBITED_LANGS" default:"" description:"comma-separated prohibited languages or scripts, e.g. chinese,cyrillic (empty disables)"`
+	ProhibitedLangsMin  int     `long:"prohibited-langs-min" env:"PROHIBITED_LANGS_MIN" default:"3" description:"min prohibited-script letters in a message to consider as spam"`
 
 	ParanoidMode       bool `long:"paranoid" env:"PARANOID" description:"paranoid mode, check all messages"`
 	FirstMessagesCount int  `long:"first-messages-count" env:"FIRST_MESSAGES_COUNT" default:"1" description:"number of first messages to check"`
@@ -185,8 +204,8 @@ type options struct {
 	Server struct {
 		Enabled    bool   `long:"enabled" env:"ENABLED" description:"enable web server"`
 		ListenAddr string `long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password for user 'tg-spam'"`
-		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash for user 'tg-spam'"`
+		AuthPasswd string `long:"auth" env:"AUTH" default:"auto" description:"basic auth password"`
+		AuthHash   string `long:"auth-hash" env:"AUTH_HASH" default:"" description:"basic auth password hash"`
 	} `group:"server" namespace:"server" env-namespace:"SERVER"`
 
 	Training bool `long:"training" env:"TRAINING" description:"training mode, passive spam detection only"`
@@ -222,6 +241,14 @@ func main() {
 	var opts options
 	p := flags.NewParser(&opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
 	p.SubcommandsOptional = true
+
+	// add save-config command
+	if _, err := p.AddCommand("save-config", "Save current configuration to database",
+		"Saves all current settings to the database for future use with --confdb",
+		&struct{}{}); err != nil {
+		log.Printf("[ERROR] failed to add save-config command: %v", err)
+		os.Exit(1)
+	}
 	if _, err := p.Parse(); err != nil {
 		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			log.Printf("[ERROR] cli error: %v", err)
@@ -230,23 +257,111 @@ func main() {
 		os.Exit(2)
 	}
 
-	masked := []string{opts.Telegram.Token, opts.OpenAI.Token, opts.Gemini.Token}
-	if opts.Server.AuthPasswd != "auto" && opts.Server.AuthPasswd != "" {
+	// determine configuration source based on --confdb flag
+	var appSettings *config.Settings
+	// reloadNormalize captures the same defaults-fill + operational CLI override
+	// policy used at startup so POST /config/reload can apply it to a freshly
+	// loaded DB blob. nil in non-confdb mode (no reload endpoint exists there).
+	var reloadNormalize func(*config.Settings)
+
+	if opts.ConfigDB {
+		// database configuration mode - load from database first
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// build defaults template from CLI struct tags once; same template is
+		// used by loadConfigFromDB (to fill partial blobs) and applyCLIOverrides
+		// (to distinguish "operator passed default" from "operator opted out")
+		defaults, err := defaultSettingsTemplate()
+		if err != nil {
+			log.Printf("[ERROR] failed to build defaults template: %v", err)
+			cancel()
+			os.Exit(1) //nolint:gocritic // cancel is called before exit
+		}
+
+		// create a new settings instance
+		appSettings = config.New()
+
+		// set transient values needed for database connection BEFORE loading
+		appSettings.Transient.ConfigDB = opts.ConfigDB
+		appSettings.Transient.ConfigDBEncryptKey = opts.ConfigDBEncryptKey
+		appSettings.Transient.DataBaseURL = opts.DataBaseURL
+		appSettings.InstanceID = opts.InstanceID
+		// set DynamicDataPath from opts so makeDB can properly construct the database path
+		appSettings.Files.DynamicDataPath = opts.Files.DynamicDataPath
+
+		// load settings from database
+		if err := loadConfigFromDB(ctx, appSettings, defaults); err != nil {
+			log.Printf("[ERROR] failed to load configuration from database: %v", err)
+			cancel()
+			os.Exit(1) //nolint:gocritic // cancel is called before exit
+		}
+
+		// apply transient values from CLI (these are never stored in DB)
+		appSettings.Transient.Dbg = opts.Dbg
+		appSettings.Transient.TGDbg = opts.TGDbg
+		appSettings.Transient.StorageTimeout = opts.StorageTimeout
+
+		// apply explicit CLI overrides for non-transient values
+		applyCLIOverrides(appSettings, opts, defaults)
+
+		// build a reload normalizer that mirrors startup's defaults-fill +
+		// operational CLI overrides; webapi's loadConfigHandler invokes it
+		// after Load so a partial/legacy DB blob plus operator-supplied
+		// --files.dynamic / --files.samples / --server.listen / --dry survive
+		// POST /config/reload.
+		reloadNormalize = func(s *config.Settings) {
+			s.ApplyDefaults(defaults)
+			applyOperationalCLIOverrides(s, opts, defaults)
+			normalizeFilePaths(s)
+		}
+	} else {
+		// traditional mode - CLI is source of truth
+		appSettings = optToSettings(opts)
+	}
+
+	// setup logger with masked secrets BEFORE any subcommand dispatch so any
+	// error wrapping inside saveConfigToDB or later stages benefits from the
+	// secret masker. Tokens come directly from the resolved domain settings.
+	masked := []string{}
+
+	if appSettings.Telegram.Token != "" {
+		masked = append(masked, appSettings.Telegram.Token)
+	}
+	if appSettings.OpenAI.Token != "" {
+		masked = append(masked, appSettings.OpenAI.Token)
+	}
+	if appSettings.Gemini.Token != "" {
+		masked = append(masked, appSettings.Gemini.Token)
+	}
+
+	// add temporary web password if not "auto"
+	if appSettings.Transient.WebAuthPasswd != "auto" && appSettings.Transient.WebAuthPasswd != "" {
 		// auto passwd should not be masked as we print it
-		masked = append(masked, opts.Server.AuthPasswd)
-	}
-	if opts.Server.AuthHash != "" {
-		masked = append(masked, opts.Server.AuthHash)
+		masked = append(masked, appSettings.Transient.WebAuthPasswd)
 	}
 
-	setupLog(opts.Dbg, masked...)
+	// add auth hash
+	if appSettings.Server.AuthHash != "" {
+		masked = append(masked, appSettings.Server.AuthHash)
+	}
 
-	log.Printf("[DEBUG] options: %+v", opts)
+	// add config DB encryption master key - must be masked before the %+v settings dump below
+	if appSettings.Transient.ConfigDBEncryptKey != "" {
+		masked = append(masked, appSettings.Transient.ConfigDBEncryptKey)
+	}
 
-	// validate auto-ban threshold
-	if opts.Report.AutoBanThreshold > 0 && opts.Report.AutoBanThreshold < opts.Report.Threshold {
-		log.Fatalf("[ERROR] auto-ban-threshold (%d) must be >= threshold (%d) or 0 (disabled)",
-			opts.Report.AutoBanThreshold, opts.Report.Threshold)
+	setupLog(appSettings.Transient.Dbg, masked...)
+
+	// handle save-config command (after setupLog so any error output is masked)
+	if p.Active != nil && p.Active.Name == "save-config" {
+		os.Exit(runSaveConfig(appSettings))
+	}
+
+	log.Printf("[DEBUG] settings: %+v", appSettings)
+
+	if err := appSettings.Validate(); err != nil {
+		log.Fatalf("[ERROR] %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -261,50 +376,70 @@ func main() {
 	}()
 
 	// expand, make absolute paths
-	opts.Files.DynamicDataPath = expandPath(opts.Files.DynamicDataPath)
-	if opts.Files.SamplesDataPath == "" {
-		opts.Files.SamplesDataPath = opts.Files.DynamicDataPath
-	} else {
-		opts.Files.SamplesDataPath = expandPath(opts.Files.SamplesDataPath)
-	}
+	normalizeFilePaths(appSettings)
 
-	if err := execute(ctx, opts); err != nil {
+	if err := execute(ctx, appSettings, reloadNormalize); err != nil {
 		log.Printf("[ERROR] %v", err)
 		os.Exit(1)
 	}
 }
 
-func execute(ctx context.Context, opts options) error {
-	if opts.Dry {
+// validateSettings checks cross-field invariants on resolved settings.
+// Returns an error describing the first violation, or nil when settings are
+// internally consistent. Called from main once per startup before execute.
+// runSaveConfig handles the save-config command: it validates settings first so
+// an invalid config (e.g. an unknown prohibited-langs script) is refused before
+// it can be persisted and break the next --confdb startup, then writes the config
+// to the database. Returns a process exit code: 0 on success, 1 on validation or
+// persistence failure.
+func runSaveConfig(appSettings *config.Settings) int {
+	if err := appSettings.Validate(); err != nil {
+		log.Printf("[ERROR] invalid configuration, not saving: %v", err)
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := saveConfigToDB(ctx, appSettings); err != nil {
+		log.Printf("[ERROR] failed to save configuration to database: %v", err)
+		return 1
+	}
+	return 0
+}
+
+// execute runs the main application loop. The reloadNormalize callback, when
+// non-nil, is forwarded to webapi so POST /config/reload can reapply startup-
+// equivalent defaults-fill and operational CLI overrides on top of the DB blob.
+func execute(ctx context.Context, settings *config.Settings, reloadNormalize func(*config.Settings)) error {
+	if settings.Dry {
 		log.Print("[WARN] dry mode, no actual bans")
 	}
 
-	convertOnly := opts.Convert == "only"
-	if !opts.Server.Enabled && !convertOnly && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	convertOnly := settings.Convert == "only"
+	if !settings.Server.Enabled && !convertOnly && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		return errors.New("telegram token and group are required")
 	}
 
-	checkVolumeMount(opts) // show warning if dynamic files dir not mounted
+	checkVolumeMount(settings) // show warning if dynamic files dir not mounted
 
 	// make samples and dynamic data dirs
-	if err := os.MkdirAll(opts.Files.SamplesDataPath, 0o700); err != nil {
+	if err := os.MkdirAll(settings.Files.SamplesDataPath, 0o700); err != nil {
 		return fmt.Errorf("can't make samples dir, %w", err)
 	}
 
-	dataDB, err := makeDB(ctx, opts)
+	dataDB, err := makeDB(ctx, settings)
 	if err != nil {
 		return fmt.Errorf("can't make db, %w", err)
 	}
 
 	// make detector with all sample files loaded
-	detector := makeDetector(opts)
+	detector := makeDetector(settings)
 
 	// make spam bot
-	spamBot, err := makeSpamBot(ctx, opts, dataDB, detector)
+	spamBot, err := makeSpamBot(ctx, settings, dataDB, detector)
 	if err != nil {
 		return fmt.Errorf("can't make spam bot, %w", err)
 	}
-	if opts.Convert == "only" {
+	if settings.Convert == "only" {
 		log.Print("[WARN] convert only mode, converting text samples and exit")
 		return nil
 	}
@@ -322,24 +457,34 @@ func execute(ctx context.Context, opts options) error {
 	log.Printf("[DEBUG] approved users loaded: %d", count)
 
 	// make locator
-	locator, err := storage.NewLocator(ctx, opts.HistoryDuration, opts.HistoryMinSize, dataDB)
+	locator, err := storage.NewLocator(ctx, settings.History.Duration, settings.History.MinSize, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make locator, %w", err)
 	}
+	detector.WithMessageCounter(locator)
 
 	// make reports storage if feature is enabled
 	var reportsStore *storage.Reports
-	if opts.Report.Enabled {
+	if settings.Report.Enabled {
 		reportsStore, err = storage.NewReports(ctx, dataDB)
 		if err != nil {
 			return fmt.Errorf("can't make reports store, %w", err)
 		}
 	}
 
+	// make warnings storage if warn auto-ban feature is enabled
+	var warningsStore *storage.Warnings
+	if settings.Warn.Threshold > 0 {
+		warningsStore, err = storage.NewWarnings(ctx, dataDB)
+		if err != nil {
+			return fmt.Errorf("can't make warnings store, %w", err)
+		}
+	}
+
 	// activate web server if enabled, server-only mode (no telegram token)
-	if opts.Server.Enabled && (opts.Telegram.Token == "" || opts.Telegram.Group == "") {
+	if settings.Server.Enabled && (settings.Telegram.Token == "" || settings.Telegram.Group == "") {
 		// server starts in background goroutine without DM users provider
-		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, nil, ""); srvErr != nil {
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, nil, "", reloadNormalize); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 		log.Printf("[WARN] no telegram token and group set, web server only mode")
@@ -348,21 +493,21 @@ func execute(ctx context.Context, opts options) error {
 	}
 
 	// make telegram bot
-	tbAPI, err := tbapi.NewBotAPI(opts.Telegram.Token)
+	tbAPI, err := tbapi.NewBotAPI(settings.Telegram.Token)
 	if err != nil {
 		return fmt.Errorf("can't make telegram bot, %w", err)
 	}
-	tbAPI.Debug = opts.TGDbg
+	tbAPI.Debug = settings.Transient.TGDbg
 
 	// make spam logger writer
-	loggerWr, err := makeSpamLogWriter(opts)
+	loggerWr, err := makeSpamLogWriter(settings)
 	if err != nil {
 		return fmt.Errorf("can't make spam log writer, %w", err)
 	}
 	defer loggerWr.Close()
 
 	// make spam logger
-	spamLogger, err := makeSpamLogger(ctx, opts.InstanceID, loggerWr, dataDB)
+	spamLogger, err := makeSpamLogger(ctx, settings.InstanceID, loggerWr, dataDB)
 	if err != nil {
 		return fmt.Errorf("can't make spam logger, %w", err)
 	}
@@ -371,41 +516,44 @@ func execute(ctx context.Context, opts options) error {
 	tgListener := events.TelegramListener{
 		TbAPI:               tbAPI,
 		BotUsername:         tbAPI.Self.UserName,
-		Group:               opts.Telegram.Group,
-		IdleDuration:        opts.Telegram.IdleDuration,
-		SuperUsers:          opts.SuperUsers,
+		Group:               settings.Telegram.Group,
+		IdleDuration:        settings.Telegram.IdleDuration,
+		SuperUsers:          settings.Admin.SuperUsers,
 		Bot:                 spamBot,
-		StartupMsg:          opts.Message.Startup,
-		WarnMsg:             opts.Message.Warn,
-		RestoreMsg:          opts.Message.Restore,
-		NoSpamReply:         opts.NoSpamReply,
-		SuppressJoinMessage: opts.SuppressJoinMessage,
-		DeleteJoinMessages:  opts.Delete.JoinMessages,
-		DeleteLeaveMessages: opts.Delete.LeaveMessages,
+		StartupMsg:          settings.Message.Startup,
+		WarnMsg:             settings.Message.Warn,
+		RestoreMsg:          settings.Message.Restore,
+		NoSpamReply:         settings.NoSpamReply,
+		SuppressJoinMessage: settings.SuppressJoinMessage,
+		DeleteJoinMessages:  settings.Delete.JoinMessages,
+		DeleteLeaveMessages: settings.Delete.LeaveMessages,
 		SpamLogger:          spamLogger,
-		AdminGroup:          opts.AdminGroup,
-		TestingIDs:          opts.TestingIDs,
+		AdminGroup:          settings.Admin.AdminGroup,
+		TestingIDs:          settings.Admin.TestingIDs,
 		Locator:             locator,
 		ReportConfig: events.ReportConfig{
 			Storage:          reportsStore,
-			Enabled:          opts.Report.Enabled,
-			Threshold:        opts.Report.Threshold,
-			AutoBanThreshold: opts.Report.AutoBanThreshold,
-			RateLimit:        opts.Report.RateLimit,
-			RatePeriod:       opts.Report.RatePeriod,
+			Enabled:          settings.Report.Enabled,
+			Threshold:        settings.Report.Threshold,
+			AutoBanThreshold: settings.Report.AutoBanThreshold,
+			RateLimit:        settings.Report.RateLimit,
+			RatePeriod:       settings.Report.RatePeriod,
 		},
-		TrainingMode:            opts.Training,
-		SoftBanMode:             opts.SoftBan,
-		DisableAdminSpamForward: opts.DisableAdminSpamForward,
-		Dry:                     opts.Dry,
-		AggressiveCleanup:       opts.AggressiveCleanup,
-		AggressiveCleanupLimit:  opts.AggressiveCleanupLimit,
+		TrainingMode:            settings.Training,
+		SoftBanMode:             settings.SoftBan,
+		DisableAdminSpamForward: settings.Admin.DisableAdminSpamForward,
+		Dry:                     settings.Dry,
+		AggressiveCleanup:       settings.AggressiveCleanup,
+		AggressiveCleanupLimit:  settings.AggressiveCleanupLimit,
+		WarnThreshold:           settings.Warn.Threshold,
+		WarnWindow:              settings.Warn.Window,
+		Warnings:                warningsStore,
 	}
 
-	if opts.Delete.JoinMessages {
+	if settings.Delete.JoinMessages {
 		log.Print("[INFO] delete join messages enabled")
 	}
-	if opts.Delete.LeaveMessages {
+	if settings.Delete.LeaveMessages {
 		log.Print("[INFO] delete leave messages enabled")
 	}
 
@@ -416,8 +564,9 @@ func execute(ctx context.Context, opts options) error {
 		tgListener.Dry, tgListener.TrainingMode)
 
 	// activate web server if enabled, with DM users provider from the telegram listener
-	if opts.Server.Enabled {
-		if srvErr := activateServer(ctx, opts, spamBot, locator, dataDB, &tgListener, tgListener.BotUsername); srvErr != nil {
+	if settings.Server.Enabled {
+		if srvErr := activateServer(ctx, settings, spamBot, locator, dataDB, &tgListener,
+			tgListener.BotUsername, reloadNormalize); srvErr != nil {
 			return fmt.Errorf("can't activate web server, %w", srvErr)
 		}
 	}
@@ -429,23 +578,22 @@ func execute(ctx context.Context, opts options) error {
 	return nil
 }
 
-// makeDB creates database connection based on options
-// if dbURL is a file name, uses sqlite with dynamic data path, otherwise uses dbURL as is
-func makeDB(ctx context.Context, opts options) (*engine.SQL, error) {
-	if opts.DataBaseURL == "" {
+// makeDB creates database connection based on the settings model
+func makeDB(ctx context.Context, settings *config.Settings) (*engine.SQL, error) {
+	if settings.Transient.DataBaseURL == "" {
 		return nil, errors.New("empty database URL")
 	}
-	dbURL := opts.DataBaseURL // default to what is set in options
+	dbURL := settings.Transient.DataBaseURL
 
 	// if dbURL has no path separator, assume it is a file name and add dynamic data path for sqlite
 	if !strings.Contains(dbURL, "/") && !strings.Contains(dbURL, "\\") {
-		dbURL = filepath.Join(opts.Files.DynamicDataPath, dbURL)
+		dbURL = filepath.Join(settings.Files.DynamicDataPath, dbURL)
 	}
 	log.Printf("[DEBUG] data db: %s", dbURL)
 
-	db, err := engine.New(ctx, dbURL, opts.InstanceID)
+	db, err := engine.New(ctx, dbURL, settings.InstanceID)
 	if err != nil {
-		return nil, fmt.Errorf("can't make db %s, %w", opts.DataBaseURL, err)
+		return nil, fmt.Errorf("can't make db %s, %w", settings.Transient.DataBaseURL, err)
 	}
 
 	// backup db on version change for sqlite
@@ -456,8 +604,8 @@ func makeDB(ctx context.Context, opts options) (*engine.SQL, error) {
 		dbFile = strings.TrimPrefix(dbFile, "file:")
 
 		// make backup of db on version change for sqlite
-		if opts.MaxBackups > 0 {
-			if err := backupDB(dbFile, revision, opts.MaxBackups); err != nil {
+		if settings.MaxBackups > 0 {
+			if err := backupDB(dbFile, revision, settings.MaxBackups); err != nil {
 				return nil, fmt.Errorf("backup on version change failed, %w", err)
 			}
 		} else {
@@ -469,16 +617,16 @@ func makeDB(ctx context.Context, opts options) (*engine.SQL, error) {
 
 // checkVolumeMount checks if dynamic files location mounted in docker and shows warning if not
 // returns true if running not in docker or dynamic files dir mounted
-func checkVolumeMount(opts options) (ok bool) {
+func checkVolumeMount(settings *config.Settings) (ok bool) {
 	if os.Getenv("TGSPAM_IN_DOCKER") != "1" {
 		return true
 	}
 	log.Printf("[DEBUG] running in docker")
 	warnMsg := fmt.Sprintf("dynamic files dir %q is not mounted, changes will be lost on container restart",
-		opts.Files.DynamicDataPath)
+		settings.Files.DynamicDataPath)
 
 	// check if dynamic files dir not present. This means it is not mounted
-	_, err := os.Stat(opts.Files.DynamicDataPath)
+	_, err := os.Stat(settings.Files.DynamicDataPath)
 	if err != nil {
 		log.Printf("[WARN] %s", warnMsg)
 		// no dynamic files dir, no need to check further
@@ -486,7 +634,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	}
 
 	// check if .not_mounted file missing, this means it is mounted
-	if _, err = os.Stat(filepath.Join(opts.Files.DynamicDataPath, ".not_mounted")); err != nil {
+	if _, err = os.Stat(filepath.Join(settings.Files.DynamicDataPath, ".not_mounted")); err != nil {
 		return true
 	}
 
@@ -498,7 +646,7 @@ func checkVolumeMount(opts options) (ok bool) {
 	}
 	// check if the output contains the specified directory
 	for line := range strings.SplitSeq(string(output), "\n") {
-		if strings.Contains(line, opts.Files.DynamicDataPath) {
+		if strings.Contains(line, settings.Files.DynamicDataPath) {
 			return true
 		}
 	}
@@ -507,25 +655,55 @@ func checkVolumeMount(opts options) (ok bool) {
 	return false
 }
 
-func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *storage.Locator,
-	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string) (err error) {
-	authPassswd := opts.Server.AuthPasswd
-	if opts.Server.AuthPasswd == "auto" {
-		authPassswd, err = webapi.GenerateRandomPassword(20)
+func activateServer(ctx context.Context, settings *config.Settings, sf *bot.SpamFilter, loc *storage.Locator,
+	db *engine.SQL, dmUsersProvider webapi.DMUsersProvider, botUsername string,
+	reloadNormalize func(*config.Settings)) (err error) {
+	// safety net: when --confdb leaves the web UI without any auth material, fall
+	// back to generating a random password (matches legacy behavior where CLI
+	// default --server.auth=auto would trigger random-password generation)
+	applyAutoAuthFallback(settings)
+
+	// handle authentication - always use bcrypt hash for security
+	authPasswd := settings.Transient.WebAuthPasswd
+	authHash := settings.Server.AuthHash
+
+	// if hash is provided, use it directly
+	if authHash != "" {
+		log.Printf("[INFO] using provided bcrypt hash for authentication")
+	} else if authPasswd != "" {
+		// generate hash from password if no hash but password is provided
+		// generateAuthHash handles the "auto" password case internally
+		authHash, err = generateAuthHash(authPasswd)
 		if err != nil {
-			return fmt.Errorf("can't generate random password, %w", err)
+			return fmt.Errorf("can't handle authentication setup: %w", err)
 		}
-		authHash, err := rest.GenerateBcryptHash(authPassswd)
-		if err != nil {
-			return fmt.Errorf("can't generate bcrypt hash for password, %w", err)
-		}
-		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", authPassswd, authHash)
+		// store the hash directly in the Server settings domain
+		settings.Server.AuthHash = authHash
 	}
+	// when neither hash nor password is provided, auth will be disabled
 
 	// make store and load approved users
 	detectedSpamStore, dsErr := storage.NewDetectedSpam(ctx, db)
 	if dsErr != nil {
 		return fmt.Errorf("can't make detected spam store, %w", dsErr)
+	}
+
+	// create settings store for database access if config DB mode is enabled
+	var settingsStore *config.Store
+	if settings.Transient.ConfigDB {
+		var storeOpts []config.StoreOption
+		if settings.Transient.ConfigDBEncryptKey != "" {
+			crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
+			if cryptErr != nil {
+				return fmt.Errorf("invalid encryption key for settings store: %w", cryptErr)
+			}
+			storeOpts = append(storeOpts, config.WithCrypter(crypter))
+		}
+		store, err := config.NewStore(ctx, db, storeOpts...)
+		if err != nil {
+			return fmt.Errorf("failed to create settings store: %w", err)
+		}
+		settingsStore = store
 	}
 
 	// make dictionary store for webapi
@@ -534,70 +712,8 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		return fmt.Errorf("can't make dictionary store, %w", dictErr)
 	}
 
-	settings := webapi.Settings{
-		InstanceID:              opts.InstanceID,
-		BotUsername:             botUsername,
-		PrimaryGroup:            opts.Telegram.Group,
-		AdminGroup:              opts.AdminGroup,
-		DisableAdminSpamForward: opts.DisableAdminSpamForward,
-		LoggerEnabled:           opts.Logger.Enabled,
-		SuperUsers:              opts.SuperUsers,
-		StorageTimeout:          opts.StorageTimeout,
-		NoSpamReply:             opts.NoSpamReply,
-		CasEnabled:              opts.CAS.API != "",
-		MetaEnabled: opts.Meta.ImageOnly || opts.Meta.LinksLimit >= 0 || opts.Meta.MentionsLimit >= 0 ||
-			opts.Meta.LinksOnly || opts.Meta.VideosOnly || opts.Meta.AudiosOnly || opts.Meta.ContactOnly ||
-			opts.Meta.Forward || opts.Meta.Keyboard || opts.Meta.UsernameSymbols != "" || opts.Meta.Giveaway,
-		MetaLinksLimit:           opts.Meta.LinksLimit,
-		MetaMentionsLimit:        opts.Meta.MentionsLimit,
-		MetaLinksOnly:            opts.Meta.LinksOnly,
-		MetaImageOnly:            opts.Meta.ImageOnly,
-		MetaVideoOnly:            opts.Meta.VideosOnly,
-		MetaAudioOnly:            opts.Meta.AudiosOnly,
-		MetaForwarded:            opts.Meta.Forward,
-		MetaKeyboard:             opts.Meta.Keyboard,
-		MetaContactOnly:          opts.Meta.ContactOnly,
-		MetaUsernameSymbols:      opts.Meta.UsernameSymbols,
-		MetaGiveaway:             opts.Meta.Giveaway,
-		MultiLangLimit:           opts.MultiLangWords,
-		LLMConsensus:             opts.LLM.Consensus,
-		OpenAIEnabled:            opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "",
-		OpenAIVeto:               opts.OpenAI.Veto,
-		OpenAIHistorySize:        opts.OpenAI.HistorySize,
-		OpenAIModel:              opts.OpenAI.Model,
-		OpenAICheckShortMessages: opts.OpenAI.CheckShortMessages,
-		OpenAICustomPrompts:      opts.OpenAI.CustomPrompts,
-		GeminiEnabled:            opts.Gemini.Token != "",
-		GeminiVeto:               opts.Gemini.Veto,
-		GeminiHistorySize:        opts.Gemini.HistorySize,
-		GeminiModel:              opts.Gemini.Model,
-		GeminiCheckShortMessages: opts.Gemini.CheckShortMessages,
-		GeminiCustomPrompts:      opts.Gemini.CustomPrompts,
-		LuaPluginsEnabled:        opts.LuaPlugins.Enabled,
-		LuaPluginsDir:            opts.LuaPlugins.PluginsDir,
-		LuaEnabledPlugins:        opts.LuaPlugins.EnabledPlugins,
-		LuaDynamicReload:         opts.LuaPlugins.DynamicReload,
-		SamplesDataPath:          opts.Files.SamplesDataPath,
-		DynamicDataPath:          opts.Files.DynamicDataPath,
-		WatchIntervalSecs:        int(opts.Files.WatchInterval.Seconds()),
-		SimilarityThreshold:      opts.SimilarityThreshold,
-		MinMsgLen:                opts.MinMsgLen,
-		MaxEmoji:                 opts.MaxEmoji,
-		MinSpamProbability:       opts.MinSpamProbability,
-		ParanoidMode:             opts.ParanoidMode,
-		FirstMessagesCount:       opts.FirstMessagesCount,
-		StartupMessageEnabled:    opts.Message.Startup != "",
-		TrainingEnabled:          opts.Training,
-		SoftBanEnabled:           opts.SoftBan,
-		AbnormalSpacingEnabled:   opts.AbnormalSpacing.Enabled,
-		HistorySize:              opts.HistorySize,
-		DebugModeEnabled:         opts.Dbg,
-		DryModeEnabled:           opts.Dry,
-		TGDebugModeEnabled:       opts.TGDbg,
-	}
-
-	srv := webapi.Server{Config: webapi.Config{
-		ListenAddr:      opts.Server.ListenAddr,
+	cfg := webapi.Config{
+		ListenAddr:      settings.Server.ListenAddr,
 		Detector:        sf.Detector,
 		SpamFilter:      sf,
 		Locator:         loc,
@@ -605,12 +721,20 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 		Dictionary:      dictionaryStore,
 		StorageEngine:   db, // add database engine for backup functionality
 		DMUsersProvider: dmUsersProvider,
-		AuthPasswd:      authPassswd,
-		AuthHash:        opts.Server.AuthHash,
+		AuthUser:        settings.Server.AuthUser, // optional basic auth user (defaults to "tg-spam" when empty)
+		AuthHash:        authHash,                 // use the hash (either from options or generated)
 		Version:         revision,
-		Dbg:             opts.Dbg,
-		Settings:        settings,
-	}}
+		Dbg:             settings.Transient.Dbg,
+		BotUsername:     botUsername,
+		AppSettings:     settings,
+		ConfigDBMode:    settings.Transient.ConfigDB, // indicate we're running with database config
+		// applies startup-equivalent defaults-fill + operational CLI overrides on /config/reload
+		ReloadNormalize: reloadNormalize,
+	}
+	if settingsStore != nil {
+		cfg.SettingsStore = settingsStore // avoid nil-interface-wrapping-nil-pointer trap
+	}
+	srv := webapi.NewServer(cfg)
 
 	go func() {
 		if err := srv.Run(ctx); err != nil {
@@ -622,87 +746,110 @@ func activateServer(ctx context.Context, opts options, sf *bot.SpamFilter, loc *
 
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
-func makeDetector(opts options) *tgspam.Detector {
+func makeDetector(settings *config.Settings) *tgspam.Detector {
 	detectorConfig := tgspam.Config{
-		MaxAllowedEmoji:     opts.MaxEmoji,
-		MinMsgLen:           opts.MinMsgLen,
-		SimilarityThreshold: opts.SimilarityThreshold,
-		MinSpamProbability:  opts.MinSpamProbability,
-		CasAPI:              opts.CAS.API,
-		CasUserAgent:        opts.CAS.UserAgent,
-		HTTPClient:          &http.Client{Timeout: opts.CAS.Timeout},
-		FirstMessageOnly:    !opts.ParanoidMode,
-		FirstMessagesCount:  opts.FirstMessagesCount,
-		OpenAIVeto:          opts.OpenAI.Veto,
-		OpenAIHistorySize:   opts.OpenAI.HistorySize, // how many last requests sent to openai
-		GeminiVeto:          opts.Gemini.Veto,
-		GeminiHistorySize:   opts.Gemini.HistorySize, // how many last requests sent to gemini
-		LLMConsensus:        tgspam.LLMConsensusMode(opts.LLM.Consensus),
-		LLMRequestTimeout:   opts.LLM.RequestTimeout,
-		MultiLangWords:      opts.MultiLangWords,
-		HistorySize:         opts.HistorySize, // how many last request stored in memory
+		MaxAllowedEmoji:     settings.MaxEmoji,
+		MinMsgLen:           settings.MinMsgLen,
+		MaxShortMsgCount:    settings.MaxShortMsgCount,
+		SimilarityThreshold: settings.SimilarityThreshold,
+		MinSpamProbability:  settings.MinSpamProbability,
+		CasAPI:              settings.CAS.API,
+		CasUserAgent:        settings.CAS.UserAgent,
+		HTTPClient:          &http.Client{Timeout: settings.CAS.Timeout},
+		FirstMessageOnly:    !settings.ParanoidMode,
+		FirstMessagesCount:  settings.FirstMessagesCount,
+		OpenAIVeto:          settings.OpenAI.Veto,
+		OpenAIHistorySize:   settings.OpenAI.HistorySize, // how many last requests sent to openai
+		GeminiVeto:          settings.Gemini.Veto,
+		GeminiHistorySize:   settings.Gemini.HistorySize, // how many last requests sent to gemini
+		LLMConsensus:        tgspam.LLMConsensusMode(settings.LLM.Consensus),
+		LLMRequestTimeout:   settings.LLM.RequestTimeout,
+		MultiLangWords:      settings.MultiLangWords,
+		HistorySize:         settings.History.Size, // how many last request stored in memory
+	}
+
+	// prohibited scripts are validated earlier in Settings.Validate (log.Fatalf on a bad
+	// name), so this cannot fail in normal startup; handle the error defensively anyway —
+	// on error the resolver returns a nil map, which disables the check.
+	prohibitedScripts, err := tgspam.ResolveProhibitedScripts(strings.Split(settings.ProhibitedLangs, ","))
+	if err != nil {
+		log.Printf("[WARN] failed to resolve prohibited scripts %q: %v; prohibited-language check disabled",
+			settings.ProhibitedLangs, err)
+	}
+	detectorConfig.ProhibitedScripts = prohibitedScripts
+	detectorConfig.ProhibitedLangsMin = settings.ProhibitedLangsMin
+	if len(prohibitedScripts) > 0 {
+		log.Printf("[INFO] prohibited languages check enabled, langs: %q, min letters: %d",
+			settings.ProhibitedLangs, settings.ProhibitedLangsMin)
 	}
 
 	// FirstMessagesCount and ParanoidMode are mutually exclusive.
 	// ParanoidMode still here for backward compatibility only.
-	if opts.FirstMessagesCount > 0 { // if FirstMessagesCount is set, FirstMessageOnly is enforced
+	if settings.FirstMessagesCount > 0 { // if FirstMessagesCount is set, FirstMessageOnly is enforced
 		detectorConfig.FirstMessageOnly = true
 	}
-	if opts.ParanoidMode { // if ParanoidMode is set, FirstMessagesCount is ignored
+	if settings.ParanoidMode { // if ParanoidMode is set, FirstMessagesCount is ignored
 		detectorConfig.FirstMessageOnly = false
 		detectorConfig.FirstMessagesCount = 0
 	}
-	if opts.StorageTimeout > 0 { // if StorageTimeout is non-zero, set it. If zero, storage timeout is disabled
-		detectorConfig.StorageTimeout = opts.StorageTimeout
+	if settings.Transient.StorageTimeout > 0 { // if StorageTimeout is non-zero, set it. If zero, storage timeout is disabled
+		detectorConfig.StorageTimeout = settings.Transient.StorageTimeout
 	}
 
 	// set duplicate detection config
-	detectorConfig.DuplicateDetection.Threshold = opts.Duplicates.Threshold
-	detectorConfig.DuplicateDetection.Window = opts.Duplicates.Window
-	if opts.Duplicates.Threshold > 0 {
+	detectorConfig.DuplicateDetection.Threshold = settings.Duplicates.Threshold
+	detectorConfig.DuplicateDetection.Window = settings.Duplicates.Window
+	if settings.Duplicates.Threshold > 0 {
 		log.Printf("[INFO] duplicate messages check enabled, threshold: %d, window: %v",
-			opts.Duplicates.Threshold, opts.Duplicates.Window)
+			settings.Duplicates.Threshold, settings.Duplicates.Window)
+	}
+
+	detectorConfig.ReactionSpam.MaxReactions = settings.Reactions.MaxReactions
+	detectorConfig.ReactionSpam.Window = settings.Reactions.Window
+	if settings.Reactions.MaxReactions > 0 {
+		log.Printf("[INFO] reaction spam detection enabled, max reactions: %d, window: %v",
+			settings.Reactions.MaxReactions, settings.Reactions.Window)
 	}
 
 	detector := tgspam.NewDetector(detectorConfig)
 
-	if opts.OpenAI.Token != "" || opts.OpenAI.APIBase != "" {
+	if settings.IsOpenAIEnabled() {
 		log.Printf("[WARN] openai enabled")
 		openAIConfig := tgspam.OpenAIConfig{
-			SystemPrompt:                 opts.OpenAI.Prompt,
-			CustomPrompts:                opts.OpenAI.CustomPrompts,
-			Model:                        opts.OpenAI.Model,
-			MaxTokensResponse:            opts.OpenAI.MaxTokensResponse,
-			MaxTokensRequest:             opts.OpenAI.MaxTokensRequest,
-			MaxSymbolsRequest:            opts.OpenAI.MaxSymbolsRequest,
-			RetryCount:                   opts.OpenAI.RetryCount,
-			ReasoningEffort:              opts.OpenAI.ReasoningEffort,
-			CheckShortMessagesWithOpenAI: opts.OpenAI.CheckShortMessages,
+			SystemPrompt:                 settings.OpenAI.Prompt,
+			CustomPrompts:                settings.OpenAI.CustomPrompts,
+			Model:                        settings.OpenAI.Model,
+			MaxTokensResponse:            settings.OpenAI.MaxTokensResponse,
+			MaxTokensRequest:             settings.OpenAI.MaxTokensRequest,
+			MaxSymbolsRequest:            settings.OpenAI.MaxSymbolsRequest,
+			RetryCount:                   settings.OpenAI.RetryCount,
+			ReasoningEffort:              settings.OpenAI.ReasoningEffort,
+			CheckShortMessagesWithOpenAI: settings.OpenAI.CheckShortMessages,
 		}
 
-		config := openai.DefaultConfig(opts.OpenAI.Token)
-		if opts.OpenAI.APIBase != "" {
-			config.BaseURL = opts.OpenAI.APIBase
+		openaiConfig := openai.DefaultConfig(settings.OpenAI.Token)
+		if settings.OpenAI.APIBase != "" {
+			openaiConfig.BaseURL = settings.OpenAI.APIBase
 		}
 		log.Printf("[DEBUG] openai config: %+v", openAIConfig)
 
-		detector.WithOpenAIChecker(openai.NewClientWithConfig(config), openAIConfig)
+		detector.WithOpenAIChecker(openai.NewClientWithConfig(openaiConfig), openAIConfig)
 	}
 
-	if opts.Gemini.Token != "" {
+	if settings.Gemini.Token != "" {
 		log.Printf("[WARN] gemini enabled")
 		geminiConfig := tgspam.GeminiConfig{
-			SystemPrompt:       opts.Gemini.Prompt,
-			CustomPrompts:      opts.Gemini.CustomPrompts,
-			Model:              opts.Gemini.Model,
-			MaxOutputTokens:    opts.Gemini.MaxTokensResponse,
-			MaxSymbolsRequest:  opts.Gemini.MaxSymbolsRequest,
-			RetryCount:         opts.Gemini.RetryCount,
-			CheckShortMessages: opts.Gemini.CheckShortMessages,
+			SystemPrompt:       settings.Gemini.Prompt,
+			CustomPrompts:      settings.Gemini.CustomPrompts,
+			Model:              settings.Gemini.Model,
+			MaxOutputTokens:    settings.Gemini.MaxTokensResponse,
+			MaxSymbolsRequest:  settings.Gemini.MaxSymbolsRequest,
+			RetryCount:         settings.Gemini.RetryCount,
+			CheckShortMessages: settings.Gemini.CheckShortMessages,
 		}
 
 		client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-			APIKey:  opts.Gemini.Token,
+			APIKey:  settings.Gemini.Token,
 			Backend: genai.BackendGeminiAPI,
 		})
 		if err != nil {
@@ -712,94 +859,117 @@ func makeDetector(opts options) *tgspam.Detector {
 		detector.WithGeminiChecker(client.Models, geminiConfig)
 	}
 
-	if opts.AbnormalSpacing.Enabled {
+	if settings.AbnormalSpace.Enabled {
 		log.Printf("[INFO] words spacing check enabled")
 		detector.AbnormalSpacing.Enabled = true
-		detector.AbnormalSpacing.ShortWordLen = opts.AbnormalSpacing.ShortWordLen
-		detector.AbnormalSpacing.ShortWordRatioThreshold = opts.AbnormalSpacing.ShortWordRatioThreshold
-		detector.AbnormalSpacing.SpaceRatioThreshold = opts.AbnormalSpacing.SpaceRatioThreshold
-		detector.AbnormalSpacing.MinWordsCount = opts.AbnormalSpacing.MinWords
+		detector.AbnormalSpacing.ShortWordLen = settings.AbnormalSpace.ShortWordLen
+		detector.AbnormalSpacing.ShortWordRatioThreshold = settings.AbnormalSpace.ShortWordRatioThreshold
+		detector.AbnormalSpacing.SpaceRatioThreshold = settings.AbnormalSpace.SpaceRatioThreshold
+		detector.AbnormalSpacing.MinWordsCount = settings.AbnormalSpace.MinWords
 	}
 
 	metaChecks := []tgspam.MetaCheck{}
-	if opts.Meta.ImageOnly {
-		log.Printf("[INFO] image only check enabled, min text len: %d", opts.MinMsgLen)
-		metaChecks = append(metaChecks, tgspam.ImagesCheck(opts.MinMsgLen))
+	if settings.Meta.ImageOnly {
+		imageTextLen := settings.MinMsgLen
+		if settings.Meta.ImageTextLen > 0 {
+			imageTextLen = settings.Meta.ImageTextLen
+		}
+		log.Printf("[INFO] image only check enabled, min text len: %d", imageTextLen)
+		metaChecks = append(metaChecks, tgspam.ImagesCheck(imageTextLen))
 	}
-	if opts.Meta.VideosOnly {
-		log.Printf("[INFO] videos only check enabled, min text len: %d", opts.MinMsgLen)
-		metaChecks = append(metaChecks, tgspam.VideosCheck(opts.MinMsgLen))
+	if settings.Meta.VideosOnly {
+		log.Printf("[INFO] videos only check enabled, min text len: %d", settings.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.VideosCheck(settings.MinMsgLen))
 	}
-	if opts.Meta.AudiosOnly {
-		log.Printf("[INFO] audio only check enabled, min text len: %d", opts.MinMsgLen)
-		metaChecks = append(metaChecks, tgspam.AudioCheck(opts.MinMsgLen))
+	if settings.Meta.AudiosOnly {
+		log.Printf("[INFO] audio only check enabled, min text len: %d", settings.MinMsgLen)
+		metaChecks = append(metaChecks, tgspam.AudioCheck(settings.MinMsgLen))
 	}
-	if opts.Meta.LinksLimit >= 0 {
-		log.Printf("[INFO] links check enabled, limit: %d", opts.Meta.LinksLimit)
-		metaChecks = append(metaChecks, tgspam.LinksCheck(opts.Meta.LinksLimit))
+	if settings.Meta.LinksLimit >= 0 {
+		log.Printf("[INFO] links check enabled, limit: %d", settings.Meta.LinksLimit)
+		metaChecks = append(metaChecks, tgspam.LinksCheck(settings.Meta.LinksLimit))
 	}
-	if opts.Meta.MentionsLimit >= 0 {
-		log.Printf("[INFO] mentions check enabled, limit: %d", opts.Meta.MentionsLimit)
-		metaChecks = append(metaChecks, tgspam.MentionsCheck(opts.Meta.MentionsLimit))
+	if settings.Meta.MentionsLimit >= 0 {
+		log.Printf("[INFO] mentions check enabled, limit: %d", settings.Meta.MentionsLimit)
+		metaChecks = append(metaChecks, tgspam.MentionsCheck(settings.Meta.MentionsLimit))
 	}
-	if opts.Meta.LinksOnly {
+	if settings.Meta.LinksOnly {
 		log.Printf("[INFO] links only check enabled")
 		metaChecks = append(metaChecks, tgspam.LinkOnlyCheck())
 	}
-	if opts.Meta.Forward {
+	if settings.Meta.MentionOnly {
+		log.Printf("[INFO] mention only check enabled")
+		metaChecks = append(metaChecks, tgspam.MentionOnlyCheck())
+	}
+	if settings.Meta.Forward {
 		log.Printf("[INFO] forward check enabled")
 		metaChecks = append(metaChecks, tgspam.ForwardedCheck())
 	}
-	if opts.Meta.Keyboard {
+	if settings.Meta.Keyboard {
 		log.Printf("[INFO] keyboard check enabled")
 		metaChecks = append(metaChecks, tgspam.KeyboardCheck())
 	}
-	if opts.Meta.ContactOnly {
+	if settings.Meta.ContactOnly {
 		log.Printf("[INFO] contact only check enabled")
 		metaChecks = append(metaChecks, tgspam.ContactCheck())
 	}
-	if opts.Meta.UsernameSymbols != "" {
-		log.Printf("[INFO] username symbols check enabled, prohibited symbols: %q", opts.Meta.UsernameSymbols)
-		metaChecks = append(metaChecks, tgspam.UsernameSymbolsCheck(opts.Meta.UsernameSymbols))
+	if settings.Meta.UsernameSymbols != "" {
+		log.Printf("[INFO] username symbols check enabled, prohibited symbols: %q", settings.Meta.UsernameSymbols)
+		metaChecks = append(metaChecks, tgspam.UsernameSymbolsCheck(settings.Meta.UsernameSymbols))
 	}
-	if opts.Meta.Giveaway {
+	if settings.Meta.Giveaway {
 		log.Printf("[INFO] giveaway check enabled")
 		metaChecks = append(metaChecks, tgspam.GiveawayCheck())
+	}
+	if settings.Meta.ExternalReply {
+		log.Printf("[INFO] external reply check enabled")
+		metaChecks = append(metaChecks, tgspam.ExternalReplyCheck())
 	}
 	detector.WithMetaChecks(metaChecks...)
 
 	log.Printf("[DEBUG] detector config: %+v", detectorConfig)
 
 	// initialize Lua plugins if enabled
-	if opts.LuaPlugins.Enabled {
-		// copy Lua plugin settings to detector config
-		detector.LuaPlugins.Enabled = true
-		detector.LuaPlugins.PluginsDir = opts.LuaPlugins.PluginsDir
-		detector.LuaPlugins.EnabledPlugins = opts.LuaPlugins.EnabledPlugins
-		detector.LuaPlugins.DynamicReload = opts.LuaPlugins.DynamicReload
-
-		// create and initialize the plugin engine
-		luaEngine := plugin.NewChecker()
-		if err := detector.WithLuaEngine(luaEngine); err != nil {
-			log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
-		} else {
-			log.Printf("[INFO] lua plugins enabled from directory: %s", opts.LuaPlugins.PluginsDir)
-			if len(opts.LuaPlugins.EnabledPlugins) > 0 {
-				log.Printf("[INFO] enabled Lua plugins: %v", opts.LuaPlugins.EnabledPlugins)
-			} else {
-				log.Print("[INFO] all Lua plugins from directory are enabled")
-			}
-
-			if opts.LuaPlugins.DynamicReload {
-				log.Print("[INFO] dynamic reloading of Lua plugins enabled")
-			}
-		}
+	if settings.LuaPlugins.Enabled {
+		initLuaPlugins(detector, settings)
 	}
 
 	return detector
 }
 
-func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector *tgspam.Detector) (*bot.SpamFilter, error) {
+// initLuaPlugins initializes Lua plugin engine and configures it
+func initLuaPlugins(detector *tgspam.Detector, settings *config.Settings) {
+	// copy Lua plugin settings to detector config
+	detector.LuaPlugins.Enabled = true
+	detector.LuaPlugins.PluginsDir = settings.LuaPlugins.PluginsDir
+	detector.LuaPlugins.EnabledPlugins = settings.LuaPlugins.EnabledPlugins
+	detector.LuaPlugins.DynamicReload = settings.LuaPlugins.DynamicReload
+
+	// create and initialize the plugin engine
+	luaEngine := plugin.NewChecker()
+	if err := detector.WithLuaEngine(luaEngine); err != nil {
+		log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
+		return
+	}
+
+	// log successful initialization
+	log.Printf("[INFO] lua plugins enabled from directory: %s", settings.LuaPlugins.PluginsDir)
+
+	// log which plugins are enabled
+	if len(settings.LuaPlugins.EnabledPlugins) > 0 {
+		log.Printf("[INFO] enabled Lua plugins: %v", settings.LuaPlugins.EnabledPlugins)
+	} else {
+		log.Print("[INFO] all Lua plugins from directory are enabled")
+	}
+
+	// log if dynamic reloading is enabled
+	if settings.LuaPlugins.DynamicReload {
+		log.Print("[INFO] dynamic reloading of Lua plugins enabled")
+	}
+}
+
+func makeSpamBot(ctx context.Context, settings *config.Settings, dataDB *engine.SQL,
+	detector *tgspam.Detector) (*bot.SpamFilter, error) {
 	if dataDB == nil || detector == nil {
 		return nil, errors.New("nil datadb or detector")
 	}
@@ -809,7 +979,7 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector
 	if err != nil {
 		return nil, fmt.Errorf("can't make samples store, %w", err)
 	}
-	if err = migrateSamples(ctx, opts, samplesStore); err != nil {
+	if err = migrateSamples(ctx, settings, samplesStore); err != nil {
 		return nil, fmt.Errorf("can't migrate samples, %w", err)
 	}
 
@@ -818,17 +988,17 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector
 	if err != nil {
 		return nil, fmt.Errorf("can't make dictionary store, %w", err)
 	}
-	if err := migrateDicts(ctx, opts, dictionaryStore); err != nil {
+	if err := migrateDicts(ctx, settings, dictionaryStore); err != nil {
 		return nil, fmt.Errorf("can't migrate dictionary, %w", err)
 	}
 
 	spamBotParams := bot.SpamConfig{
-		GroupID:      opts.InstanceID,
+		GroupID:      settings.InstanceID,
 		SamplesStore: samplesStore,
 		DictStore:    dictionaryStore,
-		SpamMsg:      opts.Message.Spam,
-		SpamDryMsg:   opts.Message.Dry,
-		Dry:          opts.Dry,
+		SpamMsg:      settings.Message.Spam,
+		SpamDryMsg:   settings.Message.Dry,
+		Dry:          settings.Dry,
 	}
 	spamBot := bot.NewSpamFilter(detector, spamBotParams)
 	log.Printf("[DEBUG] spam bot config: %+v", spamBotParams)
@@ -838,10 +1008,23 @@ func makeSpamBot(ctx context.Context, opts options, dataDB *engine.SQL, detector
 	}
 
 	// set detector samples updaters
-	detector.WithSpamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeSpam, opts.StorageTimeout))
-	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, opts.StorageTimeout))
+	detector.WithSpamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeSpam, settings.Transient.StorageTimeout))
+	detector.WithHamUpdater(storage.NewSampleUpdater(samplesStore, storage.SampleTypeHam, settings.Transient.StorageTimeout))
 
 	return spamBot, nil
+}
+
+// normalizeFilePaths expands ~ and makes file paths absolute, applying the
+// empty-samples-path fallback so SamplesDataPath inherits DynamicDataPath when
+// the operator left it unset. Called at startup and from the reloadNormalize
+// closure so POST /config/reload yields the same path shape as startup.
+func normalizeFilePaths(s *config.Settings) {
+	s.Files.DynamicDataPath = expandPath(s.Files.DynamicDataPath)
+	if s.Files.SamplesDataPath == "" {
+		s.Files.SamplesDataPath = s.Files.DynamicDataPath
+		return
+	}
+	s.Files.SamplesDataPath = expandPath(s.Files.SamplesDataPath)
 }
 
 // expandPath expands ~ to home dir and makes the absolute path
@@ -924,9 +1107,9 @@ func makeSpamLogger(ctx context.Context, gid string, wr io.Writer, dataDB *engin
 }
 
 // makeSpamLogWriter creates spam log writer to keep reports about spam messages
-// it parses options and makes lumberjack logger with rotation
-func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
-	if !opts.Logger.Enabled {
+// it parses settings and makes lumberjack logger with rotation
+func makeSpamLogWriter(settings *config.Settings) (accessLog io.WriteCloser, err error) {
+	if !settings.Logger.Enabled {
 		return nopWriteCloser{io.Discard}, nil
 	}
 
@@ -946,26 +1129,26 @@ func makeSpamLogWriter(opts options) (accessLog io.WriteCloser, err error) {
 		return strconv.ParseUint(inp, 10, 64)
 	}
 
-	maxSize, perr := sizeParse(opts.Logger.MaxSize)
+	maxSize, perr := sizeParse(settings.Logger.MaxSize)
 	if perr != nil {
 		return nil, fmt.Errorf("can't parse logger MaxSize: %w", perr)
 	}
 
 	maxSize /= 1048576
 
-	log.Printf("[INFO] logger enabled for %s, max size %dM", opts.Logger.FileName, maxSize)
+	log.Printf("[INFO] logger enabled for %s, max size %dM", settings.Logger.FileName, maxSize)
 	return &lumberjack.Logger{
-		Filename:   opts.Logger.FileName,
+		Filename:   settings.Logger.FileName,
 		MaxSize:    int(maxSize), //nolint:gosec // size in MB not that big to cause overflow
-		MaxBackups: opts.Logger.MaxBackups,
+		MaxBackups: settings.Logger.MaxBackups,
 		Compress:   true,
 		LocalTime:  true,
 	}, nil
 }
 
 // migrateSamples runs migrations from legacy text files samples to db, if such files found
-func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Samples) error {
-	if opts.Convert == "disabled" {
+func migrateSamples(ctx context.Context, settings *config.Settings, samplesDB *storage.Samples) error {
+	if settings.Convert == "disabled" {
 		log.Print("[DEBUG] samples migration disabled")
 		return nil
 	}
@@ -997,7 +1180,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 	}
 
 	// migrate preset spam samples if files exist
-	spamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesSpamFile)
+	spamPresetFile := filepath.Join(settings.Files.SamplesDataPath, samplesSpamFile)
 	s, err := migrateSamples(spamPresetFile, storage.SampleTypeSpam, storage.SampleOriginPreset)
 	if err != nil {
 		return fmt.Errorf("can't migrate spam preset samples, %w", err)
@@ -1007,7 +1190,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 	}
 
 	// migrate preset ham samples if files exist
-	hamPresetFile := filepath.Join(opts.Files.SamplesDataPath, samplesHamFile)
+	hamPresetFile := filepath.Join(settings.Files.SamplesDataPath, samplesHamFile)
 	s, err = migrateSamples(hamPresetFile, storage.SampleTypeHam, storage.SampleOriginPreset)
 	if err != nil {
 		return fmt.Errorf("can't migrate ham preset samples, %w", err)
@@ -1017,7 +1200,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 	}
 
 	// migrate dynamic spam samples if files exist
-	dynSpamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicSpamFile)
+	dynSpamFile := filepath.Join(settings.Files.DynamicDataPath, dynamicSpamFile)
 	s, err = migrateSamples(dynSpamFile, storage.SampleTypeSpam, storage.SampleOriginUser)
 	if err != nil {
 		return fmt.Errorf("can't migrate spam dynamic samples, %w", err)
@@ -1027,7 +1210,7 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 	}
 
 	// migrate dynamic ham samples if files exist
-	dynHamFile := filepath.Join(opts.Files.DynamicDataPath, dynamicHamFile)
+	dynHamFile := filepath.Join(settings.Files.DynamicDataPath, dynamicHamFile)
 	s, err = migrateSamples(dynHamFile, storage.SampleTypeHam, storage.SampleOriginUser)
 	if err != nil {
 		return fmt.Errorf("can't migrate ham dynamic samples, %w", err)
@@ -1043,8 +1226,8 @@ func migrateSamples(ctx context.Context, opts options, samplesDB *storage.Sample
 }
 
 // migrateDicts runs migrations from legacy dictionary text files to db, if needed
-func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary) error {
-	if opts.Convert == "disabled" {
+func migrateDicts(ctx context.Context, settings *config.Settings, dictDB *storage.Dictionary) error {
+	if settings.Convert == "disabled" {
 		log.Print("[DEBUG] dictionary migration disabled")
 		return nil
 	}
@@ -1077,7 +1260,7 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 	}
 
 	// migrate stop-words if files exist
-	stopWordsFile := filepath.Join(opts.Files.SamplesDataPath, stopWordsFile)
+	stopWordsFile := filepath.Join(settings.Files.SamplesDataPath, stopWordsFile)
 	s, err := migrateDict(stopWordsFile, storage.DictionaryTypeStopPhrase)
 	if err != nil {
 		return fmt.Errorf("can't migrate stop words, %w", err)
@@ -1087,7 +1270,7 @@ func migrateDicts(ctx context.Context, opts options, dictDB *storage.Dictionary)
 	}
 
 	// migrate excluded tokens if files exist
-	excludeTokensFile := filepath.Join(opts.Files.SamplesDataPath, excludeTokensFile)
+	excludeTokensFile := filepath.Join(settings.Files.SamplesDataPath, excludeTokensFile)
 	s, err = migrateDict(excludeTokensFile, storage.DictionaryTypeIgnoredWord)
 	if err != nil {
 		return fmt.Errorf("can't migrate excluded tokens, %w", err)
@@ -1171,6 +1354,40 @@ func backupDB(dbFile, version string, maxBackups int) error {
 		log.Printf("[DEBUG] db backup removed: %s", files[i])
 	}
 	return nil
+}
+
+// generateAuthHash creates a bcrypt hash from the given password
+// If the password is "auto", generates a random password first
+func generateAuthHash(password string) (string, error) {
+	var hashSource string
+	var randomPassword string
+	var err error
+
+	// generate random password if needed
+	if password == "auto" {
+		randomPassword, err = webapi.GenerateRandomPassword(20)
+		if err != nil {
+			return "", fmt.Errorf("can't generate random password: %w", err)
+		}
+		hashSource = randomPassword
+	} else {
+		hashSource = password
+	}
+
+	// generate hash from the password or random password
+	hash, err := rest.GenerateBcryptHash(hashSource)
+	if err != nil {
+		return "", fmt.Errorf("can't generate bcrypt hash: %w", err)
+	}
+
+	// log the appropriate message
+	if password == "auto" {
+		log.Printf("[WARN] generated basic auth password for user tg-spam: %q, bcrypt hash: %s", randomPassword, hash)
+	} else {
+		log.Printf("[INFO] generated bcrypt hash from provided password")
+	}
+
+	return hash, nil
 }
 
 func setupLog(dbg bool, secrets ...string) {

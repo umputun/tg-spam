@@ -24,6 +24,21 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
+//go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
+
+// SpamLogger is an interface for spam logger
+type SpamLogger interface {
+	Save(msg *bot.Message, response *bot.Response)
+}
+
+// SpamLoggerFunc is a function that implements SpamLogger interface
+type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
+
+// Save is a function that implements SpamLogger interface
+func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
+	f(msg, response)
+}
+
 // TelegramListener listens to tg update, forward to bots and send back responses
 // Not thread safe
 type TelegramListener struct {
@@ -51,6 +66,9 @@ type TelegramListener struct {
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
+	WarnThreshold           int           // auto-ban after N warns within window (0=disabled)
+	WarnWindow              time.Duration // sliding window for counting warns
+	Warnings                Warnings      // storage for admin /warn records
 
 	adminHandler    *admin
 	reportsHandler  *userReports
@@ -63,6 +81,10 @@ type TelegramListener struct {
 		once sync.Once
 		ch   chan bot.Response
 	}
+
+	// serializes extra-message deletion goroutines so concurrent spam bursts still respect
+	// the per-request rate limiting inside deleteExtraMessages
+	extraDeletesMu sync.Mutex
 }
 
 // GetDMUsers returns the list of recent DM senders
@@ -131,6 +153,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		primChatID: l.chatID, adminChatID: l.adminChatID,
 		trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg, restoreMsg: l.RestoreMsg,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
+		warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow,
 	}
 
 	l.reportsHandler = &userReports{
@@ -153,10 +176,16 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 	u := tbapi.NewUpdate(0)
 	u.Timeout = 60
+	u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "message_reaction"}
 
 	updates := l.TbAPI.GetUpdatesChan(u)
 	log.Printf("[DEBUG] start listening for updates")
+	// single reusable idle timer, re-armed each iteration: time.After in a loop leaks one
+	// live timer per update until it fires
+	idleTimer := time.NewTimer(l.IdleDuration)
+	defer idleTimer.Stop()
 	for {
+		idleTimer.Reset(l.IdleDuration)
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("listener context canceled: %w", ctx.Err())
@@ -168,7 +197,8 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 
 			// handle admin chat messages. can be just messages (MsgHandler will ignore those)
 			// or forwards of undetected spam by admins to admin's chat (in this case MsgHandler will process them and ban/train)
-			if update.Message != nil && l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
+			if update.Message != nil && update.Message.From != nil &&
+				l.isAdminChat(update.Message.Chat.ID, update.Message.From.UserName, update.Message.From.ID) {
 				if l.DisableAdminSpamForward {
 					continue
 				}
@@ -222,6 +252,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			if update.MessageReaction != nil {
+				if err := l.procReaction(ctx, update.MessageReaction); err != nil {
+					log.Printf("[WARN] failed to process reaction: %v", err)
+				}
+				continue
+			}
+
 			if update.Message == nil {
 				continue
 			}
@@ -258,6 +295,15 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// messages without a sender can't be matched against superusers or report commands,
+			// send them straight to the regular processing which handles nil From safely
+			if update.Message.From == nil {
+				if err := l.procEvents(update); err != nil {
+					log.Printf("[WARN] failed to process update: %v", err)
+				}
+				continue
+			}
+
 			// handle spam reports from superusers and linked channel
 			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) ||
 				l.isLinkedChannel(update.Message)
@@ -268,21 +314,25 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 			}
 
-			// delete orphaned /report commands (sent without replying to a message)
+			// delete orphaned report commands (sent without replying to a message)
 			if !fromSuper && l.isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
-				log.Printf("[DEBUG] deleting orphaned /report command from %s (%d)", update.Message.From.UserName, update.Message.From.ID)
+				log.Printf("[DEBUG] deleting orphaned report command %q from %s (%d)",
+					update.Message.Text, update.Message.From.UserName, update.Message.From.ID)
 				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 					MessageID:  update.Message.MessageID,
 					ChatConfig: tbapi.ChatConfig{ChatID: update.Message.Chat.ID},
 				}})
 				if err != nil {
-					log.Printf("[WARN] failed to delete orphaned /report message %d: %v", update.Message.MessageID, err)
+					log.Printf("[WARN] failed to delete orphaned report message %d: %v", update.Message.MessageID, err)
 				}
 				continue
 			}
 
-			// handle spam reports from regular users
-			if update.Message.ReplyToMessage != nil && !fromSuper {
+			// handle spam reports from regular users. senders posting on behalf of a chat
+			// (anonymous admin, "post as channel") are excluded: their From is a telegram pseudo-user
+			// which can never be an approved reporter, so the report would be dropped after the
+			// command message is already deleted
+			if update.Message.ReplyToMessage != nil && !fromSuper && update.Message.SenderChat == nil {
 				if l.procUserReply(ctx, update) {
 					// user command processed, skip the rest
 					continue
@@ -295,7 +345,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-		case <-time.After(l.IdleDuration): // hit bots on idle timeout
+		case <-idleTimer.C: // hit bots on idle timeout
 			resp := l.Bot.OnMessage(bot.Message{Text: "idle"}, false)
 			if _, err := l.sendBotResponse(resp, l.chatID, NotificationSilent); err != nil {
 				log.Printf("[WARN] failed to respond on idle, %v", err)
@@ -336,8 +386,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
-	// ignore messages with empty text, no media, no video, no video note, no forward
-	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo && !msg.WithForward {
+	// ignore messages with empty text, no media, no video, no video note, no forward, no external reply
+	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
+		!msg.WithForward && !msg.WithExternalReply {
 		return nil
 	}
 	ctx := context.TODO()
@@ -410,8 +461,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 		}
 	}
 
-	// delete extra messages if spam detected (e.g., duplicates)
-	l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
+	// delete extra messages if spam detected (e.g., duplicates); runs in a goroutine because the
+	// rate-limit sleeps between deletions would otherwise stall the single-threaded update loop,
+	// same pattern as admin's aggressiveCleanup
+	go l.deleteExtraMessages(resp.CheckResults, msg.From.ID, msg.From.Username, fromChat)
 
 	// delete message if requested by bot
 	canDelete := resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry &&
@@ -456,12 +509,14 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 	return false
 }
 
-// isReportCommand checks if message text is a /report command variant
+// isReportCommand checks if message text is a report command variant: report, /report,
+// /report@botname, and the spam, /spam aliases. superuser spam, /spam never reaches here, it is
+// handled earlier by procSuperReply
 func (l *TelegramListener) isReportCommand(text string) bool {
 	text = strings.TrimSpace(strings.ToLower(text))
 
-	// exact match for "report" or "/report"
-	if text == "report" || text == "/report" {
+	// exact match for regular report commands, spam and /spam are aliases for non-superusers
+	if text == "report" || text == "/report" || text == "spam" || text == "/spam" {
 		return true
 	}
 
@@ -492,13 +547,14 @@ func (l *TelegramListener) isReportCommand(text string) bool {
 	return false
 }
 
-// procUserReply processes regular user commands (reply) /report.
+// procUserReply processes regular user report commands sent as a reply: report, /report,
+// /report@botname and the spam, /spam aliases, all equivalent.
 // feature check is intentionally inside this function to keep command detection logic centralized.
 func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Update) (handled bool) {
 	switch {
 	case l.isReportCommand(update.Message.Text):
 		if !l.ReportConfig.Enabled {
-			log.Printf("[DEBUG] user spam reporting disabled, ignoring /report from %s (%d)",
+			log.Printf("[DEBUG] user spam reporting disabled, ignoring report command from %s (%d)",
 				update.Message.From.UserName, update.Message.From.ID)
 			return true // command is suppressed when feature is disabled
 		}
@@ -605,7 +661,7 @@ func (l *TelegramListener) isAdminChat(fromChat int64, from string, fromID int64
 
 func (l *TelegramListener) getBanUsername(resp bot.Response, update tbapi.Update) string {
 	if resp.ChannelID == 0 {
-		return fmt.Sprintf("%v", resp.User)
+		return resp.User.String()
 	}
 	botChat := bot.SenderChat{
 		ID: resp.ChannelID,
@@ -719,6 +775,10 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 		return
 	}
 
+	// one deletion worker at a time keeps the overall delete rate at the intended limit
+	l.extraDeletesMu.Lock()
+	defer l.extraDeletesMu.Unlock()
+
 	for _, checkResult := range checkResults {
 		if !checkResult.Spam || len(checkResult.ExtraDeleteIDs) == 0 {
 			continue
@@ -737,6 +797,57 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 			}
 		}
 	}
+}
+
+// procReaction handles a message_reaction update: checks if the reacting user is a spam bot and bans if needed.
+func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageReactionUpdated) error {
+	if r.User == nil {
+		log.Printf("[DEBUG] reaction from anonymous user, skipped")
+		return nil
+	}
+	if r.Chat.ID != l.chatID {
+		log.Printf("[DEBUG] reaction from chat %d, not primary chat %d, skipped", r.Chat.ID, l.chatID)
+		return nil
+	}
+	// count only net new reactions; changes (👍→👎) and removals have newReactionsAdded <= 0
+	newReactionsAdded := len(r.NewReaction) - len(r.OldReaction)
+	if newReactionsAdded <= 0 {
+		return nil
+	}
+
+	if l.SuperUsers.IsSuper(r.User.UserName, r.User.ID) {
+		log.Printf("[DEBUG] superuser %s reaction ignored", r.User.UserName)
+		return nil
+	}
+
+	var resp bot.Response
+	for range newReactionsAdded {
+		resp = l.Bot.OnReaction(r.User.ID, r.User.UserName)
+		if resp.BanInterval > 0 {
+			break
+		}
+	}
+	if resp.BanInterval <= 0 {
+		return nil
+	}
+
+	if err := l.Locator.AddSpam(ctx, r.User.ID, resp.CheckResults); err != nil {
+		log.Printf("[WARN] failed to add reaction spam to locator: %v", err)
+	}
+	l.SpamLogger.Save(&bot.Message{From: resp.User, Text: "[reaction spam]"}, &resp)
+
+	banUserStr := resp.User.String()
+	banReq := banRequest{
+		duration: resp.BanInterval, userID: resp.User.ID, userName: banUserStr,
+		chatID: l.chatID, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode,
+	}
+	if err := banUserOrChannel(banReq); err != nil {
+		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
+	}
+	if l.adminChatID != 0 && resp.User.ID != 0 {
+		l.adminHandler.ReportReactionBan(banUserStr, resp.User)
+	}
+	return nil
 }
 
 // SuperUsers for moderators. Can be either username or user ID.

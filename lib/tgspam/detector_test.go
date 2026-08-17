@@ -574,6 +574,88 @@ func TestDetector_CheckDuplicatesConcurrency(t *testing.T) {
 	assert.Equal(t, expectedCount+1, count, "count should be accurate with no race conditions")
 }
 
+func TestDetector_CheckApprovedUsersConcurrency(t *testing.T) {
+	d := NewDetector(Config{FirstMessageOnly: true, FirstMessagesCount: 1})
+
+	concurrency := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency * 2)
+
+	// writers: distinct users get added to approvedUsers via the Check approval path
+	for i := range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.Check(spamcheck.Request{
+					UserID: fmt.Sprintf("user-%d-%d", i, j),
+					Msg:    "long enough legitimate message to pass the approval path",
+				})
+			}
+		}()
+	}
+
+	// readers: exercise concurrent approvedUsers reads while writers update the map
+	for range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.IsApprovedUser(fmt.Sprintf("user-0-%d", j))
+				d.ApprovedUsers()
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, d.IsApprovedUser("user-0-0"), "user should be approved after first ham message")
+	assert.Len(t, d.ApprovedUsers(), concurrency*iterations)
+}
+
+func TestDetector_CheckApprovedUsersConcurrencySameUser(t *testing.T) {
+	d := NewDetector(Config{FirstMessageOnly: true, FirstMessagesCount: 2})
+
+	concurrency := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	// concurrent messages from one user: all can pass the pre-approved check before
+	// any increment lands, the count must still not exceed the approved level
+	for i := range concurrency {
+		go func() {
+			defer wg.Done()
+			for j := range iterations {
+				d.Check(spamcheck.Request{
+					UserID: "same-user",
+					Msg:    fmt.Sprintf("long enough legitimate message %d-%d to pass the approval path", i, j),
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, d.IsApprovedUser("same-user"))
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.LessOrEqual(t, users[0].Count, d.FirstMessagesCount, "count must be capped at organic approval level")
+}
+
+func TestDetector_CheckApprovedCountCap(t *testing.T) {
+	// with FirstMessageOnly disabled the pre-approved branch never short-circuits,
+	// so every ham message hits the increment and the cap is exercised deterministically
+	d := NewDetector(Config{FirstMessagesCount: 2})
+
+	for i := range 10 {
+		d.Check(spamcheck.Request{UserID: "u1", Msg: fmt.Sprintf("long enough legitimate message %d", i)})
+	}
+
+	users := d.ApprovedUsers()
+	require.Len(t, users, 1)
+	assert.Equal(t, 2, users[0].Count, "count must be capped at FirstMessagesCount")
+}
+
 func TestDetector_CheckDuplicatesMemoryProtection(t *testing.T) {
 	d := NewDetector(Config{
 		DuplicateDetection: struct {
@@ -1807,6 +1889,112 @@ func TestDetector_CheckOpenAI(t *testing.T) {
 
 		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
 	})
+
+	t.Run("with openai and MinMsgLen - short message skips openai by default (repeat)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// checkShortMessagesWithOpenAI is not set, so it defaults to false (skips checking)
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.False(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		// verify openai was NOT called
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.True(t, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.True(t, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called for long message
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
+	})
+
+	t.Run("with openai and MinMsgLen - short message checked when flag is true (repeat)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// explicitly set CheckShortMessagesWithOpenAI to true
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// test with short message (less than MinMsgLen)
+		spam, cr := d.Check(spamcheck.Request{Msg: "short msg"})
+		assert.True(t, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "message length", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+		assert.Equal(t, "too short", cr[0].Details)
+		assert.Equal(t, "openai", cr[1].Name)
+		assert.True(t, cr[1].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr[1].Details)
+		// verify openai WAS called even for short message
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 1)
+
+		// test with long message (more than MinMsgLen)
+		spam2, cr2 := d.Check(spamcheck.Request{Msg: "this is a much longer message that exceeds the minimum length requirement"})
+		assert.True(t, spam2)
+		require.Len(t, cr2, 1)
+		assert.Equal(t, "openai", cr2[0].Name)
+		assert.True(t, cr2[0].Spam)
+		assert.Equal(t, "bad text, confidence: 100%", cr2[0].Details)
+		// verify openai WAS called this time too
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 2)
+	})
+
+	t.Run("with openai and MinMsgLen - short message already spam skips openai (with LoadResult assert)", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": true, "reason":"bad text", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		// set CheckShortMessagesWithOpenAI to true but it should still skip if already spam
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// load a stop word that will be present in the short message
+		lr, err := d.LoadStopWords(strings.NewReader("spam"))
+		require.NoError(t, err)
+		assert.Equal(t, LoadResult{StopWords: 1}, lr)
+
+		// test with short message that contains stop word
+		spam, cr := d.Check(spamcheck.Request{Msg: "spam msg"})
+		assert.True(t, spam)
+		require.Len(t, cr, 2)
+		assert.Equal(t, "stopword", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+		assert.Equal(t, "spam", cr[0].Details)
+		assert.Equal(t, "message length", cr[1].Name)
+		assert.False(t, cr[1].Spam)
+		assert.Equal(t, "too short", cr[1].Details)
+		// verify openai was NOT called since spam was already detected
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls())
+	})
 }
 
 func TestDetector_CheckWithMeta(t *testing.T) {
@@ -1905,6 +2093,27 @@ func TestDetector_CheckWithMeta(t *testing.T) {
 	})
 }
 
+func TestDetector_CheckWithMentionOnly(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1})
+	d.WithMetaChecks(MentionOnlyCheck())
+
+	t.Run("mention with number is spam", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "@blah 3", Meta: spamcheck.MetaData{Mentions: 1}})
+		assert.True(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "mention-only", cr[0].Name)
+		assert.True(t, cr[0].Spam)
+	})
+
+	t.Run("mention with real word is ham", func(t *testing.T) {
+		spam, cr := d.Check(spamcheck.Request{Msg: "@john thanks", Meta: spamcheck.MetaData{Mentions: 1}})
+		assert.False(t, spam)
+		require.Len(t, cr, 1)
+		assert.Equal(t, "mention-only", cr[0].Name)
+		assert.False(t, cr[0].Spam)
+	})
+}
+
 func TestDetector_CheckMultiLang(t *testing.T) {
 	d := NewDetector(Config{MultiLangWords: 2, MaxAllowedEmoji: -1})
 	tests := []struct {
@@ -1926,6 +2135,9 @@ func TestDetector_CheckMultiLang(t *testing.T) {
 		{"strange with cyrillic", "𝐇айди и𝐇𝐓и𝐦𝐇ы𝐞 ф𝐨𝐓𝐤и лю𝐛𝐨й д𝐞𝐁𝐲ш𝐤и ч𝐞𝐩𝐞𝟓 𝐛𝐨𝐓а", 7, true},
 		{"coptic capital leter", "✔️ⲠⲢⲞⳜⲈЙ-ⲖЮⳜⲨЮ-ⲆⲈⲂⲨⲰⲔⲨ...\n\nⲎⲀЙⲆⳘ ⲤⲔⲢЫⲦⲈ ⲂⳘⲆⲞⲤЫ-ⲪⲞⲦⲞⳠⲔⳘ ⳘⲎⲦⳘⲘⲎⲞⲄⲞ-ⲬⲀⲢⲀⲔⲦⲈⲢⲀ..\n@INTIM0CHKI110DE\n\n", 5, true},
 		{"mix with gothic, cyrillic and greek", "𐌿РОВЕРЬ ЛЮБУЮ НА НАЛИЧИЕ ПОШЛЫХ ΦΟͲΟ-ΒͶДξΟ, 🍑НАБЕРИ В Т𐌲 𐌿ОИСКЕ СЛOВО: 30GRL", 5, true},
+		// '^' is ascii but carries the Other_Math property, so latin+caret counts as two scripts.
+		// guards the ascii fast path against dropping it as a plain symbol.
+		{"Latin with caret", "a^b c^d", 2, true},
 		{"Mixed Latin and numbers", "Meta-Llama-3.1-8B-Instruct-IQ4_XS Meta-Llama-3.1-8B-Instruct-Q3_K_L Meta-Llama-3.1-8B-Instruct-Q4_K_M", 0, false},
 		{"Mixed Latin, numbers, and Cyrillic", "Meta-Llama-3.1-8B-Instruct-IQ4_XS Meta-Llama-3.1-8B-Instruct-Q3_K_L коллеги, подскажите пожалуйста", 0, false},
 	}
@@ -3256,12 +3468,10 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		spam, _ := d.Check(spamcheck.Request{Msg: "another normal message here", UserID: "456"})
 		assert.False(t, spam)
 
-		// user should NOT be approved yet (need count > FirstMessagesCount)
-		assert.False(t, d.IsApprovedUser("456"))
+		// user is approved once the configured number of normal messages is reached
+		assert.True(t, d.IsApprovedUser("456"))
 
 		// after 3 messages, user is pre-approved (count >= FirstMessagesCount)
-		// but IsApprovedUser returns false because it checks count > FirstMessagesCount
-		// this is the existing behavior, not related to our fix
 
 		// 4th message will be pre-approved
 		spam, cr := d.Check(spamcheck.Request{Msg: "fourth normal message", UserID: "456"})
@@ -3274,8 +3484,7 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		d.lock.RUnlock()
 		assert.Equal(t, 3, actualCount)
 
-		// IsApprovedUser still returns false (3 > 3 is false)
-		assert.False(t, d.IsApprovedUser("456"))
+		assert.True(t, d.IsApprovedUser("456"))
 	})
 
 	t.Run("mix of short and normal messages", func(t *testing.T) {
@@ -3312,9 +3521,8 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		assert.False(t, spam)
 
 		// with the mix of short and normal messages, only the normal ones count
-		// after 3 normal messages, count is 3, user is pre-approved but IsApprovedUser
-		// returns false because it checks count > FirstMessagesCount
-		assert.False(t, d.IsApprovedUser("789"))
+		// after 3 normal messages, count is 3 and user is approved
+		assert.True(t, d.IsApprovedUser("789"))
 	})
 
 	t.Run("short messages with storage", func(t *testing.T) {
@@ -3344,16 +3552,97 @@ func TestDetector_ShortMessageApproval(t *testing.T) {
 		d.Check(spamcheck.Request{Msg: "normal message two", UserID: "111"})
 		assert.Len(t, mockUserStore.WriteCalls(), 2)
 
-		// user is not approved yet (need > 2)
-		assert.False(t, d.IsApprovedUser("111"))
+		// user is approved once count reaches FirstMessagesCount
+		assert.True(t, d.IsApprovedUser("111"))
 
 		// after 2 messages, count is 2 which equals FirstMessagesCount
 		// so the 3rd message will be pre-approved and won't update storage
 		d.Check(spamcheck.Request{Msg: "normal message three", UserID: "111"})
 		// storage write is NOT called for pre-approved message
 		assert.Len(t, mockUserStore.WriteCalls(), 2)
-		// IsApprovedUser returns false because count (2) is not > FirstMessagesCount (2)
-		assert.False(t, d.IsApprovedUser("111"))
+		assert.True(t, d.IsApprovedUser("111"))
+	})
+
+	t.Run("short messages cleared as ham by LLM still don't count towards approval", func(t *testing.T) {
+		// guards against approving a user when the LLM (with CheckShortMessagesWithOpenAI=true)
+		// returns ham for a short message - the message is still too short to be a "real check",
+		// so the approval counter must NOT increment and storage must NOT be written
+		mockUserStore := &mocks.UserStorageMock{
+			ReadFunc: func(context.Context) ([]approved.UserInfo, error) {
+				return []approved.UserInfo{}, nil
+			},
+			WriteFunc:  func(_ context.Context, au approved.UserInfo) error { return nil },
+			DeleteFunc: func(_ context.Context, id string) error { return nil },
+		}
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks fine", "confidence":40}`},
+					}},
+				}, nil
+			},
+		}
+
+		d := NewDetector(Config{MinMsgLen: 50, FirstMessagesCount: 2, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+		_, err := d.WithUserStorage(mockUserStore)
+		require.NoError(t, err)
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4", CheckShortMessagesWithOpenAI: true})
+
+		// send 3 short messages, LLM clears each as ham
+		for range 3 {
+			spam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "222"})
+			assert.False(t, spam)
+		}
+
+		// LLM was called 3 times (once per short message)
+		assert.Len(t, mockOpenAIClient.CreateChatCompletionCalls(), 3)
+
+		// approval counter must remain at 0 in memory
+		d.lock.RLock()
+		actualCount := d.approvedUsers["222"].Count
+		d.lock.RUnlock()
+		assert.Equal(t, 0, actualCount, "short messages cleared by LLM must not increment approval counter")
+
+		// user must not be approved
+		assert.False(t, d.IsApprovedUser("222"))
+
+		// storage must not be written for short messages even when LLM cleared them
+		assert.Empty(t, mockUserStore.WriteCalls(), "storage must not be written for short messages even when LLM clears them")
+	})
+}
+
+func TestDetectorRecordReaction(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		d := NewDetector(Config{})
+		resp := d.RecordReaction(123)
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+		assert.Equal(t, "disabled", resp.Details)
+	})
+
+	t.Run("enabled, below threshold", func(t *testing.T) {
+		d := NewDetector(Config{ReactionSpam: struct {
+			MaxReactions int
+			Window       time.Duration
+		}{MaxReactions: 5, Window: time.Hour}})
+		resp := d.RecordReaction(42)
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+	})
+
+	t.Run("enabled, threshold reached triggers spam", func(t *testing.T) {
+		d := NewDetector(Config{ReactionSpam: struct {
+			MaxReactions int
+			Window       time.Duration
+		}{MaxReactions: 3, Window: time.Hour}})
+		var resp spamcheck.Response
+		for range 3 {
+			resp = d.RecordReaction(99)
+		}
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "reactions", resp.Name)
+		assert.Contains(t, resp.Details, "3 reactions in")
 	})
 }
 
@@ -3365,4 +3654,352 @@ func findResponseByName(responses []spamcheck.Response, name string) *spamcheck.
 		}
 	}
 	return nil
+}
+
+func TestDetector_MaxShortMsgCount(t *testing.T) {
+	// short message used across subtests; len("hi")=2 stays below MinMsgLen=50.
+	const shortMsg = "hi"
+
+	newCounter := func(count int, ids []int) *mocks.MessageCounterMock {
+		return &mocks.MessageCounterMock{
+			CountUserMessagesFunc: func(ctx context.Context, userID string) (int, error) { return count, nil },
+			UserMessageIDsFunc:    func(ctx context.Context, userID string, limit int) ([]int, error) { return ids, nil },
+		}
+	}
+
+	t.Run("disabled when threshold is 0", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 0, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, spam)
+		assert.Empty(t, mc.CountUserMessagesCalls(), "locator must not be queried when feature disabled")
+		assert.Nil(t, findResponseByName(cr, "short-msg-flood"), "no flood marker when disabled")
+	})
+
+	t.Run("disabled when no MessageCounter wired", func(t *testing.T) {
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, spam)
+		assert.Nil(t, findResponseByName(cr, "short-msg-flood"))
+	})
+
+	t.Run("disabled when no first-message mode", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, spam)
+		assert.Empty(t, mc.CountUserMessagesCalls(), "outer guard must skip locator when first-message mode is off")
+		assert.Nil(t, findResponseByName(cr, "short-msg-flood"))
+	})
+
+	t.Run("triggers on threshold from unapproved user", func(t *testing.T) {
+		mc := newCounter(3, []int{30, 31, 32})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "short-msg-flood")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "3 messages without approval (threshold 3)", resp.Details)
+		assert.Equal(t, []int{30, 31, 32}, resp.ExtraDeleteIDs)
+	})
+
+	t.Run("triggers on Nth message in pipeline", func(t *testing.T) {
+		var counter int
+		var idsRequested int
+		mc := &mocks.MessageCounterMock{
+			CountUserMessagesFunc: func(ctx context.Context, userID string) (int, error) {
+				counter++
+				return counter, nil
+			},
+			UserMessageIDsFunc: func(ctx context.Context, userID string, limit int) ([]int, error) {
+				idsRequested = limit
+				// the real locator includes the just-stored current message
+				ids := make([]int, 0, counter)
+				for i := 1; i <= counter; i++ {
+					ids = append(ids, i*10)
+				}
+				return ids, nil
+			},
+		}
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+
+		// 1st short message: count=1, excess=1 < 3 → ham
+		spam, _ := d.Check(spamcheck.Request{Msg: "hi", UserID: "999", Meta: spamcheck.MetaData{MessageID: 10}})
+		assert.False(t, spam)
+
+		// 2nd short message: count=2, excess=2 < 3 → ham
+		spam, _ = d.Check(spamcheck.Request{Msg: "yo", UserID: "999", Meta: spamcheck.MetaData{MessageID: 20}})
+		assert.False(t, spam)
+
+		// 3rd short message: count=3, excess=3 == threshold → spam
+		spam, cr := d.Check(spamcheck.Request{Msg: "ok", UserID: "999", Meta: spamcheck.MetaData{MessageID: 30}})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "short-msg-flood")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Equal(t, []int{10, 20}, resp.ExtraDeleteIDs,
+			"prior message IDs are queued for cleanup; the triggering ID is filtered out")
+		assert.Equal(t, 6, idsRequested, "limit passed to UserMessageIDs is 2*MaxShortMsgCount")
+	})
+
+	t.Run("filters triggering message ID from ExtraDeleteIDs", func(t *testing.T) {
+		mc := newCounter(3, []int{30, 20, 10}) // newest first, includes current 30
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: "123", Meta: spamcheck.MetaData{MessageID: 30}})
+		assert.True(t, resp.Spam)
+		assert.Equal(t, []int{20, 10}, resp.ExtraDeleteIDs, "current message ID 30 is filtered out")
+	})
+
+	t.Run("does not trigger on long message", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 10, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		spam, cr := d.Check(spamcheck.Request{Msg: "this is definitely longer than ten runes", UserID: "123"})
+		assert.False(t, spam)
+		assert.Empty(t, mc.CountUserMessagesCalls(), "long message must skip the locator query")
+		assert.Nil(t, findResponseByName(cr, "short-msg-flood"))
+	})
+
+	t.Run("approved user short-circuited by pre-approved branch", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		require.NoError(t, d.AddApprovedUser(approved.UserInfo{UserID: "123", UserName: "ham"}))
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, spam)
+		assert.NotNil(t, findResponseByName(cr, "pre-approved"))
+		assert.Empty(t, mc.CountUserMessagesCalls(), "pre-approved user must not reach the flood check")
+	})
+
+	t.Run("isShortMsgFlood approved fast-bail", func(t *testing.T) {
+		// direct method call exercising the defensive fast-bail
+		// (in normal pipeline the outer pre-approved branch fires first)
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		d.approvedUsers["123"] = approved.UserInfo{UserID: "123", Count: 5}
+		resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, resp.Spam)
+		assert.Equal(t, "user already approved", resp.Details)
+		assert.Empty(t, mc.CountUserMessagesCalls())
+	})
+
+	t.Run("formula excess = total - approvedCount", func(t *testing.T) {
+		cases := []struct {
+			name           string
+			total          int
+			approvedCount  int
+			threshold      int
+			firstMsgsCount int
+			expectSpam     bool
+		}{
+			{"below threshold", 2, 0, 3, 2, false},
+			{"exactly threshold", 3, 0, 3, 2, true},
+			{"above threshold", 5, 0, 3, 2, true},
+			{"with approved offset, below", 4, 2, 3, 5, false},
+			{"with approved offset, exact", 5, 2, 3, 5, true},
+			{"excess zero (total equals approved)", 4, 4, 3, 10, false},
+			{"approvedCount exceeds total (defensive)", 1, 3, 3, 5, false},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mc := newCounter(tc.total, []int{1, 2, 3})
+				d := NewDetector(Config{
+					MaxShortMsgCount: tc.threshold, FirstMessagesCount: tc.firstMsgsCount,
+					FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1,
+				})
+				d.WithMessageCounter(mc)
+				if tc.approvedCount > 0 {
+					d.approvedUsers["123"] = approved.UserInfo{UserID: "123", Count: tc.approvedCount}
+				}
+				resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+				assert.Equal(t, tc.expectSpam, resp.Spam, "details=%q", resp.Details)
+			})
+		}
+	})
+
+	t.Run("locator count error falls through", func(t *testing.T) {
+		mc := &mocks.MessageCounterMock{
+			CountUserMessagesFunc: func(ctx context.Context, userID string) (int, error) {
+				return 0, errors.New("db down")
+			},
+			UserMessageIDsFunc: func(ctx context.Context, userID string, limit int) ([]int, error) {
+				return nil, errors.New("not called")
+			},
+		}
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		spam, cr := d.Check(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.False(t, spam, "locator error must not produce spam=true")
+		assert.Nil(t, findResponseByName(cr, "short-msg-flood"))
+		assert.Empty(t, mc.UserMessageIDsCalls(), "ids must not be requested when count errored")
+	})
+
+	t.Run("ids fetch error keeps spam but empty extras", func(t *testing.T) {
+		mc := &mocks.MessageCounterMock{
+			CountUserMessagesFunc: func(ctx context.Context, userID string) (int, error) { return 5, nil },
+			UserMessageIDsFunc: func(ctx context.Context, userID string, limit int) ([]int, error) {
+				return nil, errors.New("ids fetch failed")
+			},
+		}
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: "123"})
+		assert.True(t, resp.Spam)
+		assert.Empty(t, resp.ExtraDeleteIDs)
+	})
+
+	t.Run("CheckOnly request skipped", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: "123", CheckOnly: true})
+		assert.False(t, resp.Spam)
+		assert.Empty(t, mc.CountUserMessagesCalls())
+	})
+
+	t.Run("empty UserID skipped", func(t *testing.T) {
+		mc := newCounter(100, []int{1, 2, 3})
+		d := NewDetector(Config{MaxShortMsgCount: 3, FirstMessagesCount: 2, FirstMessageOnly: true, MinMsgLen: 50, MaxAllowedEmoji: -1})
+		d.WithMessageCounter(mc)
+		resp := d.isShortMsgFlood(spamcheck.Request{Msg: shortMsg, UserID: ""})
+		assert.False(t, resp.Spam)
+		assert.Empty(t, mc.CountUserMessagesCalls())
+	})
+}
+
+func TestDetector_ProhibitedLang(t *testing.T) {
+	scripts, err := ResolveProhibitedScripts([]string{"chinese", "russian", "arabic"})
+	require.NoError(t, err)
+
+	t.Run("isProhibitedLang counting", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		tests := []struct {
+			name    string
+			input   string
+			spam    bool
+			details string
+		}{
+			{"han at threshold", "汉语汉", true, "Han: 3"},
+			{"han above threshold", "汉语汉字消息", true, "Han: 3"},
+			{"cyrillic at threshold", "абв", true, "Cyrillic: 3"},
+			{"arabic at threshold", "سلا", true, "Arabic: 3"},
+			{"below threshold", "hello 汉 world", false, "Han: 1/3"},
+			{"single foreign char in english", "just a normal message ф here", false, "Cyrillic: 1/3"},
+			{"digits punctuation emoji do not count", "汉字 12345 !!! 😀😀😀", false, "Han: 2/3"},
+			{"letters counted across non-letter separators", "汉1字2汉3", true, "Han: 3"},
+			{"two scripts each below min do not combine", "汉字фы", false, "Cyrillic: 2/3"},
+			{"pure english passes", "this is a normal english message", false, "0/3"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				resp := d.isProhibitedLang(tt.input)
+				assert.Equal(t, "prohibited-language", resp.Name)
+				assert.Equal(t, tt.spam, resp.Spam)
+				assert.Equal(t, tt.details, resp.Details)
+			})
+		}
+	})
+
+	t.Run("disabled by default is no-op", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.False(t, spam)
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("hard-return spam via Check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Equal(t, "Han: 3", resp.Details)
+	})
+
+	t.Run("hard-return bypasses openai veto", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3,
+			MaxAllowedEmoji: -1, FirstMessageOnly: true, OpenAIVeto: true})
+		mockOpenAIClient := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{
+					Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"looks fine", "confidence":100}`},
+					}},
+				}, nil
+			},
+		}
+		d.WithOpenAIChecker(mockOpenAIClient, OpenAIConfig{Model: "gpt4"})
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.True(t, spam)
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+		assert.Empty(t, mockOpenAIClient.CreateChatCompletionCalls(),
+			"prohibited-language short-circuits before the LLM veto is consulted")
+	})
+
+	t.Run("min zero with scripts set is a no-op via Check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 0, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"})
+		assert.False(t, spam)
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("CheckOnly request still runs the check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉", CheckOnly: true})
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("approved user bypass before prohibited check", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3,
+			FirstMessagesCount: 2, FirstMessageOnly: true, MaxAllowedEmoji: -1})
+		require.NoError(t, d.AddApprovedUser(approved.UserInfo{UserID: "123", UserName: "ham"}))
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息", UserID: "123"})
+		assert.False(t, spam)
+		assert.NotNil(t, findResponseByName(cr, "pre-approved"))
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("approved user is checked when first-message-only is disabled (paranoid)", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, FirstMessageOnly: false, MaxAllowedEmoji: -1})
+		require.NoError(t, d.AddApprovedUser(approved.UserInfo{UserID: "123", UserName: "ham"}))
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息", UserID: "123"})
+		assert.True(t, spam, "paranoid mode (FirstMessageOnly=false) applies the check to approved users too")
+		resp := findResponseByName(cr, "prohibited-language")
+		require.NotNil(t, resp)
+		assert.True(t, resp.Spam)
+	})
+
+	t.Run("quoted foreign text is not attributed to the replying user", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		// Msg carries the concatenated quote; AuthoredText() drops it via Quote
+		spam, cr := d.Check(spamcheck.Request{Msg: "thanks!\n汉语汉字消息", Quote: "汉语汉字消息"})
+		assert.False(t, spam, "foreign script is only in the quoted portion, not authored by the user")
+		assert.Nil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("authored foreign text is still flagged when a quote is present", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息\nquoted english", Quote: "quoted english"})
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
+
+	t.Run("no quote uses Msg", func(t *testing.T) {
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 3, MaxAllowedEmoji: -1})
+		spam, cr := d.Check(spamcheck.Request{Msg: "汉语汉字消息"}) // library/API caller sets only Msg
+		assert.True(t, spam)
+		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
+	})
 }

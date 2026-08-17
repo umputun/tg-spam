@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +56,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// start server in web-only mode (no telegram token needed)
+	// start server in web-only mode (no telegram token needed). cas.api is
+	// blanked so the spam check path does not depend on the external CAS service
+	// being reachable, which would otherwise add up to 5s per check and make
+	// playwright assertions flaky when the network to api.cas.chat is slow.
 	serverCmd = exec.Command("/tmp/tg-spam-e2e",
 		"--server.enabled",
 		"--server.listen=:18090",
@@ -64,6 +67,7 @@ func TestMain(m *testing.M) {
 		"--db="+testDBPath,
 		"--files.samples="+testDataPath,
 		"--files.dynamic="+testDataPath,
+		"--cas.api=",
 		"--dbg",
 	)
 	serverCmd.Stdout = os.Stdout
@@ -248,6 +252,437 @@ func TestSettings_PageLoads(t *testing.T) {
 	title, err := page.Title()
 	require.NoError(t, err)
 	assert.Contains(t, title, "Settings")
+}
+
+func TestSettings_WarnAutoBanPersists(t *testing.T) {
+	const (
+		warnPort       = 18091
+		warnDBPath     = "/tmp/tg-spam-e2e-warn.db"
+		warnDataPath   = "/tmp/tg-spam-e2e-warn-data"
+		warnPassword   = "e2e-warn-password"
+		warnUser       = "tg-spam"
+		warnThreshold  = "5"
+		warnWindowText = "168h0m0s"
+	)
+	warnURL := fmt.Sprintf("http://localhost:%d", warnPort)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(warnDBPath)
+	_ = os.RemoveAll(warnDataPath)
+	require.NoError(t, os.MkdirAll(warnDataPath, 0o755))
+	require.NoError(t, os.WriteFile(warnDataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(warnDataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled (so
+	// the validate step accepts the absence of telegram credentials and the
+	// process runs in web-only mode at startup)
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+warnDBPath,
+		"--files.samples="+warnDataPath,
+		"--files.dynamic="+warnDataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", warnPort),
+		"--server.auth="+warnPassword,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", warnPort),
+		"--server.auth="+warnPassword,
+		"--db="+warnDBPath,
+		"--files.samples="+warnDataPath,
+		"--files.dynamic="+warnDataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(warnDBPath)
+		_ = os.RemoveAll(warnDataPath)
+	})
+
+	require.NoError(t, waitForServer(warnURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: warnUser,
+			Password: warnPassword,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(warnURL + "/list_settings")
+	require.NoError(t, err)
+
+	// switch to the Bot Behavior tab where the warn auto-ban inputs live
+	require.NoError(t, page.Locator("#behavior-tab").Click())
+	waitVisible(t, page.Locator("#warnThreshold"))
+	waitVisible(t, page.Locator("#warnWindow"))
+
+	// verify defaults rendered (threshold defaults to 0, window defaults to 720h)
+	defaultThreshold, err := page.Locator("#warnThreshold").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0", defaultThreshold)
+	defaultWindow, err := page.Locator("#warnWindow").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "720h0m0s", defaultWindow)
+
+	// change values and save
+	require.NoError(t, page.Locator("#warnThreshold").Fill(warnThreshold))
+	require.NoError(t, page.Locator("#warnWindow").Fill(warnWindowText))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the values persisted
+	_, err = page.Goto(warnURL + "/list_settings")
+	require.NoError(t, err)
+	require.NoError(t, page.Locator("#behavior-tab").Click())
+	waitVisible(t, page.Locator("#warnThreshold"))
+
+	got, err := page.Locator("#warnThreshold").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, warnThreshold, got)
+	got, err = page.Locator("#warnWindow").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, warnWindowText, got)
+}
+
+func TestSettings_MaxShortMsgCountPersists(t *testing.T) {
+	const (
+		port              = 18092
+		dbPath            = "/tmp/tg-spam-e2e-maxshort.db"
+		dataPath          = "/tmp/tg-spam-e2e-maxshort-data"
+		password          = "e2e-maxshort-password"
+		user              = "tg-spam"
+		maxShortMsgCount  = "4"
+		firstMessagesText = "2"
+	)
+	settingsURL := fmt.Sprintf("http://localhost:%d", port)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(dbPath)
+	_ = os.RemoveAll(dataPath)
+	require.NoError(t, os.MkdirAll(dataPath, 0o755))
+	require.NoError(t, os.WriteFile(dataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(dataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled.
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(dbPath)
+		_ = os.RemoveAll(dataPath)
+	})
+
+	require.NoError(t, waitForServer(settingsURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: user,
+			Password: password,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+
+	waitVisible(t, page.Locator("#maxShortMsgCount"))
+	waitVisible(t, page.Locator("#firstMessagesCount"))
+
+	// verify default rendered (0=disabled)
+	defaultMax, err := page.Locator("#maxShortMsgCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0", defaultMax)
+
+	// fill new values and save; firstMessagesCount must be > 0 for the feature
+	// to be effective, mirroring the startup validation rule
+	require.NoError(t, page.Locator("#maxShortMsgCount").Fill(maxShortMsgCount))
+	require.NoError(t, page.Locator("#firstMessagesCount").Fill(firstMessagesText))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the value persisted
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	waitVisible(t, page.Locator("#maxShortMsgCount"))
+
+	got, err := page.Locator("#maxShortMsgCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, maxShortMsgCount, got)
+	got, err = page.Locator("#firstMessagesCount").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, firstMessagesText, got)
+}
+
+func TestSettings_MentionOnlyPersists(t *testing.T) {
+	const (
+		port     = 18093
+		dbPath   = "/tmp/tg-spam-e2e-mentiononly.db"
+		dataPath = "/tmp/tg-spam-e2e-mentiononly-data"
+		password = "e2e-mentiononly-password"
+		user     = "tg-spam"
+	)
+	settingsURL := fmt.Sprintf("http://localhost:%d", port)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(dbPath)
+	_ = os.RemoveAll(dataPath)
+	require.NoError(t, os.MkdirAll(dataPath, 0o755))
+	require.NoError(t, os.WriteFile(dataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(dataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled.
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(dbPath)
+		_ = os.RemoveAll(dataPath)
+	})
+
+	require.NoError(t, waitForServer(settingsURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: user,
+			Password: password,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+
+	// switch to the Meta Checks tab where the mention-only toggle lives
+	require.NoError(t, page.Locator("#meta-checks-tab").Click())
+	waitVisible(t, page.Locator("#metaMentionOnly"))
+
+	// verify default rendered (unchecked)
+	checked, err := page.Locator("#metaMentionOnly").IsChecked()
+	require.NoError(t, err)
+	assert.False(t, checked, "mention-only must be unchecked by default")
+
+	// enable the meta master toggle, mention-only and external-reply, then save
+	require.NoError(t, page.Locator("#metaEnabled").Check())
+	require.NoError(t, page.Locator("#metaMentionOnly").Check())
+	require.NoError(t, page.Locator("#metaExternalReply").Check())
+	require.NoError(t, page.Locator("#metaImageTextLen").Fill("40"))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the toggle persisted
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	require.NoError(t, page.Locator("#meta-checks-tab").Click())
+	waitVisible(t, page.Locator("#metaMentionOnly"))
+
+	got, err := page.Locator("#metaMentionOnly").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, got, "mention-only must stay checked after reload")
+
+	gotExternalReply, err := page.Locator("#metaExternalReply").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, gotExternalReply, "external-reply must stay checked after reload")
+
+	gotImageTextLen, err := page.Locator("#metaImageTextLen").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "40", gotImageTextLen, "image-text-len must persist after reload")
+}
+
+func TestSettings_ProhibitedLangsPersists(t *testing.T) {
+	const (
+		port               = 18094
+		dbPath             = "/tmp/tg-spam-e2e-prohibitedlangs.db"
+		dataPath           = "/tmp/tg-spam-e2e-prohibitedlangs-data"
+		password           = "e2e-prohibitedlangs-password"
+		user               = "tg-spam"
+		prohibitedLangs    = "chinese, cyrillic"
+		prohibitedLangsMin = "5"
+	)
+	settingsURL := fmt.Sprintf("http://localhost:%d", port)
+
+	// clean any leftover state from a prior run
+	_ = os.Remove(dbPath)
+	_ = os.RemoveAll(dataPath)
+	require.NoError(t, os.MkdirAll(dataPath, 0o755))
+	require.NoError(t, os.WriteFile(dataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(dataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	// confdb mode requires settings to already exist in the DB; bootstrap them
+	// by running save-config first against the same DB with server enabled.
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(dbPath)
+		_ = os.RemoveAll(dataPath)
+	})
+
+	require.NoError(t, waitForServer(settingsURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{
+			Username: user,
+			Password: password,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+
+	waitVisible(t, page.Locator("#prohibitedLangs"))
+	waitVisible(t, page.Locator("#prohibitedLangsMin"))
+
+	// verify defaults rendered (empty list disables, min defaults to 3)
+	defaultLangs, err := page.Locator("#prohibitedLangs").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "", defaultLangs)
+	defaultMin, err := page.Locator("#prohibitedLangsMin").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "3", defaultMin)
+
+	// fill new values and save
+	require.NoError(t, page.Locator("#prohibitedLangs").Fill(prohibitedLangs))
+	require.NoError(t, page.Locator("#prohibitedLangsMin").Fill(prohibitedLangsMin))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	// wait for the save success alert
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// reload the page and verify the values persisted
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	waitVisible(t, page.Locator("#prohibitedLangs"))
+
+	got, err := page.Locator("#prohibitedLangs").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, prohibitedLangs, got)
+	got, err = page.Locator("#prohibitedLangsMin").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, prohibitedLangsMin, got)
 }
 
 // --- navigation tests ---
@@ -439,6 +874,11 @@ func TestManageSamples_DeleteSpam(t *testing.T) {
 		text, e := page.Locator("#spam-samples-list").First().TextContent()
 		return e == nil && contains(text, sampleText)
 	}, 5*time.Second, 100*time.Millisecond)
+
+	// wait for htmx to finish processing the swapped content; otherwise the
+	// new delete form's hx-post may not be bound yet and the click would fall
+	// through to a native form submit against the page url
+	require.NoError(t, page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{State: playwright.LoadStateNetworkidle}))
 
 	// delete the sample - find row with our sample and click delete
 	deleteBtn := page.Locator(fmt.Sprintf("#spam-samples-list li:has-text('%s') button.btn-danger", sampleText))

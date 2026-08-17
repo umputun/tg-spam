@@ -56,7 +56,7 @@ func TestLastRequestsSmallerRequest(t *testing.T) {
 
 	res := h.Last(1)
 	require.Len(t, res, 1)
-	assert.Equal(t, req1, res[0])
+	assert.Equal(t, req2, res[0], "Last(1) should return the most recent request")
 }
 
 func TestLastRequestsConcurrent(t *testing.T) {

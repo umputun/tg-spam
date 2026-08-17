@@ -96,10 +96,6 @@ var samplesQueries = engine.NewQueryMap().
 			CREATE INDEX IF NOT EXISTS idx_samples_gid ON samples(gid);
 			CREATE INDEX IF NOT EXISTS idx_samples_origin ON samples(gid,origin);
 			CREATE INDEX IF NOT EXISTS idx_samples_message_hash ON samples(message_hash);`,
-	}).
-	Add(CmdAddGIDColumn, engine.Query{
-		Sqlite:   "ALTER TABLE samples ADD COLUMN gid TEXT DEFAULT ''",
-		Postgres: "ALTER TABLE samples ADD COLUMN IF NOT EXISTS gid TEXT DEFAULT ''",
 	})
 
 // NewSamples creates a new Samples storage

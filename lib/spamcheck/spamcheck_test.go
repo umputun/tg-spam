@@ -52,7 +52,7 @@ func TestRequestString(t *testing.T) {
 				Msg: "Hello, world!", UserID: "123", UserName: "Alice", Meta: MetaData{
 					Images: 2, Links: 1, Mentions: 0, HasVideo: false, HasAudio: false, HasForward: false, HasKeyboard: false,
 				}, CheckOnly: false},
-			expected: `msg:"Hello, world!", user:"Alice", id:123, first_name:"", last_name:"", is_premium:false, images:2, links:1, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
+			expected: `msg:"Hello, world!", user:"Alice", id:123, first_name:"", last_name:"", is_premium:false, images:2, links:1, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false, has_external_reply:false`,
 		},
 		{
 			name: "Spam message",
@@ -60,25 +60,51 @@ func TestRequestString(t *testing.T) {
 				Msg: "Spam message", UserID: "456", UserName: "Bob", Meta: MetaData{
 					Images: 0, Links: 3, Mentions: 2, HasVideo: true, HasAudio: false, HasForward: false, HasKeyboard: false,
 				}, CheckOnly: true},
-			expected: `msg:"Spam message", user:"Bob", id:456, first_name:"", last_name:"", is_premium:false, images:0, links:3, mentions:2, has_video:true, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
+			expected: `msg:"Spam message", user:"Bob", id:456, first_name:"", last_name:"", is_premium:false, images:0, links:3, mentions:2, has_video:true, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false, has_external_reply:false`,
 		},
 		{
 			name:     "Empty fields",
 			request:  Request{Msg: "", UserID: "", UserName: "", Meta: MetaData{}, CheckOnly: false},
-			expected: `msg:"", user:"", id:, first_name:"", last_name:"", is_premium:false, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
+			expected: `msg:"", user:"", id:, first_name:"", last_name:"", is_premium:false, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false, has_external_reply:false`,
 		},
 		{
 			name: "With user name fields and premium",
 			request: Request{
 				Msg: "test", UserID: "789", UserName: "john", FirstName: "John", LastName: "Doe", IsPremium: true,
 			},
-			expected: `msg:"test", user:"john", id:789, first_name:"John", last_name:"Doe", is_premium:true, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false`,
+			expected: `msg:"test", user:"john", id:789, first_name:"John", last_name:"Doe", is_premium:true, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false, has_external_reply:false`,
+		},
+		{
+			name: "With external reply",
+			request: Request{
+				Msg: "test", UserID: "789", UserName: "john", Meta: MetaData{HasExternalReply: true},
+			},
+			expected: `msg:"test", user:"john", id:789, first_name:"", last_name:"", is_premium:false, images:0, links:0, mentions:0, has_video:false, has_audio:false, has_forward:false, has_keyboard:false, has_contact:false, has_giveaway:false, has_external_reply:true`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.request.String())
+		})
+	}
+}
+
+func TestRequest_AuthoredText(t *testing.T) {
+	tests := []struct {
+		name     string
+		request  Request
+		expected string
+	}{
+		{name: "no quote returns Msg", request: Request{Msg: "hello"}, expected: "hello"},
+		{name: "quote stripped from Msg", request: Request{Msg: "hello\n汉语汉字", Quote: "汉语汉字"}, expected: "hello"},
+		{name: "empty authored with quote yields empty", request: Request{Msg: "\nquoted only", Quote: "quoted only"}, expected: ""},
+		{name: "quote set but Msg lacks the suffix returns Msg unchanged", request: Request{Msg: "hello", Quote: "other"}, expected: "hello"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.request.AuthoredText())
 		})
 	}
 }

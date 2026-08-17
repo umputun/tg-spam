@@ -30,6 +30,7 @@ import (
 //go:generate moq --out mocks/sample_updater.go --pkg mocks --skip-ensure --with-resets . SampleUpdater
 //go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure --with-resets . HTTPClient
 //go:generate moq --out mocks/user_storage.go --pkg mocks --skip-ensure --with-resets . UserStorage
+//go:generate moq --out mocks/message_counter.go --pkg mocks --skip-ensure --with-resets . MessageCounter
 //go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
 
 // Detector is a spam detector, thread-safe.
@@ -40,6 +41,7 @@ type Detector struct {
 	openaiChecker     *openAIChecker
 	geminiChecker     *geminiChecker
 	duplicateDetector *duplicateDetector
+	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.Check // separate field for Lua plugin checks
 	tokenizedSpam     []map[string]int
@@ -51,6 +53,7 @@ type Detector struct {
 	spamSamplesUpd SampleUpdater
 	hamSamplesUpd  SampleUpdater
 	userStorage    UserStorage
+	messageCounter MessageCounter
 
 	// history of recent messages to keep in memory
 	// can be passed to checkers supporting history
@@ -58,6 +61,10 @@ type Detector struct {
 	spamHistory *spamcheck.LastRequests
 
 	lock sync.RWMutex
+	// auLock guards approvedUsers map access. it is a leaf lock: safe to take while holding
+	// d.lock in either mode, never acquire d.lock while holding it. needed because Check
+	// updates the map while holding d.lock as a read lock only.
+	auLock sync.RWMutex
 }
 
 // LLMConsensusMode controls how eligible LLM checks flip the base decision.
@@ -83,6 +90,15 @@ type detectorLLMCheck struct {
 	check       func(context.Context, string, []spamcheck.Request) (bool, spamcheck.Response) // provider check function
 }
 
+// llmCheckInput groups the per-message state passed to collectLLMCheck.
+type llmCheckInput struct {
+	req            spamcheck.Request    // original request, used for logging
+	cleanMsg       string               // sanitized message text to check
+	checks         []spamcheck.Response // accumulated check results so far
+	baseSpam       bool                 // base spam decision before LLM
+	isShortMessage bool                 // whether the message is below min length
+}
+
 type detectorLLMResult struct {
 	details spamcheck.Response
 	flip    bool
@@ -92,6 +108,7 @@ type detectorLLMResult struct {
 type Config struct {
 	SimilarityThreshold float64          // threshold for spam similarity, 0.0 - 1.0
 	MinMsgLen           int              // minimum message length to check
+	MaxShortMsgCount    int              // ban unapproved user after N short messages without graduation (0 disables)
 	MaxAllowedEmoji     int              // maximum number of emojis allowed in a message
 	CasAPI              string           // CAS API URL
 	CasUserAgent        string           // CAS API User-Agent header value, set only if non-empty
@@ -107,6 +124,13 @@ type Config struct {
 	LLMRequestTimeout   time.Duration    // timeout for individual LLM requests, if not set - 30s default
 	MultiLangWords      int              // if true, check for number of multi-lingual words
 	StorageTimeout      time.Duration    // timeout for storage operations, if not set - no timeout
+
+	// ProhibitedScripts maps a unicode.Scripts name to its range table; a message with
+	// ProhibitedLangsMin or more letters in any of these scripts is flagged as spam. an
+	// empty map disables the check.
+	ProhibitedScripts map[string]*unicode.RangeTable
+	// ProhibitedLangsMin is the minimum count of prohibited-script letters that flags a message.
+	ProhibitedLangsMin int
 
 	LuaPlugins struct {
 		Enabled        bool     // if true, enable Lua plugins
@@ -128,6 +152,11 @@ type Config struct {
 		Window    time.Duration // time window for duplicate detection
 	}
 
+	ReactionSpam struct {
+		MaxReactions int           // max reactions per user in window to trigger spam ban (0=disabled)
+		Window       time.Duration // time window for reaction spam detection
+	}
+
 	HistorySize int // history of recent messages to keep in memory
 }
 
@@ -143,6 +172,13 @@ type UserStorage interface {
 	Read(ctx context.Context) ([]approved.UserInfo, error) // read approved users from storage
 	Write(ctx context.Context, au approved.UserInfo) error // write approved user to storage
 	Delete(ctx context.Context, id string) error           // delete approved user from storage
+}
+
+// MessageCounter is an interface for per-user message counts and IDs used by the
+// short-message flood check. Implemented by *storage.Locator.
+type MessageCounter interface {
+	CountUserMessages(ctx context.Context, userID string) (int, error)
+	UserMessageIDs(ctx context.Context, userID string, limit int) ([]int, error)
 }
 
 // HTTPClient is an interface for http client, satisfied by http.Client.
@@ -180,6 +216,7 @@ func NewDetector(p Config) *Detector {
 		hamHistory:        spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:       spamcheck.NewLastRequests(p.HistorySize),
 		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
+		reactionDetector:  newReactionDetector(p.ReactionSpam.MaxReactions, p.ReactionSpam.Window),
 		luaEngine:         nil, // will be set with WithLuaEngine if needed
 	}
 	res.LLMConsensus = res.normalizeLLMConsensusMode(p.LLMConsensus)
@@ -217,9 +254,37 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	// approved user don't need content analysis checks, but only skip if no spam detected by behavioral checks
-	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedUsers[req.UserID].Count >= d.FirstMessagesCount {
+	if req.UserID != "" && d.FirstMessageOnly && !isSpamDetected(cr) && d.approvedCount(req.UserID) >= d.FirstMessagesCount {
 		// include previous check results (e.g., duplicate check) in the response
 		return false, append(cr, spamcheck.Response{Name: "pre-approved", Spam: false, Details: "user already approved"})
+	}
+
+	// short-message flood: ban unapproved users posting too many short messages.
+	// LLM consensus is intentionally bypassed: this is a behavioral signal that does
+	// not depend on content, and an LLM looking at the latest single short message
+	// has no information that would justify overriding the count.
+	if d.MaxShortMsgCount > 0 && d.messageCounter != nil && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
+		if resp := d.isShortMsgFlood(req); resp.Spam {
+			cr = append(cr, resp)
+			d.spamHistory.Push(req)
+			return true, cr
+		}
+	}
+
+	// prohibited-language: hard block on configured foreign scripts. bypasses the LLM
+	// (policy rule the LLM can't override), mirroring the short-msg-flood block above.
+	// scans req.AuthoredText() (the user's own text) rather than req.Msg so quoted or
+	// reply-to content the user did not write can't drive an unvetoable permanent ban;
+	// the softer content checks below still see the full concatenated req.Msg.
+	// ProhibitedLangsMin==0 is treated as disabled: without it a direct library consumer
+	// that sets ProhibitedScripts but leaves the min at its zero value would flag every
+	// single foreign letter (counts[s]++ -> 1 >= 0).
+	if len(d.ProhibitedScripts) > 0 && d.ProhibitedLangsMin > 0 {
+		if resp := d.isProhibitedLang(req.AuthoredText()); resp.Spam {
+			cr = append(cr, resp)
+			d.spamHistory.Push(req)
+			return true, cr
+		}
 	}
 
 	// all the remaining checks are performed sequentially, so we can collect all the results
@@ -328,9 +393,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 			},
 		}
 
+		inp := llmCheckInput{req: req, cleanMsg: cleanMsg, checks: cr, baseSpam: baseSpam, isShortMessage: isShortMessage}
 		for _, llmCheck := range llmChecks {
-			if res, ok := d.collectLLMCheck(req, cleanMsg, cr, baseSpam, isShortMessage, llmCheck); ok {
+			if res, ok := d.collectLLMCheck(inp, llmCheck); ok {
 				cr = append(cr, res.details)
+				inp.checks = cr
 				llmResults = append(llmResults, res)
 			}
 		}
@@ -348,13 +415,24 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	if (d.FirstMessageOnly || d.FirstMessagesCount > 0) && !req.CheckOnly && !isShortMessage {
 		ctx, cancel := d.ctxWithStoreTimeout()
 		defer cancel()
+		d.auLock.Lock()
+		// cap the count at the organic approval level: concurrent first messages from the same
+		// user can all pass the pre-approved check before any increment lands, and an inflated
+		// count would weaken the short-msg-flood excess calculation. sequential flow never gets
+		// past FirstMessagesCount because the pre-approved branch short-circuits; the +1 sentinel
+		// is reserved for explicit AddApprovedUser and storage-loaded users
+		newCount := d.approvedUsers[req.UserID].Count + 1
+		if maxCount := max(d.FirstMessagesCount, 1); newCount > maxCount {
+			newCount = maxCount
+		}
 		au := approved.UserInfo{
-			Count:     d.approvedUsers[req.UserID].Count + 1,
+			Count:     newCount,
 			UserID:    req.UserID,
 			UserName:  req.UserName,
 			Timestamp: time.Now(),
 		}
 		d.approvedUsers[req.UserID] = au // update approved users status in memory
+		d.auLock.Unlock()
 		if d.userStorage != nil {
 			// update approved users status in storage
 			_ = d.userStorage.Write(ctx, au) // ignore error, failed to write to storage is not critical here
@@ -378,14 +456,12 @@ func (d *Detector) shouldApplyLLMCheck(baseSpam, isShortMessage bool, cfg detect
 	return (!baseSpam && !cfg.veto) || (baseSpam && cfg.veto)
 }
 
-func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []spamcheck.Response,
-	baseSpam bool, isShortMessage bool, cfg detectorLLMCheck,
-) (detectorLLMResult, bool) {
+func (d *Detector) collectLLMCheck(inp llmCheckInput, cfg detectorLLMCheck) (detectorLLMResult, bool) {
 	if !cfg.enabled || cfg.check == nil {
 		return detectorLLMResult{}, false
 	}
 
-	if !d.shouldApplyLLMCheck(baseSpam, isShortMessage, cfg) {
+	if !d.shouldApplyLLMCheck(inp.baseSpam, inp.isShortMessage, cfg) {
 		return detectorLLMResult{}, false
 	}
 
@@ -397,21 +473,21 @@ func (d *Detector) collectLLMCheck(req spamcheck.Request, cleanMsg string, cr []
 	ctx, cancel := d.ctxWithLLMTimeout()
 	defer cancel()
 
-	spam, details := cfg.check(ctx, cleanMsg, hist)
-	if baseSpam && details.Error != nil {
+	spam, details := cfg.check(ctx, inp.cleanMsg, hist)
+	if inp.baseSpam && details.Error != nil {
 		log.Printf("[WARN] %s error: %v", cfg.name, details.Error)
 	}
 
 	log.Printf("[DEBUG] %s result: {%s}", cfg.name, details.String())
 
 	if cfg.veto && !spam && details.Error == nil {
-		allChecks := append(append(make([]spamcheck.Response, 0, len(cr)+1), cr...), details)
-		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, req.Msg, spamcheck.ChecksToString(allChecks))
+		allChecks := append(append(make([]spamcheck.Response, 0, len(inp.checks)+1), inp.checks...), details)
+		log.Printf("[DEBUG] %s vetoed ham message: %q, checks: %s", cfg.name, inp.req.Msg, spamcheck.ChecksToString(allChecks))
 	}
 
 	flip := false
 	if details.Error == nil {
-		flip = (!baseSpam && spam) || (baseSpam && !spam)
+		flip = (!inp.baseSpam && spam) || (inp.baseSpam && !spam)
 	}
 
 	return detectorLLMResult{details: details, flip: flip}, true
@@ -440,6 +516,20 @@ func (d *Detector) applyLLMConsensus(baseSpam bool, results []detectorLLMResult,
 	}
 }
 
+// RecordReaction records one net-new reaction for a user and returns spam=true if the reaction threshold is exceeded.
+// Callers should invoke this once per added reaction; if a single external event adds multiple reactions, each
+// added reaction is counted separately. If the reaction detector is disabled, it returns a non-spam response with
+// "disabled" details.
+func (d *Detector) RecordReaction(userID int64) spamcheck.Response {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if d.reactionDetector == nil {
+		return spamcheck.Response{Name: "reactions", Spam: false, Details: "disabled"}
+	}
+	return d.reactionDetector.check(userID)
+}
+
 // Reset resets spam samples/classifier, excluded tokens, stop words and approved users.
 func (d *Detector) Reset() {
 	d.lock.Lock()
@@ -448,7 +538,9 @@ func (d *Detector) Reset() {
 	d.tokenizedSpam = []map[string]int{}
 	d.excludedTokens = map[string]struct{}{}
 	d.classifier.reset()
+	d.auLock.Lock()
 	d.approvedUsers = make(map[string]approved.UserInfo)
+	d.auLock.Unlock()
 	d.stopWords = []string{}
 
 	// close the Lua engine and reset Lua checks if it exists
@@ -532,7 +624,9 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
+	d.auLock.Lock()
 	d.approvedUsers = make(map[string]approved.UserInfo) // reset approved users
+	d.auLock.Unlock()
 	d.userStorage = storage
 
 	ctx, cancel := d.ctxWithStoreTimeout()
@@ -542,11 +636,20 @@ func (d *Detector) WithUserStorage(storage UserStorage) (count int, err error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read approved users from storage: %w", err)
 	}
+	d.auLock.Lock()
 	for _, user := range users {
 		user.Count = d.FirstMessagesCount + 1 // +1 to skip first message check if count is 0
 		d.approvedUsers[user.UserID] = user
 	}
+	d.auLock.Unlock()
 	return len(users), nil
+}
+
+// WithMessageCounter sets a MessageCounter used by the short-message flood check.
+func (d *Detector) WithMessageCounter(mc MessageCounter) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.messageCounter = mc
 }
 
 // WithMetaChecks sets a list of meta-checkers.
@@ -564,14 +667,23 @@ func (d *Detector) WithHamUpdater(s SampleUpdater) { d.hamSamplesUpd = s }
 func (d *Detector) ApprovedUsers() (res []approved.UserInfo) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
+	d.auLock.RLock()
 	res = make([]approved.UserInfo, 0, len(d.approvedUsers))
 	for _, info := range d.approvedUsers {
 		res = append(res, info)
 	}
+	d.auLock.RUnlock()
 	sort.Slice(res, func(i, j int) bool {
 		return res[i].Timestamp.After(res[j].Timestamp)
 	})
 	return res
+}
+
+// approvedCount returns the approved-messages count for a given user ID under auLock.
+func (d *Detector) approvedCount(userID string) int {
+	d.auLock.RLock()
+	defer d.auLock.RUnlock()
+	return d.approvedUsers[userID].Count
 }
 
 // IsApprovedUser checks if a given user ID is approved.
@@ -580,11 +692,13 @@ func (d *Detector) IsApprovedUser(userID string) bool {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
+	d.auLock.RLock()
 	ui, ok := d.approvedUsers[userID]
+	d.auLock.RUnlock()
 	if !ok {
 		return false
 	}
-	return ui.Count > d.FirstMessagesCount
+	return ui.Count >= d.FirstMessagesCount
 }
 
 // AddApprovedUser adds user IDs to the list of approved users.
@@ -595,12 +709,14 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	d.auLock.Lock()
 	d.approvedUsers[user.UserID] = approved.UserInfo{
 		UserID:    user.UserID,
 		UserName:  user.UserName,
 		Count:     d.FirstMessagesCount + 1, // +1 to skip first message check if count is 0
 		Timestamp: ts,
 	}
+	d.auLock.Unlock()
 
 	if d.userStorage != nil {
 		ctx, cancel := d.ctxWithStoreTimeout()
@@ -615,7 +731,9 @@ func (d *Detector) AddApprovedUser(user approved.UserInfo) error {
 // RemoveApprovedUser removes approved user for given IDs
 func (d *Detector) RemoveApprovedUser(id string) error {
 	d.lock.Lock()
+	d.auLock.Lock()
 	delete(d.approvedUsers, id)
+	d.auLock.Unlock()
 	d.lock.Unlock()
 
 	if d.userStorage != nil {
@@ -993,6 +1111,115 @@ func (d *Detector) isSpamClassified(msg string) spamcheck.Response {
 		Details: fmt.Sprintf("probability of %s: %s%%", class, probStr)}
 }
 
+// isShortMsgFlood checks whether an unapproved user has accumulated too many short
+// messages without graduating to approved status. Returns Spam=true with ExtraDeleteIDs
+// populated for cleanup when the per-user count of non-graduating messages reaches
+// MaxShortMsgCount. Returns Spam=false on the count-error fast-bail and on every other
+// non-triggering condition: empty UserID, CheckOnly request, message length >= MinMsgLen,
+// or user already approved. An ID-fetch error is logged at WARN and produces Spam=true
+// with empty ExtraDeleteIDs (the listener still bans and deletes the triggering message).
+// Expected to be called from Check while d.lock is held as a read lock.
+func (d *Detector) isShortMsgFlood(req spamcheck.Request) spamcheck.Response {
+	const name = "short-msg-flood"
+	notSpam := func(details string) spamcheck.Response {
+		return spamcheck.Response{Name: name, Spam: false, Details: details}
+	}
+
+	if req.UserID == "" || req.CheckOnly {
+		return notSpam("skipped")
+	}
+	if len([]rune(req.Msg)) >= d.MinMsgLen {
+		return notSpam("message not short")
+	}
+	approvedCount := d.approvedCount(req.UserID)
+	// defensive: in app/main.go FirstMessageOnly is forced true whenever FirstMessagesCount > 0,
+	// so approved users short-circuit at the pre-approved branch in Check and never reach this.
+	// the guard matters for library consumers that construct Detector with FirstMessageOnly=false
+	// and FirstMessagesCount > 0, where approved users would otherwise fall through to here.
+	if approvedCount >= d.FirstMessagesCount {
+		return notSpam("user already approved")
+	}
+
+	ctx, cancel := d.ctxWithStoreTimeout()
+	defer cancel()
+	total, err := d.messageCounter.CountUserMessages(ctx, req.UserID)
+	if err != nil {
+		log.Printf("[WARN] short-msg-flood: count failed for user %s: %v", req.UserID, err)
+		return notSpam("count error")
+	}
+	excess := total - approvedCount
+	if excess < d.MaxShortMsgCount {
+		return notSpam(fmt.Sprintf("%d/%d", excess, d.MaxShortMsgCount))
+	}
+
+	var extraIDs []int
+	ids, err := d.messageCounter.UserMessageIDs(ctx, req.UserID, d.MaxShortMsgCount*2)
+	if err != nil {
+		log.Printf("[WARN] short-msg-flood: ids fetch failed for user %s: %v", req.UserID, err)
+	} else {
+		// the locator stored the current message before OnMessage runs, so the
+		// returned slice includes the triggering ID; the listener deletes it
+		// separately via resp.ReplyTo, and feeding it back through ExtraDeleteIDs
+		// would issue a second delete that races against the first.
+		extraIDs = make([]int, 0, len(ids))
+		for _, id := range ids {
+			if id == req.Meta.MessageID {
+				continue
+			}
+			extraIDs = append(extraIDs, id)
+		}
+	}
+
+	return spamcheck.Response{
+		Name:           name,
+		Spam:           true,
+		Details:        fmt.Sprintf("%d messages without approval (threshold %d)", excess, d.MaxShortMsgCount),
+		ExtraDeleteIDs: extraIDs,
+	}
+}
+
+// isProhibitedLang counts letters that belong to any configured prohibited script and
+// flags the message as spam once a single script reaches ProhibitedLangsMin. Only
+// unicode.IsLetter runes count; digits, punctuation, emoji and spaces are ignored.
+// Details names the script that reached the threshold. Unlike isShortMsgFlood this is a
+// pure content check and does NOT bail on req.CheckOnly, so the web /check UI exercises it.
+func (d *Detector) isProhibitedLang(msg string) spamcheck.Response {
+	const name = "prohibited-language"
+	scriptNames := make([]string, 0, len(d.ProhibitedScripts))
+	for s := range d.ProhibitedScripts {
+		scriptNames = append(scriptNames, s)
+	}
+	sort.Strings(scriptNames) // deterministic reported name and tie-breaking
+
+	counts := make(map[string]int, len(scriptNames))
+	for _, r := range msg {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		for _, s := range scriptNames { // scripts are disjoint, so at most one matches per rune
+			if unicode.Is(d.ProhibitedScripts[s], r) {
+				counts[s]++
+				if counts[s] >= d.ProhibitedLangsMin {
+					return spamcheck.Response{Name: name, Spam: true, Details: fmt.Sprintf("%s: %d", s, counts[s])}
+				}
+				break
+			}
+		}
+	}
+
+	topName, topCount := "", 0
+	for _, s := range scriptNames {
+		if counts[s] > topCount {
+			topName, topCount = s, counts[s]
+		}
+	}
+	details := fmt.Sprintf("%d/%d", topCount, d.ProhibitedLangsMin)
+	if topName != "" {
+		details = fmt.Sprintf("%s: %d/%d", topName, topCount, d.ProhibitedLangsMin)
+	}
+	return spamcheck.Response{Name: name, Spam: false, Details: details}
+}
+
 // isStopWord checks if a given message or username contains any of the stop words.
 // stop words prefixed with "=" require exact match (whole text equals the word),
 // otherwise substring match is used.
@@ -1055,6 +1282,27 @@ func (d *Detector) isMultiLang(msg string) spamcheck.Response {
 		scripts := make(map[string]bool)
 		for _, r := range word {
 			if r == 'i' || unicode.IsSpace(r) || unicode.IsNumber(r) { // skip 'i' (common in many langs) and spaces
+				continue
+			}
+
+			// ascii fast path: avoids scanning the ~170 unicode.Scripts tables for the most
+			// common runes. mirrors the slow path exactly: ascii letters are Latin, the rest
+			// of ascii belongs to Common, so it falls through to the same Other_Math check
+			// (which catches '^') and then to punctuation/symbol handling
+			if r < 128 {
+				switch {
+				case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+					scripts["Latin"] = true
+				case unicode.In(r, unicode.Other_Math, unicode.Other_Alphabetic):
+					scripts["Mathematical"] = true
+				case !unicode.IsPunct(r) && !unicode.IsSymbol(r):
+					scripts["Other"] = true
+				default:
+					continue // punctuation and symbols carry no script
+				}
+				if len(scripts) > 1 {
+					return true
+				}
 				continue
 			}
 

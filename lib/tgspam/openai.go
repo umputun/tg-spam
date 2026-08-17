@@ -7,12 +7,42 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	tokenizer "github.com/sandwich-go/gpt3-encoder"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
+
+// gptEncoderCache shares one encoder across requests: tokenizer.NewEncoder parses the full
+// BPE vocabulary on every call, far too expensive to repeat per request. The encoder caches
+// BPE results for every unique word it sees in an unbounded internal map, and the input is
+// untrusted message text, so the instance is rebuilt after a fixed number of uses to keep
+// memory bounded.
+type gptEncoderCache struct {
+	mu   sync.Mutex
+	enc  *tokenizer.Encoder
+	uses int
+}
+
+// get returns the shared encoder, rebuilding it after maxEncoderUses requests
+func (g *gptEncoderCache) get() (*tokenizer.Encoder, error) {
+	const maxEncoderUses = 1000
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.enc == nil || g.uses >= maxEncoderUses {
+		enc, err := tokenizer.NewEncoder()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build gpt encoder: %w", err)
+		}
+		g.enc, g.uses = enc, 0
+	}
+	g.uses++
+	return g.enc, nil
+}
+
+var gptEncoder = &gptEncoderCache{}
 
 //go:generate moq --out mocks/openai_client.go --pkg mocks --with-resets --skip-ensure . openAIClient:OpenAIClientMock
 
@@ -125,7 +155,7 @@ func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response l
 			return string(runes[:o.params.MaxSymbolsRequest])
 		}
 
-		encoder, tokErr := tokenizer.NewEncoder()
+		encoder, tokErr := gptEncoder.get()
 		if tokErr != nil {
 			return defaultReducer(text)
 		}

@@ -81,6 +81,10 @@ type Update struct {
 	//
 	// optional
 	DeletedBusinessMessages *BusinessMessagesDeleted `json:"deleted_business_messages,omitempty"`
+	// GuestMessage is a new message sent to the bot in guest mode.
+	//
+	// optional
+	GuestMessage *Message `json:"guest_message,omitempty"`
 	// MessageReaction is a reaction to a message was changed by a user.
 	//
 	// optional
@@ -155,16 +159,38 @@ type Update struct {
 	//
 	// optional
 	ChatBoostRemoved *ChatBoostRemoved `json:"removed_chat_boost,omitempty"`
+	// ManagedBot is emitted when a managed bot is created or its token changes.
+	//
+	// optional
+	ManagedBot *ManagedBotUpdated `json:"managed_bot,omitempty"`
+	// Subscription is emitted when a user payment subscription changes.
+	//
+	// optional
+	Subscription *BotSubscriptionUpdated `json:"subscription,omitempty"`
 }
 
 // SentFrom returns the user who sent an update. Can be nil, if Telegram did not provide information
 // about the user in the update object.
+//
+// For ManagedBot, it returns the bot instead of the user.
 func (u *Update) SentFrom() *User {
 	switch {
 	case u.Message != nil:
 		return u.Message.From
 	case u.EditedMessage != nil:
 		return u.EditedMessage.From
+	case u.ChannelPost != nil:
+		return u.ChannelPost.From
+	case u.EditedChannelPost != nil:
+		return u.EditedChannelPost.From
+	case u.BusinessMessage != nil:
+		return u.BusinessMessage.From
+	case u.EditedBusinessMessage != nil:
+		return u.EditedBusinessMessage.From
+	case u.MessageReaction != nil:
+		return u.MessageReaction.User
+	case u.GuestMessage != nil:
+		return u.GuestMessage.From
 	case u.InlineQuery != nil:
 		return u.InlineQuery.From
 	case u.ChosenInlineResult != nil:
@@ -175,6 +201,24 @@ func (u *Update) SentFrom() *User {
 		return u.ShippingQuery.From
 	case u.PreCheckoutQuery != nil:
 		return u.PreCheckoutQuery.From
+	case u.PurchasedPaidMedia != nil:
+		return &u.PurchasedPaidMedia.From
+	case u.PollAnswer != nil:
+		return u.PollAnswer.User
+	case u.MyChatMember != nil:
+		return &u.MyChatMember.From
+	case u.ChatMember != nil:
+		return &u.ChatMember.From
+	case u.ChatJoinRequest != nil:
+		return &u.ChatJoinRequest.From
+	case u.ChatBoost != nil:
+		return u.ChatBoost.Boost.Source.User
+	case u.ChatBoostRemoved != nil:
+		return u.ChatBoostRemoved.Source.User
+	case u.ManagedBot != nil:
+		return &u.ManagedBot.Bot
+	case u.Subscription != nil:
+		return &u.Subscription.User
 	default:
 		return nil
 	}
@@ -199,8 +243,30 @@ func (u *Update) FromChat() *Chat {
 		return &u.ChannelPost.Chat
 	case u.EditedChannelPost != nil:
 		return &u.EditedChannelPost.Chat
+	case u.BusinessMessage != nil:
+		return &u.BusinessMessage.Chat
+	case u.EditedBusinessMessage != nil:
+		return &u.EditedBusinessMessage.Chat
+	case u.DeletedBusinessMessages != nil:
+		return &u.DeletedBusinessMessages.Chat
+	case u.MessageReaction != nil:
+		return &u.MessageReaction.Chat
+	case u.MessageReactionCount != nil:
+		return &u.MessageReactionCount.Chat
+	case u.GuestMessage != nil:
+		return &u.GuestMessage.Chat
 	case u.CallbackQuery != nil && u.CallbackQuery.Message != nil:
 		return &u.CallbackQuery.Message.Chat
+	case u.MyChatMember != nil:
+		return &u.MyChatMember.Chat
+	case u.ChatMember != nil:
+		return &u.ChatMember.Chat
+	case u.ChatJoinRequest != nil:
+		return &u.ChatJoinRequest.Chat
+	case u.ChatBoost != nil:
+		return &u.ChatBoost.Chat
+	case u.ChatBoostRemoved != nil:
+		return &u.ChatBoostRemoved.Chat
 	default:
 		return nil
 	}
@@ -262,6 +328,11 @@ type User struct {
 	//
 	// optional
 	SupportsInlineQueries bool `json:"supports_inline_queries,omitempty"`
+	// SupportsGuestQueries is true, if the bot supports guest queries.
+	// Returned only in getMe.
+	//
+	// optional
+	SupportsGuestQueries bool `json:"supports_guest_queries,omitempty"`
 	// CanConnectToBusiness is true, if the bot can be connected to a
 	// Telegram Business account to receive its messages.
 	// Returned only in getMe.
@@ -272,6 +343,23 @@ type User struct {
 	//
 	// optional
 	HasMainWebApp bool `json:"has_main_web_app,omitempty"`
+	// HasTopicsEnabled is true, if the bot has topics enabled.
+	//
+	// optional
+	HasTopicsEnabled bool `json:"has_topics_enabled,omitempty"`
+	// AllowsUsersToCreateTopics is true, if users are allowed to create topics.
+	//
+	// optional
+	AllowsUsersToCreateTopics bool `json:"allows_users_to_create_topics,omitempty"`
+	// CanManageBots is true, if the bot can create managed bots.
+	//
+	// optional
+	CanManageBots bool `json:"can_manage_bots,omitempty"`
+	// SupportsJoinRequestQueries is true, if the bot supports join request queries.
+	// Returned only in getMe.
+	//
+	// optional
+	SupportsJoinRequestQueries bool `json:"supports_join_request_queries,omitempty"`
 }
 
 // String displays a simple text version of a user.
@@ -320,6 +408,10 @@ type Chat struct {
 	//
 	// optional
 	IsForum bool `json:"is_forum,omitempty"`
+	// IsDirectMessages is true, if the chat is a direct messages chat.
+	//
+	// optional
+	IsDirectMessages bool `json:"is_direct_messages,omitempty"`
 }
 
 // ChatFullInfo contains full information about a chat.
@@ -357,6 +449,10 @@ type ChatFullInfo struct {
 	//
 	// optional
 	PersonalChat *Chat `json:"personal_chat,omitempty"`
+	// ParentChat points to parent chat for direct messages chats.
+	//
+	// optional
+	ParentChat *Chat `json:"parent_chat,omitempty"`
 	// AvailableReactions is a list of available reactions allowed in the chat.
 	// If omitted, then all emoji reactions are allowed. Returned only in getChat.
 	//
@@ -445,6 +541,8 @@ type ChatFullInfo struct {
 	//
 	// optional
 	Permissions *ChatPermissions `json:"permissions,omitempty"`
+	// AcceptedGiftTypes describes which gift types are accepted in the chat.
+	AcceptedGiftTypes AcceptedGiftTypes `json:"accepted_gift_types"`
 	// True, if paid media messages can be sent or forwarded to the channel chat.
 	// The field is available only for channel chats.
 	//
@@ -515,6 +613,30 @@ type ChatFullInfo struct {
 	//
 	// optional
 	Location *ChatLocation `json:"location,omitempty"`
+	// Rating describes user rating settings for direct messages chats.
+	//
+	// optional
+	Rating *UserRating `json:"rating,omitempty"`
+	// FirstProfileAudio is the first profile audio of the chat.
+	//
+	// optional
+	FirstProfileAudio *Audio `json:"first_profile_audio,omitempty"`
+	// UniqueGiftColors are profile colors used for unique gifts in chat.
+	//
+	// optional
+	UniqueGiftColors *UniqueGiftColors `json:"unique_gift_colors,omitempty"`
+	// PaidMessageStarCount is number of stars required for paid messages.
+	//
+	// optional
+	PaidMessageStarCount int `json:"paid_message_star_count,omitempty"`
+	// GuardBot is the bot that processes join request queries in the chat.
+	//
+	// optional
+	GuardBot *User `json:"guard_bot,omitempty"`
+	// Community is the community to which the chat belongs.
+	//
+	// optional
+	Community *Community `json:"community,omitempty"`
 }
 
 // IsPrivate returns if the Chat is a private conversation.
@@ -549,18 +671,43 @@ type InaccessibleMessage struct {
 	// MessageID is unique message identifier inside the chat
 	MessageID int `json:"message_id"`
 	// Date is always 0. The field can be used to differentiate regular and inaccessible messages.
-	Date int `json:"date"`
+	Date int64 `json:"date"`
 }
 
 // Message represents a message.
 type Message struct {
-	// MessageID is a unique message identifier inside this chat
+	// MessageID is a unique message identifier inside this chat; it is 0 for ephemeral messages.
 	MessageID int `json:"message_id"`
+	// ReceiverUser is the user who received an ephemeral message.
+	//
+	// optional
+	ReceiverUser *User `json:"receiver_user,omitempty"`
+	// EphemeralMessageID is the identifier of an ephemeral message inside the chat.
+	// It may be reused after the message is deleted or expires.
+	//
+	// optional
+	EphemeralMessageID int `json:"ephemeral_message_id,omitempty"`
 	// Unique identifier of a message thread to which the message belongs;
 	// for supergroups only
 	//
 	// optional
 	MessageThreadID int `json:"message_thread_id,omitempty"`
+	// DirectMessagesTopic is topic information for direct messages chats.
+	//
+	// optional
+	DirectMessagesTopic *DirectMessagesTopic `json:"direct_messages_topic,omitempty"`
+	// GuestQueryID is a unique identifier for the guest query to be answered.
+	//
+	// optional
+	GuestQueryID string `json:"guest_query_id,omitempty"`
+	// GuestBotCallerUser is the user whose original message triggered a guest bot's response.
+	//
+	// optional
+	GuestBotCallerUser *User `json:"guest_bot_caller_user,omitempty"`
+	// GuestBotCallerChat is the chat whose original message triggered a guest bot's response.
+	//
+	// optional
+	GuestBotCallerChat *Chat `json:"guest_bot_caller_chat,omitempty"`
 	// From is a sender, empty for messages sent to channels;
 	//
 	// optional
@@ -583,8 +730,12 @@ type Message struct {
 	//
 	// optional
 	SenderBusinessBot *User `json:"sender_business_bot,omitempty"`
+	// SenderTag Tag or custom title of the sender of the message; for supergroups only.
+	//
+	// optional
+	SenderTag string `json:"sender_tag,omitempty"`
 	// Date of the message was sent in Unix time
-	Date int `json:"date"`
+	Date int64 `json:"date"`
 	// BusinessConnectionID is an unique identifier of the business connection
 	// from which the message was received. If non-empty, the message belongs to
 	// a chat of the corresponding business account that is independent from
@@ -626,6 +777,14 @@ type Message struct {
 	//
 	// ReplyToStory
 	ReplyToStory *Story `json:"reply_to_story"`
+	// ReplyToChecklistTaskID is identifier of the checklist task this message replies to.
+	//
+	// optional
+	ReplyToChecklistTaskID int `json:"reply_to_checklist_task_id,omitempty"`
+	// ReplyToPollOptionID is the persistent identifier of the poll option this message replies to.
+	//
+	// optional
+	ReplyToPollOptionID string `json:"reply_to_poll_option_id,omitempty"`
 	// ViaBot through which the message was sent;
 	//
 	// optional
@@ -633,7 +792,7 @@ type Message struct {
 	// EditDate of the message was last edited in Unix time;
 	//
 	// optional
-	EditDate int `json:"edit_date,omitempty"`
+	EditDate int64 `json:"edit_date,omitempty"`
 	// HasProtectedContent is true if the message can't be forwarded.
 	//
 	// optional
@@ -643,6 +802,10 @@ type Message struct {
 	//
 	// optional
 	IsFromOffline bool `json:"is_from_offline,omitempty"`
+	// IsPaidPost is true, if the message is a paid post.
+	//
+	// optional
+	IsPaidPost bool `json:"is_paid_post,omitempty"`
 	// MediaGroupID is the unique identifier of a media message group this message belongs to;
 	//
 	// optional
@@ -651,6 +814,10 @@ type Message struct {
 	//
 	// optional
 	AuthorSignature string `json:"author_signature,omitempty"`
+	// PaidStarCount is number of Telegram Stars paid for paid media.
+	//
+	// optional
+	PaidStarCount int `json:"paid_star_count,omitempty"`
 	// Text is for text messages, the actual UTF-8 text of the message, 0-4096 characters;
 	//
 	// optional
@@ -665,10 +832,18 @@ type Message struct {
 	//
 	// Optional
 	LinkPreviewOptions *LinkPreviewOptions `json:"link_preview_options,omitempty"`
+	// SuggestedPostInfo contains information about suggested post state.
+	//
+	// optional
+	SuggestedPostInfo *SuggestedPostInfo `json:"suggested_post_info,omitempty"`
 	// EffectID is the unique identifier of the message effect added to the message
 	//
 	// optional
 	EffectID string `json:"effect_id,omitempty"`
+	// RichMessage is a rich formatted message.
+	//
+	// optional
+	RichMessage *RichMessage `json:"rich_message,omitempty"`
 	// Animation message is an animation, information about the animation.
 	// For backward compatibility, when this field is set, the document field will also be set;
 	//
@@ -695,6 +870,10 @@ type Message struct {
 	//
 	// optional
 	Photo []PhotoSize `json:"photo,omitempty"`
+	// LivePhoto message is a live photo, information about the live photo.
+	//
+	// optional
+	LivePhoto *LivePhoto `json:"live_photo,omitempty"`
 	// Sticker message is a sticker, information about the sticker;
 	//
 	// optional
@@ -731,6 +910,10 @@ type Message struct {
 	//
 	// optional
 	HasMediaSpoiler bool `json:"has_media_spoiler,omitempty"`
+	// Checklist is checklist content attached to the message.
+	//
+	// optional
+	Checklist *Checklist `json:"checklist,omitempty"`
 	// Contact message is a shared contact, information about the contact;
 	//
 	// optional
@@ -767,6 +950,14 @@ type Message struct {
 	//
 	// optional
 	LeftChatMember *User `json:"left_chat_member,omitempty"`
+	// ChatOwnerLeft is a service message for an owner that left the chat.
+	//
+	// optional
+	ChatOwnerLeft *ChatOwnerLeft `json:"chat_owner_left,omitempty"`
+	// ChatOwnerChanged is a service message for changed chat owner.
+	//
+	// optional
+	ChatOwnerChanged *ChatOwnerChanged `json:"chat_owner_changed,omitempty"`
 	// NewChatTitle is a chat title was changed to this value;
 	//
 	// optional
@@ -825,7 +1016,7 @@ type Message struct {
 	// further reply_to_message fields even if it itself is a reply.
 	//
 	// optional
-	PinnedMessage *Message `json:"pinned_message,omitempty"`
+	PinnedMessage *MaybeInaccessibleMessage `json:"pinned_message,omitempty"`
 	// Invoice message is an invoice for a payment;
 	//
 	// optional
@@ -847,6 +1038,18 @@ type Message struct {
 	//
 	// optional
 	ChatShared *ChatShared `json:"chat_shared,omitempty"`
+	// Gift is a service message about a received regular gift.
+	//
+	// optional
+	Gift *GiftInfo `json:"gift,omitempty"`
+	// UniqueGift is a service message about a received unique gift.
+	//
+	// optional
+	UniqueGift *UniqueGiftInfo `json:"unique_gift,omitempty"`
+	// GiftUpgradeSent is a service message about a gift upgrade.
+	//
+	// optional
+	GiftUpgradeSent *GiftInfo `json:"gift_upgrade_sent,omitempty"`
 	// ConnectedWebsite is the domain name of the website on which the user has
 	// logged in;
 	//
@@ -874,6 +1077,26 @@ type Message struct {
 	//
 	// optional
 	ChatBackgroundSet *ChatBackground `json:"chat_background_set,omitempty"`
+	// ChecklistTasksDone is a service message for completed checklist tasks.
+	//
+	// optional
+	ChecklistTasksDone *ChecklistTasksDone `json:"checklist_tasks_done,omitempty"`
+	// ChecklistTasksAdded is a service message for newly added checklist tasks.
+	//
+	// optional
+	ChecklistTasksAdded *ChecklistTasksAdded `json:"checklist_tasks_added,omitempty"`
+	// CommunityChatAdded is a service message about a chat being added to a community.
+	//
+	// optional
+	CommunityChatAdded *CommunityChatAdded `json:"community_chat_added,omitempty"`
+	// CommunityChatRemoved is a service message about a chat being removed from a community.
+	//
+	// optional
+	CommunityChatRemoved *CommunityChatRemoved `json:"community_chat_removed,omitempty"`
+	// DirectMessagePriceChanged is a service message for direct message price changes.
+	//
+	// optional
+	DirectMessagePriceChanged *DirectMessagePriceChanged `json:"direct_message_price_changed,omitempty"`
 	// ForumTopicCreated is a service message: forum topic created
 	//
 	// optional
@@ -914,6 +1137,42 @@ type Message struct {
 	//
 	// optional
 	GiveawayCompleted *GiveawayCompleted `json:"giveaway_completed,omitempty"`
+	// ManagedBotCreated is a service message about a bot created for management by the current bot.
+	//
+	// optional
+	ManagedBotCreated *ManagedBotCreated `json:"managed_bot_created,omitempty"`
+	// PaidMessagePriceChanged is a service message for paid message price changes.
+	//
+	// optional
+	PaidMessagePriceChanged *PaidMessagePriceChanged `json:"paid_message_price_changed,omitempty"`
+	// PollOptionAdded is a service message about an option added to a poll.
+	//
+	// optional
+	PollOptionAdded *PollOptionAdded `json:"poll_option_added,omitempty"`
+	// PollOptionDeleted is a service message about an option deleted from a poll.
+	//
+	// optional
+	PollOptionDeleted *PollOptionDeleted `json:"poll_option_deleted,omitempty"`
+	// SuggestedPostApproved is a service message: suggested post approved.
+	//
+	// optional
+	SuggestedPostApproved *SuggestedPostApproved `json:"suggested_post_approved,omitempty"`
+	// SuggestedPostApprovalFailed is a service message: suggested post approval failed.
+	//
+	// optional
+	SuggestedPostApprovalFailed *SuggestedPostApprovalFailed `json:"suggested_post_approval_failed,omitempty"`
+	// SuggestedPostDeclined is a service message: suggested post declined.
+	//
+	// optional
+	SuggestedPostDeclined *SuggestedPostDeclined `json:"suggested_post_declined,omitempty"`
+	// SuggestedPostPaid is a service message: suggested post paid.
+	//
+	// optional
+	SuggestedPostPaid *SuggestedPostPaid `json:"suggested_post_paid,omitempty"`
+	// SuggestedPostRefunded is a service message: suggested post refunded.
+	//
+	// optional
+	SuggestedPostRefunded *SuggestedPostRefunded `json:"suggested_post_refunded,omitempty"`
 	// VideoChatScheduled is a service message: video chat scheduled.
 	//
 	// optional
@@ -944,12 +1203,12 @@ type Message struct {
 
 // Time converts the message timestamp into a Time.
 func (m *Message) Time() time.Time {
-	return time.Unix(int64(m.Date), 0)
+	return time.Unix(m.Date, 0)
 }
 
 // IsCommand returns true if message starts with a "bot_command" entity.
 func (m *Message) IsCommand() bool {
-	if m.Entities == nil || len(m.Entities) == 0 {
+	if len(m.Entities) == 0 {
 		return false
 	}
 
@@ -1059,7 +1318,19 @@ type MessageEntity struct {
 	// CustomEmojiID for "custom_emoji" only, unique identifier of the custom emoji
 	//
 	// optional
-	CustomEmojiID string `json:"custom_emoji_id"`
+	CustomEmojiID string `json:"custom_emoji_id,omitempty"`
+
+	// UnixTime Optional. For “date_time” only, the Unix time associated with the entity.
+	//
+	// optional
+	UnixTime int64 `json:"unix_time,omitempty"`
+
+	// DateTimeFormat Optional. For “date_time” only, the string that defines the formatting of the date and time.
+	// See date-time entity formatting for
+	// more details (https://core.telegram.org/bots/api#date-time-entity-formatting).
+	//
+	// optional
+	DateTimeFormat string `json:"date_time_format,omitempty"`
 }
 
 // ParseURL attempts to parse a URL contained within a MessageEntity.
@@ -1183,6 +1454,10 @@ type ExternalReplyInfo struct {
 	//
 	// optional
 	Photo []PhotoSize `json:"photo,omitempty"`
+	// LivePhoto message is a live photo, information about the live photo.
+	//
+	// optional
+	LivePhoto *LivePhoto `json:"live_photo,omitempty"`
 	// Sticker message is a sticker, information about the sticker;
 	//
 	// optional
@@ -1207,6 +1482,10 @@ type ExternalReplyInfo struct {
 	//
 	// optional
 	HasMediaSpoiler bool `json:"has_media_spoiler,omitempty"`
+	// Checklist is checklist content from the original message.
+	//
+	// optional
+	Checklist *Checklist `json:"checklist,omitempty"`
 	// Contact message is a shared contact, information about the contact;
 	//
 	// optional
@@ -1251,12 +1530,18 @@ type ExternalReplyInfo struct {
 type ReplyParameters struct {
 	// MessageID identifier of the message that will be replied to in
 	// the current chat, or in the chat chat_id if it is specified
-	MessageID int `json:"message_id"`
+	//
+	// optional if EphemeralMessageID is specified
+	MessageID int `json:"message_id,omitempty"`
 	// ChatID if the message to be replied to is from a different chat,
 	// unique identifier for the chat or username of the channel (in the format @channelusername)
 	//
 	// optional
-	ChatID interface{} `json:"chat_id,omitempty"`
+	ChatID any `json:"chat_id,omitempty"`
+	// EphemeralMessageID identifies the incoming ephemeral message to reply to.
+	//
+	// optional if MessageID is specified
+	EphemeralMessageID int `json:"ephemeral_message_id,omitempty"`
 	// AllowSendingWithoutReply true if the message should be sent even
 	// if the specified message to be replied to is not found;
 	// can be used only for replies in the same chat and forum topic.
@@ -1284,6 +1569,14 @@ type ReplyParameters struct {
 	//
 	// optional
 	QuotePosition int `json:"quote_position,omitempty"`
+	// ChecklistTaskID identifier of a checklist task to reply to.
+	//
+	// optional
+	ChecklistTaskID int `json:"checklist_task_id,omitempty"`
+	// PollOptionID is the persistent identifier of the poll option to reply to.
+	//
+	// optional
+	PollOptionID string `json:"poll_option_id,omitempty"`
 }
 
 const (
@@ -1355,6 +1648,32 @@ type PhotoSize struct {
 	// Height photo height
 	Height int `json:"height"`
 	// FileSize file size
+	//
+	// optional
+	FileSize int `json:"file_size,omitempty"`
+}
+
+// LivePhoto represents a live photo.
+type LivePhoto struct {
+	// Photo is available sizes of the static part of the live photo.
+	//
+	// optional
+	Photo []PhotoSize `json:"photo,omitempty"`
+	// FileID identifier for the live photo file, which can be used to download or reuse the file.
+	FileID string `json:"file_id"`
+	// FileUniqueID is the unique identifier for this file, which can't be used to download or reuse the file.
+	FileUniqueID string `json:"file_unique_id"`
+	// Width live photo width.
+	Width int `json:"width"`
+	// Height live photo height.
+	Height int `json:"height"`
+	// Duration of the video part of the live photo in seconds.
+	Duration int `json:"duration"`
+	// MimeType of the file as defined by sender.
+	//
+	// optional
+	MimeType string `json:"mime_type,omitempty"`
+	// FileSize file size.
 	//
 	// optional
 	FileSize int `json:"file_size,omitempty"`
@@ -1494,6 +1813,10 @@ type Video struct {
 	//
 	// optional
 	StartTimestamp int64 `json:"start_timestamp,omitempty"`
+	// Qualities is available quality versions for this video.
+	//
+	// optional
+	Qualities []VideoQuality `json:"qualities,omitempty"`
 	// FileName is the original filename as defined by sender
 	//
 	// optional
@@ -1559,6 +1882,7 @@ type PaidMediaInfo struct {
 }
 
 // This object describes paid media. Currently, it can be one of
+//   - PaidMediaLivePhoto
 //   - PaidMediaPreview
 //   - PaidMediaPhoto
 //   - PaidMediaVideo
@@ -1589,6 +1913,9 @@ type PaidMedia struct {
 	// PaidMediaVideo only.
 	// The video
 	Video *Video `json:"video,omitempty"`
+	// PaidMediaLivePhoto only.
+	// The live photo
+	LivePhoto *LivePhoto `json:"live_photo,omitempty"`
 }
 
 // Contact represents a phone contact.
@@ -1623,6 +1950,8 @@ type Dice struct {
 
 // PollOption contains information about one answer option in a poll.
 type PollOption struct {
+	// PersistentID is the unique identifier of the option.
+	PersistentID string `json:"persistent_id"`
 	// Text is the option text, 1-100 characters
 	Text string `json:"text"`
 	// Special entities that appear in the option text.
@@ -1630,8 +1959,24 @@ type PollOption struct {
 	//
 	// optional
 	TextEntities []MessageEntity `json:"text_entities,omitempty"`
+	// Media is media attached to the option.
+	//
+	// optional
+	Media *PollMedia `json:"media,omitempty"`
 	// VoterCount is the number of users that voted for this option
 	VoterCount int `json:"voter_count"`
+	// AddedByUser is the user who added the option.
+	//
+	// optional
+	AddedByUser *User `json:"added_by_user,omitempty"`
+	// AddedByChat is the chat that added the option.
+	//
+	// optional
+	AddedByChat *Chat `json:"added_by_chat,omitempty"`
+	// AdditionDate is the Unix time when the option was added.
+	//
+	// optional
+	AdditionDate int64 `json:"addition_date,omitempty"`
 }
 
 // InputPollOption contains information about one answer option in a poll to send.
@@ -1648,6 +1993,24 @@ type InputPollOption struct {
 	//
 	// optional
 	TextEntities []MessageEntity `json:"text_entities,omitempty"`
+	// Media is media attached to the option.
+	//
+	// optional
+	Media InputMedia `json:"media,omitempty"`
+}
+
+// PollMedia describes media attached to a poll or poll option.
+type PollMedia struct {
+	Animation *Animation  `json:"animation,omitempty"`
+	Audio     *Audio      `json:"audio,omitempty"`
+	Document  *Document   `json:"document,omitempty"`
+	Link      *Link       `json:"link,omitempty"`
+	LivePhoto *LivePhoto  `json:"live_photo,omitempty"`
+	Location  *Location   `json:"location,omitempty"`
+	Photo     []PhotoSize `json:"photo,omitempty"`
+	Sticker   *Sticker    `json:"sticker,omitempty"`
+	Venue     *Venue      `json:"venue,omitempty"`
+	Video     *Video      `json:"video,omitempty"`
 }
 
 // PollAnswer represents an answer of a user in a non-anonymous poll.
@@ -1667,13 +2030,16 @@ type PollAnswer struct {
 	// OptionIDs is the 0-based identifiers of poll options chosen by the user.
 	// May be empty if user retracted vote.
 	OptionIDs []int `json:"option_ids"`
+	// OptionPersistentIDs are persistent identifiers of poll options chosen by the user.
+	// May be empty if the vote was retracted.
+	OptionPersistentIDs []string `json:"option_persistent_ids"`
 }
 
 // Poll contains information about a poll.
 type Poll struct {
 	// ID is the unique poll identifier
 	ID string `json:"id"`
-	// Question is the poll question, 1-255 characters
+	// Question is the poll question, 1-300 characters
 	Question string `json:"question"`
 	// Special entities that appear in the question.
 	// Currently, only custom emoji entities are allowed in poll questions
@@ -1692,12 +2058,17 @@ type Poll struct {
 	Type string `json:"type"`
 	// AllowsMultipleAnswers is true, if the poll allows multiple answers
 	AllowsMultipleAnswers bool `json:"allows_multiple_answers"`
-	// CorrectOptionID is the 0-based identifier of the correct answer option.
-	// Available only for polls in quiz mode, which are closed, or was sent (not
+	// AllowsRevoting is true, if the poll allows changing chosen answer options.
+	AllowsRevoting bool `json:"allows_revoting"`
+	// CorrectOptionIDs are the 0-based identifiers of the correct answer options.
+	// Available only for polls in quiz mode, which are closed, or were sent (not
 	// forwarded) by the bot or to the private chat with the bot.
 	//
 	// optional
-	CorrectOptionID int `json:"correct_option_id,omitempty"`
+	CorrectOptionIDs []int `json:"correct_option_ids,omitempty"`
+	// CorrectOptionID preserves compatibility with older versions of the library.
+	// It is derived from CorrectOptionIDs when exactly one correct answer is present.
+	CorrectOptionID int `json:"-"`
 	// Explanation is text that is shown when a user chooses an incorrect answer
 	// or taps on the lamp icon in a quiz-style poll, 0-200 characters
 	//
@@ -1717,7 +2088,56 @@ type Poll struct {
 	// automatically closed
 	//
 	// optional
-	CloseDate int `json:"close_date,omitempty"`
+	CloseDate int64 `json:"close_date,omitempty"`
+	// Description is the poll description.
+	//
+	// optional
+	Description string `json:"description,omitempty"`
+	// DescriptionEntities are special entities appearing in the description.
+	//
+	// optional
+	DescriptionEntities []MessageEntity `json:"description_entities,omitempty"`
+	// ExplanationMedia is media attached to the quiz explanation.
+	//
+	// optional
+	ExplanationMedia *PollMedia `json:"explanation_media,omitempty"`
+	// Media is media attached to the poll.
+	//
+	// optional
+	Media *PollMedia `json:"media,omitempty"`
+	// MembersOnly is true if the poll is limited to chat members.
+	//
+	// optional
+	MembersOnly bool `json:"members_only,omitempty"`
+	// CountryCodes contains countries whose users can vote in the poll.
+	//
+	// optional
+	CountryCodes []string `json:"country_codes,omitempty"`
+}
+
+func (p *Poll) UnmarshalJSON(data []byte) error {
+	type pollAlias Poll
+	aux := struct {
+		*pollAlias
+		LegacyCorrectOptionID *int `json:"correct_option_id,omitempty"`
+	}{
+		pollAlias: (*pollAlias)(p),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	p.CorrectOptionID = 0
+	switch {
+	case len(p.CorrectOptionIDs) == 1:
+		p.CorrectOptionID = p.CorrectOptionIDs[0]
+	case len(p.CorrectOptionIDs) == 0 && aux.LegacyCorrectOptionID != nil:
+		p.CorrectOptionID = *aux.LegacyCorrectOptionID
+		p.CorrectOptionIDs = []int{*aux.LegacyCorrectOptionID}
+	}
+
+	return nil
 }
 
 // Location represents a point on the map.
@@ -1900,6 +2320,10 @@ type ForumTopicCreated struct {
 	//
 	// optional
 	IconCustomEmojiID string `json:"icon_custom_emoji_id,omitempty"`
+	// IsNameImplicit is true, if topic name is implicit.
+	//
+	// optional
+	IsNameImplicit bool `json:"is_name_implicit,omitempty"`
 }
 
 // ForumTopicClosed represents a service message about a forum topic
@@ -2014,12 +2438,12 @@ type WriteAccessAllowed struct {
 type VideoChatScheduled struct {
 	// Point in time (Unix timestamp) when the voice chat is supposed to be
 	// started by a chat administrator
-	StartDate int `json:"start_date"`
+	StartDate int64 `json:"start_date"`
 }
 
 // Time converts the scheduled start date into a Time.
 func (m *VideoChatScheduled) Time() time.Time {
-	return time.Unix(int64(m.StartDate), 0)
+	return time.Unix(m.StartDate, 0)
 }
 
 // VideoChatStarted represents a service message about a voice chat started in
@@ -2192,6 +2616,535 @@ type LinkPreviewOptions struct {
 	ShowAboveText bool `json:"show_above_text,omitempty"`
 }
 
+// Link represents an HTTP link.
+type Link struct {
+	URL string `json:"url"`
+}
+
+// RichMessage describes a rich formatted message.
+type RichMessage struct {
+	Blocks []RichBlock `json:"blocks"`
+	IsRTL  bool        `json:"is_rtl,omitempty"`
+}
+
+// InputRichMessage describes a rich message to be sent.
+type InputRichMessage struct {
+	Blocks              []InputRichBlock        `json:"blocks,omitempty"`
+	HTML                string                  `json:"html,omitempty"`
+	Markdown            string                  `json:"markdown,omitempty"`
+	Media               []InputRichMessageMedia `json:"media,omitempty"`
+	IsRTL               bool                    `json:"is_rtl,omitempty"`
+	SkipEntityDetection bool                    `json:"skip_entity_detection,omitempty"`
+}
+
+// InputRichMessageMedia describes media embedded in an outgoing rich message.
+type InputRichMessageMedia struct {
+	ID    string     `json:"id"`
+	Media InputMedia `json:"media"`
+}
+
+// RichText represents any rich formatted text value.
+type RichText any
+
+// RichTextBold describes bold text.
+type RichTextBold struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextItalic describes italic text.
+type RichTextItalic struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextUnderline describes underlined text.
+type RichTextUnderline struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextStrikethrough describes strikethrough text.
+type RichTextStrikethrough struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextSpoiler describes spoiler text.
+type RichTextSpoiler struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextDateTime describes formatted date and time text.
+type RichTextDateTime struct {
+	Type           string   `json:"type"`
+	Text           RichText `json:"text"`
+	UnixTime       int64    `json:"unix_time"`
+	DateTimeFormat string   `json:"date_time_format"`
+}
+
+// RichTextTextMention describes a rich text user mention.
+type RichTextTextMention struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+	User User     `json:"user"`
+}
+
+// RichTextSubscript describes subscript text.
+type RichTextSubscript struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextSuperscript describes superscript text.
+type RichTextSuperscript struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextMarked describes marked text.
+type RichTextMarked struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextCode describes monowidth text.
+type RichTextCode struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichTextCustomEmoji describes a custom emoji.
+type RichTextCustomEmoji struct {
+	Type            string `json:"type"`
+	CustomEmojiID   string `json:"custom_emoji_id"`
+	AlternativeText string `json:"alternative_text"`
+}
+
+// RichTextMathematicalExpression describes an inline mathematical expression.
+type RichTextMathematicalExpression struct {
+	Type       string `json:"type"`
+	Expression string `json:"expression"`
+}
+
+// RichTextUrl describes text with a link.
+type RichTextUrl struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+	URL  string   `json:"url"`
+}
+
+// RichTextEmailAddress describes text with an email address.
+type RichTextEmailAddress struct {
+	Type         string   `json:"type"`
+	Text         RichText `json:"text"`
+	EmailAddress string   `json:"email_address"`
+}
+
+// RichTextPhoneNumber describes text with a phone number.
+type RichTextPhoneNumber struct {
+	Type        string   `json:"type"`
+	Text        RichText `json:"text"`
+	PhoneNumber string   `json:"phone_number"`
+}
+
+// RichTextBankCardNumber describes text with a bank card number.
+type RichTextBankCardNumber struct {
+	Type           string   `json:"type"`
+	Text           RichText `json:"text"`
+	BankCardNumber string   `json:"bank_card_number"`
+}
+
+// RichTextMention describes text with a username mention.
+type RichTextMention struct {
+	Type     string   `json:"type"`
+	Text     RichText `json:"text"`
+	Username string   `json:"username"`
+}
+
+// RichTextHashtag describes text with a hashtag.
+type RichTextHashtag struct {
+	Type    string   `json:"type"`
+	Text    RichText `json:"text"`
+	Hashtag string   `json:"hashtag"`
+}
+
+// RichTextCashtag describes text with a cashtag.
+type RichTextCashtag struct {
+	Type    string   `json:"type"`
+	Text    RichText `json:"text"`
+	Cashtag string   `json:"cashtag"`
+}
+
+// RichTextBotCommand describes text with a bot command.
+type RichTextBotCommand struct {
+	Type       string   `json:"type"`
+	Text       RichText `json:"text"`
+	BotCommand string   `json:"bot_command"`
+}
+
+// RichTextAnchor describes an anchor.
+type RichTextAnchor struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// RichTextAnchorLink describes text linking to an anchor.
+type RichTextAnchorLink struct {
+	Type       string   `json:"type"`
+	Text       RichText `json:"text"`
+	AnchorName string   `json:"anchor_name"`
+}
+
+// RichTextReference describes text with a reference name.
+type RichTextReference struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+	Name string   `json:"name"`
+}
+
+// RichTextReferenceLink describes text linking to a reference.
+type RichTextReferenceLink struct {
+	Type          string   `json:"type"`
+	Text          RichText `json:"text"`
+	ReferenceName string   `json:"reference_name"`
+}
+
+// RichBlockCaption describes a rich block caption.
+type RichBlockCaption struct {
+	Text   RichText `json:"text"`
+	Credit RichText `json:"credit,omitempty"`
+}
+
+// RichBlockTableCell describes a rich table cell.
+type RichBlockTableCell struct {
+	Text     RichText `json:"text,omitempty"`
+	IsHeader bool     `json:"is_header,omitempty"`
+	Colspan  int      `json:"colspan,omitempty"`
+	Rowspan  int      `json:"rowspan,omitempty"`
+	Align    string   `json:"align"`
+	Valign   string   `json:"valign"`
+}
+
+// RichBlockListItem describes an item in a rich list.
+type RichBlockListItem struct {
+	Label       string      `json:"label"`
+	Blocks      []RichBlock `json:"blocks"`
+	HasCheckbox bool        `json:"has_checkbox,omitempty"`
+	IsChecked   bool        `json:"is_checked,omitempty"`
+	Value       int         `json:"value,omitempty"`
+	Type        string      `json:"type,omitempty"`
+}
+
+// RichBlock represents any rich message block.
+type RichBlock any
+
+// RichBlockParagraph describes a paragraph block.
+type RichBlockParagraph struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichBlockSectionHeading describes a heading block.
+type RichBlockSectionHeading struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+	Size int      `json:"size"`
+}
+
+// RichBlockPreformatted describes a preformatted block.
+type RichBlockPreformatted struct {
+	Type     string   `json:"type"`
+	Text     RichText `json:"text"`
+	Language string   `json:"language,omitempty"`
+}
+
+// RichBlockFooter describes a footer block.
+type RichBlockFooter struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// RichBlockDivider describes a divider block.
+type RichBlockDivider struct {
+	Type string `json:"type"`
+}
+
+// RichBlockMathematicalExpression describes a block mathematical expression.
+type RichBlockMathematicalExpression struct {
+	Type       string `json:"type"`
+	Expression string `json:"expression"`
+}
+
+// RichBlockAnchor describes an anchor block.
+type RichBlockAnchor struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// RichBlockList describes a list block.
+type RichBlockList struct {
+	Type  string              `json:"type"`
+	Items []RichBlockListItem `json:"items"`
+}
+
+// RichBlockBlockQuotation describes a block quotation.
+type RichBlockBlockQuotation struct {
+	Type   string      `json:"type"`
+	Blocks []RichBlock `json:"blocks"`
+	Credit RichText    `json:"credit,omitempty"`
+}
+
+// RichBlockPullQuotation describes a pull quotation.
+type RichBlockPullQuotation struct {
+	Type   string   `json:"type"`
+	Text   RichText `json:"text"`
+	Credit RichText `json:"credit,omitempty"`
+}
+
+// RichBlockCollage describes a collage block.
+type RichBlockCollage struct {
+	Type    string            `json:"type"`
+	Blocks  []RichBlock       `json:"blocks"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockSlideshow describes a slideshow block.
+type RichBlockSlideshow struct {
+	Type    string            `json:"type"`
+	Blocks  []RichBlock       `json:"blocks"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockTable describes a table block.
+type RichBlockTable struct {
+	Type       string                 `json:"type"`
+	Cells      [][]RichBlockTableCell `json:"cells"`
+	IsBordered bool                   `json:"is_bordered,omitempty"`
+	IsStriped  bool                   `json:"is_striped,omitempty"`
+	Caption    RichText               `json:"caption,omitempty"`
+}
+
+// RichBlockDetails describes an expandable details block.
+type RichBlockDetails struct {
+	Type    string      `json:"type"`
+	Summary RichText    `json:"summary"`
+	Blocks  []RichBlock `json:"blocks"`
+	IsOpen  bool        `json:"is_open,omitempty"`
+}
+
+// RichBlockMap describes a map block.
+type RichBlockMap struct {
+	Type     string            `json:"type"`
+	Location Location          `json:"location"`
+	Zoom     int               `json:"zoom"`
+	Width    int               `json:"width"`
+	Height   int               `json:"height"`
+	Caption  *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockAnimation describes an animation block.
+type RichBlockAnimation struct {
+	Type       string            `json:"type"`
+	Animation  Animation         `json:"animation"`
+	HasSpoiler bool              `json:"has_spoiler,omitempty"`
+	Caption    *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockAudio describes an audio block.
+type RichBlockAudio struct {
+	Type    string            `json:"type"`
+	Audio   Audio             `json:"audio"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockPhoto describes a photo block.
+type RichBlockPhoto struct {
+	Type       string            `json:"type"`
+	Photo      []PhotoSize       `json:"photo"`
+	HasSpoiler bool              `json:"has_spoiler,omitempty"`
+	Caption    *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockVideo describes a video block.
+type RichBlockVideo struct {
+	Type       string            `json:"type"`
+	Video      Video             `json:"video"`
+	HasSpoiler bool              `json:"has_spoiler,omitempty"`
+	Caption    *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockVoiceNote describes a voice note block.
+type RichBlockVoiceNote struct {
+	Type      string            `json:"type"`
+	VoiceNote Voice             `json:"voice_note"`
+	Caption   *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockThinking describes a thinking placeholder block.
+type RichBlockThinking struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// InputRichBlockListItem describes an item in an outgoing rich list.
+type InputRichBlockListItem struct {
+	Blocks      []InputRichBlock `json:"blocks"`
+	HasCheckbox bool             `json:"has_checkbox,omitempty"`
+	IsChecked   bool             `json:"is_checked,omitempty"`
+	Value       int              `json:"value,omitempty"`
+	Type        string           `json:"type,omitempty"`
+}
+
+// InputRichBlock represents any outgoing rich message block.
+type InputRichBlock any
+
+// InputRichBlockParagraph describes an outgoing paragraph block.
+type InputRichBlockParagraph struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// InputRichBlockSectionHeading describes an outgoing heading block.
+type InputRichBlockSectionHeading struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+	Size int      `json:"size"`
+}
+
+// InputRichBlockPreformatted describes an outgoing preformatted block.
+type InputRichBlockPreformatted struct {
+	Type     string   `json:"type"`
+	Text     RichText `json:"text"`
+	Language string   `json:"language,omitempty"`
+}
+
+// InputRichBlockFooter describes an outgoing footer block.
+type InputRichBlockFooter struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
+// InputRichBlockDivider describes an outgoing divider block.
+type InputRichBlockDivider struct {
+	Type string `json:"type"`
+}
+
+// InputRichBlockMathematicalExpression describes an outgoing mathematical expression block.
+type InputRichBlockMathematicalExpression struct {
+	Type       string `json:"type"`
+	Expression string `json:"expression"`
+}
+
+// InputRichBlockAnchor describes an outgoing anchor block.
+type InputRichBlockAnchor struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// InputRichBlockList describes an outgoing list block.
+type InputRichBlockList struct {
+	Type  string                   `json:"type"`
+	Items []InputRichBlockListItem `json:"items"`
+}
+
+// InputRichBlockBlockQuotation describes an outgoing block quotation.
+type InputRichBlockBlockQuotation struct {
+	Type   string           `json:"type"`
+	Blocks []InputRichBlock `json:"blocks"`
+	Credit RichText         `json:"credit,omitempty"`
+}
+
+// InputRichBlockPullQuotation describes an outgoing pull quotation.
+type InputRichBlockPullQuotation struct {
+	Type   string   `json:"type"`
+	Text   RichText `json:"text"`
+	Credit RichText `json:"credit,omitempty"`
+}
+
+// InputRichBlockCollage describes an outgoing collage block.
+type InputRichBlockCollage struct {
+	Type    string            `json:"type"`
+	Blocks  []InputRichBlock  `json:"blocks"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockSlideshow describes an outgoing slideshow block.
+type InputRichBlockSlideshow struct {
+	Type    string            `json:"type"`
+	Blocks  []InputRichBlock  `json:"blocks"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockTable describes an outgoing table block.
+type InputRichBlockTable struct {
+	Type       string                 `json:"type"`
+	Cells      [][]RichBlockTableCell `json:"cells"`
+	IsBordered bool                   `json:"is_bordered,omitempty"`
+	IsStriped  bool                   `json:"is_striped,omitempty"`
+	Caption    RichText               `json:"caption,omitempty"`
+}
+
+// InputRichBlockDetails describes an outgoing details block.
+type InputRichBlockDetails struct {
+	Type    string           `json:"type"`
+	Summary RichText         `json:"summary"`
+	Blocks  []InputRichBlock `json:"blocks"`
+	IsOpen  bool             `json:"is_open,omitempty"`
+}
+
+// InputRichBlockMap describes an outgoing map block.
+type InputRichBlockMap struct {
+	Type     string            `json:"type"`
+	Location Location          `json:"location"`
+	Zoom     int               `json:"zoom"`
+	Width    int               `json:"width"`
+	Height   int               `json:"height"`
+	Caption  *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockAnimation describes an outgoing animation block.
+type InputRichBlockAnimation struct {
+	Type      string              `json:"type"`
+	Animation InputMediaAnimation `json:"animation"`
+	Caption   *RichBlockCaption   `json:"caption,omitempty"`
+}
+
+// InputRichBlockAudio describes an outgoing audio block.
+type InputRichBlockAudio struct {
+	Type    string            `json:"type"`
+	Audio   InputMediaAudio   `json:"audio"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockPhoto describes an outgoing photo block.
+type InputRichBlockPhoto struct {
+	Type    string            `json:"type"`
+	Photo   InputMediaPhoto   `json:"photo"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockVideo describes an outgoing video block.
+type InputRichBlockVideo struct {
+	Type    string            `json:"type"`
+	Video   InputMediaVideo   `json:"video"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockVoiceNote describes an outgoing voice note block.
+type InputRichBlockVoiceNote struct {
+	Type      string              `json:"type"`
+	VoiceNote InputMediaVoiceNote `json:"voice_note"`
+	Caption   *RichBlockCaption   `json:"caption,omitempty"`
+}
+
+// InputRichBlockThinking describes an outgoing thinking placeholder block.
+type InputRichBlockThinking struct {
+	Type string   `json:"type"`
+	Text RichText `json:"text"`
+}
+
 // UserProfilePhotos contains a set of user profile photos.
 type UserProfilePhotos struct {
 	// TotalCount total number of profile pictures the target user has
@@ -2285,6 +3238,14 @@ type KeyboardButton struct {
 	// Text of the button. If none of the optional fields are used,
 	// it will be sent as a message when the button is pressed.
 	Text string `json:"text"`
+	// IconCustomEmojiID is identifier of a custom emoji shown on the button.
+	//
+	// optional
+	IconCustomEmojiID string `json:"icon_custom_emoji_id,omitempty"`
+	// Style of the keyboard button.
+	//
+	// optional
+	Style string `json:"style,omitempty"`
 	// RequestUsers if specified, pressing the button will open
 	// a list of suitable users. Tapping on any user will send
 	// their identifier to the bot in a "user_shared" service message.
@@ -2299,6 +3260,10 @@ type KeyboardButton struct {
 	//
 	// optional
 	RequestChat *KeyboardButtonRequestChat `json:"request_chat,omitempty"`
+	// RequestManagedBot asks the user to create and share a managed bot.
+	//
+	// optional
+	RequestManagedBot *KeyboardButtonRequestManagedBot `json:"request_managed_bot,omitempty"`
 	// RequestContact if True, the user's phone number will be sent
 	// as a contact when the button is pressed.
 	// Available in private chats only.
@@ -2419,6 +3384,20 @@ type KeyboardButtonRequestChat struct {
 	RequestPhoto bool `json:"request_photo,omitempty"`
 }
 
+// KeyboardButtonRequestManagedBot defines the parameters for the creation of a managed bot.
+type KeyboardButtonRequestManagedBot struct {
+	// RequestID is a signed 32-bit identifier of the request.
+	RequestID int `json:"request_id"`
+	// SuggestedName is a suggested name for the bot.
+	//
+	// optional
+	SuggestedName string `json:"suggested_name,omitempty"`
+	// SuggestedUsername is a suggested username for the bot.
+	//
+	// optional
+	SuggestedUsername string `json:"suggested_username,omitempty"`
+}
+
 // KeyboardButtonPollType represents type of poll, which is allowed to
 // be created and sent when the corresponding button is pressed.
 type KeyboardButtonPollType struct {
@@ -2470,6 +3449,14 @@ type InlineKeyboardMarkup struct {
 type InlineKeyboardButton struct {
 	// Text label text on the button
 	Text string `json:"text"`
+	// IconCustomEmojiID is identifier of a custom emoji shown on the button.
+	//
+	// optional
+	IconCustomEmojiID string `json:"icon_custom_emoji_id,omitempty"`
+	// Style of the inline keyboard button.
+	//
+	// optional
+	Style string `json:"style,omitempty"`
 	// URL HTTP or tg:// url to be opened when button is pressed.
 	// Links tg://user?id=<user_id> can be used to mention a user by their identifier without using a username,
 	// if this is allowed by their privacy settings.
@@ -2696,7 +3683,7 @@ type ChatInviteLink struct {
 	// expire or has been expired.
 	//
 	// optional
-	ExpireDate int `json:"expire_date,omitempty"`
+	ExpireDate int64 `json:"expire_date,omitempty"`
 	// MemberLimit is the maximum number of users that can be members of the
 	// chat simultaneously after joining the chat via this invite link; 1-99999.
 	//
@@ -2721,21 +3708,23 @@ type ChatInviteLink struct {
 }
 
 type ChatAdministratorRights struct {
-	IsAnonymous         bool `json:"is_anonymous"`
-	CanManageChat       bool `json:"can_manage_chat"`
-	CanDeleteMessages   bool `json:"can_delete_messages"`
-	CanManageVideoChats bool `json:"can_manage_video_chats"`
-	CanRestrictMembers  bool `json:"can_restrict_members"`
-	CanPromoteMembers   bool `json:"can_promote_members"`
-	CanChangeInfo       bool `json:"can_change_info"`
-	CanInviteUsers      bool `json:"can_invite_users"`
-	CanPostMessages     bool `json:"can_post_messages"`
-	CanEditMessages     bool `json:"can_edit_messages"`
-	CanPinMessages      bool `json:"can_pin_messages"`
-	CanPostStories      bool `json:"can_post_stories"`
-	CanEditStories      bool `json:"can_edit_stories"`
-	CanDeleteStories    bool `json:"can_delete_stories"`
-	CanManageTopics     bool `json:"can_manage_topics"`
+	IsAnonymous             bool `json:"is_anonymous"`
+	CanManageChat           bool `json:"can_manage_chat"`
+	CanDeleteMessages       bool `json:"can_delete_messages"`
+	CanManageVideoChats     bool `json:"can_manage_video_chats"`
+	CanRestrictMembers      bool `json:"can_restrict_members"`
+	CanPromoteMembers       bool `json:"can_promote_members"`
+	CanChangeInfo           bool `json:"can_change_info"`
+	CanInviteUsers          bool `json:"can_invite_users"`
+	CanPostMessages         bool `json:"can_post_messages"`
+	CanEditMessages         bool `json:"can_edit_messages"`
+	CanPinMessages          bool `json:"can_pin_messages"`
+	CanPostStories          bool `json:"can_post_stories"`
+	CanEditStories          bool `json:"can_edit_stories"`
+	CanDeleteStories        bool `json:"can_delete_stories"`
+	CanManageTopics         bool `json:"can_manage_topics"`
+	CanManageDirectMessages bool `json:"can_manage_direct_messages,omitempty"`
+	CanManageTags           bool `json:"can_manage_tags,omitempty"`
 }
 
 // ChatMember contains information about one member of a chat.
@@ -2770,6 +3759,11 @@ type ChatMember struct {
 	//
 	// optional
 	UntilDate int64 `json:"until_date,omitempty"`
+	// Tag Optional. Tag of the member.
+	// Added at 01.03.2026 the field tag to the classes ChatMemberMember and ChatMemberRestricted.
+	//
+	// optional
+	Tag string `json:"tag,omitempty"`
 	// CanBeEdited administrators only.
 	// True, if the bot is allowed to edit administrator privileges of that user.
 	//
@@ -2853,6 +3847,11 @@ type ChatMember struct {
 	//
 	// optional
 	CanManageTopics bool `json:"can_manage_topics,omitempty"`
+	// CanManageDirectMessages administrators only.
+	// True, if the administrator can manage direct messages of the channel and decline suggested posts.
+	//
+	// optional
+	CanManageDirectMessages bool `json:"can_manage_direct_messages,omitempty"`
 	// IsMember is true, if the user is a member of the chat at the moment of
 	// the request
 	IsMember bool `json:"is_member"`
@@ -2895,6 +3894,11 @@ type ChatMember struct {
 	//
 	// optional
 	CanSendPolls bool `json:"can_send_polls,omitempty"`
+	// CanReactToMessages restricted only.
+	// True, if the user is allowed to react to messages.
+	//
+	// optional
+	CanReactToMessages bool `json:"can_react_to_messages,omitempty"`
 	// CanSendOtherMessages restricted only.
 	// True, if the user is allowed to send audios, documents,
 	// photos, videos, video notes and voice notes.
@@ -2906,6 +3910,16 @@ type ChatMember struct {
 	//
 	// optional
 	CanAddWebPagePreviews bool `json:"can_add_web_page_previews,omitempty"`
+	// CanManageTags Optional. True, if the administrator can edit the tags of regular members;
+	// for groups and supergroups only.
+	// If omitted defaults to the value of can_pin_messages.
+	//
+	// optional
+	CanManageTags bool `json:"can_manage_tags,omitempty"`
+	// CanEditTag True, if the user is allowed to edit their own tag.
+	//
+	// optional
+	CanEditTag bool `json:"can_edit_tag,omitempty"`
 }
 
 // IsCreator returns if the ChatMember was the creator of the chat.
@@ -2948,7 +3962,7 @@ type ChatMemberUpdated struct {
 	// From is the performer of the action, which resulted in the change.
 	From User `json:"from"`
 	// Date the change was done in Unix time.
-	Date int `json:"date"`
+	Date int64 `json:"date"`
 	// Previous information about the chat member.
 	OldChatMember ChatMember `json:"old_chat_member"`
 	// New information about the chat member.
@@ -2980,7 +3994,7 @@ type ChatJoinRequest struct {
 	// UserChatID identifier of a private chat with the user who sent the join request.
 	UserChatID int64 `json:"user_chat_id"`
 	// Date the request was sent in Unix time.
-	Date int `json:"date"`
+	Date int64 `json:"date"`
 	// Bio of the user.
 	//
 	// optional
@@ -2989,6 +4003,10 @@ type ChatJoinRequest struct {
 	//
 	// optional
 	InviteLink *ChatInviteLink `json:"invite_link,omitempty"`
+	// QueryID is the identifier of the join request query.
+	//
+	// optional
+	QueryID string `json:"query_id,omitempty"`
 }
 
 // ChatPermissions describes actions that a non-administrator user is
@@ -3028,6 +4046,10 @@ type ChatPermissions struct {
 	//
 	// optional
 	CanSendPolls bool `json:"can_send_polls,omitempty"`
+	// CanReactToMessages is true, if the user is allowed to react to messages.
+	//
+	// optional
+	CanReactToMessages bool `json:"can_react_to_messages,omitempty"`
 	// CanSendOtherMessages is true, if the user is allowed to send animations,
 	// games, stickers and use inline bots, implies can_send_media_messages
 	//
@@ -3038,6 +4060,10 @@ type ChatPermissions struct {
 	//
 	// optional
 	CanAddWebPagePreviews bool `json:"can_add_web_page_previews,omitempty"`
+	// CanEditTag Optional. True, if the user is allowed to edit their own tag.
+	//
+	// optional
+	CanEditTag bool `json:"can_edit_tag,omitempty"`
 	// CanChangeInfo is true, if the user is allowed to change the chat title,
 	// photo and other settings. Ignored in public supergroups
 	//
@@ -3234,6 +4260,10 @@ type ForumTopic struct {
 	//
 	// optional
 	IconCustomEmojiID string `json:"icon_custom_emoji_id,omitempty"`
+	// IsNameImplicit is true, if topic name is implicit.
+	//
+	// optional
+	IsNameImplicit bool `json:"is_name_implicit,omitempty"`
 }
 
 // Gift object represents a gift that can be sent by the bot.
@@ -3250,6 +4280,14 @@ type Gift struct {
 	//
 	// optional
 	UpgradeStarCount int `json:"upgrade_star_count,omitempty"`
+	// IsPremium is true for premium gifts.
+	//
+	// optional
+	IsPremium bool `json:"is_premium,omitempty"`
+	// HasColors is true if gift has custom colors.
+	//
+	// optional
+	HasColors bool `json:"has_colors,omitempty"`
 	// TotalCount is the total number of the gifts of this type that
 	// can be sent; for limited gifts only
 	//
@@ -3260,6 +4298,26 @@ type Gift struct {
 	//
 	// optional
 	RemainingCount int `json:"remaining_count,omitempty"`
+	// PersonalTotalCount is total number of gifts available for the current user.
+	//
+	// optional
+	PersonalTotalCount int `json:"personal_total_count,omitempty"`
+	// PersonalRemainingCount is remaining number of gifts available for the current user.
+	//
+	// optional
+	PersonalRemainingCount int `json:"personal_remaining_count,omitempty"`
+	// Background is the background information of the gift.
+	//
+	// optional
+	Background *GiftBackground `json:"background,omitempty"`
+	// UniqueGiftVariantCount is amount of unique variants for this gift.
+	//
+	// optional
+	UniqueGiftVariantCount int `json:"unique_gift_variant_count,omitempty"`
+	// PublisherChat is a chat that published this gift.
+	//
+	// optional
+	PublisherChat *Chat `json:"publisher_chat,omitempty"`
 }
 
 // Gifts object represents a list of gifts.
@@ -3275,6 +4333,10 @@ type BotCommand struct {
 	Command string `json:"command"`
 	// Description of the command, 3-256 characters.
 	Description string `json:"description"`
+	// IsEphemeral is true if the command sends an ephemeral message.
+	//
+	// optional
+	IsEphemeral bool `json:"is_ephemeral,omitempty"`
 }
 
 // BotCommandScope represents the scope to which bot commands are applied.
@@ -3414,9 +4476,15 @@ type BusinessConnection struct {
 	UserChatID int64 `json:"user_chat_id"`
 	// Date the connection was established in Unix time
 	Date int64 `json:"date"`
+	// Rights are permissions granted to the bot in the business account.
+	//
+	// optional
+	Rights *BusinessBotRights `json:"rights,omitempty"`
 	// CanReply is True, if the bot can act on behalf of the
 	// business account in chats that were active in the last 24 hours
-	CanReply bool `json:"can_reply"`
+	//
+	// optional
+	CanReply bool `json:"can_reply,omitempty"`
 	// IsEnabled is True, if the connection is active
 	IsEnabled bool `json:"is_enabled"`
 }
@@ -3565,6 +4633,9 @@ func (media *InputPaidMedia) getType() string {
 
 // getMedia returns the media file data
 func (media *InputPaidMedia) getMedia() RequestFileData {
+	if media.Media == nil {
+		return nil
+	}
 	return media.Media.getMedia()
 }
 
@@ -3573,11 +4644,17 @@ func (media *InputPaidMedia) getThumb() RequestFileData {
 	if media.Thumb != nil {
 		return media.Thumb
 	}
+	if media.Media == nil {
+		return nil
+	}
 	return media.Media.getThumb()
 }
 
 // setUploadMedia sets the media to a file attachment reference
 func (media *InputPaidMedia) setUploadMedia(fileRef string) {
+	if media.Media == nil {
+		return
+	}
 	media.Media.setUploadMedia(fileRef)
 }
 
@@ -3588,26 +4665,41 @@ func (media *InputPaidMedia) setUploadThumb(fileRef string) {
 
 // getType returns the type of the input paid media
 func (media *PaidMediaConfig) getType() string {
+	if media.Media == nil {
+		return ""
+	}
 	return media.Media.getType()
 }
 
 // getMedia returns the media file data
 func (media *PaidMediaConfig) getMedia() RequestFileData {
+	if media.Media == nil {
+		return nil
+	}
 	return media.Media.getMedia()
 }
 
 // getThumb returns the thumbnail for the paid media
 func (media *PaidMediaConfig) getThumb() RequestFileData {
+	if media.Media == nil {
+		return nil
+	}
 	return media.Media.getThumb()
 }
 
 // setUploadMedia sets the media to a file attachment reference
 func (media *PaidMediaConfig) setUploadMedia(fileRef string) {
+	if media.Media == nil {
+		return
+	}
 	media.Media.setUploadMedia(fileRef)
 }
 
 // setUploadThumb sets the thumbnail to a file attachment reference
 func (media *PaidMediaConfig) setUploadThumb(fileRef string) {
+	if media.Media == nil {
+		return
+	}
 	media.Media.setUploadThumb(fileRef)
 }
 
@@ -3718,7 +4810,146 @@ type InputMediaDocument struct {
 	DisableContentTypeDetection bool `json:"disable_content_type_detection,omitempty"`
 }
 
+// InputMediaVoiceNote represents a voice message file to send.
+type InputMediaVoiceNote struct {
+	BaseInputMedia
+	// Duration of the voice message in seconds.
+	//
+	// optional
+	Duration int `json:"duration,omitempty"`
+}
+
+// InputMediaLivePhoto represents a live photo to send.
+type InputMediaLivePhoto struct {
+	BaseInputMedia
+	Photo RequestFileData `json:"photo"`
+}
+
+func (media *InputMediaLivePhoto) getType() string {
+	return media.Type
+}
+
+func (media *InputMediaLivePhoto) getMedia() RequestFileData {
+	return media.Media
+}
+
+func (media *InputMediaLivePhoto) getThumb() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaLivePhoto) setUploadMedia(fileRef string) {
+	media.Media = fileAttach(fileRef)
+}
+
+func (media *InputMediaLivePhoto) setUploadThumb(_ string) {}
+
+// InputMediaLocation represents a location to send.
+type InputMediaLocation struct {
+	Type               string  `json:"type"`
+	Latitude           float64 `json:"latitude"`
+	Longitude          float64 `json:"longitude"`
+	HorizontalAccuracy float64 `json:"horizontal_accuracy,omitempty"`
+}
+
+func (media *InputMediaLocation) getType() string {
+	return media.Type
+}
+
+func (media *InputMediaLocation) getMedia() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaLocation) getThumb() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaLocation) setUploadMedia(_ string) {}
+
+func (media *InputMediaLocation) setUploadThumb(_ string) {}
+
+// InputMediaVenue represents a venue to send.
+type InputMediaVenue struct {
+	Type            string  `json:"type"`
+	Latitude        float64 `json:"latitude"`
+	Longitude       float64 `json:"longitude"`
+	Title           string  `json:"title"`
+	Address         string  `json:"address"`
+	FoursquareID    string  `json:"foursquare_id,omitempty"`
+	FoursquareType  string  `json:"foursquare_type,omitempty"`
+	GooglePlaceID   string  `json:"google_place_id,omitempty"`
+	GooglePlaceType string  `json:"google_place_type,omitempty"`
+}
+
+func (media *InputMediaVenue) getType() string {
+	return media.Type
+}
+
+func (media *InputMediaVenue) getMedia() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaVenue) getThumb() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaVenue) setUploadMedia(_ string) {}
+
+func (media *InputMediaVenue) setUploadThumb(_ string) {}
+
+// InputMediaLink represents an HTTP link to send as poll option media.
+type InputMediaLink struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+func (media *InputMediaLink) getType() string {
+	return media.Type
+}
+
+func (media *InputMediaLink) getMedia() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaLink) getThumb() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaLink) setUploadMedia(_ string) {}
+
+func (media *InputMediaLink) setUploadThumb(_ string) {}
+
+// InputMediaSticker represents a sticker file to send.
+type InputMediaSticker struct {
+	Type  string          `json:"type"`
+	Media RequestFileData `json:"media"`
+	Emoji string          `json:"emoji,omitempty"`
+}
+
+func (media *InputMediaSticker) getType() string {
+	return media.Type
+}
+
+func (media *InputMediaSticker) getMedia() RequestFileData {
+	return media.Media
+}
+
+func (media *InputMediaSticker) getThumb() RequestFileData {
+	return nil
+}
+
+func (media *InputMediaSticker) setUploadMedia(fileRef string) {
+	media.Media = fileAttach(fileRef)
+}
+
+func (media *InputMediaSticker) setUploadThumb(_ string) {}
+
+type (
+	InputPollMedia       = InputMedia
+	InputPollOptionMedia = InputMedia
+)
+
 // This object describes the paid media to be sent. Currently, it can be one of:
+//   - InputPaidMediaLivePhoto
 //   - InputPaidMediaPhoto
 //   - InputPaidMediaVideo
 type InputPaidMedia struct {
@@ -3730,7 +4961,12 @@ type InputPaidMedia struct {
 	// pass an HTTP URL for Telegram to get a file from the Internet,
 	// or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name.
 	// More information on https://core.telegram.org/bots/api#sending-files
-	Media InputMedia
+	Media InputMedia `json:"media"`
+	// InputPaidMediaLivePhoto only.
+	// Static photo for the live photo.
+	//
+	// optional
+	Photo RequestFileData `json:"photo,omitempty"`
 	// InputPaidMediaVideo only.
 	// Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side.
 	// The thumbnail should be in JPEG format and less than 200 kB in size.
@@ -3768,6 +5004,73 @@ type InputPaidMedia struct {
 	// InputPaidMediaVideo only.
 	// Pass True if the uploaded video is suitable for streaming
 	SupportsStreaming bool `json:"supports_streaming,omitempty"`
+}
+
+func (media InputPaidMedia) MarshalJSON() ([]byte, error) {
+	type inputPaidMediaJSON struct {
+		Type              string          `json:"type"`
+		Media             RequestFileData `json:"media"`
+		Photo             RequestFileData `json:"photo,omitempty"`
+		Thumb             RequestFileData `json:"thumbnail,omitempty"`
+		Cover             string          `json:"cover,omitempty"`
+		StartTimestamp    int64           `json:"start_timestamp,omitempty"`
+		Width             int64           `json:"width,omitempty"`
+		Height            int64           `json:"height,omitempty"`
+		Duration          int64           `json:"duration,omitempty"`
+		SupportsStreaming bool            `json:"supports_streaming,omitempty"`
+	}
+
+	out := inputPaidMediaJSON{
+		Type:              media.Type,
+		Thumb:             media.Thumb,
+		Photo:             media.Photo,
+		Cover:             media.Cover,
+		StartTimestamp:    media.StartTimestamp,
+		Width:             media.Width,
+		Height:            media.Height,
+		Duration:          media.Duration,
+		SupportsStreaming: media.SupportsStreaming,
+	}
+	if out.Type == "" && media.Media != nil {
+		out.Type = media.Media.getType()
+	}
+
+	switch input := media.Media.(type) {
+	case *InputMediaPhoto:
+		out.Media = input.Media
+	case *InputMediaVideo:
+		out.Media = input.Media
+		if out.Thumb == nil {
+			out.Thumb = input.Thumb
+		}
+		if out.Cover == "" {
+			out.Cover = input.Cover
+		}
+		if out.StartTimestamp == 0 {
+			out.StartTimestamp = input.StartTimestamp
+		}
+		if out.Width == 0 {
+			out.Width = int64(input.Width)
+		}
+		if out.Height == 0 {
+			out.Height = int64(input.Height)
+		}
+		if out.Duration == 0 {
+			out.Duration = int64(input.Duration)
+		}
+		out.SupportsStreaming = out.SupportsStreaming || input.SupportsStreaming
+	case *InputMediaLivePhoto:
+		out.Media = input.Media
+		if input.Photo != nil {
+			out.Photo = input.Photo
+		}
+	default:
+		if media.Media != nil {
+			out.Media = media.Media.getMedia()
+		}
+	}
+
+	return json.Marshal(out)
 }
 
 // Constant values for sticker types
@@ -3922,6 +5225,32 @@ type InputSticker struct {
 	Keywords []string `json:"keywords"`
 }
 
+func (sticker InputSticker) MarshalJSON() ([]byte, error) {
+	out := map[string]any{
+		"format":     sticker.Format,
+		"emoji_list": sticker.EmojiList,
+	}
+	if sticker.Sticker.Data != nil {
+		if sticker.Sticker.Data.NeedsUpload() {
+			name := sticker.Sticker.Name
+			if name == "" {
+				name = "sticker"
+			}
+			out["sticker"] = "attach://" + name
+		} else {
+			out["sticker"] = sticker.Sticker.Data.SendData()
+		}
+	}
+	if sticker.MaskPosition != nil {
+		out["mask_position"] = sticker.MaskPosition
+	}
+	if sticker.Keywords != nil {
+		out["keywords"] = sticker.Keywords
+	}
+
+	return json.Marshal(out)
+}
+
 // Game represents a game. Use BotFather to create and edit games, their short
 // names will act as unique identifiers.
 type Game struct {
@@ -4003,7 +5332,7 @@ type WebhookInfo struct {
 	// that happened when trying to deliver an update via webhook.
 	//
 	// optional
-	LastErrorDate int `json:"last_error_date,omitempty"`
+	LastErrorDate int64 `json:"last_error_date,omitempty"`
 	// LastErrorMessage error message in human-readable format for the most recent error
 	// that happened when trying to deliver an update via webhook.
 	//
@@ -4011,7 +5340,7 @@ type WebhookInfo struct {
 	LastErrorMessage string `json:"last_error_message,omitempty"`
 	// LastSynchronizationErrorDate is the unix time of the most recent error that
 	// happened when trying to synchronize available updates with Telegram datacenters.
-	LastSynchronizationErrorDate int `json:"last_synchronization_error_date,omitempty"`
+	LastSynchronizationErrorDate int64 `json:"last_synchronization_error_date,omitempty"`
 	// MaxConnections maximum allowed number of simultaneous
 	// HTTPS connections to the webhook for update delivery.
 	//
@@ -4059,25 +5388,25 @@ type InlineQuery struct {
 // and ensuring only supported inline query results are used.
 type InlineQueryResults interface {
 	InlineQueryResultCachedAudio |
-	InlineQueryResultCachedDocument |
-	InlineQueryResultCachedGIF |
-	InlineQueryResultCachedMPEG4GIF |
-	InlineQueryResultCachedPhoto |
-	InlineQueryResultCachedSticker |
-	InlineQueryResultCachedVideo |
-	InlineQueryResultCachedVoice |
-	InlineQueryResultArticle |
-	InlineQueryResultAudio |
-	InlineQueryResultContact |
-	InlineQueryResultGame |
-	InlineQueryResultDocument |
-	InlineQueryResultGIF |
-	InlineQueryResultLocation |
-	InlineQueryResultMPEG4GIF |
-	InlineQueryResultPhoto |
-	InlineQueryResultVenue |
-	InlineQueryResultVideo |
-	InlineQueryResultVoice
+		InlineQueryResultCachedDocument |
+		InlineQueryResultCachedGIF |
+		InlineQueryResultCachedMPEG4GIF |
+		InlineQueryResultCachedPhoto |
+		InlineQueryResultCachedSticker |
+		InlineQueryResultCachedVideo |
+		InlineQueryResultCachedVoice |
+		InlineQueryResultArticle |
+		InlineQueryResultAudio |
+		InlineQueryResultContact |
+		InlineQueryResultGame |
+		InlineQueryResultDocument |
+		InlineQueryResultGIF |
+		InlineQueryResultLocation |
+		InlineQueryResultMPEG4GIF |
+		InlineQueryResultPhoto |
+		InlineQueryResultVenue |
+		InlineQueryResultVideo |
+		InlineQueryResultVoice
 }
 
 // InlineQueryResultCachedAudio is an inline query response with cached audio.
@@ -4110,7 +5439,7 @@ type InlineQueryResultCachedAudio struct {
 	// InputMessageContent content of the message to be sent instead of the audio
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedDocument is an inline query response with cached document.
@@ -4151,7 +5480,7 @@ type InlineQueryResultCachedDocument struct {
 	// InputMessageContent content of the message to be sent instead of the file
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedGIF is an inline query response with cached gif.
@@ -4192,7 +5521,7 @@ type InlineQueryResultCachedGIF struct {
 	// InputMessageContent content of the message to be sent instead of the GIF animation.
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedMPEG4GIF is an inline query response with cached
@@ -4235,7 +5564,7 @@ type InlineQueryResultCachedMPEG4GIF struct {
 	// InputMessageContent content of the message to be sent instead of the video animation.
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedPhoto is an inline query response with cached photo.
@@ -4280,7 +5609,7 @@ type InlineQueryResultCachedPhoto struct {
 	// InputMessageContent content of the message to be sent instead of the photo.
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedSticker is an inline query response with cached sticker.
@@ -4300,7 +5629,7 @@ type InlineQueryResultCachedSticker struct {
 	// InputMessageContent content of the message to be sent instead of the sticker
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedVideo is an inline query response with cached video.
@@ -4343,7 +5672,7 @@ type InlineQueryResultCachedVideo struct {
 	// InputMessageContent content of the message to be sent instead of the video
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultCachedVoice is an inline query response with cached voice.
@@ -4378,7 +5707,7 @@ type InlineQueryResultCachedVoice struct {
 	// InputMessageContent content of the message to be sent instead of the voice message
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultArticle represents a link to an article or web page.
@@ -4390,7 +5719,7 @@ type InlineQueryResultArticle struct {
 	// Title of the result
 	Title string `json:"title"`
 	// InputMessageContent content of the message to be sent.
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 	// ReplyMarkup Inline keyboard attached to the message.
 	//
 	// optional
@@ -4462,7 +5791,7 @@ type InlineQueryResultAudio struct {
 	// InputMessageContent content of the message to be sent instead of the audio
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultContact is an inline query response contact.
@@ -4474,7 +5803,7 @@ type InlineQueryResultContact struct {
 	LastName            string                `json:"last_name"`
 	VCard               string                `json:"vcard"`
 	ReplyMarkup         *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
-	InputMessageContent interface{}           `json:"input_message_content,omitempty"`
+	InputMessageContent any                   `json:"input_message_content,omitempty"`
 	ThumbURL            string                `json:"thumbnail_url"`
 	ThumbWidth          int                   `json:"thumbnail_width"`
 	ThumbHeight         int                   `json:"thumbnail_height"`
@@ -4506,6 +5835,14 @@ type InlineQueryResultDocument struct {
 	//
 	// optional
 	Caption string `json:"caption,omitempty"`
+	// ParseMode mode for parsing entities in the document caption.
+	//
+	// optional
+	ParseMode string `json:"parse_mode,omitempty"`
+	// CaptionEntities can be specified instead of parse_mode.
+	//
+	// optional
+	CaptionEntities []MessageEntity `json:"caption_entities,omitempty"`
 	// URL a valid url for the file
 	URL string `json:"document_url"`
 	// MimeType of the content of the file, either "application/pdf" or "application/zip"
@@ -4521,7 +5858,7 @@ type InlineQueryResultDocument struct {
 	// InputMessageContent content of the message to be sent instead of the file
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 	// ThumbURL url of the thumbnail (jpeg only) for the file
 	//
 	// optional
@@ -4590,7 +5927,7 @@ type InlineQueryResultGIF struct {
 	// InputMessageContent content of the message to be sent instead of the GIF animation.
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultLocation is an inline query response location.
@@ -4633,7 +5970,7 @@ type InlineQueryResultLocation struct {
 	// InputMessageContent content of the message to be sent instead of the location
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 	// ThumbURL url of the thumbnail for the result
 	//
 	// optional
@@ -4702,7 +6039,7 @@ type InlineQueryResultMPEG4GIF struct {
 	// InputMessageContent content of the message to be sent instead of the video animation
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultPhoto is an inline query response photo.
@@ -4762,7 +6099,7 @@ type InlineQueryResultPhoto struct {
 	// InputMessageContent content of the message to be sent instead of the photo.
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultVenue is an inline query response venue.
@@ -4803,7 +6140,7 @@ type InlineQueryResultVenue struct {
 	// InputMessageContent content of the message to be sent instead of the venue
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 	// ThumbURL url of the thumbnail for the result
 	//
 	// optional
@@ -4878,7 +6215,7 @@ type InlineQueryResultVideo struct {
 	// an HTML-page as a result (e.g., a YouTube video).
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // InlineQueryResultVoice is an inline query response voice.
@@ -4917,7 +6254,7 @@ type InlineQueryResultVoice struct {
 	// InputMessageContent content of the message to be sent instead of the voice recording
 	//
 	// optional
-	InputMessageContent interface{} `json:"input_message_content,omitempty"`
+	InputMessageContent any `json:"input_message_content,omitempty"`
 }
 
 // ChosenInlineResult is an inline query result chosen by a User
@@ -4950,6 +6287,11 @@ type SentWebAppMessage struct {
 	InlineMessageID string `json:"inline_message_id,omitempty"`
 }
 
+// SentGuestMessage contains information about a message sent in response to a guest query.
+type SentGuestMessage struct {
+	InlineMessageID string `json:"inline_message_id"`
+}
+
 // PreparedInlineMessage describes an inline message to be sent by a user of a Mini App.
 type PreparedInlineMessage struct {
 	// ID is a unique identifier of the prepared message
@@ -4957,6 +6299,18 @@ type PreparedInlineMessage struct {
 	// ExpirationDate of the prepared message, in Unix time.
 	// Expired prepared messages can no longer be used
 	ExpirationDate int64 `json:"expiration_date"`
+}
+
+// PreparedKeyboardButton describes a keyboard button to be used by a user of a Mini App.
+type PreparedKeyboardButton struct {
+	// ID is a unique identifier of the prepared keyboard button.
+	ID string `json:"id"`
+}
+
+// BotAccessSettings describes granular access settings of a managed bot.
+type BotAccessSettings struct {
+	IsAccessRestricted bool   `json:"is_access_restricted"`
+	AddedUsers         []User `json:"added_users,omitempty"`
 }
 
 // InputTextMessageContent contains text for displaying
@@ -5401,19 +6755,67 @@ type TransactionPartner struct {
 	//
 	// optional
 	Gift *Gift `json:"gift,omitempty"`
-	// TransactionPartnerUser payload for "user" type of transaction partner
-	TransactionPartnerUser
-	// TransactionPartnerChat payload for "chat" type of transaction partner
-	TransactionPartnerChat
-	// TransactionPartnerAffiliateProgram payload for "affiliate_program" type of transaction partner
-	TransactionPartnerAffiliateProgram
-	// TransactionPartnerFragment payload for "fragment" type of transaction partner
-	TransactionPartnerFragment
-	// TransactionPartnerTelegramAPI payload for "telegram_api" type of transaction partner
-	TransactionPartnerTelegramAPI
+	// User is the information about the user for "user" transactions.
+	//
+	// optional
+	User User `json:"user,omitempty"`
+	// Chat is the information about the chat for "chat" transactions.
+	//
+	// optional
+	Chat Chat `json:"chat,omitempty"`
+	// Affiliate is the information about the affiliate that
+	// received a commission via this transaction.
+	//
+	// optional
+	Affiliate *AffiliateInfo `json:"affiliate,omitempty"`
+	// InvoicePayload is bot-specified invoice payload for "user" transactions.
+	//
+	// optional
+	InvoicePayload string `json:"invoice_payload,omitempty"`
+	// SubscriptionPeriod is duration of a paid subscription.
+	//
+	// optional
+	SubscriptionPeriod int64 `json:"subscription_period,omitempty"`
+	// PaidMedia is information about paid media bought by the user.
+	//
+	// optional
+	PaidMedia []PaidMedia `json:"paid_media,omitempty"`
+	// PaidMediaPayload is bot-specified paid media payload.
+	//
+	// optional
+	PaidMediaPayload string `json:"paid_media_payload,omitempty"`
+	// PremiumSubscriptionDuration is premium subscription duration in months.
+	//
+	// optional
+	PremiumSubscriptionDuration int `json:"premium_subscription_duration,omitempty"`
+	// TransactionType is kind of transaction for user partner.
+	//
+	// optional
+	TransactionType string `json:"transaction_type,omitempty"`
+	// SponsorUser is the information about the bot that sponsored the affiliate program.
+	//
+	// optional
+	SponsorUser *User `json:"sponsor_user,omitempty"`
+	// CommissionPerMile is the number of Telegram Stars received by the bot
+	// for each 1000 Telegram Stars received by the affiliate program sponsor.
+	//
+	// optional
+	CommissionPerMile int `json:"commission_per_mille,omitempty"`
+	// WithdrawalState is state of the transaction for outgoing Fragment withdrawals.
+	//
+	// optional
+	WithdrawalState *RevenueWithdrawalState `json:"withdrawal_state,omitempty"`
+	// RequestCount is the number of successful requests billed by Telegram API.
+	//
+	// optional
+	RequestCount int `json:"request_count,omitempty"`
 }
 
 type TransactionPartnerUser struct {
+	// Type of transaction partner.
+	Type string `json:"type,omitempty"`
+	// TransactionType is kind of transaction for user partner.
+	TransactionType string `json:"transaction_type,omitempty"`
 	// Information about the user.
 	User User `json:"user"`
 	// Affiliate is the information about the affiliate that
@@ -5439,17 +6841,37 @@ type TransactionPartnerUser struct {
 	//
 	// optional
 	PaidMedia []PaidMedia `json:"paid_media,omitempty"`
+	// PaidMediaPayload is bot-specified paid media payload.
+	//
+	// optional
+	PaidMediaPayload string `json:"paid_media_payload,omitempty"`
+	// Gift is the gift sent to the user by the bot.
+	//
+	// optional
+	Gift *Gift `json:"gift,omitempty"`
+	// PremiumSubscriptionDuration is premium subscription duration in months.
+	//
+	// optional
+	PremiumSubscriptionDuration int `json:"premium_subscription_duration,omitempty"`
 }
 
 // TransactionPartnerChat describes a transaction with a chat.
 type TransactionPartnerChat struct {
+	// Type of transaction partner.
+	Type string `json:"type,omitempty"`
 	// Chat is the information about the chat.
 	Chat Chat `json:"chat"`
+	// Gift is the gift sent to the chat by the bot.
+	//
+	// optional
+	Gift *Gift `json:"gift,omitempty"`
 }
 
 // TransactionPartnerAffiliateProgram describes the affiliate program that
 // issued the affiliate commission received via this transaction.
 type TransactionPartnerAffiliateProgram struct {
+	// Type of transaction partner.
+	Type string `json:"type,omitempty"`
 	// SponsorUser is the information about the bot that
 	// sponsored the affiliate program
 	//
@@ -5463,6 +6885,8 @@ type TransactionPartnerAffiliateProgram struct {
 
 // TransactionPartnerFragment describes a withdrawal transaction with Fragment.
 type TransactionPartnerFragment struct {
+	// Type of transaction partner.
+	Type string `json:"type,omitempty"`
 	// State of the transaction if the transaction is outgoing.
 	//
 	// optional
@@ -5471,6 +6895,8 @@ type TransactionPartnerFragment struct {
 
 // TransactionPartnerTelegramAPI describes a transaction with payment for paid broadcasting.
 type TransactionPartnerTelegramAPI struct {
+	// Type of transaction partner.
+	Type string `json:"type,omitempty"`
 	// RequestCount is the number of successful requests that
 	// exceeded regular limits and were therefore billed
 	RequestCount int `json:"request_count"`
@@ -5509,3 +6935,562 @@ type StarTransactions struct {
 	// The list of transactions
 	Transactions []StarTransaction `json:"transactions"`
 }
+
+// InputFile represents an input file value.
+type InputFile = RequestFileData
+
+// InputMessageContent represents content of a message to be sent as input.
+type InputMessageContent any
+
+// InputRichMessageContent represents rich message content to be sent as an inline query result.
+type InputRichMessageContent struct {
+	RichMessage InputRichMessage `json:"rich_message"`
+}
+
+// InlineQueryResult represents any inline query result object.
+type InlineQueryResult any
+
+// InputProfilePhoto represents profile photo payload for profile photo methods.
+type InputProfilePhoto interface {
+	getType() string
+	getMedia() RequestFileData
+	setUploadMedia(string)
+}
+
+// InputProfilePhotoStatic describes static profile photo input.
+type InputProfilePhotoStatic struct {
+	Type  string          `json:"type"`
+	Photo RequestFileData `json:"photo"`
+}
+
+func (photo *InputProfilePhotoStatic) getType() string {
+	return photo.Type
+}
+
+func (photo *InputProfilePhotoStatic) getMedia() RequestFileData {
+	return photo.Photo
+}
+
+func (photo *InputProfilePhotoStatic) setUploadMedia(fileRef string) {
+	photo.Photo = fileAttach(fileRef)
+}
+
+// InputProfilePhotoAnimated describes animated profile photo input.
+type InputProfilePhotoAnimated struct {
+	Type               string          `json:"type"`
+	Animation          RequestFileData `json:"animation"`
+	MainFrameTimestamp float64         `json:"main_frame_timestamp,omitempty"`
+}
+
+func (photo *InputProfilePhotoAnimated) getType() string {
+	return photo.Type
+}
+
+func (photo *InputProfilePhotoAnimated) getMedia() RequestFileData {
+	return photo.Animation
+}
+
+func (photo *InputProfilePhotoAnimated) setUploadMedia(fileRef string) {
+	photo.Animation = fileAttach(fileRef)
+}
+
+// InputStoryContent represents content to post as a story.
+type InputStoryContent interface {
+	getType() string
+	getMedia() RequestFileData
+	setUploadMedia(string)
+}
+
+// InputStoryContentPhoto describes story photo content.
+type InputStoryContentPhoto struct {
+	Type  string          `json:"type"`
+	Photo RequestFileData `json:"photo"`
+}
+
+func (content *InputStoryContentPhoto) getType() string {
+	return content.Type
+}
+
+func (content *InputStoryContentPhoto) getMedia() RequestFileData {
+	return content.Photo
+}
+
+func (content *InputStoryContentPhoto) setUploadMedia(fileRef string) {
+	content.Photo = fileAttach(fileRef)
+}
+
+// InputStoryContentVideo describes story video content.
+type InputStoryContentVideo struct {
+	Type                string          `json:"type"`
+	Video               RequestFileData `json:"video"`
+	Duration            float64         `json:"duration,omitempty"`
+	CoverFrameTimestamp float64         `json:"cover_frame_timestamp,omitempty"`
+	IsAnimation         bool            `json:"is_animation,omitempty"`
+}
+
+func (content *InputStoryContentVideo) getType() string {
+	return content.Type
+}
+
+func (content *InputStoryContentVideo) getMedia() RequestFileData {
+	return content.Video
+}
+
+func (content *InputStoryContentVideo) setUploadMedia(fileRef string) {
+	content.Video = fileAttach(fileRef)
+}
+
+// MaybeInaccessibleMessage represents either an accessible or inaccessible message.
+type MaybeInaccessibleMessage = Message
+
+// ChatOwnerLeft is a service message about a chat owner leaving the chat.
+type ChatOwnerLeft struct {
+	NewOwner *User `json:"new_owner,omitempty"`
+}
+
+// ChatOwnerChanged is a service message about a chat owner being changed.
+type ChatOwnerChanged struct {
+	NewOwner User `json:"new_owner"`
+}
+
+// ManagedBotCreated contains information about a created managed bot.
+type ManagedBotCreated struct {
+	Bot User `json:"bot"`
+}
+
+// ManagedBotUpdated contains information about managed bot creation or token updates.
+type ManagedBotUpdated struct {
+	User User `json:"user"`
+	Bot  User `json:"bot"`
+}
+
+// BotSubscriptionUpdated contains information about a user payment subscription change.
+type BotSubscriptionUpdated struct {
+	User           User   `json:"user"`
+	InvoicePayload string `json:"invoice_payload"`
+	State          string `json:"state"`
+}
+
+// Community represents a group of related chats.
+type Community struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// CommunityChatAdded describes a chat being added to a community.
+type CommunityChatAdded struct {
+	Community Community `json:"community"`
+}
+
+// CommunityChatRemoved describes a chat being removed from a community.
+type CommunityChatRemoved struct{}
+
+// PollOptionAdded describes a service message about an option added to a poll.
+type PollOptionAdded struct {
+	PollMessage        *MaybeInaccessibleMessage `json:"poll_message,omitempty"`
+	OptionPersistentID string                    `json:"option_persistent_id"`
+	OptionText         string                    `json:"option_text"`
+	OptionTextEntities []MessageEntity           `json:"option_text_entities,omitempty"`
+}
+
+// PollOptionDeleted describes a service message about an option deleted from a poll.
+type PollOptionDeleted struct {
+	PollMessage        *MaybeInaccessibleMessage `json:"poll_message,omitempty"`
+	OptionPersistentID string                    `json:"option_persistent_id"`
+	OptionText         string                    `json:"option_text"`
+	OptionTextEntities []MessageEntity           `json:"option_text_entities,omitempty"`
+}
+
+// ChecklistTask describes a task in a checklist.
+type ChecklistTask struct {
+	ID              int             `json:"id"`
+	Text            string          `json:"text"`
+	TextEntities    []MessageEntity `json:"text_entities,omitempty"`
+	CompletedByUser *User           `json:"completed_by_user,omitempty"`
+	CompletedByChat *Chat           `json:"completed_by_chat,omitempty"`
+	CompletionDate  int64           `json:"completion_date,omitempty"`
+}
+
+// Checklist describes checklist content.
+type Checklist struct {
+	Title                    string          `json:"title"`
+	TitleEntities            []MessageEntity `json:"title_entities,omitempty"`
+	Tasks                    []ChecklistTask `json:"tasks"`
+	OthersCanAddTasks        bool            `json:"others_can_add_tasks,omitempty"`
+	OthersCanMarkTasksAsDone bool            `json:"others_can_mark_tasks_as_done,omitempty"`
+}
+
+// InputChecklistTask describes a task input for creating/editing checklist.
+type InputChecklistTask struct {
+	ID           int             `json:"id"`
+	Text         string          `json:"text"`
+	ParseMode    string          `json:"parse_mode,omitempty"`
+	TextEntities []MessageEntity `json:"text_entities,omitempty"`
+}
+
+// InputChecklist describes checklist input payload.
+type InputChecklist struct {
+	Title                    string               `json:"title"`
+	ParseMode                string               `json:"parse_mode,omitempty"`
+	TitleEntities            []MessageEntity      `json:"title_entities,omitempty"`
+	Tasks                    []InputChecklistTask `json:"tasks"`
+	OthersCanAddTasks        bool                 `json:"others_can_add_tasks,omitempty"`
+	OthersCanMarkTasksAsDone bool                 `json:"others_can_mark_tasks_as_done,omitempty"`
+}
+
+// ChecklistTasksDone represents service message with checklist task completion changes.
+type ChecklistTasksDone struct {
+	ChecklistMessage       *Message `json:"checklist_message,omitempty"`
+	MarkedAsDoneTaskIDs    []int    `json:"marked_as_done_task_ids,omitempty"`
+	MarkedAsNotDoneTaskIDs []int    `json:"marked_as_not_done_task_ids,omitempty"`
+}
+
+// ChecklistTasksAdded represents service message with newly added checklist tasks.
+type ChecklistTasksAdded struct {
+	ChecklistMessage *Message        `json:"checklist_message,omitempty"`
+	Tasks            []ChecklistTask `json:"tasks"`
+}
+
+// DirectMessagePriceChanged is a service message for direct message price changes.
+type DirectMessagePriceChanged struct {
+	AreDirectMessagesEnabled bool `json:"are_direct_messages_enabled"`
+	DirectMessageStarCount   int  `json:"direct_message_star_count,omitempty"`
+}
+
+// PaidMessagePriceChanged is a service message for paid message price changes.
+type PaidMessagePriceChanged struct {
+	PaidMessageStarCount int `json:"paid_message_star_count"`
+}
+
+// DirectMessagesTopic represents a direct messages topic.
+type DirectMessagesTopic struct {
+	TopicID int   `json:"topic_id"`
+	User    *User `json:"user,omitempty"`
+}
+
+// AcceptedGiftTypes describes accepted gift categories.
+type AcceptedGiftTypes struct {
+	UnlimitedGifts      bool `json:"unlimited_gifts"`
+	LimitedGifts        bool `json:"limited_gifts"`
+	UniqueGifts         bool `json:"unique_gifts"`
+	PremiumSubscription bool `json:"premium_subscription"`
+	GiftsFromChannels   bool `json:"gifts_from_channels"`
+}
+
+// GiftBackground represents background of a gift.
+type GiftBackground struct {
+	CenterColor int `json:"center_color"`
+	EdgeColor   int `json:"edge_color"`
+	TextColor   int `json:"text_color"`
+}
+
+// GiftInfo contains details of a received gift.
+type GiftInfo struct {
+	Gift                    Gift            `json:"gift"`
+	OwnedGiftID             string          `json:"owned_gift_id,omitempty"`
+	ConvertStarCount        int             `json:"convert_star_count,omitempty"`
+	PrepaidUpgradeStarCount int             `json:"prepaid_upgrade_star_count,omitempty"`
+	IsUpgradeSeparate       bool            `json:"is_upgrade_separate,omitempty"`
+	CanBeUpgraded           bool            `json:"can_be_upgraded,omitempty"`
+	Text                    string          `json:"text,omitempty"`
+	Entities                []MessageEntity `json:"entities,omitempty"`
+	IsPrivate               bool            `json:"is_private,omitempty"`
+	UniqueGiftNumber        int             `json:"unique_gift_number,omitempty"`
+}
+
+// OwnedGift describes a gift owned by user/chat with flattened fields.
+type OwnedGift struct {
+	Type                    string          `json:"type"`
+	Gift                    any             `json:"gift"`
+	OwnedGiftID             string          `json:"owned_gift_id,omitempty"`
+	SenderUser              *User           `json:"sender_user,omitempty"`
+	SendDate                int64           `json:"send_date"`
+	Text                    string          `json:"text,omitempty"`
+	Entities                []MessageEntity `json:"entities,omitempty"`
+	IsPrivate               bool            `json:"is_private,omitempty"`
+	IsSaved                 bool            `json:"is_saved,omitempty"`
+	CanBeUpgraded           bool            `json:"can_be_upgraded,omitempty"`
+	WasRefunded             bool            `json:"was_refunded,omitempty"`
+	ConvertStarCount        int             `json:"convert_star_count,omitempty"`
+	PrepaidUpgradeStarCount int             `json:"prepaid_upgrade_star_count,omitempty"`
+	IsUpgradeSeparate       bool            `json:"is_upgrade_separate,omitempty"`
+	UniqueGiftNumber        int             `json:"unique_gift_number,omitempty"`
+	CanBeTransferred        bool            `json:"can_be_transferred,omitempty"`
+	TransferStarCount       int             `json:"transfer_star_count,omitempty"`
+	NextTransferDate        int64           `json:"next_transfer_date,omitempty"`
+}
+
+// OwnedGiftRegular describes regular owned gift.
+type OwnedGiftRegular = OwnedGift
+
+// OwnedGiftUnique describes unique owned gift.
+type OwnedGiftUnique = OwnedGift
+
+// OwnedGifts represents paginated owned gifts list.
+type OwnedGifts struct {
+	TotalCount int         `json:"total_count"`
+	Gifts      []OwnedGift `json:"gifts"`
+	NextOffset string      `json:"next_offset,omitempty"`
+}
+
+// StarAmount describes an amount of Telegram Stars.
+type StarAmount struct {
+	Amount         int64 `json:"amount"`
+	NanostarAmount int64 `json:"nanostar_amount,omitempty"`
+}
+
+// LocationAddress describes location address used in story areas.
+type LocationAddress struct {
+	CountryCode string `json:"country_code"`
+	State       string `json:"state,omitempty"`
+	City        string `json:"city,omitempty"`
+	Street      string `json:"street,omitempty"`
+}
+
+// StoryAreaPosition describes position of a story area.
+type StoryAreaPosition struct {
+	XPercentage            float64 `json:"x_percentage"`
+	YPercentage            float64 `json:"y_percentage"`
+	WidthPercentage        float64 `json:"width_percentage"`
+	HeightPercentage       float64 `json:"height_percentage"`
+	RotationAngle          float64 `json:"rotation_angle"`
+	CornerRadiusPercentage float64 `json:"corner_radius_percentage"`
+}
+
+// StoryAreaType describes flattened story area type payload.
+type StoryAreaType struct {
+	Type            string           `json:"type"`
+	URL             string           `json:"url,omitempty"`
+	Latitude        float64          `json:"latitude,omitempty"`
+	Longitude       float64          `json:"longitude,omitempty"`
+	Address         *LocationAddress `json:"address,omitempty"`
+	ReactionType    *ReactionType    `json:"reaction_type,omitempty"`
+	IsDark          bool             `json:"is_dark,omitempty"`
+	IsFlipped       bool             `json:"is_flipped,omitempty"`
+	Name            string           `json:"name,omitempty"`
+	Temperature     float64          `json:"temperature,omitempty"`
+	Emoji           string           `json:"emoji,omitempty"`
+	BackgroundColor int              `json:"background_color,omitempty"`
+}
+
+// StoryArea describes a story area.
+type StoryArea struct {
+	Position StoryAreaPosition `json:"position"`
+	Type     StoryAreaType     `json:"type"`
+}
+
+// SuggestedPostPrice describes suggested post price.
+type SuggestedPostPrice struct {
+	Currency string `json:"currency"`
+	Amount   int    `json:"amount"`
+}
+
+// SuggestedPostInfo describes state of a suggested post.
+type SuggestedPostInfo struct {
+	State    string              `json:"state"`
+	Price    *SuggestedPostPrice `json:"price,omitempty"`
+	SendDate int64               `json:"send_date,omitempty"`
+}
+
+// SuggestedPostParameters describes suggested post parameters for sending.
+type SuggestedPostParameters struct {
+	Price    *SuggestedPostPrice `json:"price,omitempty"`
+	SendDate int64               `json:"send_date,omitempty"`
+}
+
+// SuggestedPostApproved describes service message about approved suggested post.
+type SuggestedPostApproved struct {
+	SuggestedPostMessage *Message            `json:"suggested_post_message,omitempty"`
+	Price                *SuggestedPostPrice `json:"price,omitempty"`
+	SendDate             int64               `json:"send_date"`
+}
+
+// SuggestedPostApprovalFailed describes service message about failed suggested post approval.
+type SuggestedPostApprovalFailed struct {
+	SuggestedPostMessage *Message           `json:"suggested_post_message,omitempty"`
+	Price                SuggestedPostPrice `json:"price"`
+}
+
+// SuggestedPostDeclined describes service message about declined suggested post.
+type SuggestedPostDeclined struct {
+	SuggestedPostMessage *Message `json:"suggested_post_message,omitempty"`
+	Comment              string   `json:"comment,omitempty"`
+}
+
+// SuggestedPostPaid describes service message about paid suggested post.
+type SuggestedPostPaid struct {
+	SuggestedPostMessage *Message    `json:"suggested_post_message,omitempty"`
+	Currency             string      `json:"currency"`
+	Amount               int         `json:"amount,omitempty"`
+	StarAmount           *StarAmount `json:"star_amount,omitempty"`
+}
+
+// SuggestedPostRefunded describes service message about refunded suggested post.
+type SuggestedPostRefunded struct {
+	SuggestedPostMessage *Message `json:"suggested_post_message,omitempty"`
+	Reason               string   `json:"reason"`
+}
+
+// UniqueGiftModel describes unique gift model metadata.
+type UniqueGiftModel struct {
+	Name           string  `json:"name"`
+	Sticker        Sticker `json:"sticker"`
+	RarityPerMille int     `json:"rarity_per_mille"`
+	Rarity         string  `json:"rarity,omitempty"`
+}
+
+// UniqueGiftSymbol describes unique gift symbol metadata.
+type UniqueGiftSymbol struct {
+	Name           string  `json:"name"`
+	Sticker        Sticker `json:"sticker"`
+	RarityPerMille int     `json:"rarity_per_mille"`
+}
+
+// UniqueGiftBackdropColors describes unique gift backdrop colors.
+type UniqueGiftBackdropColors struct {
+	CenterColor int `json:"center_color"`
+	EdgeColor   int `json:"edge_color"`
+	SymbolColor int `json:"symbol_color"`
+	TextColor   int `json:"text_color"`
+}
+
+// UniqueGiftBackdrop describes unique gift backdrop metadata.
+type UniqueGiftBackdrop struct {
+	Name           string                   `json:"name"`
+	Colors         UniqueGiftBackdropColors `json:"colors"`
+	RarityPerMille int                      `json:"rarity_per_mille"`
+}
+
+// UniqueGiftColors describes unique gift profile colors.
+type UniqueGiftColors struct {
+	ModelCustomEmojiID    string `json:"model_custom_emoji_id"`
+	SymbolCustomEmojiID   string `json:"symbol_custom_emoji_id"`
+	LightThemeMainColor   int    `json:"light_theme_main_color"`
+	LightThemeOtherColors []int  `json:"light_theme_other_colors"`
+	DarkThemeMainColor    int    `json:"dark_theme_main_color"`
+	DarkThemeOtherColors  []int  `json:"dark_theme_other_colors"`
+}
+
+// UniqueGift describes a unique gift.
+type UniqueGift struct {
+	GiftID           string             `json:"gift_id"`
+	BaseName         string             `json:"base_name"`
+	Name             string             `json:"name"`
+	Number           int                `json:"number"`
+	Model            UniqueGiftModel    `json:"model"`
+	Symbol           UniqueGiftSymbol   `json:"symbol"`
+	Backdrop         UniqueGiftBackdrop `json:"backdrop"`
+	IsPremium        bool               `json:"is_premium,omitempty"`
+	IsBurned         bool               `json:"is_burned,omitempty"`
+	IsFromBlockchain bool               `json:"is_from_blockchain,omitempty"`
+	Colors           *UniqueGiftColors  `json:"colors,omitempty"`
+	PublisherChat    *Chat              `json:"publisher_chat,omitempty"`
+}
+
+// UniqueGiftInfo describes information about a unique gift in a message.
+type UniqueGiftInfo struct {
+	Gift               UniqueGift `json:"gift"`
+	Origin             string     `json:"origin"`
+	LastResaleCurrency string     `json:"last_resale_currency,omitempty"`
+	LastResaleAmount   int        `json:"last_resale_amount,omitempty"`
+	OwnedGiftID        string     `json:"owned_gift_id,omitempty"`
+	TransferStarCount  int        `json:"transfer_star_count,omitempty"`
+	NextTransferDate   int64      `json:"next_transfer_date,omitempty"`
+}
+
+// UserProfileAudios contains audios displayed on user profile.
+type UserProfileAudios struct {
+	TotalCount int     `json:"total_count"`
+	Audios     []Audio `json:"audios"`
+}
+
+// UserRating describes user rating object.
+type UserRating struct {
+	Level              int `json:"level"`
+	Rating             int `json:"rating"`
+	CurrentLevelRating int `json:"current_level_rating"`
+	NextLevelRating    int `json:"next_level_rating,omitempty"`
+}
+
+// VideoQuality describes a quality variant of a video.
+type VideoQuality struct {
+	FileID       string `json:"file_id"`
+	FileUniqueID string `json:"file_unique_id"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	Codec        string `json:"codec"`
+	FileSize     int64  `json:"file_size,omitempty"`
+}
+
+// BusinessBotRights describes rights of a bot connected to a business account.
+type BusinessBotRights struct {
+	CanReply                   bool `json:"can_reply,omitempty"`
+	CanReadMessages            bool `json:"can_read_messages,omitempty"`
+	CanDeleteSentMessages      bool `json:"can_delete_sent_messages,omitempty"`
+	CanDeleteAllMessages       bool `json:"can_delete_all_messages,omitempty"`
+	CanEditName                bool `json:"can_edit_name,omitempty"`
+	CanEditBio                 bool `json:"can_edit_bio,omitempty"`
+	CanEditProfilePhoto        bool `json:"can_edit_profile_photo,omitempty"`
+	CanEditUsername            bool `json:"can_edit_username,omitempty"`
+	CanChangeGiftSettings      bool `json:"can_change_gift_settings,omitempty"`
+	CanViewGiftsAndStars       bool `json:"can_view_gifts_and_stars,omitempty"`
+	CanConvertGiftsToStars     bool `json:"can_convert_gifts_to_stars,omitempty"`
+	CanTransferAndUpgradeGifts bool `json:"can_transfer_and_upgrade_gifts,omitempty"`
+	CanTransferStars           bool `json:"can_transfer_stars,omitempty"`
+	CanManageStories           bool `json:"can_manage_stories,omitempty"`
+}
+
+// API naming aliases for flattened subtypes.
+type (
+	BackgroundFillSolid                  = BackgroundFill
+	BackgroundFillGradient               = BackgroundFill
+	BackgroundFillFreeformGradient       = BackgroundFill
+	BackgroundTypeFill                   = BackgroundType
+	BackgroundTypeWallpaper              = BackgroundType
+	BackgroundTypePattern                = BackgroundType
+	BackgroundTypeChatTheme              = BackgroundType
+	BotCommandScopeDefault               = BotCommandScope
+	BotCommandScopeAllPrivateChats       = BotCommandScope
+	BotCommandScopeAllGroupChats         = BotCommandScope
+	BotCommandScopeAllChatAdministrators = BotCommandScope
+	BotCommandScopeChat                  = BotCommandScope
+	BotCommandScopeChatAdministrators    = BotCommandScope
+	BotCommandScopeChatMember            = BotCommandScope
+	ChatMemberOwner                      = ChatMember
+	ChatMemberAdministrator              = ChatMember
+	ChatMemberMember                     = ChatMember
+	ChatMemberRestricted                 = ChatMember
+	ChatMemberLeft                       = ChatMember
+	ChatMemberBanned                     = ChatMember
+	MenuButtonCommands                   = MenuButton
+	MenuButtonWebApp                     = MenuButton
+	MenuButtonDefault                    = MenuButton
+	InputPaidMediaLivePhoto              = InputPaidMedia
+	InputPaidMediaPhoto                  = InputPaidMedia
+	InputPaidMediaVideo                  = InputPaidMedia
+	PaidMediaLivePhoto                   = PaidMedia
+	PaidMediaPreview                     = PaidMedia
+	PaidMediaPhoto                       = PaidMedia
+	PaidMediaVideo                       = PaidMedia
+	RevenueWithdrawalStatePending        = RevenueWithdrawalState
+	RevenueWithdrawalStateSucceeded      = RevenueWithdrawalState
+	RevenueWithdrawalStateFailed         = RevenueWithdrawalState
+	StoryAreaTypeLocation                = StoryAreaType
+	StoryAreaTypeSuggestedReaction       = StoryAreaType
+	StoryAreaTypeLink                    = StoryAreaType
+	StoryAreaTypeWeather                 = StoryAreaType
+	StoryAreaTypeUniqueGift              = StoryAreaType
+	TransactionPartnerOther              = TransactionPartner
+	TransactionPartnerTelegramAds        = TransactionPartner
+)
+
+// API naming casing aliases.
+type (
+	MessageId                       = MessageID
+	LoginUrl                        = LoginURL
+	InlineQueryResultGif            = InlineQueryResultGIF
+	InlineQueryResultCachedGif      = InlineQueryResultCachedGIF
+	InlineQueryResultMpeg4Gif       = InlineQueryResultMPEG4GIF
+	InlineQueryResultCachedMpeg4Gif = InlineQueryResultCachedMPEG4GIF
+	TransactionPartnerTelegramApi   = TransactionPartnerTelegramAPI
+)

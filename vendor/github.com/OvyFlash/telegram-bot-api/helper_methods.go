@@ -28,6 +28,57 @@ func NewMessage(chatID int64, text string) MessageConfig {
 	}
 }
 
+// NewInputRichMessageHTML creates a new HTML rich message input.
+func NewInputRichMessageHTML(html string) InputRichMessage {
+	return InputRichMessage{
+		HTML: html,
+	}
+}
+
+// NewInputRichMessageMarkdown creates a new Markdown rich message input.
+func NewInputRichMessageMarkdown(markdown string) InputRichMessage {
+	return InputRichMessage{
+		Markdown: markdown,
+	}
+}
+
+// NewInputRichMessageBlocks creates a rich message input from block entities.
+func NewInputRichMessageBlocks(blocks ...InputRichBlock) InputRichMessage {
+	return InputRichMessage{
+		Blocks: blocks,
+	}
+}
+
+// NewInputRichMessageContent creates new rich message content for inline query results.
+func NewInputRichMessageContent(richMessage InputRichMessage) InputRichMessageContent {
+	return InputRichMessageContent{
+		RichMessage: richMessage,
+	}
+}
+
+// NewSendRichMessage creates a new rich message.
+func NewSendRichMessage(chatID int64, richMessage InputRichMessage) SendRichMessageConfig {
+	return SendRichMessageConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{
+				ChatID: chatID,
+			},
+		},
+		RichMessage: richMessage,
+	}
+}
+
+// NewSendRichMessageDraft creates a new rich message draft.
+func NewSendRichMessageDraft(chatID int64, draftID int, richMessage InputRichMessage) SendRichMessageDraftConfig {
+	return SendRichMessageDraftConfig{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
+		DraftID:     draftID,
+		RichMessage: richMessage,
+	}
+}
+
 // NewDeleteMessage creates a request to delete a message.
 func NewDeleteMessage(chatID int64, messageID int) DeleteMessageConfig {
 	return DeleteMessageConfig{
@@ -140,6 +191,15 @@ func NewPhoto(chatID int64, file RequestFileData) PhotoConfig {
 			BaseChat: BaseChat{ChatConfig: ChatConfig{ChatID: chatID}},
 			File:     file,
 		},
+	}
+}
+
+// NewLivePhoto creates a new sendLivePhoto request.
+func NewLivePhoto(chatID int64, livePhoto, photo RequestFileData) SendLivePhotoConfig {
+	return SendLivePhotoConfig{
+		BaseChat:  BaseChat{ChatConfig: ChatConfig{ChatID: chatID}},
+		LivePhoto: livePhoto,
+		Photo:     photo,
 	}
 }
 
@@ -321,6 +381,63 @@ func NewInputMediaDocument(media RequestFileData) InputMediaDocument {
 	}
 }
 
+// NewInputMediaVoiceNote creates a new InputMediaVoiceNote.
+func NewInputMediaVoiceNote(media RequestFileData) InputMediaVoiceNote {
+	return InputMediaVoiceNote{
+		BaseInputMedia: BaseInputMedia{
+			Type:  "voice_note",
+			Media: media,
+		},
+	}
+}
+
+// NewInputMediaLivePhoto creates a new InputMediaLivePhoto.
+func NewInputMediaLivePhoto(livePhoto, photo RequestFileData) InputMediaLivePhoto {
+	return InputMediaLivePhoto{
+		BaseInputMedia: BaseInputMedia{
+			Type:  "live_photo",
+			Media: livePhoto,
+		},
+		Photo: photo,
+	}
+}
+
+// NewInputMediaLocation creates a new InputMediaLocation.
+func NewInputMediaLocation(latitude, longitude float64) InputMediaLocation {
+	return InputMediaLocation{
+		Type:      "location",
+		Latitude:  latitude,
+		Longitude: longitude,
+	}
+}
+
+// NewInputMediaVenue creates a new InputMediaVenue.
+func NewInputMediaVenue(title, address string, latitude, longitude float64) InputMediaVenue {
+	return InputMediaVenue{
+		Type:      "venue",
+		Latitude:  latitude,
+		Longitude: longitude,
+		Title:     title,
+		Address:   address,
+	}
+}
+
+// NewInputMediaLink creates a new InputMediaLink.
+func NewInputMediaLink(url string) *InputMediaLink {
+	return &InputMediaLink{
+		Type: "link",
+		URL:  url,
+	}
+}
+
+// NewInputMediaSticker creates a new InputMediaSticker.
+func NewInputMediaSticker(media RequestFileData) InputMediaSticker {
+	return InputMediaSticker{
+		Type:  "sticker",
+		Media: media,
+	}
+}
+
 // NewContact allows you to send a shared contact.
 func NewContact(chatID int64, phoneNumber, firstName string) ContactConfig {
 	return ContactConfig{
@@ -377,6 +494,14 @@ func NewUserProfilePhotos(userID int64) UserProfilePhotosConfig {
 		UserID: userID,
 		Offset: 0,
 		Limit:  0,
+	}
+}
+
+// NewUserPersonalChatMessages gets recent messages from the channel pinned to a user's profile.
+func NewUserPersonalChatMessages(userID int64, limit int) UserPersonalChatMessagesConfig {
+	return UserPersonalChatMessagesConfig{
+		UserID: userID,
+		Limit:  limit,
 	}
 }
 
@@ -660,6 +785,30 @@ func NewInlineQueryResultVenue(id, title, address string, latitude, longitude fl
 	}
 }
 
+// NewAnswerGuestQuery creates a guest query answer.
+func NewAnswerGuestQuery(guestQueryID string, result InlineQueryResult) AnswerGuestQueryConfig {
+	return AnswerGuestQueryConfig{
+		GuestQueryID: guestQueryID,
+		Result:       result,
+	}
+}
+
+// NewAnswerChatJoinRequestQuery creates a chat join request query answer.
+func NewAnswerChatJoinRequestQuery(chatJoinRequestQueryID, result string) AnswerChatJoinRequestQueryConfig {
+	return AnswerChatJoinRequestQueryConfig{
+		ChatJoinRequestQueryID: chatJoinRequestQueryID,
+		Result:                 result,
+	}
+}
+
+// NewSendChatJoinRequestWebApp creates a chat join request Mini App response.
+func NewSendChatJoinRequestWebApp(chatJoinRequestQueryID, webAppURL string) SendChatJoinRequestWebAppConfig {
+	return SendChatJoinRequestWebAppConfig{
+		ChatJoinRequestQueryID: chatJoinRequestQueryID,
+		WebAppURL:              webAppURL,
+	}
+}
+
 // NewEditMessageMedia allows you to edit the media content of a message.
 func NewEditMessageMedia(chatID int64, messageID int, inputMedia InputMedia) EditMessageMediaConfig {
 	return EditMessageMediaConfig{
@@ -762,6 +911,55 @@ func NewEditMessageReplyMarkup(chatID int64, messageID int, replyMarkup InlineKe
 	}
 }
 
+func newBaseEphemeralMessage(chatID, receiverUserID int64, ephemeralMessageID int) BaseEphemeralMessage {
+	return BaseEphemeralMessage{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
+		ReceiverUserID:     receiverUserID,
+		EphemeralMessageID: ephemeralMessageID,
+	}
+}
+
+// NewEditEphemeralMessageText creates a request to edit ephemeral message text.
+func NewEditEphemeralMessageText(chatID, receiverUserID int64, ephemeralMessageID int, text string) EditEphemeralMessageTextConfig {
+	return EditEphemeralMessageTextConfig{
+		BaseEphemeralMessage: newBaseEphemeralMessage(chatID, receiverUserID, ephemeralMessageID),
+		Text:                 text,
+	}
+}
+
+// NewEditEphemeralMessageMedia creates a request to edit ephemeral message media.
+func NewEditEphemeralMessageMedia(chatID, receiverUserID int64, ephemeralMessageID int, media InputMedia) EditEphemeralMessageMediaConfig {
+	return EditEphemeralMessageMediaConfig{
+		BaseEphemeralMessage: newBaseEphemeralMessage(chatID, receiverUserID, ephemeralMessageID),
+		Media:                media,
+	}
+}
+
+// NewEditEphemeralMessageCaption creates a request to edit an ephemeral message caption.
+func NewEditEphemeralMessageCaption(chatID, receiverUserID int64, ephemeralMessageID int, caption string) EditEphemeralMessageCaptionConfig {
+	return EditEphemeralMessageCaptionConfig{
+		BaseEphemeralMessage: newBaseEphemeralMessage(chatID, receiverUserID, ephemeralMessageID),
+		Caption:              caption,
+	}
+}
+
+// NewEditEphemeralMessageReplyMarkup creates a request to edit ephemeral message reply markup.
+func NewEditEphemeralMessageReplyMarkup(chatID, receiverUserID int64, ephemeralMessageID int, replyMarkup InlineKeyboardMarkup) EditEphemeralMessageReplyMarkupConfig {
+	return EditEphemeralMessageReplyMarkupConfig{
+		BaseEphemeralMessage: newBaseEphemeralMessage(chatID, receiverUserID, ephemeralMessageID),
+		ReplyMarkup:          &replyMarkup,
+	}
+}
+
+// NewDeleteEphemeralMessage creates a request to delete an ephemeral message.
+func NewDeleteEphemeralMessage(chatID, receiverUserID int64, ephemeralMessageID int) DeleteEphemeralMessageConfig {
+	return DeleteEphemeralMessageConfig{
+		BaseEphemeralMessage: newBaseEphemeralMessage(chatID, receiverUserID, ephemeralMessageID),
+	}
+}
+
 // NewRemoveKeyboard hides the keyboard, with the option for being selective
 // or hiding for everyone.
 func NewRemoveKeyboard(selective bool) ReplyKeyboardRemove {
@@ -784,6 +982,15 @@ func NewKeyboardButtonWebApp(text string, webapp WebAppInfo) KeyboardButton {
 	return KeyboardButton{
 		Text:   text,
 		WebApp: &webapp,
+	}
+}
+
+// NewKeyboardButtonRequestManagedBot creates a keyboard button that requests
+// creation of a managed bot.
+func NewKeyboardButtonRequestManagedBot(text string, request KeyboardButtonRequestManagedBot) KeyboardButton {
+	return KeyboardButton{
+		Text:              text,
+		RequestManagedBot: &request,
 	}
 }
 
@@ -1028,6 +1235,15 @@ func NewGetChatMember(chatID, userID int64) GetChatMemberConfig {
 	}
 }
 
+// NewChatAdministrators gets chat administrators.
+func NewChatAdministrators(chatID int64) ChatAdministratorsConfig {
+	return ChatAdministratorsConfig{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
+	}
+}
+
 func NewChatMember(chatID, userID int64) ChatMemberConfig {
 	return ChatMemberConfig{
 		ChatConfig: ChatConfig{
@@ -1077,6 +1293,14 @@ func NewPollOption(text string) InputPollOption {
 	}
 }
 
+// NewPollOptionWithMedia allows you to create a poll option with media.
+func NewPollOptionWithMedia(text string, media InputMedia) InputPollOption {
+	return InputPollOption{
+		Text:  text,
+		Media: media,
+	}
+}
+
 // NewStopPoll allows you to stop a poll.
 func NewStopPoll(chatID int64, messageID int) StopPollConfig {
 	return StopPollConfig{
@@ -1123,6 +1347,27 @@ func NewSetMessageReaction(chatID int64, messageID int, reaction []ReactionType,
 		},
 		Reaction: reaction,
 		IsBig:    isBig,
+	}
+}
+
+// NewDeleteMessageReaction removes a reaction from a message.
+func NewDeleteMessageReaction(chatID int64, messageID int) DeleteMessageReactionConfig {
+	return DeleteMessageReactionConfig{
+		BaseChatMessage: BaseChatMessage{
+			ChatConfig: ChatConfig{
+				ChatID: chatID,
+			},
+			MessageID: messageID,
+		},
+	}
+}
+
+// NewDeleteAllMessageReactions removes recent reactions from a user or actor chat.
+func NewDeleteAllMessageReactions(chatID int64) DeleteAllMessageReactionsConfig {
+	return DeleteAllMessageReactionsConfig{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
 	}
 }
 
@@ -1222,10 +1467,48 @@ func NewSetMyName(languageCode, name string) SetMyNameConfig {
 	}
 }
 
+// NewGetManagedBotToken gets managed bot token request struct.
+func NewGetManagedBotToken(userID int64) GetManagedBotTokenConfig {
+	return GetManagedBotTokenConfig{
+		UserID: userID,
+	}
+}
+
+// NewReplaceManagedBotToken gets managed bot token replacement request struct.
+func NewReplaceManagedBotToken(userID int64) ReplaceManagedBotTokenConfig {
+	return ReplaceManagedBotTokenConfig{
+		UserID: userID,
+	}
+}
+
+// NewGetManagedBotAccessSettings gets managed bot access settings request struct.
+func NewGetManagedBotAccessSettings(userID int64) GetManagedBotAccessSettingsConfig {
+	return GetManagedBotAccessSettingsConfig{
+		UserID: userID,
+	}
+}
+
+// NewSetManagedBotAccessSettings gets managed bot access settings update request struct.
+func NewSetManagedBotAccessSettings(userID int64, isAccessRestricted bool, addedUserIDs ...int64) SetManagedBotAccessSettingsConfig {
+	return SetManagedBotAccessSettingsConfig{
+		UserID:             userID,
+		IsAccessRestricted: isAccessRestricted,
+		AddedUserIDs:       addedUserIDs,
+	}
+}
+
 // NewGetBusinessConnection gets business connection request struct
 func NewGetBusinessConnection(id string) GetBusinessConnectionConfig {
 	return GetBusinessConnectionConfig{
 		BusinessConnectionID: BusinessConnectionID(id),
+	}
+}
+
+// NewSavePreparedKeyboardButton stores a keyboard button that can be used by a Mini App user.
+func NewSavePreparedKeyboardButton(userID int64, button KeyboardButton) SavePreparedKeyboardButtonConfig {
+	return SavePreparedKeyboardButtonConfig{
+		UserID: userID,
+		Button: button,
 	}
 }
 
@@ -1345,6 +1628,17 @@ func NewPaidMedia(chatID, starCount int64, media *InputPaidMedia) PaidMediaConfi
 	}
 }
 
+// NewPaidMediaGroup creates a new PaidMediaConfig with one or more paid media items.
+func NewPaidMediaGroup(chatID, starCount int64, media ...InputPaidMedia) PaidMediaConfig {
+	return PaidMediaConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{ChatID: chatID},
+		},
+		StarCount:  starCount,
+		MediaItems: media,
+	}
+}
+
 // NewInputPaidMediaPhoto creates a new InputPaidMedia for photos.
 func NewInputPaidMediaPhoto(media *InputMediaPhoto) InputPaidMedia {
 	return InputPaidMedia{
@@ -1357,6 +1651,14 @@ func NewInputPaidMediaPhoto(media *InputMediaPhoto) InputPaidMedia {
 func NewInputPaidMediaVideo(media *InputMediaVideo) InputPaidMedia {
 	return InputPaidMedia{
 		Type:  "video",
+		Media: media,
+	}
+}
+
+// NewInputPaidMediaLivePhoto creates a new InputPaidMedia for live photos.
+func NewInputPaidMediaLivePhoto(media *InputMediaLivePhoto) InputPaidMedia {
+	return InputPaidMedia{
+		Type:  "live_photo",
 		Media: media,
 	}
 }
@@ -1379,5 +1681,108 @@ func NewEditForumTopicConfig(chatID, threadID int64, topicName string) EditForum
 			MessageThreadID: int(threadID),
 		},
 		Name: topicName,
+	}
+}
+
+// NewInputProfilePhotoStatic creates static profile photo input.
+func NewInputProfilePhotoStatic(photo RequestFileData) InputProfilePhotoStatic {
+	return InputProfilePhotoStatic{
+		Type:  "static",
+		Photo: photo,
+	}
+}
+
+// NewInputProfilePhotoAnimated creates animated profile photo input.
+func NewInputProfilePhotoAnimated(animation RequestFileData) InputProfilePhotoAnimated {
+	return InputProfilePhotoAnimated{
+		Type:      "animated",
+		Animation: animation,
+	}
+}
+
+// NewInputStoryContentPhoto creates story photo content.
+func NewInputStoryContentPhoto(photo RequestFileData) InputStoryContentPhoto {
+	return InputStoryContentPhoto{
+		Type:  "photo",
+		Photo: photo,
+	}
+}
+
+// NewInputStoryContentVideo creates story video content.
+func NewInputStoryContentVideo(video RequestFileData) InputStoryContentVideo {
+	return InputStoryContentVideo{
+		Type:  "video",
+		Video: video,
+	}
+}
+
+// NewInputChecklistTask creates checklist task input.
+func NewInputChecklistTask(id int, text string) InputChecklistTask {
+	return InputChecklistTask{
+		ID:   id,
+		Text: text,
+	}
+}
+
+// NewInputChecklist creates checklist input.
+func NewInputChecklist(title string, tasks ...InputChecklistTask) InputChecklist {
+	return InputChecklist{
+		Title: title,
+		Tasks: tasks,
+	}
+}
+
+// NewSendChecklist creates send checklist config.
+func NewSendChecklist(chatID int64, checklist InputChecklist) SendChecklistConfig {
+	return SendChecklistConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{ChatID: chatID},
+		},
+		Checklist: checklist,
+	}
+}
+
+// NewEditMessageChecklist creates edit checklist config.
+func NewEditMessageChecklist(chatID int64, messageID int, checklist InputChecklist) EditMessageChecklistConfig {
+	return EditMessageChecklistConfig{
+		BaseChatMessage: BaseChatMessage{
+			ChatConfig: ChatConfig{ChatID: chatID},
+			MessageID:  messageID,
+		},
+		Checklist: checklist,
+	}
+}
+
+// NewSetMyProfilePhoto creates bot profile photo config.
+func NewSetMyProfilePhoto(photo InputProfilePhoto) SetMyProfilePhotoConfig {
+	return SetMyProfilePhotoConfig{
+		Photo: photo,
+	}
+}
+
+// NewSetBusinessAccountProfilePhoto creates business account profile photo config.
+func NewSetBusinessAccountProfilePhoto(businessConnectionID string, photo InputProfilePhoto) SetBusinessAccountProfilePhotoConfig {
+	return SetBusinessAccountProfilePhotoConfig{
+		BusinessConnectionID: BusinessConnectionID(businessConnectionID),
+		Photo:                photo,
+	}
+}
+
+// NewPostStory creates post story config.
+func NewPostStory(businessConnectionID string, content InputStoryContent, activePeriod int) PostStoryConfig {
+	return PostStoryConfig{
+		BusinessConnectionID: BusinessConnectionID(businessConnectionID),
+		Content:              content,
+		ActivePeriod:         activePeriod,
+	}
+}
+
+// NewRepostStory creates repost story config.
+func NewRepostStory(businessConnectionID string, fromChatID int64, fromStoryID int, activePeriod int) RepostStoryConfig {
+	return RepostStoryConfig{
+		BusinessConnectionID: BusinessConnectionID(businessConnectionID),
+		FromChatID:           fromChatID,
+		FromStoryID:          fromStoryID,
+		ActivePeriod:         activePeriod,
 	}
 }

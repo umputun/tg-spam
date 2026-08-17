@@ -159,9 +159,15 @@ This option is disabled by default. If set to a positive number, the bot will ch
 
 This option is disabled by default. If `--meta.links-only` set or `env:META_LINKS_ONLY` is `true`, the bot will check the message for the presence of any text. If the message contains links but no text, it will be marked as spam.
 
+**Mention only check**
+
+This option is disabled by default. If `--meta.mention-only` set or `env:META_MENTION_ONLY` is `true`, the bot will check messages that contain at least one mention (@username). If the message is nothing but mentions plus trivial content (digits, whitespace or punctuation in any position, e.g. `@user 3`), it will be marked as spam. Messages with real words alongside the mention (e.g. `@user thanks`) are not affected.
+
 **Image only check**
 
 This option is disabled by default. If `--meta.image-only` set or `env:META_IMAGE_ONLY` is `true`, the bot will check the message for the presence of any image. If the message contains images with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. This catches common spam patterns like promotional images with just "@username" as caption.
+
+By default the image caption threshold equals `--min-msg-len`. Use `--meta.image-text-len` (`env:META_IMAGE_TEXT_LEN`) to set a separate threshold for image captions without changing `--min-msg-len`; a value of `0` (the default) keeps using `--min-msg-len`. This is useful when spam hides the pitch inside the image and the caption is a short lure that lands right at the `--min-msg-len` boundary.
 
 **Video only check**
 
@@ -191,9 +197,25 @@ This option is disabled by default. If `--meta.username-symbols` set or `env:MET
 
 This option is disabled by default. If `--meta.giveaway` is set or `env:META_GIVEAWAY` is true, the bot will check the message is a giveaway. If it is a giveaway, it will be marked as spam. 
 
+**External reply check**
+
+This option is disabled by default. If `--meta.external-reply` is set or `env:META_EXTERNAL_REPLY` is `true`, the bot will check if the message replies to a message from another chat (Telegram's `external_reply`). If it does, it will be marked as spam. This targets spammers who reply to a post in an external channel and add a short comment, since the referenced content itself is not available for content checks.
+
 **Multi-language words**
 
 Using words that mix characters from multiple languages is a common spam technique. To detect such messages, the bot can check the message for the presence of such words. This option is disabled by default and can be enabled with the `--multi-lang=, [$MULTI_LANG]` parameter. Setting it to a number above `0` will enable this check, and the bot will mark the message as spam if it contains words with characters from more than one language in more than the specified number of words.
+
+**Prohibited languages**
+
+This option is disabled by default (empty list). For a chat that expects a single script, such as an English-only or Cyrillic-only group, the bot can block messages written in scripts that do not belong there. Set `--prohibited-langs=, [$PROHIBITED_LANGS]` to a comma-separated blocklist of scripts to enable it. A message is marked as spam once it contains at least `--prohibited-langs-min` (default 3) letters from any single prohibited script.
+
+The blocklist accepts friendly aliases: `chinese` (Han), `russian` and `ukrainian` (both Cyrillic), `arabic` (Arabic), `korean` (Hangul), `japanese` (Hiragana and Katakana), `hebrew`, `thai`, and `greek`. Raw `unicode.Scripts` names, such as `Cyrillic`, `Arabic`, or `Devanagari`, are also accepted, and names are matched case-insensitively. An unknown script or alias name is rejected and the bot refuses to start.
+
+The check works at the Unicode script level, not the language level, so languages that share a script cannot be told apart: English, French, and German all use the Latin script. It is meant for a chat that expects one script and wants to block others (for example a Latin-script chat blocking Han or Cyrillic), so you list the scripts you never expect to see rather than individual Latin-alphabet languages.
+
+Note: `chinese` resolves to the Han script, which is shared with Japanese kanji, so a blocklist that includes `chinese` also matches kanji in Japanese text.
+
+Only letters count toward the threshold; digits, punctuation, and emoji are ignored. There is no minimum-length gate, so even a short message reaches the threshold with only a few prohibited-script letters; raise `--prohibited-langs-min` if the check is too aggressive for a chat that occasionally mixes scripts. The check is a hard block: when it triggers, the message is marked as spam immediately and the LLM checks are bypassed, so a confirmed prohibited-script message cannot be vetoed. In the default configuration it applies to non-approved users only; in `--paranoid` mode, or with `--first-message-only` disabled, it also applies to approved users, like every other content check.
 
 **Duplicate message detection**
 
@@ -205,6 +227,33 @@ Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
 - `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages
 
+**Short-message flood detection**
+
+This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
+
+Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold.
+
+**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
+
+Configure with:
+- `--max-short-msg-count=, [$MAX_SHORT_MSG_COUNT]` (default: 0, disabled) - Ban after N short messages from an unapproved user
+
+Recommended config: `--max-short-msg-count=3 --first-messages-count=2 --min-msg-len=50`.
+
+**Reaction spam detection**
+
+This option is disabled by default. When enabled, the bot tracks emoji reactions from each user and marks them as a spammer if they exceed the reaction threshold within a time window. This targets bots that never post messages but mass-react to posts to attract attention to their profile (which contains spam in the bio).
+
+Only applies to unapproved users — approved users are exempt from reaction spam detection.
+
+Reaction bans are reported to the admin chat with the same `change ban` and `info` buttons as message-based bans, so a wrongly banned reaction spammer can be unbanned and approved straight from the notification (`change ban` opens an unban/keep-banned confirmation).
+
+Note: the bot always subscribes to `message_reaction` updates from Telegram on startup, regardless of whether `--reactions.max-reactions` is set. This is a change from previous versions where no reaction updates were requested.
+
+Configure with:
+- `--reactions.max-reactions=, [$REACTIONS_MAX_REACTIONS]` (default: 0, disabled) - Max reactions per user in window to trigger spam ban
+- `--reactions.window=, [$REACTIONS_WINDOW]` (default: 1h) - Time window for reaction spam detection
+
 **Abnormal spacing check**
 
 This option is disabled by default. If `--space.enabled` is set or `env:SPACE_ENABLED` is true, the bot will check if the message contains abnormal spacing. Such spacing is a common spam technique that tries to split the message into multiple shorter parts to avoid detection. The check calculates the ratio of the number of spaces to the total number of characters in the message, as well as the ratio of the short words. Thresholds for this check can be set with:
@@ -212,6 +261,43 @@ This option is disabled by default. If `--space.enabled` is set or `env:SPACE_EN
 - `--space.ratio` (default:0.3) - the ratio of spaces to all characters in the message
 - `--space.short-ratio` (default:0.7) - the ratio of short words to all words in the message
 - `--space.min-words` (default:5) - the minimum number of words in the message to trigger the check
+
+### Sensitive Information Encryption in Database
+
+The bot supports encryption of sensitive fields when storing configuration in the database. This is useful when you want to store API tokens and other credentials securely. To enable encryption, set the `--confdb-encrypt-key` parameter or `CONFDB_ENCRYPT_KEY` environment variable to a secure master key.
+
+```bash
+# Enable encryption with environment variable (preferred method)
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam --confdb ...
+
+# Or with command line parameter (less secure, visible in process list)
+./tg-spam --confdb-encrypt-key="your-secure-master-key-at-least-20-chars" --confdb ...
+```
+
+When encryption is enabled, sensitive fields like Telegram token, OpenAI token, Gemini token, and server auth hash are automatically encrypted in the database and decrypted when loaded. This provides an extra layer of protection for your credentials, especially in shared database environments.
+
+Every settings group is persisted in `--confdb` mode, including the groups added with the master merge: Gemini, LLM consensus, Report, Duplicates, Delete join/leave messages, Meta contact-only and giveaway checks, and aggressive cleanup. For example, the `save-config` subcommand can bootstrap a database with Gemini enabled:
+
+```bash
+# Bootstrap a scratch DB with Gemini persisted, then run with --confdb
+export CONFDB_ENCRYPT_KEY="your-secure-master-key-at-least-20-chars"
+./tg-spam save-config --gemini.token=your-gemini-key --gemini.model=gemini-2.0-flash \
+    --llm.consensus=all --report.enabled --duplicates.threshold=3 \
+    --telegram.token=your-telegram-token --telegram.group=your-group
+./tg-spam --confdb --telegram.group=your-group
+```
+
+On subsequent `--confdb` starts the bot loads every persisted group from the database; transient flags (paths, server listen address, debug flags) still come from the CLI. See [db-conf.md](db-conf.md) for the full persisted settings inventory and the CLI/DB precedence rules. Note that not every persisted field has a form input on the `/settings` page — connection settings, message templates, OpenAI/Gemini prompt and tuning, abnormal-spacing thresholds, and several others require a CLI restart or `save-config` round-trip to change. The "Settings UI vs CLI-only Fields" section in db-conf.md lists the full inventory.
+
+#### Security Details
+
+- Uses industry-standard AES-GCM encryption with Argon2id key derivation
+- Creates instance-specific encryption keys to prevent cross-instance decryption
+- Requires a minimum key length of 20 characters to ensure adequate security
+- Environment variables are preferred over command-line parameters to prevent key exposure
+
+> **Important**: The encryption key must be kept secure and consistent across restarts. If the key changes, previously encrypted settings cannot be decrypted. For production use, consider using a secrets management system.
 
 ### Database Migration for samples (spam and ham), stop words and exclude tokens, after version (v1.16.0+)
 
@@ -284,7 +370,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **admin commands**
 
-* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future.
+* Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future. The same `spam` or `/spam` text from a regular user posting under his own account does not mark the message as spam; it is an alias for `report` and behaves exactly like it (see [User Spam Reporting](#user-spam-reporting)).
 
 * Replying to the message with the text `ban` or `/ban` will ban the user who sent the message. This is useful for post-moderation purposes. Essentially this is the same as sending `/spam` but without adding the message to the spam samples file.
 
@@ -316,17 +402,19 @@ All samples are stored in the database, which can be specified using the `--db=,
 
 ### User Spam Reporting
 
-Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report` or `report`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
+Regular users can report potential spam messages to moderators by replying to a suspicious message with `/report`, `report`, `/spam` or `spam`. This feature provides a crowdsourced approach to spam detection, complementing automated spam filters.
 
 To enable user spam reporting, set `--report.enabled` to `true` and configure an admin chat using `--admin.group=`. When enabled:
 
-1. Users reply to suspicious messages with `/report` to flag them for review
+1. Users reply to suspicious messages with `/report` or `/spam` to flag them for review
 2. The bot tracks all reports for each message
-3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat
+3. When the number of unique reporters reaches the threshold (configurable via `--report.threshold=`), the bot sends a notification to the admin chat and mentions all superusers configured by username
 4. Admins can review the reported message and take action using inline buttons:
    - **Approve Ban**: Immediately ban the reported user and delete the reported message
    - **Reject**: Reject this report without taking action
-   - **Ban Reporter**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+   - **Ban Reporters**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
+
+Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
 
 #### Advanced Reporting Features
 
@@ -336,9 +424,30 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
 
   Example: `--report.threshold=2 --report.auto-ban-threshold=5` will notify admins after 2 reports but automatically ban after 5 reports.
 
-The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The `/report` command message is automatically deleted to keep the chat clean.
+The reporting system includes rate limiting to prevent abuse. Each user can submit up to `--report.rate-limit=` reports (default: 10) within `--report.rate-period=` (default: 1 hour). The report command message is automatically deleted to keep the chat clean.
 
 All reports are stored in the database for audit purposes and can help identify patterns of spam or abuse over time.
+
+### Warn-Driven Auto-Ban
+
+The admin `/warn` command can optionally escalate to an automatic ban once a user has accumulated enough warnings within a sliding time window. This complements `--report.auto-ban-threshold` (which aggregates user `/report` submissions for one message) by tracking admin warnings per user across messages.
+
+The feature is disabled by default. To enable it, set `--warn.threshold` / `$WARN_THRESHOLD` to a positive number and adjust `--warn.window` / `$WARN_WINDOW` (default: `720h`). When enabled:
+
+1. Each `/warn` issued by an admin is recorded in the `warnings` table together with the user/channel id and timestamp
+2. After recording the warning, the bot counts how many warnings the same user has received within the configured window
+3. If the count reaches `--warn.threshold=` (i.e. `count >= threshold`), the bot bans the user immediately, respecting `--training`, `--dry`, and `--soft-ban` modes
+4. A notification is posted to the admin chat in the form `**warn auto-banned** @user (12345) after N warns within <window>`. The verb adapts to the active mode: `auto-would have banned` in dry mode, `auto-would have banned (training)` in training mode, and `auto-restricted` for users in soft-ban mode (channels still fall through to `auto-banned` because Telegram has no restrict variant for channel senders).
+
+Example: `--warn.threshold=3 --warn.window=168h` bans a user once they accumulate three warnings within a week (the third warn triggers the ban).
+
+Notes:
+
+- The default `--warn.threshold=0` preserves the original `/warn` behavior exactly: a warning message is posted and the offending message is deleted, but no warning is recorded and no auto-ban is performed.
+- Warnings issued before the window expires are counted; older rows are pruned opportunistically by the storage layer. The storage retention is capped at one year, so configuring `--warn.window` beyond `8760h` is not supported.
+- Unlike `/spam`, `/warn` does not update spam samples — warnings reflect admin policy, not spam content.
+- Repeat bans are intentional: if an already-banned user is warned again, the threshold check fires again and re-bans them. Telegram treats banning an already-banned user as a no-op, so this is safe and serves as audit visibility for repeat offenders.
+- Toggling `--warn.threshold` from `0` to a positive value (or vice versa) requires a process restart: the warnings storage is wired only at startup. Runtime changes via the settings UI are persisted but take effect only after the next restart.
 
 ### Lua Plugins Support
 
@@ -356,7 +465,7 @@ Each Lua plugin must define a `check` function that takes a request object and r
 ```lua
 function check(request)
     -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
-    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, message_id
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_external_reply, message_id
     
     -- Your custom spam detection logic here
     if string.match(request.msg, "some pattern") then
@@ -384,6 +493,20 @@ Example plugins are available in the [_examples/lua_plugins](https://github.com/
 ### Logging
 
 The default logging prints spam reports to the console (stdout). The bot can log all the spam messages to the file as well. To enable this feature, set `--logger.enabled, [$LOGGER_ENABLED]` to `true`. By default, the bot will log to the file `tg-spam.log` in the current directory. To change the location, set `--logger.file, [$LOGGER_FILE]` to the desired location. The bot will rotate the log file when it reaches the size specified in `--logger.max-size, [$LOGGER_MAX_SIZE]` (default is 100M). The bot will keep up to `--logger.max-backups, [$LOGGER_MAX_BACKUPS]` (default is 10) of the old, compressed log files.
+
+### Using a proxy
+
+For networks where access to `api.telegram.org` is blocked, `tg-spam` honours the standard Go proxy environment variables out of the box. No flag or code change is required.
+
+Set one of `HTTPS_PROXY` / `HTTP_PROXY` (and optionally `NO_PROXY`) in the bot's environment or docker-compose file. Supported proxy schemes are `http`, `https`, `socks5`, and `socks5h`:
+
+```
+HTTPS_PROXY=http://user:pass@proxy.example.com:8080
+# or
+HTTPS_PROXY=socks5://user:pass@proxy.example.com:1080
+```
+
+The same variables also control traffic to any other HTTPS endpoint the bot talks to (OpenAI, Gemini, remote sample repositories, etc.), so `NO_PROXY` can be used to carve out exceptions.
 
 ### Automatic backup on version upgrade
 
@@ -463,6 +586,8 @@ Success! The new status is: DISABLED. /help
 ```
       --instance-id=                    instance id (default: tg-spam) [$INSTANCE_ID]
       --db=                             database URL, if empty uses sqlite (default: tg-spam.db) [$DB]
+      --confdb                          load configuration from database [$CONFDB]
+      --confdb-encrypt-key=             encryption key for sensitive config values in database [$CONFDB_ENCRYPT_KEY]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
@@ -474,9 +599,12 @@ Success! The new status is: DISABLED. /help
       --suppress-join-message           delete join message if user is kicked out [$SUPPRESS_JOIN_MESSAGE]
       --similarity-threshold=           spam threshold (default: 0.5) [$SIMILARITY_THRESHOLD]
       --min-msg-len=                    min message length to check (default: 50) [$MIN_MSG_LEN]
+      --max-short-msg-count=            ban unapproved user after N short messages without graduation (0 disables) (default: 0) [$MAX_SHORT_MSG_COUNT]
       --max-emoji=                      max emoji count in message, -1 to disable check (default: 2) [$MAX_EMOJI]
       --min-probability=                min spam probability percent to ban (default: 50) [$MIN_PROBABILITY]
       --multi-lang=                     number of words in different languages to consider as spam (default: 0) [$MULTI_LANG]
+      --prohibited-langs=               comma-separated prohibited languages or scripts, e.g. chinese,cyrillic (empty disables) [$PROHIBITED_LANGS]
+      --prohibited-langs-min=           min prohibited-script letters in a message to consider as spam (default: 3) [$PROHIBITED_LANGS_MIN]
       --paranoid                        paranoid mode, check all messages [$PARANOID]
       --first-messages-count=           number of first messages to check (default: 1) [$FIRST_MESSAGES_COUNT]
       --aggressive-cleanup              delete all messages from user when banned via /spam command [$AGGRESSIVE_CLEANUP]
@@ -515,7 +643,9 @@ meta:
       --meta.links-limit=               max links in message, disabled by default (default: -1) [$META_LINKS_LIMIT]
       --meta.mentions-limit=            max mentions in message, disabled by default (default: -1) [$META_MENTIONS_LIMIT]
       --meta.image-only                 enable image only check [$META_IMAGE_ONLY]
+      --meta.image-text-len=            min text length for image messages, 0 uses min-msg-len (default: 0) [$META_IMAGE_TEXT_LEN]
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
+      --meta.mention-only               enable mention only check [$META_MENTION_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.contact-only               enable contact only check [$META_CONTACT_ONLY]
@@ -523,6 +653,7 @@ meta:
       --meta.keyboard                   enable keyboard check [$META_KEYBOARD]
       --meta.username-symbols=          prohibited symbols in username, disabled by default [$META_USERNAME_SYMBOLS]
       --meta.giveaway                   enable giveaway check [$META_GIVEAWAY]
+      --meta.external-reply             enable external reply check [$META_EXTERNAL_REPLY]
 
 openai:
       --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
@@ -572,12 +703,20 @@ duplicates:
       --duplicates.threshold=           duplicate messages to trigger spam (0=disabled) (default: 0) [$DUPLICATES_THRESHOLD]
       --duplicates.window=              time window for duplicate detection (default: 1h) [$DUPLICATES_WINDOW]
 
+reactions:
+      --reactions.max-reactions=        max reactions per user in window to trigger spam ban (0=disabled) (default: 0) [$REACTIONS_MAX_REACTIONS]
+      --reactions.window=               time window for reaction spam detection (default: 1h) [$REACTIONS_WINDOW]
+
 report:
       --report.enabled                  enable user spam reporting [$REPORT_ENABLED]
       --report.threshold=               number of reports to trigger admin notification (default: 2) [$REPORT_THRESHOLD]
       --report.auto-ban-threshold=      auto-ban after N reports (0=disabled, must be >= threshold) [$REPORT_AUTO_BAN_THRESHOLD]
       --report.rate-limit=              max reports per user per period (default: 10) [$REPORT_RATE_LIMIT]
       --report.rate-period=             rate limit time period (default: 1h) [$REPORT_RATE_PERIOD]
+
+warn:
+      --warn.threshold=                 auto-ban after N warns within window (0=disabled) (default: 0) [$WARN_THRESHOLD]
+      --warn.window=                    sliding window for counting warns (default: 720h) [$WARN_WINDOW]
 
 files:
       --files.samples=                  samples data path, defaults to dynamic data path [$FILES_SAMPLES]
@@ -594,18 +733,21 @@ message:
 server:
       --server.enabled                  enable web server [$SERVER_ENABLED]
       --server.listen=                  listen address (default: :8080) [$SERVER_LISTEN]
-      --server.auth=                    basic auth password for user 'tg-spam' (default: auto) [$SERVER_AUTH]
-      --server.auth-hash=               basic auth password hash for user 'tg-spam' [$SERVER_AUTH_HASH]
+      --server.auth=                    basic auth password (default: auto) [$SERVER_AUTH]
+      --server.auth-hash=               basic auth password hash [$SERVER_AUTH_HASH]
 
 Help Options:
   -h, --help                            Show this help message
+
+Available commands:
+  save-config  Save current configuration to database
 ```
 
 ### Application Options in details
 
 - `super` defines the list of privileged users, can be repeated multiple times or provide as a comma-separated list in the environment. Those users are immune to spam detection and can also unban other users. All the admins of the group are privileged by default. Additionally, anonymous admin posts (when admins post "as the group" itself) are automatically excluded from spam checks. If the group is linked to a channel (i.e. it is a discussion group), the linked channel is also treated as a superuser and its messages skip spam checking. This is resolved automatically at startup and requires no extra configuration.
 - `no-spam-reply` - if set to `true`, the bot will not reply to spam messages. By default, the bot will reply to spam messages with the text `this is spam` and `this is spam (dry mode)` for dry mode. In non-dry mode, the bot will delete the spam message and ban the user permanently with no reply to the group.
-- `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 1 hour. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
+- `history-duration` defines how long to keep the message in the internal cache. If the message is older than this value, it will be removed from the cache. The default value is 24 hours. The cache is used to match the original message with the forwarded one. See [Updating spam and ham samples dynamically](#updating-spam-and-ham-samples-dynamically) section for more details.
 - `history-min-size` defines the minimal number of messages to keep in the internal cache. If the number of messages is greater than this value, and the `history-duration` exceeded, the oldest messages will be removed from the cache.
 - `suppress-join-message` - if set to `true`, the bot will delete the join message from the group if the user is kicked out (for detected spammers only). This tracks join messages in the locator and removes them when a user is banned. This is useful to keep the group clean after removing spammers.
 - `delete.join-messages` - if set to `true`, the bot will immediately delete all join messages ("User joined the group"). This keeps the chat clean by preventing join message clutter, regardless of whether users turn out to be spammers. Can be used together with `suppress-join-message` for maximum cleanup.
@@ -645,9 +787,9 @@ Pls note: Missed spam messages forwarded to the admin chat will be banned and re
 
 The bot can be run with a webapi server. This is useful for integration with other tools. The server is disabled by default, to enable it pass `--server.enabled [$SERVER_ENABLED]`. The server will listen on the port specified by `--server.listen [$SERVER_LISTEN]` parameter (default is `:8080`).
 
-By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password and the hash are printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
+By default, the server is protected by basic auth with user `tg-spam` and randomly generated password. This password is printed to the console on startup. If user wants to set a custom auth password, it can be done with `--server.auth [$SERVER_AUTH]` parameter. Setting it to empty string will disable basic auth protection. 
 
-For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
+For better security, it is possible to set the password hash instead, with `--server.auth-hash [$SERVER_AUTH_HASH]` parameter. Setting `--server.auth-hash` alone is sufficient — when a hash is provided, no random password is generated regardless of `--server.auth`, and only hash-based auth is enforced. The hash should be generated with any command what can make bcrypt hash. For example, the following command will generate a hash for the password `your_password`: `htpasswd -n -B -b tg-spam your_password | cut -d':' -f2`
 
 alternatively, it is possible to use one of the following commands to generate the hash:
 ```
@@ -659,6 +801,7 @@ openssl passwd -apr1 your_password
 
 In case if both `--server.auth` and `--server.auth-hash` are set, the hash will be used.
 
+In `--confdb` mode, if the server is enabled but the database has no stored auth hash AND the operator did not pass any `--server.auth*` flag on the CLI, a random password is generated automatically and logged at startup (the same behavior as the default legacy mode). The automatic fallback never overrides an explicit `--server.auth=` (empty) intent — passing an empty `--server.auth` deliberately leaves the UI unauthenticated.
 
 It is truly a **bad idea** to run the server without basic auth protection, as it allows adding/removing users and updating spam samples to anyone who knows the endpoint. The only reason to run it without protection is inside the trusted network or for testing purposes.  Exposing the server directly to the internet is not recommended either, as basic auth is not secure enough if used without SSL. It is better to use a reverse proxy with TLS termination in front of the server.
 
@@ -821,6 +964,8 @@ It also has an example of [docker-compose.yml](https://github.com/umputun/tg-spa
 It is not possible to run the bot for multiple groups, as the bot is designed to work with a single group only. However, it is possible to run multiple instances of the bot with different tokens and different groups. Note: it has to have a token per bot, because TG doesn't allow using the same token for multiple bots at the same time, and such a reuse attempt will prevent the bot from working properly.
 
 At the same time, multiple instances of the bot can share the same set of samples and dynamic data files. To do so, user should mount the same directory with samples and dynamic data files to all the instances of the bot.
+
+> **Upgrade note for shared PostgreSQL databases:** the message locator tables (`messages`, `spam`) are keyed by `(instance-id, ...)` and are migrated to composite primary keys on first startup of an upgraded instance. While a shared database has instances on mixed versions, older binaries can fail their locator upserts against the migrated schema (the old single-column `ON CONFLICT` target no longer exists). Upgrade all instances sharing one database together.
 
 ## Using tg-spam as a library
 

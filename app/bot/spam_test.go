@@ -74,6 +74,28 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "spam with external reply",
+			message: Message{
+				Text:              "spam message",
+				From:              User{ID: 1, Username: "user1"},
+				WithExternalReply: true,
+			},
+			wantResponse: Response{
+				Text:          `detected`,
+				Send:          true,
+				BanInterval:   PermanentBanDuration,
+				DeleteReplyTo: true,
+				User:          User{ID: 1, Username: "user1"},
+				CheckResults:  []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}},
+			},
+			wantRequest: spamcheck.Request{
+				Msg:      "spam message",
+				UserID:   "1",
+				UserName: "user1",
+				Meta:     spamcheck.MetaData{HasExternalReply: true},
+			},
+		},
+		{
 			name: "spam with video note",
 			message: Message{
 				Text:          "spam message",
@@ -527,6 +549,11 @@ func TestSpamFilter_OnMessage(t *testing.T) {
 			det := &mocks.DetectorMock{
 				CheckFunc: func(req spamcheck.Request) (bool, []spamcheck.Response) {
 					if tc.wantRequest != (spamcheck.Request{}) {
+						// OnMessage stores any appended quote/reply text in Quote so
+						// AuthoredText() yields the user's own text; verify that, then
+						// normalize Quote before comparing the rest against wantRequest.
+						assert.Equal(t, tc.message.Text, req.AuthoredText())
+						req.Quote = ""
 						assert.Equal(t, tc.wantRequest, req)
 					}
 					if tc.message.Text == "good message" {
@@ -1100,6 +1127,71 @@ func TestSpamFilter_RemoveDynamicSamples(t *testing.T) {
 			if tc.sampleType == "ham" {
 				assert.Len(t, det.RemoveHamCalls(), 1)
 				assert.Equal(t, tc.sample, det.RemoveHamCalls()[0].Msg)
+			}
+		})
+	}
+}
+
+func TestSpamFilterOnReaction(t *testing.T) {
+	tests := []struct {
+		name         string
+		userID       int64
+		userName     string
+		isApproved   bool
+		reactionResp spamcheck.Response
+		wantBan      bool
+	}{
+		{
+			name:       "approved user skipped",
+			userID:     1,
+			userName:   "user1",
+			isApproved: true,
+			wantBan:    false,
+		},
+		{
+			name:         "below threshold, no ban",
+			userID:       2,
+			userName:     "user2",
+			isApproved:   false,
+			reactionResp: spamcheck.Response{Name: "reactions", Spam: false, Details: "2/5"},
+			wantBan:      false,
+		},
+		{
+			name:         "threshold reached, ban",
+			userID:       3,
+			userName:     "user3",
+			isApproved:   false,
+			reactionResp: spamcheck.Response{Name: "reactions", Spam: true, Details: "exceeded, 5 reactions in 1h0m0s"},
+			wantBan:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			det := &mocks.DetectorMock{
+				IsApprovedUserFunc: func(userID string) bool {
+					return tc.isApproved
+				},
+				RecordReactionFunc: func(userID int64) spamcheck.Response {
+					return tc.reactionResp
+				},
+			}
+			sf := NewSpamFilter(det, SpamConfig{})
+			resp := sf.OnReaction(tc.userID, tc.userName)
+			if tc.wantBan {
+				assert.Equal(t, PermanentBanDuration, resp.BanInterval)
+				assert.Equal(t, tc.userID, resp.User.ID)
+				assert.Equal(t, tc.userName, resp.User.Username)
+				require.Len(t, resp.CheckResults, 1)
+				assert.True(t, resp.CheckResults[0].Spam)
+			} else {
+				assert.Zero(t, resp.BanInterval)
+			}
+			if tc.isApproved {
+				assert.Empty(t, det.RecordReactionCalls(), "approved user must not trigger RecordReaction")
+			} else {
+				assert.Len(t, det.RecordReactionCalls(), 1)
+				assert.Equal(t, tc.userID, det.RecordReactionCalls()[0].UserID)
 			}
 		})
 	}

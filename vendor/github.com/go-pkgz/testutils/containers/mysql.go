@@ -27,8 +27,22 @@ func NewMySQLTestContainer(ctx context.Context, t *testing.T) *MySQLTestContaine
 	return NewMySQLTestContainerWithDB(ctx, t, "test")
 }
 
+// NewMySQLTestContainerE creates a new MySQL test container with default settings.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewMySQLTestContainerE(ctx context.Context) (*MySQLTestContainer, error) {
+	return NewMySQLTestContainerWithDBE(ctx, "test")
+}
+
 // NewMySQLTestContainerWithDB creates a new MySQL test container with a specific database name
 func NewMySQLTestContainerWithDB(ctx context.Context, t *testing.T, dbName string) *MySQLTestContainer {
+	mc, err := NewMySQLTestContainerWithDBE(ctx, dbName)
+	require.NoError(t, err)
+	return mc
+}
+
+// NewMySQLTestContainerWithDBE creates a new MySQL test container with a specific database name.
+// Returns error instead of using require.NoError, suitable for TestMain usage.
+func NewMySQLTestContainerWithDBE(ctx context.Context, dbName string) (*MySQLTestContainer, error) {
 	const (
 		defaultUser     = "root"
 		defaultPassword = "secret"
@@ -51,22 +65,30 @@ func NewMySQLTestContainerWithDB(ctx context.Context, t *testing.T, dbName strin
 		ContainerRequest: req,
 		Started:          true,
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mysql container: %w", err)
+	}
 
 	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
+	}
 
 	port, err := container.MappedPort(ctx, "3306")
-	require.NoError(t, err)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get mapped port: %w", err)
+	}
 
 	return &MySQLTestContainer{
 		Container: container,
 		Host:      host,
-		Port:      port,
+		Port:      nat.Port(port.String()),
 		User:      defaultUser,
 		Password:  defaultPassword,
 		Database:  dbName,
-	}
+	}, nil
 }
 
 // ConnectionString returns the MySQL connection string for this container

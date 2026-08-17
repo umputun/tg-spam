@@ -51,6 +51,7 @@ type Detector interface {
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
+	RecordReaction(userID int64) spamcheck.Response
 	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
 
@@ -79,12 +80,16 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	displayUsername := DisplayName(msg)
 
 	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
-	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion
+	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion.
+	// the appended quote is also kept in quoteText so hard policy checks can drop it via Request.AuthoredText
 	msgText := msg.Text
+	quoteText := ""
 	switch {
 	case msg.Quote != "":
+		quoteText = msg.Quote
 		msgText = msg.Text + "\n" + msg.Quote
 	case msg.ReplyTo.Text != "":
+		quoteText = msg.ReplyTo.Text
 		msgText = msg.Text + "\n" + msg.ReplyTo.Text
 	}
 
@@ -99,7 +104,7 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 		firstName, lastName, isPremium = "", "", false // channels don't have personal user fields
 	}
 
-	spamReq := spamcheck.Request{Msg: msgText, CheckOnly: checkOnly,
+	spamReq := spamcheck.Request{Msg: msgText, Quote: quoteText, CheckOnly: checkOnly,
 		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName,
 		FirstName: firstName, LastName: lastName, IsPremium: isPremium}
 	if msg.Image != nil {
@@ -122,6 +127,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	if msg.WithGiveaway {
 		spamReq.Meta.HasGiveaway = true
+	}
+	if msg.WithExternalReply {
+		spamReq.Meta.HasExternalReply = true
 	}
 	spamReq.Meta.MessageID = msg.ID
 
@@ -195,6 +203,25 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 // IsApprovedUser checks if user is in the list of approved users
 func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 	return s.Detector.IsApprovedUser(fmt.Sprintf("%d", userID))
+}
+
+// OnReaction records one net-new reaction from a user and returns a ban response if the threshold is exceeded.
+// Approved users are skipped. Callers should invoke this once per added reaction; if a single Telegram update
+// adds multiple reactions, each added reaction is counted separately.
+func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
+	if s.IsApprovedUser(userID) {
+		return Response{}
+	}
+	resp := s.RecordReaction(userID)
+	if resp.Spam {
+		log.Printf("[INFO] user %s (%d) detected as reaction spammer", userName, userID)
+		return Response{
+			BanInterval:  PermanentBanDuration,
+			User:         User{ID: userID, Username: userName},
+			CheckResults: []spamcheck.Response{resp},
+		}
+	}
+	return Response{}
 }
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage

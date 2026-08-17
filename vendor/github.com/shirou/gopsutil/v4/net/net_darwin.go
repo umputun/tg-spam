@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	errNetstatHeader  = errors.New("Can't parse header of netstat output")
+	errNetstatHeader  = errors.New("can't parse header of netstat output")
 	netstatLinkRegexp = regexp.MustCompile(`^<Link#(\d+)>$`)
 )
 
@@ -29,15 +29,14 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 	)
 
 	if columns[0] == "Name" {
-		err = errNetstatHeader
-		return //nolint:nakedret //FIXME
+		return nil, nil, errNetstatHeader
 	}
 
 	// try to extract the numeric value from <Link#123>
 	if subMatch := netstatLinkRegexp.FindStringSubmatch(columns[2]); len(subMatch) == 2 {
 		numericValue, err = strconv.ParseUint(subMatch[1], 10, 64)
 		if err != nil {
-			return //nolint:nakedret //FIXME
+			return nil, nil, err
 		}
 		linkIDUint := uint(numericValue)
 		linkID = &linkIDUint
@@ -50,21 +49,18 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		base = 0
 	}
 	if numberColumns < 11 || numberColumns > 13 {
-		err = fmt.Errorf("Line %q do have an invalid number of columns %d", line, numberColumns)
-		return //nolint:nakedret //FIXME
+		return nil, nil, fmt.Errorf("line %q do have an invalid number of columns %d", line, numberColumns)
 	}
 
 	parsed := make([]uint64, 0, 7)
 	vv := []string{
-		columns[base+3], // Ipkts == PacketsRecv
-		columns[base+4], // Ierrs == Errin
-		columns[base+5], // Ibytes == BytesRecv
-		columns[base+6], // Opkts == PacketsSent
-		columns[base+7], // Oerrs == Errout
-		columns[base+8], // Obytes == BytesSent
-	}
-	if len(columns) == 12 {
-		vv = append(vv, columns[base+10])
+		columns[base+3],  // Ipkts == PacketsRecv
+		columns[base+4],  // Ierrs == Errin
+		columns[base+5],  // Ibytes == BytesRecv
+		columns[base+6],  // Opkts == PacketsSent
+		columns[base+7],  // Oerrs == Errout
+		columns[base+8],  // Obytes == BytesSent
+		columns[base+10], // Drop == Dropout
 	}
 
 	for _, target := range vv {
@@ -74,7 +70,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		}
 
 		if numericValue, err = strconv.ParseUint(target, 10, 64); err != nil {
-			return //nolint:nakedret //FIXME
+			return nil, nil, err
 		}
 		parsed = append(parsed, numericValue)
 	}
@@ -87,11 +83,9 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		PacketsSent: parsed[3],
 		Errout:      parsed[4],
 		BytesSent:   parsed[5],
+		Dropout:     parsed[6],
 	}
-	if len(parsed) == 7 {
-		stat.Dropout = parsed[6]
-	}
-	return //nolint:nakedret //FIXME
+	return stat, linkID, nil
 }
 
 type netstatInterface struct {

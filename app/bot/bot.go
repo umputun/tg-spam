@@ -63,6 +63,8 @@ type Message struct {
 	WithKeyboard  bool `json:",omitempty"`
 	WithContact   bool `json:",omitempty"`
 	WithGiveaway  bool `json:",omitempty"`
+	// WithExternalReply is true if the message replies to a message from another chat (external_reply)
+	WithExternalReply bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.
@@ -93,6 +95,17 @@ type User struct {
 	FirstName   string `json:"first_name,omitempty"`
 	LastName    string `json:"last_name,omitempty"`
 	IsPremium   bool   `json:"is_premium,omitempty"`
+}
+
+// String returns a human-readable representation of the user.
+func (u User) String() string {
+	if u.Username != "" {
+		return fmt.Sprintf("@%s (%d)", u.Username, u.ID)
+	}
+	if u.DisplayName != "" {
+		return fmt.Sprintf("%s (%d)", u.DisplayName, u.ID)
+	}
+	return fmt.Sprintf("id:%d", u.ID)
 }
 
 // DisplayName returns user's display name or username or id

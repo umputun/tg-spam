@@ -76,8 +76,36 @@ func TestConverter_SqliteToPostgres(t *testing.T) {
 	)`)
 	require.NoError(t, err)
 
+	// create reports table
+	_, err = db.Exec(`CREATE TABLE reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		msg_id INTEGER,
+		chat_id INTEGER,
+		gid TEXT NOT NULL DEFAULT '',
+		reporter_user_id INTEGER,
+		reporter_user_name TEXT,
+		reported_user_id INTEGER,
+		reported_user_name TEXT,
+		msg_text TEXT,
+		report_time TIMESTAMP,
+		notification_sent BOOLEAN DEFAULT 0,
+		admin_msg_id INTEGER DEFAULT 0,
+		UNIQUE(gid, msg_id, chat_id, reporter_user_id)
+	)`)
+	require.NoError(t, err)
+
+	// create warnings table
+	_, err = db.Exec(`CREATE TABLE warnings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		gid TEXT NOT NULL DEFAULT '',
+		user_id INTEGER NOT NULL,
+		user_name TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
 	// insert test data
-	_, err = db.Exec(`INSERT INTO detected_spam (gid, text, user_id, user_name, added, checks) 
+	_, err = db.Exec(`INSERT INTO detected_spam (gid, text, user_id, user_name, added, checks)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		"test", "Test spam message", 12345, "user1", 0, `[{"name":"test","spam":true,"details":"test details"}]`)
 	require.NoError(t, err)
@@ -110,9 +138,21 @@ func TestConverter_SqliteToPostgres(t *testing.T) {
 		"test", "stop_phrase", "spam phrase")
 	require.NoError(t, err)
 
-	_, err = db.Exec(`INSERT INTO dictionary (gid, type, data) 
+	_, err = db.Exec(`INSERT INTO dictionary (gid, type, data)
 		VALUES (?, ?, ?)`,
 		"test", "ignored_word", "ignore")
+	require.NoError(t, err)
+
+	// insert data into reports table, notification_sent=1 exercises boolean data conversion
+	_, err = db.Exec(`INSERT INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name,
+		reported_user_id, reported_user_name, msg_text, report_time, notification_sent)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+		10, 123456789012, "test", 111, "reporter", 222, "reported", "reported text", 1)
+	require.NoError(t, err)
+
+	// insert data into warnings table
+	_, err = db.Exec(`INSERT INTO warnings (gid, user_id, user_name) VALUES (?, ?, ?)`,
+		"test", 333, "warned-user")
 	require.NoError(t, err)
 
 	// add indices
@@ -160,6 +200,18 @@ func TestConverter_SqliteToPostgres(t *testing.T) {
 	// check dictionary table conversion
 	assert.Contains(t, result, "CREATE TABLE dictionary")
 	assert.Contains(t, result, "CHECK (type IN ('stop_phrase', 'ignored_word'))")
+
+	// check reports table conversion
+	assert.Contains(t, result, "CREATE TABLE reports")
+	assert.Contains(t, result, "chat_id BIGINT")
+	assert.Contains(t, result, "reporter_user_id BIGINT")
+	assert.Contains(t, result, "reported_user_id BIGINT")
+	assert.Contains(t, result, "notification_sent BOOLEAN DEFAULT false")
+	assert.Contains(t, result, "reported text")
+
+	// check warnings table conversion
+	assert.Contains(t, result, "CREATE TABLE warnings")
+	assert.Contains(t, result, "warned-user")
 
 	// check indices
 	assert.Contains(t, result, "CREATE INDEX idx_detected_spam_gid")
@@ -747,7 +799,42 @@ func createTestSqliteDatabase(t *testing.T) (db *SQL, path string) {
 		require.NoError(t, err)
 	}
 
-	// 5. Create indices
+	// 5. Create reports and warnings tables with data
+	_, err = db.Exec(`CREATE TABLE reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		msg_id INTEGER,
+		chat_id INTEGER,
+		gid TEXT NOT NULL DEFAULT '',
+		reporter_user_id INTEGER,
+		reporter_user_name TEXT,
+		reported_user_id INTEGER,
+		reported_user_name TEXT,
+		msg_text TEXT,
+		report_time TIMESTAMP,
+		notification_sent BOOLEAN DEFAULT 0,
+		admin_msg_id INTEGER DEFAULT 0,
+		UNIQUE(gid, msg_id, chat_id, reporter_user_id)
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`INSERT INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name,
+		reported_user_id, reported_user_name, msg_text, report_time, notification_sent)
+		VALUES (10, 123456789012, 'test', 111, 'reporter', 222, 'reported', 'reported text', CURRENT_TIMESTAMP, 1)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE TABLE warnings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		gid TEXT NOT NULL DEFAULT '',
+		user_id INTEGER NOT NULL,
+		user_name TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`INSERT INTO warnings (gid, user_id, user_name) VALUES ('test', 333, 'warned-user')`)
+	require.NoError(t, err)
+
+	// 6. Create indices
 	_, err = db.Exec(`CREATE INDEX idx_detected_spam_gid ON detected_spam (gid)`)
 	require.NoError(t, err)
 	_, err = db.Exec(`CREATE INDEX idx_approved_users_gid ON approved_users (gid)`)
@@ -763,7 +850,7 @@ func createTestSqliteDatabase(t *testing.T) (db *SQL, path string) {
 // verifyPostgresData verifies that the PostgreSQL database has the correct data after conversion
 func verifyPostgresData(ctx context.Context, t *testing.T, pgConn *sqlx.DB) {
 	// 1. Verify tables exist
-	tables := []string{"detected_spam", "approved_users", "samples", "dictionary"}
+	tables := []string{"detected_spam", "approved_users", "samples", "dictionary", "reports", "warnings"}
 	for _, table := range tables {
 		var count int
 		err := pgConn.GetContext(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM pg_tables WHERE tablename = '%s'", table))
@@ -776,6 +863,18 @@ func verifyPostgresData(ctx context.Context, t *testing.T, pgConn *sqlx.DB) {
 	err := pgConn.GetContext(ctx, &spamCount, "SELECT COUNT(*) FROM detected_spam")
 	require.NoError(t, err)
 	assert.Equal(t, 3, spamCount, "Should have 3 rows in detected_spam")
+
+	// verify reports imported with the boolean converted and big chat id intact
+	var reportCount int
+	err = pgConn.GetContext(ctx, &reportCount, "SELECT COUNT(*) FROM reports WHERE notification_sent = true AND chat_id = 123456789012")
+	require.NoError(t, err)
+	assert.Equal(t, 1, reportCount, "report row should import with boolean and bigint values")
+
+	// verify warnings imported
+	var warnCount int
+	err = pgConn.GetContext(ctx, &warnCount, "SELECT COUNT(*) FROM warnings WHERE user_id = 333")
+	require.NoError(t, err)
+	assert.Equal(t, 1, warnCount, "warning row should import")
 
 	// check specific detected_spam record
 	var spamRecord struct {
@@ -1063,6 +1162,15 @@ func TestSqliteToPostgresIntegration(t *testing.T) {
 
 	_, err = pgConn.ExecContext(ctx, `INSERT INTO dictionary (gid, type, data) VALUES ('test', 'ignored_word', 'ignore with special chars')`)
 	require.NoError(t, err, "Failed to insert dictionary 4")
+
+	// reports and warnings, exercising the converted schema's bigint and boolean columns
+	_, err = pgConn.ExecContext(ctx, `INSERT INTO reports (msg_id, chat_id, gid, reporter_user_id, reporter_user_name,
+		reported_user_id, reported_user_name, msg_text, report_time, notification_sent)
+		VALUES (10, 123456789012, 'test', 111, 'reporter', 222, 'reported', 'reported text', CURRENT_TIMESTAMP, true)`)
+	require.NoError(t, err, "Failed to insert report")
+
+	_, err = pgConn.ExecContext(ctx, `INSERT INTO warnings (gid, user_id, user_name) VALUES ('test', 333, 'warned-user')`)
+	require.NoError(t, err, "Failed to insert warning")
 
 	// 4. Verify data in PostgreSQL
 	verifyPostgresData(ctx, t, pgConn)

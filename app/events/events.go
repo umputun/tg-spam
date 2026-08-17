@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,10 +17,8 @@ import (
 )
 
 //go:generate moq --out mocks/tb_api.go --pkg mocks --with-resets --skip-ensure . TbAPI
-//go:generate moq --out mocks/spam_logger.go --pkg mocks --with-resets --skip-ensure . SpamLogger
 //go:generate moq --out mocks/bot.go --pkg mocks --with-resets --skip-ensure . Bot
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
-//go:generate moq --out mocks/reports.go --pkg mocks --with-resets --skip-ensure . Reports
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
 type TbAPI interface {
@@ -28,19 +27,6 @@ type TbAPI interface {
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error)
 	GetChatAdministrators(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error)
-}
-
-// SpamLogger is an interface for spam logger
-type SpamLogger interface {
-	Save(msg *bot.Message, response *bot.Response)
-}
-
-// SpamLoggerFunc is a function that implements SpamLogger interface
-type SpamLoggerFunc func(msg *bot.Message, response *bot.Response)
-
-// Save is a function that implements SpamLogger interface
-func (f SpamLoggerFunc) Save(msg *bot.Message, response *bot.Response) {
-	f(msg, response)
 }
 
 // Locator is an interface for message locator
@@ -54,19 +40,10 @@ type Locator interface {
 	GetUserMessageIDs(ctx context.Context, userID int64, limit int) ([]int, error)
 }
 
-// Reports is an interface for user spam reports storage
-type Reports interface {
-	Add(ctx context.Context, report storage.Report) error
-	GetByMessage(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error)
-	GetReporterCountSince(ctx context.Context, reporterID int64, since time.Time) (int, error)
-	UpdateAdminMsgID(ctx context.Context, msgID int, chatID int64, adminMsgID int) error
-	DeleteByMessage(ctx context.Context, msgID int, chatID int64) error
-	DeleteReporter(ctx context.Context, reporterID int64, msgID int, chatID int64) error
-}
-
 // Bot is an interface for bot events.
 type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
+	OnReaction(userID int64, userName string) bot.Response
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error
@@ -204,7 +181,7 @@ func banUserOrChannel(r banRequest) error {
 		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
 			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
 			SenderChatID: r.channelID,
-			UntilDate:    int(time.Now().Add(r.duration).Unix()),
+			UntilDate:    time.Now().Add(r.duration).Unix(),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to ban channel: %w", err)
@@ -370,6 +347,11 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}
+	// external_reply also fires for a reply across forum topics within the same chat; flag only
+	// genuinely cross-chat replies (an unknown/hidden origin chat counts as external)
+	if msg.ExternalReply != nil && (msg.ExternalReply.Chat == nil || msg.ExternalReply.Chat.ID != msg.Chat.ID) {
+		message.WithExternalReply = true
+	}
 	if msg.ReplyMarkup != nil { // detect attached keyboards/buttons
 		message.WithKeyboard = true
 	}
@@ -423,25 +405,107 @@ func transform(msg *tbapi.Message) *bot.Message {
 		}
 	}
 
+	// handle rich messages (the client "article" compose type, bot api 10.2): their text
+	// lives in structured blocks with an empty msg.Text, so flatten it into the message text
+	// to let content checks and the llm see the content
+	if rt := richMessageText(msg.RichMessage); rt != "" {
+		if message.Text == "" {
+			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
+			message.Text = rt
+		} else {
+			log.Printf("[DEBUG] rich message appended to text: %q", rt)
+			message.Text += "\n" + rt
+		}
+	}
+
 	return &message
 }
 
-// parseCallbackData parses callback data format: [prefix]userID:msgID
+// richMessageText flattens a telegram rich message (the client "article" compose type,
+// bot api 10.2) into plain text. the library decodes rich_message blocks as generic json
+// (RichBlock and RichText are `any`), so it walks the block tree gathering text under
+// text-bearing keys, dropping urls, types and list markers. inline spans within a single
+// text run are concatenated without a separator so a word split across formatting nodes
+// (e.g. bold+italic) rejoins instead of breaking apart; distinct blocks are joined with a
+// newline. maps are visited in sorted key order for deterministic output; arrays keep their
+// document order. each block line is trimmed and empty lines dropped, so inline whitespace
+// between spans is preserved but padding is not.
+func richMessageText(rm *tbapi.RichMessage) string {
+	if rm == nil {
+		return ""
+	}
+	richTextKeys := map[string]bool{
+		"text": true, "caption": true, "credit": true,
+		"summary": true, "expression": true, "alternative_text": true,
+	}
+	var collect func(key string, node any) []string
+	collect = func(key string, node any) []string {
+		switch v := node.(type) {
+		case string:
+			if richTextKeys[key] {
+				return []string{v}
+			}
+		case []any:
+			if richTextKeys[key] {
+				// inline span run: concatenate the spans into one line so a word
+				// split across formatting nodes rejoins instead of breaking apart
+				var b strings.Builder
+				for _, e := range v {
+					b.WriteString(strings.Join(collect(key, e), ""))
+				}
+				return []string{b.String()}
+			}
+			// block array (blocks/items/cells): each element is its own block line
+			var out []string
+			for _, e := range v {
+				out = append(out, collect("", e)...)
+			}
+			return out
+		case map[string]any:
+			keys := make([]string, 0, len(v))
+			for k := range v {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var out []string
+			for _, k := range keys {
+				out = append(out, collect(k, v[k])...)
+			}
+			return out
+		}
+		return nil
+	}
+	lines := make([]string, 0, len(rm.Blocks))
+	for _, block := range rm.Blocks {
+		for _, line := range collect("", block) {
+			if s := strings.TrimSpace(line); s != "" {
+				lines = append(lines, s)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// stripCallbackPrefix removes the action prefix from callback data if present.
+// two-char report prefixes (R+, R-, R?, R!, RX) are checked before single-char ones.
+func stripCallbackPrefix(data string) string {
+	if len(data) >= 3 && data[:1] == "R" {
+		return data[2:]
+	}
+	if len(data) >= 1 && (data[:1] == "?" || data[:1] == "+" || data[:1] == "!") {
+		return data[1:]
+	}
+	return data
+}
+
+// parseCallbackData parses callback data format: [prefix]userID:msgID[:spamReplyID]
 // prefix can be: ?, +, !, or two-char report prefixes (R+, R-, R?, R!, RX)
 func parseCallbackData(data string) (userID int64, msgID int, err error) {
 	if len(data) < 3 {
 		return 0, 0, fmt.Errorf("unexpected callback data, too short %q", data)
 	}
 
-	// remove prefix if present from the parsed data
-	// check for two-char report prefixes first (R+, R-, R?, R!, RX)
-	if len(data) >= 3 && data[:1] == "R" {
-		// two-char report prefix
-		data = data[2:]
-	} else if data[:1] == "?" || data[:1] == "+" || data[:1] == "!" {
-		// single-char prefix
-		data = data[1:]
-	}
+	data = stripCallbackPrefix(data)
 
 	parts := strings.Split(data, ":")
 	if len(parts) < 2 {
@@ -468,7 +532,7 @@ func channelIDFromCallback(id int64) int64 {
 
 // sinceQuery calculates time elapsed since callback query message was sent
 func sinceQuery(query *tbapi.CallbackQuery) time.Duration {
-	res := time.Since(time.Unix(int64(query.Message.Date), 0)).Round(time.Second)
+	res := time.Since(time.Unix(query.Message.Date, 0)).Round(time.Second)
 	// negative duration possible if clock is not in sync with tg times and a message is from the future
 	return max(res, 0)
 }

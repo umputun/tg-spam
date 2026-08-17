@@ -402,3 +402,35 @@ func (s *StorageTestSuite) TestDetectedSpam_FindByUserID() {
 		})
 	}
 }
+
+func (s *StorageTestSuite) TestDetectedSpam_DropStrayIndex() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			db.Exec("DROP TABLE IF EXISTS detected_spam")
+			defer db.Exec("DROP TABLE IF EXISTS detected_spam")
+
+			// create the table via first init, then plant the stray index older versions created
+			_, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			db.Exec("DROP INDEX IF EXISTS idx_spam_gid_time") // free the name in case another table owns it
+			_, err = db.Exec("CREATE INDEX idx_spam_gid_time ON detected_spam(gid, timestamp DESC)")
+			s.Require().NoError(err)
+
+			// re-init runs the migration which must drop the stray index
+			_, err = NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+
+			var count int
+			switch db.Type() {
+			case engine.Sqlite:
+				err = db.Get(&count, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_spam_gid_time'")
+			case engine.Postgres:
+				err = db.Get(&count, "SELECT COUNT(*) FROM pg_indexes WHERE indexname='idx_spam_gid_time' AND tablename='detected_spam'")
+			}
+			s.Require().NoError(err)
+			s.Equal(0, count, "stray index should be dropped by migration")
+		})
+	}
+}
