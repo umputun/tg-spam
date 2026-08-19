@@ -1,8 +1,9 @@
 package web
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"embed"
-	"encoding/base64"
 	"fmt"
 	"html/template"
 	"log"
@@ -22,13 +23,18 @@ var assets embed.FS
 var tmpl = template.Must(template.New("").ParseFS(assets, "assets/*.html"))
 
 // Server represents a HTTP server that listens and serves requests.
+//
+// This is demo code for the tg-spam library, not a template for a real service. Its authentication
+// is deliberately minimal: passwords live in memory as plain text, sessions never expire and are
+// dropped on restart, and there is no CSRF protection, rate limiting or account lockout. Do not
+// reuse it outside this example.
 type Server struct {
 	Addr            string
 	Storage         Storage
 	UserCredentials map[string]string
 
 	sessions struct {
-		data map[string]bool
+		data map[string]string // session id to username
 		sync.RWMutex
 	}
 	Detector *tgspam.Detector
@@ -44,7 +50,7 @@ type Storage interface {
 // ListenAndServe starts the HTTP server
 func (s *Server) ListenAndServe() error {
 	log.Printf("Starting server on %s", s.Addr)
-	s.sessions.data = make(map[string]bool)
+	s.sessions.data = make(map[string]string)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.loggingMiddleware(s.authMiddleware(s.indexHandler)))
 	mux.HandleFunc("/login", s.loggingMiddleware(s.loginHandler))
@@ -130,19 +136,14 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionCookie, err := r.Cookie("session")
-	if err != nil {
-		http.Error(w, "Invalid session", http.StatusBadRequest)
-		return
-	}
-	username, err := base64.StdEncoding.DecodeString(sessionCookie.Value)
-	if err != nil {
+	username, ok := s.sessionUser(r)
+	if !ok {
 		http.Error(w, "Invalid session", http.StatusBadRequest)
 		return
 	}
 
 	// check for spam
-	spam, details := s.Detector.Check(spamcheck.Request{Msg: content, UserID: string(username)})
+	spam, details := s.Detector.Check(spamcheck.Request{Msg: content, UserID: username})
 	if spam {
 		log.Printf("spam detected: %+v", details)
 		w.WriteHeader(http.StatusOK) // use OK status for HTMX to process
@@ -157,13 +158,26 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Server error", http.StatusInternalServerError)
 		}
 	} else {
-		if err := s.Storage.Add(content, string(username)); err != nil {
+		if err := s.Storage.Add(content, username); err != nil {
 			http.Error(w, "Server error", http.StatusInternalServerError)
 			return
 		}
 	}
 
 	s.fetchMessagesHandler(w, r)
+}
+
+// sessionUser returns the username behind the request's session cookie. The username comes from the
+// server-side session map, never from the cookie value, so a client cannot pick who it posts as.
+func (s *Server) sessionUser(r *http.Request) (string, bool) {
+	sessionCookie, err := r.Cookie("session")
+	if err != nil {
+		return "", false
+	}
+	s.sessions.RLock()
+	defer s.sessions.RUnlock()
+	username, ok := s.sessions.data[sessionCookie.Value]
+	return username, ok
 }
 
 // dismissSpamReportHandler handles requests to dismiss a spam report
@@ -175,18 +189,28 @@ func (s *Server) dismissSpamReportHandler(w http.ResponseWriter, _ *http.Request
 // It serves the login page on GET requests and authenticates the user on POST requests.
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	createSession := func(username string) string {
-		sessionID := base64.StdEncoding.EncodeToString([]byte(username)) // simple encoding for demonstration
+		// the session id must not be derived from the username: anyone could otherwise compute
+		// another user's cookie and post as them
+		sessionID := rand.Text()
 		s.sessions.Lock()
 		defer s.sessions.Unlock()
-		s.sessions.data[sessionID] = true
+		// one session per user; nothing here expires or evicts, so without this a fresh id on
+		// every login would grow the map for as long as the process runs
+		for id, name := range s.sessions.data {
+			if name == username {
+				delete(s.sessions.data, id)
+			}
+		}
+		s.sessions.data[sessionID] = username
 		return sessionID
 	}
 
 	checkCredentials := func(username, password string) bool {
-		if pass, ok := s.UserCredentials[username]; ok {
-			return pass == password
+		pass, ok := s.UserCredentials[username]
+		if !ok {
+			return false
 		}
-		return false
+		return subtle.ConstantTimeCompare([]byte(pass), []byte(password)) == 1
 	}
 	if r.Method == "GET" {
 		err := tmpl.ExecuteTemplate(w, "login.html", nil)
@@ -226,17 +250,11 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // authMiddleware checks if the request has a valid session cookie. If not, it redirects to the login page.
+// Sessions have no expiry, so they stay valid until the process restarts; adequate for a demo, not for
+// anything else.
 func (s *Server) authMiddleware(handler http.HandlerFunc) http.HandlerFunc {
-	isValidSession := func(sessionID string) bool {
-		s.sessions.RLock()
-		defer s.sessions.RUnlock()
-		_, exists := s.sessions.data[sessionID]
-		return exists
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionCookie, err := r.Cookie("session")
-		if err != nil || !isValidSession(sessionCookie.Value) {
+		if _, ok := s.sessionUser(r); !ok {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
