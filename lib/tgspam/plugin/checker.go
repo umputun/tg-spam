@@ -18,7 +18,7 @@ import (
 type Checker struct {
 	vm       *lua.LState
 	checkers map[string]*lua.LFunction
-	lock     sync.RWMutex // protect checkers map during concurrent access
+	lock     sync.RWMutex // protects the checkers map and serializes access to the shared vm
 	watcher  *Watcher     // optional file watcher for dynamic reloading
 }
 
@@ -137,8 +137,12 @@ func (c *Checker) GetAllChecks() map[string]Check {
 // createMetaChecker creates a Check function from a Lua checker
 func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 	return func(req spamcheck.Request) spamcheck.Response {
-		c.lock.RLock()
-		defer c.lock.RUnlock()
+		// the write lock is required, not just a read lock: everything below mutates the shared
+		// *lua.LState (allocating tables, pushing and popping the stack) and gopher-lua states are
+		// not goroutine-safe. Detector.Check holds only a read lock of its own, so concurrent
+		// checks reach this closure in parallel.
+		c.lock.Lock()
+		defer c.lock.Unlock()
 
 		// create Lua table from request
 		reqTable := c.vm.NewTable()

@@ -1,8 +1,10 @@
 package plugin
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -380,4 +382,45 @@ end
 
 	// wait for the goroutine to finish
 	<-done
+}
+
+func TestChecker_ConcurrentChecks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// the script echoes the user id back so a corrupted stack shows up as a mismatched result
+	// rather than only as a race detector report
+	scriptPath := filepath.Join(tmpDir, "parallel_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return request.user_id == "spammer", "seen " .. request.user_id
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	check, err := checker.GetCheck("parallel_test")
+	require.NoError(t, err)
+
+	// every goroutine drives the same shared lua state; without the write lock in
+	// createMetaChecker this fails under -race or panics inside gopher-lua
+	const workers, iterations = 8, 50
+	var wg sync.WaitGroup
+	for i := range workers {
+		wg.Go(func() {
+			userID := fmt.Sprintf("user%d", i)
+			if i == 0 {
+				userID = "spammer"
+			}
+			for range iterations {
+				resp := check(spamcheck.Request{Msg: "test message", UserID: userID})
+				assert.Equal(t, "lua-parallel_test", resp.Name)
+				assert.Equal(t, "seen "+userID, resp.Details)
+				assert.Equal(t, userID == "spammer", resp.Spam)
+			}
+		})
+	}
+	wg.Wait()
 }

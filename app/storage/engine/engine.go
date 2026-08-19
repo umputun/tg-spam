@@ -40,7 +40,7 @@ type SQL struct {
 // It detects the database engine type based on the connection URL and initializes
 // the appropriate driver. Supports sqlite and postgres database types.
 func New(ctx context.Context, connURL, gid string) (*SQL, error) {
-	log.Printf("[INFO] new database engine, conn: %s, gid: %s", connURL, gid)
+	log.Printf("[INFO] new database engine, conn: %s, gid: %s", RedactConnURL(connURL), gid)
 	if connURL == "" {
 		return &SQL{}, fmt.Errorf("connection URL is empty")
 	}
@@ -60,7 +60,7 @@ func New(ctx context.Context, connURL, gid string) (*SQL, error) {
 		return NewPostgres(ctx, connURL, gid)
 	}
 
-	return &SQL{}, fmt.Errorf("unsupported database type in connection string %q", connURL)
+	return &SQL{}, fmt.Errorf("unsupported database type in connection string %q", RedactConnURL(connURL))
 }
 
 // NewSqlite creates a new sqlite database
@@ -79,7 +79,7 @@ func NewSqlite(file, gid string) (*SQL, error) {
 func NewPostgres(ctx context.Context, connURL, gid string) (*SQL, error) {
 	u, err := url.Parse(connURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid postgres connection url: %w", err)
+		return nil, fmt.Errorf("invalid postgres connection url %q: %w", RedactConnURL(connURL), unwrapURLError(err))
 	}
 
 	dbName := strings.TrimPrefix(u.Path, "/")

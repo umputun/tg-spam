@@ -91,7 +91,10 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// preserve transient settings (never stored in DB). Tokens are NOT preserved:
 	// in --confdb mode the DB is authoritative for Telegram/OpenAI/Gemini tokens,
-	// so reload must pick up fresh DB values. Auth hash is preserved only when
+	// so reload must pick up fresh DB values. picking them up only refreshes the
+	// settings struct though: the Telegram bot API client and the OpenAI/Gemini
+	// clients are built once in main and are not rebuilt here, so a rotated
+	// service token reaches them only after a restart. Auth hash is preserved only when
 	// transient.AuthFromCLI is set, which marks an in-memory hash that must
 	// survive reload (set by applyCLIOverrides for explicit --server.auth/-hash
 	// flags, and by applyAutoAuthFallback for the auto-generated safety net).

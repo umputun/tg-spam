@@ -1373,6 +1373,31 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		assert.Contains(t, body, "Unknown", "Should show unknown database type")
 		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1, "GetLuaPluginNames should be called")
 	})
+	t.Run("config db mode warning separates auth hash from service tokens", func(t *testing.T) {
+		detectorMock := &mocks.DetectorMock{
+			GetLuaPluginNamesFunc: func() []string { return nil },
+		}
+		server := NewServer(Config{
+			Version:      "1.0",
+			Detector:     detectorMock,
+			ConfigDBMode: true,
+			AppSettings:  &config.Settings{MinMsgLen: 150},
+		})
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/settings", http.NoBody)
+		require.NoError(t, err)
+		http.HandlerFunc(server.htmlSettingsHandler).ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		body := rr.Body.String()
+		assert.Contains(t, body, "The web auth hash is re-read on every request, so it rotates immediately",
+			"auth hash is the only credential reload picks up")
+		assert.Contains(t, body, "Telegram, OpenAI and Gemini tokens",
+			"service tokens must be named as needing a restart")
+		assert.NotContains(t, body, "credential rotations apply immediately",
+			"the telegram and llm clients are built once at startup and reload does not rebuild them")
+	})
+
 	// test execution error
 	t.Run("template execution error", func(t *testing.T) {
 		// save original template and restore after test

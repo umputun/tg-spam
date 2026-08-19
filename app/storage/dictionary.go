@@ -129,7 +129,9 @@ func (d *Dictionary) Delete(ctx context.Context, id int64) error {
 	d.Lock()
 	defer d.Unlock()
 
-	result, err := d.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE id = ?`), id)
+	// scoped by gid like every read on this table: the id comes straight from the web API and
+	// instances sharing a database would otherwise let one group delete another group's entry
+	result, err := d.ExecContext(ctx, d.Adopt(`DELETE FROM dictionary WHERE id = ? AND gid = ?`), id, d.GID())
 	if err != nil {
 		return fmt.Errorf("failed to remove phrase: %w", err)
 	}

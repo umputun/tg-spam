@@ -85,6 +85,25 @@ func (s *StorageTestSuite) TestDictionary_Delete() {
 				err := d.Delete(ctx, 99999)
 				s.Error(err)
 			})
+
+			s.Run("delete phrase belonging to another gid", func() {
+				_, err := db.ExecContext(ctx, db.Adopt(`INSERT INTO dictionary (type, data, gid) VALUES (?, ?, ?)`),
+					DictionaryTypeStopPhrase, "other group phrase", "gr2")
+				s.Require().NoError(err)
+
+				var id int64
+				err = db.Get(&id, db.Adopt("SELECT id FROM dictionary WHERE data = ? AND gid = ?"), "other group phrase", "gr2")
+				s.Require().NoError(err)
+
+				s.Require().Equal("gr1", db.GID(), "dictionary under test must belong to another group")
+				err = d.Delete(ctx, id)
+				s.Require().Error(err)
+
+				var count int
+				err = db.Get(&count, db.Adopt("SELECT COUNT(*) FROM dictionary WHERE id = ?"), id)
+				s.Require().NoError(err)
+				s.Equal(1, count, "entry of another group must survive")
+			})
 		})
 	}
 }

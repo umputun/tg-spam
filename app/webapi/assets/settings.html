@@ -97,7 +97,7 @@
     {{if .ConfigDBMode}}
     <div class="alert alert-warning py-2 mb-3 small">
         <i class="bi bi-exclamation-triangle me-1"></i>
-        Saved settings are persisted to the database. Detector and spam bot changes take effect after a restart, while auth hash and credential rotations apply immediately on the next request or after <code>/config/reload</code>.
+        Saved settings are persisted to the database. The web auth hash is re-read on every request, so it rotates immediately. Everything else, detector and spam bot settings as well as the Telegram, OpenAI and Gemini tokens, is applied to clients built once at startup and needs a restart; <code>/config/reload</code> refreshes the stored settings but does not rebuild those clients.
     </div>
     {{end}}
 
