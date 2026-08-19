@@ -5,10 +5,20 @@ on:
     workflows: [build-app]
     types: [completed]
 
+permissions:
+  contents: read
+
 jobs:
+  # workflow_run runs with repository secrets and a privileged token even when the run it reacts to
+  # came from an untrusted fork, and build-app also runs on pull_request. a fork PR opened from a
+  # branch called "master" or "v1" would otherwise satisfy the head_branch test below and get this
+  # job to check out and publish fork-controlled code with the registry credentials. restrict it to
+  # pushes made in this repository.
   build:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.head_branch == 'master' ||
        startsWith(github.event.workflow_run.head_branch, 'v'))
     strategy:
@@ -27,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false

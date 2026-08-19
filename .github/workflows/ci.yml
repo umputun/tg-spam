@@ -22,12 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: set up go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: "1.25"
       id: go
@@ -40,8 +40,28 @@ jobs:
       env:
         TZ: "America/Chicago"
 
+    # build the example the way someone copying it out of the repository would, against the released
+    # tg-spam its go.mod pins
     - name: test examples
       run: |
+        go test -race ./...
+        go build -race ./...
+      working-directory: _examples/simplechat
+      env:
+        TZ: "America/Chicago"
+
+    # and again against this checkout, otherwise a library change that breaks the example still passes
+    # CI. the workspace is created here rather than committed: a relative replace directive would make
+    # the example unusable once copied out of the repository.
+    - name: test examples against the current checkout
+      run: |
+        go work init . ../..
+        expected=$(cd ../.. && pwd)
+        resolved=$(go list -m -f '{{.Dir}}' github.com/umputun/tg-spam)
+        if [ "$resolved" != "$expected" ]; then
+          echo "expected tg-spam to resolve to $expected, got $resolved"
+          exit 1
+        fi
         go test -race ./...
         go build -race ./...
       working-directory: _examples/simplechat
