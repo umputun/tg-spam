@@ -77,18 +77,9 @@ func (c *Checker) LoadScript(path string) error {
 	return nil
 }
 
-// ReloadScript reloads a specific Lua script
+// ReloadScript reloads a specific Lua script. The previously loaded version stays registered and
+// active if the new one fails to load, so a broken edit does not silently disable a working rule.
 func (c *Checker) ReloadScript(path string) error {
-	// use filename (without extension) as checker name
-	name := filepath.Base(path)
-	name = name[:len(name)-len(filepath.Ext(name))]
-
-	// remove old script from checkers
-	c.lock.Lock()
-	delete(c.checkers, name)
-	c.lock.Unlock()
-
-	// reload the script
 	return c.LoadScript(path)
 }
 
@@ -111,14 +102,14 @@ func (c *Checker) LoadDirectory(dir string) error {
 // GetCheck returns a Check for the specified Lua checker
 func (c *Checker) GetCheck(name string) (Check, error) {
 	c.lock.RLock()
-	checker, ok := c.checkers[name]
+	_, ok := c.checkers[name]
 	c.lock.RUnlock()
 
 	if !ok {
 		return nil, fmt.Errorf("lua checker %q not found", name)
 	}
 
-	return c.createMetaChecker(name, checker), nil
+	return c.createMetaChecker(name), nil
 }
 
 // GetAllChecks returns all loaded Lua checks
@@ -126,16 +117,16 @@ func (c *Checker) GetAllChecks() map[string]Check {
 	result := make(map[string]Check)
 
 	c.lock.RLock()
-	for name, checker := range c.checkers {
-		result[name] = c.createMetaChecker(name, checker)
+	for name := range c.checkers {
+		result[name] = c.createMetaChecker(name)
 	}
 	c.lock.RUnlock()
 
 	return result
 }
 
-// createMetaChecker creates a Check function from a Lua checker
-func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
+// createMetaChecker creates a Check function for the named Lua checker
+func (c *Checker) createMetaChecker(name string) Check {
 	return func(req spamcheck.Request) spamcheck.Response {
 		// the write lock is required, not just a read lock: everything below mutates the shared
 		// *lua.LState (allocating tables, pushing and popping the stack) and gopher-lua states are
@@ -143,6 +134,14 @@ func (c *Checker) createMetaChecker(name string, checker *lua.LFunction) Check {
 		// checks reach this closure in parallel.
 		c.lock.Lock()
 		defer c.lock.Unlock()
+
+		// the function is resolved on every call rather than captured: callers such as the detector
+		// keep a Check for their lifetime, and capturing would pin them to the version loaded first
+		checker, ok := c.checkers[name]
+		if !ok {
+			err := fmt.Errorf("lua checker %q not found", name)
+			return spamcheck.Response{Name: "lua-" + name, Spam: false, Details: err.Error(), Error: err}
+		}
 
 		// create Lua table from request
 		reqTable := c.vm.NewTable()

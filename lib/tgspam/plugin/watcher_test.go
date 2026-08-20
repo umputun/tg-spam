@@ -150,6 +150,38 @@ func TestWatcher_HandleEvent(t *testing.T) {
 	assert.False(t, exists, "Non-lua event should not be added to the queue")
 }
 
+func TestWatcher_RemovedScriptEventCleared(t *testing.T) {
+	// an uncleared event is reprocessed and re-logged on every tick for the life of the process
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "gone_script.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return true, "still here"
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	watcher, err := NewWatcher(checker, tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(scriptPath))
+	watcher.mu.Lock()
+	watcher.events[scriptPath] = time.Now().Add(-time.Second) // old enough to pass the debounce
+	watcher.mu.Unlock()
+
+	watcher.processEvents()
+
+	watcher.mu.Lock()
+	pending := len(watcher.events)
+	watcher.mu.Unlock()
+	assert.Equal(t, 0, pending, "event for a removed script must not stay pending")
+}
+
 // Helper function to create a test request
 func createTestRequest() spamcheck.Request {
 	return spamcheck.Request{
