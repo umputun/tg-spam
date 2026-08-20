@@ -19,7 +19,7 @@ Missing, `nil`, and boolean `false` approval values have no effect. Only an exac
 
 An effective approval clears soft spam results from the current `Detector.Check` call and produces one `lua-approve` result row. It can clear duplicate, stop-word, emoji, meta, Lua, CAS, multi-language, abnormal-spacing, similarity, and classifier results. It cannot clear short-message-flood or prohibited-language results because those checks return before Lua plugins run.
 
-Cleared short messages do not enter ham history or count toward user graduation. Cleared normal-length messages follow the ordinary ham path and enter the bounded ham history. They also count toward configured user graduation unless the request is check-only. They can become context for later LLM checks when LLM history is enabled.
+Cleared short messages do not enter ham history or count toward user graduation. Cleared normal-length messages follow the ordinary ham path and enter the bounded ham history. They also count toward configured user graduation unless the request is check-only. With the default `--first-messages-count=1`, one cleared normal-length message graduates the sender, so later messages skip content analysis under the existing graduation rules. Cleared messages can become context for later LLM checks when LLM history is enabled.
 
 ### Request Object Structure
 
@@ -107,7 +107,8 @@ Here's a simple example of a custom Lua plugin:
 local config = {
     max_exclamations = 3,
     approved_user_ids = {
-        ["123456789"] = true
+        -- Add Telegram user IDs that may approve the current message:
+        -- ["123456789"] = true,
     }
 }
 

@@ -5,8 +5,8 @@
 local config = {
     max_repeats = 5,  -- Max consecutive identical characters allowed
     min_msg_length = 10,  -- Don't check messages shorter than this
-    approved_user_ids = {
-        ["123456789"] = true,
+    approved_user_ids = {  -- Telegram user IDs that may approve the current message; empty by default
+        -- ["123456789"] = true,
     },
 }
 

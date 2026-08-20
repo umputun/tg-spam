@@ -408,7 +408,7 @@ end
 	require.NoError(t, err)
 
 	// every goroutine drives the same shared lua state; without the write lock in
-	// createMetaChecker this fails under -race or panics inside gopher-lua
+	// the closure returned by createResultCheck, this fails under -race or panics inside gopher-lua
 	const workers, iterations = 8, 50
 	var wg sync.WaitGroup
 	for i := range workers {
