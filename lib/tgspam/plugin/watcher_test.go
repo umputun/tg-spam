@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -150,6 +152,20 @@ func TestWatcher_HandleEvent(t *testing.T) {
 	assert.False(t, exists, "Non-lua event should not be added to the queue")
 }
 
+// captureLog redirects the standard logger for the duration of the test and returns the accumulated output
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	flags, writer := log.Flags(), log.Writer()
+	log.SetOutput(buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(writer)
+		log.SetFlags(flags)
+	})
+	return buf
+}
+
 func TestWatcher_RemovedScriptEventCleared(t *testing.T) {
 	// an uncleared event is reprocessed and re-logged on every tick for the life of the process
 	tmpDir := t.TempDir()
@@ -174,12 +190,16 @@ end
 	watcher.events[scriptPath] = time.Now().Add(-time.Second) // old enough to pass the debounce
 	watcher.mu.Unlock()
 
+	out := captureLog(t)
 	watcher.processEvents()
 
 	watcher.mu.Lock()
 	pending := len(watcher.events)
 	watcher.mu.Unlock()
 	assert.Equal(t, 0, pending, "event for a removed script must not stay pending")
+
+	assert.Contains(t, out.String(), "lua script file removed: gone_script, it stays in the plugin registry until restart")
+	assert.NotContains(t, out.String(), "it was not loaded")
 
 	// the script is still registered and executable: removing the file unloads nothing
 	check, err := checker.GetCheck("gone_script")
@@ -190,7 +210,7 @@ end
 func TestWatcher_RemovedUnloadedScriptEventCleared(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// a file that never loaded has no plugin behind it, so nothing stays active after it goes
+	// a file that never loaded has no plugin behind it, so nothing must be reported as still loaded
 	scriptPath := filepath.Join(tmpDir, "never_loaded.lua")
 
 	checker := NewChecker()
@@ -203,12 +223,16 @@ func TestWatcher_RemovedUnloadedScriptEventCleared(t *testing.T) {
 	watcher.events[scriptPath] = time.Now().Add(-time.Second)
 	watcher.mu.Unlock()
 
+	out := captureLog(t)
 	watcher.processEvents()
 
 	watcher.mu.Lock()
 	pending := len(watcher.events)
 	watcher.mu.Unlock()
 	assert.Equal(t, 0, pending, "event for a removed script must not stay pending")
+
+	assert.Contains(t, out.String(), "lua script file removed: never_loaded, it was not loaded")
+	assert.NotContains(t, out.String(), "stays in the plugin registry")
 
 	_, err = checker.GetCheck("never_loaded")
 	assert.Error(t, err)

@@ -142,9 +142,9 @@ func (w *Watcher) processEvents() {
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			scriptName := filepath.Base(filename)
 			scriptName = scriptName[:len(scriptName)-len(filepath.Ext(scriptName))]
-			// nothing unloads a script, so a registered one keeps running after its file is gone
+			// the registry is all the watcher can speak for; whether the detector runs a registered script is not its call
 			if _, err := w.checker.GetCheck(scriptName); err == nil {
-				log.Printf("[INFO] lua script file removed: %s, the loaded plugin stays active until restart", scriptName)
+				log.Printf("[INFO] lua script file removed: %s, it stays in the plugin registry until restart", scriptName)
 			} else {
 				log.Printf("[INFO] lua script file removed: %s, it was not loaded", scriptName)
 			}
