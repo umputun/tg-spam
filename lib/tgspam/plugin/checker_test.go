@@ -462,6 +462,47 @@ end
 	assert.False(t, resp.Spam)
 }
 
+func TestChecker_ReloadReachesHeldResultChecks(t *testing.T) {
+	// Detector stores ResultCheck values for its lifetime, so a captured function would pin both
+	// the details and the approval bit to the version loaded first
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "held_result.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "original version", false
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	held, err := checker.GetResultCheck("held_result")
+	require.NoError(t, err)
+	heldAll := checker.GetAllResultChecks()["held_result"]
+	require.NotNil(t, heldAll)
+
+	res := held(createTestRequest())
+	require.Equal(t, "original version", res.Response.Details)
+	require.False(t, res.Approved)
+
+	err = os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "reloaded version", true
+end
+	`), 0o644)
+	require.NoError(t, err)
+	require.NoError(t, checker.ReloadScript(scriptPath))
+
+	for name, check := range map[string]ResultCheck{"GetResultCheck": held, "GetAllResultChecks": heldAll} {
+		res = check(createTestRequest())
+		assert.Equal(t, "reloaded version", res.Response.Details, "%s must run the new script", name)
+		assert.True(t, res.Approved, "%s must see the new approval", name)
+	}
+}
+
 func TestChecker_FailedReloadKeepsRegistryEntry(t *testing.T) {
 	tmpDir := t.TempDir()
 
