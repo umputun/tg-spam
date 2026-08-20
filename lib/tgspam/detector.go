@@ -473,12 +473,12 @@ func luaApprovalResponse(names []string) (spamcheck.Response, bool) {
 	for _, name := range names {
 		unique[name] = struct{}{}
 	}
-	names = names[:0]
+	uniqueNames := make([]string, 0, len(unique))
 	for name := range unique {
-		names = append(names, name)
+		uniqueNames = append(uniqueNames, name)
 	}
-	sort.Strings(names)
-	return spamcheck.Response{Name: "lua-approve", Details: "cleared by " + strings.Join(names, ", ")}, true
+	sort.Strings(uniqueNames)
+	return spamcheck.Response{Name: "lua-approve", Details: "cleared by " + strings.Join(uniqueNames, ", ")}, true
 }
 
 func (d *Detector) normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
