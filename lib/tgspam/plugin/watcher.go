@@ -140,10 +140,14 @@ func (w *Watcher) processEvents() {
 
 		// handle the event based on whether the file exists
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
-			// deleting the file does not unload the script, so say so rather than implying it is gone
 			scriptName := filepath.Base(filename)
 			scriptName = scriptName[:len(scriptName)-len(filepath.Ext(scriptName))]
-			log.Printf("[INFO] lua script file removed: %s, the loaded plugin stays active until restart", scriptName)
+			// nothing unloads a script, so a registered one keeps running after its file is gone
+			if _, err := w.checker.GetCheck(scriptName); err == nil {
+				log.Printf("[INFO] lua script file removed: %s, the loaded plugin stays active until restart", scriptName)
+			} else {
+				log.Printf("[INFO] lua script file removed: %s, it was not loaded", scriptName)
+			}
 		} else {
 			// file was created or modified
 			log.Printf("[INFO] reloading lua script: %s", filename)

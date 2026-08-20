@@ -180,6 +180,38 @@ end
 	pending := len(watcher.events)
 	watcher.mu.Unlock()
 	assert.Equal(t, 0, pending, "event for a removed script must not stay pending")
+
+	// the script is still registered and executable: removing the file unloads nothing
+	check, err := checker.GetCheck("gone_script")
+	require.NoError(t, err)
+	assert.Equal(t, "still here", check(createTestRequest()).Details)
+}
+
+func TestWatcher_RemovedUnloadedScriptEventCleared(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// a file that never loaded has no plugin behind it, so nothing stays active after it goes
+	scriptPath := filepath.Join(tmpDir, "never_loaded.lua")
+
+	checker := NewChecker()
+	defer checker.Close()
+
+	watcher, err := NewWatcher(checker, tmpDir)
+	require.NoError(t, err)
+
+	watcher.mu.Lock()
+	watcher.events[scriptPath] = time.Now().Add(-time.Second)
+	watcher.mu.Unlock()
+
+	watcher.processEvents()
+
+	watcher.mu.Lock()
+	pending := len(watcher.events)
+	watcher.mu.Unlock()
+	assert.Equal(t, 0, pending, "event for a removed script must not stay pending")
+
+	_, err = checker.GetCheck("never_loaded")
+	assert.Error(t, err)
 }
 
 // Helper function to create a test request
