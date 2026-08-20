@@ -459,7 +459,7 @@ end
 	assert.False(t, resp.Spam)
 }
 
-func TestChecker_FailedReloadKeepsPreviousVersion(t *testing.T) {
+func TestChecker_FailedReloadKeepsRegistryEntry(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	scriptPath := filepath.Join(tmpDir, "broken_test.lua")
@@ -488,4 +488,40 @@ end
 	resp := held(createTestRequest())
 	assert.Equal(t, "original version", resp.Details)
 	assert.True(t, resp.Spam)
+}
+
+func TestChecker_FailedReloadCanStillMutateSharedGlobals(t *testing.T) {
+	// keeping the old entry does not make a failed reload a no-op: the candidate runs in the shared VM
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "partial_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+GREETING = "original version"
+MAIN_VM = true
+function check(request)
+	return true, GREETING
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+	held, err := checker.GetCheck("partial_test")
+	require.NoError(t, err)
+	require.Equal(t, "original version", held(createTestRequest()).Details)
+
+	// MAIN_VM exists only in the shared VM, so this validates in the throwaway state and fails after reassigning GREETING
+	err = os.WriteFile(scriptPath, []byte(`
+GREETING = "mutated before failure"
+if MAIN_VM then error("boom") end
+function check(request)
+	return true, GREETING
+end
+	`), 0o644)
+	require.NoError(t, err)
+	require.Error(t, checker.ReloadScript(scriptPath))
+
+	assert.Contains(t, checker.GetAllChecks(), "partial_test", "the entry survives the failed reload")
+	assert.Equal(t, "mutated before failure", held(createTestRequest()).Details, "but its behavior does not")
 }

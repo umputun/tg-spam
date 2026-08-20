@@ -77,8 +77,10 @@ func (c *Checker) LoadScript(path string) error {
 	return nil
 }
 
-// ReloadScript reloads a specific Lua script. The previously loaded version stays registered and
-// active if the new one fails to load, so a broken edit does not silently disable a working rule.
+// ReloadScript reloads a specific Lua script. A script that fails to load keeps its registry entry,
+// so a broken edit does not deregister a working rule. Reloading is not transactional beyond that:
+// the candidate runs in the shared VM to be registered, so one that mutates globals before failing
+// can still change what the previous version does.
 func (c *Checker) ReloadScript(path string) error {
 	return c.LoadScript(path)
 }
