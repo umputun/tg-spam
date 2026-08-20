@@ -49,3 +49,6 @@ issue.md
 *.bak
 *.local
 .DS_Store
+
+# revmux review archive (grows per round, not shared)
+.revmux/tasks/

@@ -43,7 +43,7 @@ type Detector struct {
 	duplicateDetector *duplicateDetector
 	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
-	luaChecks         []plugin.Check // separate field for Lua plugin checks
+	luaChecks         []plugin.ResultCheck // separate field for Lua plugin checks
 	tokenizedSpam     []map[string]int
 	approvedUsers     map[string]approved.UserInfo
 	stopWords         []string
@@ -196,6 +196,11 @@ type LuaPluginEngine interface {
 	Close()                                     // cleans up resources
 }
 
+type luaResultEngine interface {
+	GetResultCheck(name string) (plugin.ResultCheck, error)
+	GetAllResultChecks() map[string]plugin.ResultCheck
+}
+
 // LoadResult is a result of loading samples.
 type LoadResult struct {
 	ExcludedTokens int // number of excluded tokens
@@ -212,7 +217,7 @@ func NewDetector(p Config) *Detector {
 		approvedUsers:     make(map[string]approved.UserInfo),
 		tokenizedSpam:     []map[string]int{},
 		metaChecks:        []MetaCheck{},
-		luaChecks:         []plugin.Check{},
+		luaChecks:         []plugin.ResultCheck{},
 		hamHistory:        spamcheck.NewLastRequests(p.HistorySize),
 		spamHistory:       spamcheck.NewLastRequests(p.HistorySize),
 		duplicateDetector: newDuplicateDetector(p.DuplicateDetection.Threshold, p.DuplicateDetection.Window),
@@ -288,6 +293,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 
 	// all the remaining checks are performed sequentially, so we can collect all the results
+	luaApprovers := make([]string, 0)
 
 	// check for stop words if any stop words are loaded
 	if len(d.stopWords) > 0 {
@@ -306,7 +312,11 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	// check for spam with Lua plugin checks
 	for _, lc := range d.luaChecks {
-		cr = append(cr, lc(req))
+		result := lc(req)
+		cr = append(cr, result.Response)
+		if result.Approved && !result.Response.Spam && result.Response.Error == nil && result.Response.Name != "" {
+			luaApprovers = append(luaApprovers, result.Response.Name)
+		}
 	}
 
 	// check for spam with CAS API if CAS API URL is set
@@ -335,8 +345,12 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		openaiChecksShort := d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI
 		geminiChecksShort := d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages
 		llmEligible := d.FirstMessageOnly || d.FirstMessagesCount > 0
-		if isSpamDetected(cr) || !llmEligible || (!openaiChecksShort && !geminiChecksShort) {
-			if isSpamDetected(cr) {
+		softSpam := isSpamDetected(cr)
+		if softSpam || !llmEligible || (!openaiChecksShort && !geminiChecksShort) {
+			if softSpam {
+				if approval, ok := luaApprovalResponse(luaApprovers); ok {
+					return false, append(cr, approval)
+				}
 				d.spamHistory.Push(req)
 				return true, cr // spam from the checks above
 			}
@@ -362,13 +376,21 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 
 	baseSpam := isSpamDetected(cr)
 	spamDetected := baseSpam
+	luaApproved := false
+	if baseSpam {
+		if approval, ok := luaApprovalResponse(luaApprovers); ok {
+			cr = append(cr, approval)
+			spamDetected = false
+			luaApproved = true
+		}
+	}
 
 	// we hit eligible LLMs in three cases:
 	//  - short message with short-message checking enabled (ignores veto mode since there's no decision to veto)
 	//  - all checks passed (ham) and veto is false - improves false negative rate
 	//  - checks failed (spam) and veto is true - improves false positive rate
 	// FirstMessageOnly or FirstMessagesCount has to be set to use LLMs, because they are slow and expensive to run on all messages
-	if d.FirstMessageOnly || d.FirstMessagesCount > 0 {
+	if !luaApproved && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
 		llmResults := make([]detectorLLMResult, 0, 2)
 		llmChecks := []detectorLLMCheck{
 			{
@@ -440,6 +462,23 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	}
 	d.hamHistory.Push(req)
 	return false, cr
+}
+
+func luaApprovalResponse(names []string) (spamcheck.Response, bool) {
+	if len(names) == 0 {
+		return spamcheck.Response{}, false
+	}
+
+	unique := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		unique[name] = struct{}{}
+	}
+	uniqueNames := make([]string, 0, len(unique))
+	for name := range unique {
+		uniqueNames = append(uniqueNames, name)
+	}
+	sort.Strings(uniqueNames)
+	return spamcheck.Response{Name: "lua-approve", Details: "cleared by " + strings.Join(uniqueNames, ", ")}, true
 }
 
 func (d *Detector) normalizeLLMConsensusMode(mode LLMConsensusMode) LLMConsensusMode {
@@ -573,23 +612,41 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 	if err := d.luaEngine.LoadDirectory(d.LuaPlugins.PluginsDir); err != nil {
 		return fmt.Errorf("failed to load Lua plugins: %w", err)
 	}
+	resultEngine, supportsResults := engine.(luaResultEngine)
 
 	// register enabled plugins as Lua checks
 	if len(d.LuaPlugins.EnabledPlugins) > 0 {
 		for _, name := range d.LuaPlugins.EnabledPlugins {
+			if supportsResults {
+				pluginCheck, err := resultEngine.GetResultCheck(name)
+				if err != nil {
+					return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+				}
+				d.luaChecks = append(d.luaChecks, pluginCheck)
+				continue
+			}
+
 			pluginCheck, err := d.luaEngine.GetCheck(name)
 			if err != nil {
 				return fmt.Errorf("failed to get Lua check %q: %w", name, err)
 			}
-			// add to luaChecks
-			d.luaChecks = append(d.luaChecks, pluginCheck)
+			d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
+				return plugin.Result{Response: pluginCheck(req)}
+			})
 		}
 	} else {
 		// if no specific plugins are enabled, load all
-		allChecks := d.luaEngine.GetAllChecks()
-		for _, pluginCheck := range allChecks {
-			// add to luaChecks
-			d.luaChecks = append(d.luaChecks, pluginCheck)
+		if supportsResults {
+			for _, pluginCheck := range resultEngine.GetAllResultChecks() {
+				d.luaChecks = append(d.luaChecks, pluginCheck)
+			}
+		} else {
+			for _, pluginCheck := range d.luaEngine.GetAllChecks() {
+				check := pluginCheck
+				d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
+					return plugin.Result{Response: check(req)}
+				})
+			}
 		}
 	}
 

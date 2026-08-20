@@ -459,21 +459,32 @@ To enable Lua plugins:
 4. Optionally, specify which plugins to enable with `--lua-plugins.enabled-plugins=plugin1,plugin2`
 5. Optionally, enable dynamic reloading with `--lua-plugins.dynamic-reload` to automatically reload plugins when they change
 
-Each Lua plugin must define a `check` function that takes a request object and returns a boolean (is it spam) and a string (details):
+Each Lua plugin must define a `check` function that takes a request object and returns a boolean (is it spam), a string (details), and an optional third boolean (approve this message):
 
 ```lua
+local approved_user_ids = {
+    -- Add Telegram user IDs that may approve the current message:
+    -- ["123456789"] = true,
+}
+
 function check(request)
     -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
     -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_external_reply, message_id
-    
-    -- Your custom spam detection logic here
+
     if string.match(request.msg, "some pattern") then
         return true, "matched suspicious pattern"
     end
-    
-    return false, "message looks clean"
+
+    local approve = approved_user_ids[request.user_id] == true
+    return false, "message looks clean", approve
 end
 ```
+
+The third return is backward compatible. Missing, `nil`, and boolean `false` mean no approval. Only an exact boolean `true` is accepted. Other types are ignored and logged once per plugin and type. A plugin error never approves a message, and `true` cannot approve a result where the same plugin returned spam.
+
+Approval clears soft spam results from the current `Detector.Check` call. When at least one plugin approves and a soft check reports spam, the detector returns ham, skips LLM checks, and adds one `lua-approve` row naming the approving plugins. Soft checks include duplicate detection, stop words, emoji, meta checks, Lua checks, CAS, multi-language text, abnormal spacing, similarity, and the classifier. Short-message-flood and prohibited-language checks return before Lua plugins run and cannot be cleared this way.
+
+A cleared short message follows the existing short-message rule: it does not enter ham history or count toward user graduation. A cleared normal-length message follows the ordinary ham path and enters the bounded ham history. It also counts toward configured user graduation unless the request is check-only. With the default `--first-messages-count=1`, one cleared normal-length message graduates the sender, so later messages skip content analysis under the existing graduation rules. When LLM history is enabled, that message can be included as context in later LLM checks, including checks for other users.
 
 Several helper functions are provided to Lua scripts:
 - `count_substring(text, substr)` - Counts occurrences of a substring

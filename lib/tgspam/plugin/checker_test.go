@@ -1,9 +1,12 @@
 package plugin
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -405,7 +408,7 @@ end
 	require.NoError(t, err)
 
 	// every goroutine drives the same shared lua state; without the write lock in
-	// createMetaChecker this fails under -race or panics inside gopher-lua
+	// the closure returned by createResultCheck, this fails under -race or panics inside gopher-lua
 	const workers, iterations = 8, 50
 	var wg sync.WaitGroup
 	for i := range workers {
@@ -457,6 +460,47 @@ end
 	resp = held(createTestRequest())
 	assert.Equal(t, "reloaded version", resp.Details, "check obtained before the reload must run the new script")
 	assert.False(t, resp.Spam)
+}
+
+func TestChecker_ReloadReachesHeldResultChecks(t *testing.T) {
+	// Detector stores ResultCheck values for its lifetime, so a captured function would pin both
+	// the details and the approval bit to the version loaded first
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "held_result.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "original version", false
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	held, err := checker.GetResultCheck("held_result")
+	require.NoError(t, err)
+	heldAll := checker.GetAllResultChecks()["held_result"]
+	require.NotNil(t, heldAll)
+
+	res := held(createTestRequest())
+	require.Equal(t, "original version", res.Response.Details)
+	require.False(t, res.Approved)
+
+	err = os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "reloaded version", true
+end
+	`), 0o644)
+	require.NoError(t, err)
+	require.NoError(t, checker.ReloadScript(scriptPath))
+
+	for name, check := range map[string]ResultCheck{"GetResultCheck": held, "GetAllResultChecks": heldAll} {
+		res = check(createTestRequest())
+		assert.Equal(t, "reloaded version", res.Response.Details, "%s must run the new script", name)
+		assert.True(t, res.Approved, "%s must see the new approval", name)
+	}
 }
 
 func TestChecker_FailedReloadKeepsRegistryEntry(t *testing.T) {
@@ -524,4 +568,121 @@ end
 
 	assert.Contains(t, checker.GetAllChecks(), "partial_test", "the entry survives the failed reload")
 	assert.Equal(t, "mutated before failure", held(createTestRequest()).Details, "but its behavior does not")
+}
+
+func TestChecker_ResultCheck(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		wantSpam     bool
+		wantApproved bool
+		wantError    bool
+	}{
+		{name: "absent approval remains compatible", body: `return false, "clean"`},
+		{name: "explicit false does not approve", body: `return false, "clean", false`},
+		{name: "exact true approves ham", body: `return false, "trusted message", true`, wantApproved: true},
+		{name: "true cannot approve spam", body: `return true, "spam", true`, wantSpam: true},
+		{name: "string is not an approval", body: `return false, "clean", "false"`},
+		{name: "runtime error does not approve", body: `local value = request.missing.value; return false, value, true`, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := NewChecker()
+			defer checker.Close()
+
+			scriptPath := filepath.Join(t.TempDir(), "result.lua")
+			script := "function check(request)\n" + tt.body + "\nend\n"
+			require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o600))
+			require.NoError(t, checker.LoadScript(scriptPath))
+
+			check, err := checker.GetResultCheck("result")
+			require.NoError(t, err)
+			result := check(spamcheck.Request{Msg: "test"})
+
+			assert.Equal(t, tt.wantSpam, result.Response.Spam)
+			assert.Equal(t, tt.wantApproved, result.Approved)
+			assert.Equal(t, "lua-result", result.Response.Name)
+			if tt.wantError {
+				assert.Error(t, result.Response.Error)
+			} else {
+				assert.NoError(t, result.Response.Error)
+			}
+		})
+	}
+}
+
+func TestChecker_ResultCheckWarnings(t *testing.T) {
+	var logs bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	previousPrefix := log.Prefix()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+		log.SetPrefix(previousPrefix)
+	})
+
+	checker := NewChecker()
+	defer checker.Close()
+	scriptPath := filepath.Join(t.TempDir(), "types.lua")
+	script := `
+function check(request)
+    if request.msg == "false" then
+        return false, "clean", false
+    end
+    if request.msg == "nil" then
+        return false, "clean"
+    end
+    if request.msg == "string" then
+        return false, "clean", "false"
+    end
+    if request.msg == "number" then
+        return false, "clean", 1
+    end
+    return true, "spam", true
+end
+`
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o600))
+	require.NoError(t, checker.LoadScript(scriptPath))
+	check, err := checker.GetResultCheck("types")
+	require.NoError(t, err)
+
+	for range 2 {
+		assert.False(t, check(spamcheck.Request{Msg: "false"}).Approved)
+		assert.False(t, check(spamcheck.Request{Msg: "nil"}).Approved)
+		assert.False(t, check(spamcheck.Request{Msg: "string"}).Approved)
+		assert.False(t, check(spamcheck.Request{Msg: "number"}).Approved)
+		assert.False(t, check(spamcheck.Request{Msg: "conflict"}).Approved)
+	}
+
+	output := logs.String()
+	assert.Equal(t, 1, strings.Count(output, `lua checker "types" returned approval value with type string`))
+	assert.Equal(t, 1, strings.Count(output, `lua checker "types" returned approval value with type number`))
+	assert.Equal(t, 1, strings.Count(output, `lua checker "types" returned approval=true with spam=true`))
+	assert.NotContains(t, output, `approval value "false"`)
+	assert.Len(t, strings.Split(strings.TrimSpace(output), "\n"), 3)
+}
+
+func TestChecker_ResultAdapters(t *testing.T) {
+	checker := NewChecker()
+	defer checker.Close()
+	scriptPath := filepath.Join(t.TempDir(), "adapter.lua")
+	require.NoError(t, os.WriteFile(scriptPath, []byte(`
+function check(request)
+    return false, "approved", true
+end
+`), 0o600))
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	legacyCheck, err := checker.GetCheck("adapter")
+	require.NoError(t, err)
+	assert.Equal(t, spamcheck.Response{Name: "lua-adapter", Details: "approved"}, legacyCheck(spamcheck.Request{}))
+
+	resultChecks := checker.GetAllResultChecks()
+	require.Contains(t, resultChecks, "adapter")
+	assert.True(t, resultChecks["adapter"](spamcheck.Request{}).Approved)
 }

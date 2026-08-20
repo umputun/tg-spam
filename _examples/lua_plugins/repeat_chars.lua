@@ -5,18 +5,23 @@
 local config = {
     max_repeats = 5,  -- Max consecutive identical characters allowed
     min_msg_length = 10,  -- Don't check messages shorter than this
+    approved_user_ids = {  -- Telegram user IDs that may approve the current message; empty by default
+        -- ["123456789"] = true,
+    },
 }
 
 -- Main check function - must be named "check"
 -- @param request - Table with message details
 -- @return boolean - true if spam, false if not spam
 -- @return string - Details message
+-- @return boolean|nil - Optional approval of the current message
 function check(request)
     local msg = request.msg
+    local approve = config.approved_user_ids[request.user_id] == true
     
     -- Skip very short messages
     if #msg < config.min_msg_length then
-        return false, "message too short to check"
+        return false, "message too short to check", approve
     end
     
     -- Convert to lowercase for better matching
@@ -47,6 +52,6 @@ function check(request)
         end
     end
     
-    return false, string.format("normal character repetition (%d/%d)", 
-        max_repeats, config.max_repeats)
+    return false, string.format("normal character repetition (%d/%d)",
+        max_repeats, config.max_repeats), approve
 end
