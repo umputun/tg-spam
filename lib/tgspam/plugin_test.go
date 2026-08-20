@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,109 @@ import (
 )
 
 //go:generate moq --out mocks/lua_plugin_engine.go --pkg mocks --skip-ensure --with-resets . LuaPluginEngine
+
+var oldStylePluginCheck plugin.Check = func(spamcheck.Request) spamcheck.Response {
+	return spamcheck.Response{Name: "lua-legacy", Details: "legacy response"}
+}
+
+type legacyLuaPluginEngine struct {
+	check plugin.Check
+}
+
+func (e *legacyLuaPluginEngine) LoadScript(string) error    { return nil }
+func (e *legacyLuaPluginEngine) ReloadScript(string) error  { return nil }
+func (e *legacyLuaPluginEngine) LoadDirectory(string) error { return nil }
+func (e *legacyLuaPluginEngine) Close()                     {}
+func (e *legacyLuaPluginEngine) GetAllChecks() map[string]plugin.Check {
+	return map[string]plugin.Check{"legacy": e.check}
+}
+func (e *legacyLuaPluginEngine) GetCheck(string) (plugin.Check, error) { return e.check, nil }
+
+var _ LuaPluginEngine = (*legacyLuaPluginEngine)(nil)
+
+type resultLuaPluginEngine struct {
+	*legacyLuaPluginEngine
+	result plugin.ResultCheck
+}
+
+func (e *resultLuaPluginEngine) GetResultCheck(string) (plugin.ResultCheck, error) {
+	return e.result, nil
+}
+
+func (e *resultLuaPluginEngine) GetAllResultChecks() map[string]plugin.ResultCheck {
+	return map[string]plugin.ResultCheck{"result": e.result}
+}
+
+var _ luaResultEngine = (*resultLuaPluginEngine)(nil)
+
+func TestDetector_WithLuaEngine_ResultCompatibility(t *testing.T) {
+	t.Run("legacy engine is adapted without approval", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = "/plugins"
+		config.LuaPlugins.EnabledPlugins = []string{"legacy"}
+		detector := NewDetector(config)
+		engine := &legacyLuaPluginEngine{check: oldStylePluginCheck}
+
+		require.NoError(t, detector.WithLuaEngine(engine))
+		require.Len(t, detector.luaChecks, 1)
+		assert.Equal(t, plugin.Result{Response: oldStylePluginCheck(spamcheck.Request{})}, detector.luaChecks[0](spamcheck.Request{}))
+	})
+
+	t.Run("result-capable engine preserves approval", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = "/plugins"
+		config.LuaPlugins.EnabledPlugins = []string{"result"}
+		detector := NewDetector(config)
+		resultCheck := func(spamcheck.Request) plugin.Result {
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-result"}, Approved: true}
+		}
+		engine := &resultLuaPluginEngine{
+			legacyLuaPluginEngine: &legacyLuaPluginEngine{check: func(spamcheck.Request) spamcheck.Response {
+				panic("legacy GetCheck must not be used")
+			}},
+			result: resultCheck,
+		}
+
+		require.NoError(t, detector.WithLuaEngine(engine))
+		require.Len(t, detector.luaChecks, 1)
+		assert.Equal(t, resultCheck(spamcheck.Request{}), detector.luaChecks[0](spamcheck.Request{}))
+	})
+}
+
+func TestDetector_WithLuaEngine_ApprovalIntegration(t *testing.T) {
+	pluginsDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(pluginsDir, "broken.lua"), []byte(`
+function check(request)
+    local value = request.missing.value
+    return false, value, true
+end
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pluginsDir, "trusted.lua"), []byte(`
+function check(request)
+    return false, "trusted message", true
+end
+`), 0o600))
+
+	config := Config{MaxAllowedEmoji: -1}
+	config.LuaPlugins.Enabled = true
+	config.LuaPlugins.PluginsDir = pluginsDir
+	detector := NewDetector(config)
+	_, err := detector.LoadStopWords(strings.NewReader("spamword"))
+	require.NoError(t, err)
+	checker := plugin.NewChecker()
+	defer checker.Close()
+	require.NoError(t, detector.WithLuaEngine(checker))
+
+	spam, checks := detector.Check(spamcheck.Request{Msg: "spamword message", UserID: "49"})
+
+	assert.False(t, spam)
+	require.NotNil(t, findResponseByName(checks, "lua-broken"))
+	require.Error(t, findResponseByName(checks, "lua-broken").Error)
+	assert.Equal(t, &spamcheck.Response{Name: "lua-approve", Details: "cleared by lua-trusted"},
+		findResponseByName(checks, "lua-approve"))
+}
 
 func TestDetector_WithLuaEngine(t *testing.T) {
 	config := Config{}
@@ -526,7 +630,7 @@ end
 	config.LuaPlugins.PluginsDir = ""
 
 	// print the available checks
-	allChecks := modifiedAPICheck.GetAllChecks()
+	allChecks := modifiedAPICheck.GetAllResultChecks()
 	t.Logf("Available Lua checks: %v", allChecks)
 
 	// create detector

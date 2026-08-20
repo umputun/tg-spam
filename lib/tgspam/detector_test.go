@@ -22,6 +22,7 @@ import (
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam/mocks"
+	"github.com/umputun/tg-spam/lib/tgspam/plugin"
 )
 
 func TestDetector_CheckWithShort(t *testing.T) {
@@ -3066,6 +3067,191 @@ func TestDetector_CheckHistory_ShortMessagesNotAddedToHam(t *testing.T) {
 		hamMsgs := d.hamHistory.Last(5)
 		assert.Len(t, hamMsgs, 1, "normal length messages should be added to hamHistory")
 		assert.Equal(t, "this is a normal length message", hamMsgs[0].Msg)
+	})
+}
+
+func TestDetector_CheckLuaApproval(t *testing.T) {
+	t.Run("short soft spam clears without graduation or history", func(t *testing.T) {
+		d := NewDetector(Config{
+			HistorySize:        5,
+			MinMsgLen:          100,
+			MaxAllowedEmoji:    -1,
+			FirstMessagesCount: 2,
+		})
+		_, err := d.LoadStopWords(strings.NewReader("spamword"))
+		require.NoError(t, err)
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted", Details: "trusted message"}, Approved: true}
+		}}
+
+		spam, checks := d.Check(spamcheck.Request{Msg: "spamword", UserID: "42"})
+
+		assert.False(t, spam)
+		assert.Equal(t, &spamcheck.Response{Name: "lua-approve", Details: "cleared by lua-trusted"},
+			findResponseByName(checks, "lua-approve"))
+		assert.Empty(t, d.hamHistory.Last(5))
+		assert.Empty(t, d.spamHistory.Last(5))
+		assert.Equal(t, 0, d.approvedCount("42"))
+	})
+
+	t.Run("normal message clears once with sorted approvers and follows ham tail", func(t *testing.T) {
+		d := NewDetector(Config{
+			HistorySize:        5,
+			MinMsgLen:          5,
+			MaxAllowedEmoji:    -1,
+			FirstMessagesCount: 2,
+			OpenAIVeto:         true,
+		})
+		_, err := d.LoadStopWords(strings.NewReader("spamword"))
+		require.NoError(t, err)
+		openAIMock := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{}, errors.New("must not be called")
+			},
+		}
+		d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+		d.luaChecks = []plugin.ResultCheck{
+			func(spamcheck.Request) plugin.Result {
+				return plugin.Result{Response: spamcheck.Response{Name: "lua-z"}, Approved: true}
+			},
+			func(spamcheck.Request) plugin.Result {
+				return plugin.Result{Response: spamcheck.Response{Name: "lua-broken", Error: errors.New("plugin failed")}, Approved: true}
+			},
+			func(spamcheck.Request) plugin.Result {
+				return plugin.Result{Response: spamcheck.Response{Name: "lua-a"}, Approved: true}
+			},
+			func(spamcheck.Request) plugin.Result {
+				return plugin.Result{Response: spamcheck.Response{Name: "lua-a"}, Approved: true}
+			},
+		}
+
+		req := spamcheck.Request{Msg: "this is a spamword message", UserID: "43", UserName: "trusted"}
+		spam, checks := d.Check(req)
+
+		assert.False(t, spam)
+		assert.Empty(t, openAIMock.CreateChatCompletionCalls())
+		assert.Equal(t, &spamcheck.Response{Name: "lua-approve", Details: "cleared by lua-a, lua-z"},
+			findResponseByName(checks, "lua-approve"))
+		assert.Equal(t, 1, d.approvedCount("43"))
+		assert.Equal(t, []spamcheck.Request{req}, d.hamHistory.Last(5))
+		assert.Empty(t, d.spamHistory.Last(5))
+	})
+
+	t.Run("CAS spam is soft", func(t *testing.T) {
+		httpMock := &mocks.HTTPClientMock{DoFunc: func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"ok":true,"description":"spam detected"}`)),
+			}, nil
+		}}
+		d := NewDetector(Config{CasAPI: "http://localhost", HTTPClient: httpMock, MaxAllowedEmoji: -1})
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
+		}}
+
+		spam, checks := d.Check(spamcheck.Request{Msg: "normal message", UserID: "44"})
+
+		assert.False(t, spam)
+		require.NotNil(t, findResponseByName(checks, "cas"))
+		assert.True(t, findResponseByName(checks, "cas").Spam)
+		require.NotNil(t, findResponseByName(checks, "lua-approve"))
+	})
+
+	t.Run("moot approval does not cancel an LLM spam verdict", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		openAIMock := &mocks.OpenAIClientMock{
+			CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+				return openai.ChatCompletionResponse{Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: `{"spam":true,"reason":"bad text","confidence":100}`},
+				}}}, nil
+			},
+		}
+		d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
+		}}
+
+		spam, checks := d.Check(spamcheck.Request{Msg: "normal message", UserID: "45"})
+
+		assert.True(t, spam)
+		assert.Len(t, openAIMock.CreateChatCompletionCalls(), 1)
+		assert.Nil(t, findResponseByName(checks, "lua-approve"))
+	})
+
+	t.Run("duplicate cache and delete IDs remain after clearance", func(t *testing.T) {
+		d := NewDetector(Config{
+			MaxAllowedEmoji: -1,
+			DuplicateDetection: struct {
+				Threshold int
+				Window    time.Duration
+			}{Threshold: 2, Window: time.Minute},
+		})
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
+		}}
+
+		firstSpam, firstChecks := d.Check(spamcheck.Request{
+			Msg: "repeated message", UserID: "46", Meta: spamcheck.MetaData{MessageID: 100},
+		})
+		secondSpam, secondChecks := d.Check(spamcheck.Request{
+			Msg: "repeated message", UserID: "46", Meta: spamcheck.MetaData{MessageID: 101},
+		})
+		thirdSpam, thirdChecks := d.Check(spamcheck.Request{
+			Msg: "repeated message", UserID: "46", Meta: spamcheck.MetaData{MessageID: 102},
+		})
+
+		assert.False(t, firstSpam)
+		assert.Nil(t, findResponseByName(firstChecks, "lua-approve"))
+		assert.False(t, secondSpam)
+		assert.False(t, thirdSpam)
+		assert.Equal(t, []int{100}, findResponseByName(secondChecks, "duplicate").ExtraDeleteIDs)
+		assert.Equal(t, []int{100, 101}, findResponseByName(thirdChecks, "duplicate").ExtraDeleteIDs)
+		require.NotNil(t, findResponseByName(secondChecks, "lua-approve"))
+		require.NotNil(t, findResponseByName(thirdChecks, "lua-approve"))
+	})
+
+	t.Run("short message flood returns before Lua", func(t *testing.T) {
+		luaCalls := 0
+		counter := &mocks.MessageCounterMock{
+			CountUserMessagesFunc: func(context.Context, string) (int, error) { return 3, nil },
+			UserMessageIDsFunc:    func(context.Context, string, int) ([]int, error) { return []int{1, 2, 3}, nil },
+		}
+		d := NewDetector(Config{
+			MaxShortMsgCount:   3,
+			FirstMessagesCount: 2,
+			MinMsgLen:          50,
+			MaxAllowedEmoji:    -1,
+		})
+		d.WithMessageCounter(counter)
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			luaCalls++
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
+		}}
+
+		spam, checks := d.Check(spamcheck.Request{Msg: "hi", UserID: "47"})
+
+		assert.True(t, spam)
+		assert.Zero(t, luaCalls)
+		require.NotNil(t, findResponseByName(checks, "short-msg-flood"))
+		assert.Nil(t, findResponseByName(checks, "lua-approve"))
+	})
+
+	t.Run("prohibited language returns before Lua", func(t *testing.T) {
+		scripts, err := ResolveProhibitedScripts([]string{"chinese"})
+		require.NoError(t, err)
+		luaCalls := 0
+		d := NewDetector(Config{ProhibitedScripts: scripts, ProhibitedLangsMin: 2, MaxAllowedEmoji: -1})
+		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
+			luaCalls++
+			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
+		}}
+
+		spam, checks := d.Check(spamcheck.Request{Msg: "中文", UserID: "48"})
+
+		assert.True(t, spam)
+		assert.Zero(t, luaCalls)
+		require.NotNil(t, findResponseByName(checks, "prohibited-language"))
+		assert.Nil(t, findResponseByName(checks, "lua-approve"))
 	})
 }
 

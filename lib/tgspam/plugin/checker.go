@@ -1,11 +1,16 @@
 // Package plugin provides a plugin system for spam detection in tg-spam.
 // It loads and executes Lua scripts that implement custom spam checking logic.
 // Scripts should provide a "check" function that takes a message context and returns
-// a boolean (is spam) and a string (details).
+// a boolean (is spam), a string (details), and an optional boolean approval. An exact
+// true approves only the current message when the plugin reports ham. It can clear soft
+// results in Detector.Check, but not the short-message-flood or prohibited-language
+// blocks that return before plugins run. A normal-length cleared message follows the
+// ordinary ham path for user graduation and ham history.
 package plugin
 
 import (
 	"fmt"
+	"log"
 	"path/filepath"
 	"sync"
 
@@ -18,6 +23,7 @@ import (
 type Checker struct {
 	vm       *lua.LState
 	checkers map[string]*lua.LFunction
+	warned   map[string]struct{}
 	lock     sync.RWMutex // protects the checkers map and serializes access to the shared vm
 	watcher  *Watcher     // optional file watcher for dynamic reloading
 }
@@ -25,12 +31,22 @@ type Checker struct {
 // Check is a function that takes a request and returns a response indicating if message is spam
 type Check func(req spamcheck.Request) spamcheck.Response
 
+// Result contains a Lua plugin response and its optional approval of the current message.
+type Result struct {
+	Response spamcheck.Response
+	Approved bool
+}
+
+// ResultCheck is a function that returns the full result of a Lua plugin check.
+type ResultCheck func(req spamcheck.Request) Result
+
 // NewChecker creates a new Checker
 func NewChecker() *Checker {
 	L := lua.NewState()
 	lc := &Checker{
 		vm:       L,
 		checkers: make(map[string]*lua.LFunction),
+		warned:   make(map[string]struct{}),
 	}
 	lc.RegisterHelpers() // register helper functions
 	return lc
@@ -103,6 +119,17 @@ func (c *Checker) LoadDirectory(dir string) error {
 
 // GetCheck returns a Check for the specified Lua checker
 func (c *Checker) GetCheck(name string) (Check, error) {
+	resultCheck, err := c.GetResultCheck(name)
+	if err != nil {
+		return nil, err
+	}
+	return func(req spamcheck.Request) spamcheck.Response {
+		return resultCheck(req).Response
+	}, nil
+}
+
+// GetResultCheck returns a ResultCheck for the specified Lua checker.
+func (c *Checker) GetResultCheck(name string) (ResultCheck, error) {
 	c.lock.RLock()
 	_, ok := c.checkers[name]
 	c.lock.RUnlock()
@@ -111,7 +138,7 @@ func (c *Checker) GetCheck(name string) (Check, error) {
 		return nil, fmt.Errorf("lua checker %q not found", name)
 	}
 
-	return c.createMetaChecker(name), nil
+	return c.createResultCheck(name), nil
 }
 
 // GetAllChecks returns all loaded Lua checks
@@ -120,16 +147,32 @@ func (c *Checker) GetAllChecks() map[string]Check {
 
 	c.lock.RLock()
 	for name := range c.checkers {
-		result[name] = c.createMetaChecker(name)
+		resultCheck := c.createResultCheck(name)
+		result[name] = func(req spamcheck.Request) spamcheck.Response {
+			return resultCheck(req).Response
+		}
 	}
 	c.lock.RUnlock()
 
 	return result
 }
 
-// createMetaChecker creates a Check function for the named Lua checker
-func (c *Checker) createMetaChecker(name string) Check {
-	return func(req spamcheck.Request) spamcheck.Response {
+// GetAllResultChecks returns all loaded Lua result checks.
+func (c *Checker) GetAllResultChecks() map[string]ResultCheck {
+	result := make(map[string]ResultCheck)
+
+	c.lock.RLock()
+	for name := range c.checkers {
+		result[name] = c.createResultCheck(name)
+	}
+	c.lock.RUnlock()
+
+	return result
+}
+
+// createResultCheck creates a ResultCheck function for the named Lua checker
+func (c *Checker) createResultCheck(name string) ResultCheck {
+	return func(req spamcheck.Request) Result {
 		// the write lock is required, not just a read lock: everything below mutates the shared
 		// *lua.LState (allocating tables, pushing and popping the stack) and gopher-lua states are
 		// not goroutine-safe. Detector.Check holds only a read lock of its own, so concurrent
@@ -142,7 +185,7 @@ func (c *Checker) createMetaChecker(name string) Check {
 		checker, ok := c.checkers[name]
 		if !ok {
 			err := fmt.Errorf("lua checker %q not found", name)
-			return spamcheck.Response{Name: "lua-" + name, Spam: false, Details: err.Error(), Error: err}
+			return Result{Response: spamcheck.Response{Name: "lua-" + name, Spam: false, Details: err.Error(), Error: err}}
 		}
 
 		// create Lua table from request
@@ -172,28 +215,54 @@ func (c *Checker) createMetaChecker(name string) Check {
 		// call the Lua function
 		if err := c.vm.CallByParam(lua.P{
 			Fn:      checker,
-			NRet:    2,
+			NRet:    3,
 			Protect: true,
 		}, reqTable); err != nil {
-			return spamcheck.Response{
+			return Result{Response: spamcheck.Response{
 				Name:    "lua-" + name,
 				Spam:    false,
 				Details: "error executing lua checker: " + err.Error(),
 				Error:   err,
-			}
+			}}
 		}
 
 		// get return values from stack
-		isSpam := c.vm.ToBool(-2)
-		details := c.vm.ToString(-1)
-		c.vm.Pop(2) // pop results from stack
+		isSpam := c.vm.ToBool(-3)
+		details := c.vm.ToString(-2)
+		approvalValue := c.vm.Get(-1)
+		c.vm.Pop(3) // pop results from stack
 
-		return spamcheck.Response{
+		approved := false
+		switch value := approvalValue.(type) {
+		case *lua.LNilType:
+		case lua.LBool:
+			if bool(value) {
+				if isSpam {
+					c.warnOnce(name, "spam-conflict", "[WARN] lua checker %q returned approval=true with spam=true", name)
+				} else {
+					approved = true
+				}
+			}
+		default:
+			valueType := approvalValue.Type().String()
+			c.warnOnce(name, "type:"+valueType, "[WARN] lua checker %q returned approval value with type %s", name, valueType)
+		}
+
+		return Result{Response: spamcheck.Response{
 			Name:    "lua-" + name,
 			Spam:    isSpam,
 			Details: details,
-		}
+		}, Approved: approved}
 	}
+}
+
+func (c *Checker) warnOnce(name, kind, format string, args ...any) {
+	key := name + "\x00" + kind
+	if _, found := c.warned[key]; found {
+		return
+	}
+	c.warned[key] = struct{}{}
+	log.Printf(format, args...)
 }
 
 // Close cleans up resources used by the Checker
