@@ -424,3 +424,104 @@ end
 	}
 	wg.Wait()
 }
+
+func TestChecker_ReloadReachesAlreadyObtainedCheck(t *testing.T) {
+	// the detector keeps a Check for its lifetime, so refreshing only the registry leaves it on the old script
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "held_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return true, "original version"
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+
+	held, err := checker.GetCheck("held_test")
+	require.NoError(t, err)
+	resp := held(createTestRequest())
+	require.Equal(t, "original version", resp.Details)
+
+	err = os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return false, "reloaded version"
+end
+	`), 0o644)
+	require.NoError(t, err)
+	require.NoError(t, checker.ReloadScript(scriptPath))
+
+	resp = held(createTestRequest())
+	assert.Equal(t, "reloaded version", resp.Details, "check obtained before the reload must run the new script")
+	assert.False(t, resp.Spam)
+}
+
+func TestChecker_FailedReloadKeepsRegistryEntry(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "broken_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+function check(request)
+	return true, "original version"
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+	held, err := checker.GetCheck("broken_test")
+	require.NoError(t, err)
+
+	err = os.WriteFile(scriptPath, []byte(`function check(request) this is not lua`), 0o644)
+	require.NoError(t, err)
+	require.Error(t, checker.ReloadScript(scriptPath))
+
+	// a broken edit must not deregister a script that is still being executed
+	assert.Contains(t, checker.GetAllChecks(), "broken_test", "plugin stays registered after a failed reload")
+	_, err = checker.GetCheck("broken_test")
+	require.NoError(t, err)
+
+	resp := held(createTestRequest())
+	assert.Equal(t, "original version", resp.Details)
+	assert.True(t, resp.Spam)
+}
+
+func TestChecker_FailedReloadCanStillMutateSharedGlobals(t *testing.T) {
+	// keeping the old entry does not make a failed reload a no-op: the candidate runs in the shared VM
+	tmpDir := t.TempDir()
+
+	scriptPath := filepath.Join(tmpDir, "partial_test.lua")
+	err := os.WriteFile(scriptPath, []byte(`
+GREETING = "original version"
+MAIN_VM = true
+function check(request)
+	return true, GREETING
+end
+	`), 0o644)
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(scriptPath))
+	held, err := checker.GetCheck("partial_test")
+	require.NoError(t, err)
+	require.Equal(t, "original version", held(createTestRequest()).Details)
+
+	// MAIN_VM exists only in the shared VM, so this validates in the throwaway state and fails after reassigning GREETING
+	err = os.WriteFile(scriptPath, []byte(`
+GREETING = "mutated before failure"
+if MAIN_VM then error("boom") end
+function check(request)
+	return true, GREETING
+end
+	`), 0o644)
+	require.NoError(t, err)
+	require.Error(t, checker.ReloadScript(scriptPath))
+
+	assert.Contains(t, checker.GetAllChecks(), "partial_test", "the entry survives the failed reload")
+	assert.Equal(t, "mutated before failure", held(createTestRequest()).Details, "but its behavior does not")
+}
