@@ -41,6 +41,8 @@ Your Lua plugin receives a `request` object with the following fields:
   - `has_keyboard`: Boolean indicating if the message has a keyboard
   - `has_giveaway`: Boolean indicating if the message is a giveaway
   - `has_contact`: Boolean indicating if the message has a shared contact
+  - `has_document`: Boolean indicating if the message has a document (telegram also sets this for GIFs)
+  - `has_external_reply`: Boolean indicating if the message replies to a message from another chat
   - `message_id`: The Telegram message ID
 
 ### Helper Functions

@@ -473,7 +473,7 @@ local approved_user_ids = {
 
 function check(request)
     -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
-    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_external_reply, message_id
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_document, has_external_reply, message_id
 
     if string.match(request.msg, "some pattern") then
         return true, "matched suspicious pattern"
