@@ -547,9 +547,10 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, checked, "mention-only must be unchecked by default")
 
-	// enable the meta master toggle, mention-only and external-reply, then save
+	// enable the meta master toggle, mention-only, documents-only and external-reply, then save
 	require.NoError(t, page.Locator("#metaEnabled").Check())
 	require.NoError(t, page.Locator("#metaMentionOnly").Check())
+	require.NoError(t, page.Locator("#metaDocumentsOnly").Check())
 	require.NoError(t, page.Locator("#metaExternalReply").Check())
 	require.NoError(t, page.Locator("#metaImageTextLen").Fill("40"))
 	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
@@ -569,6 +570,10 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	got, err := page.Locator("#metaMentionOnly").IsChecked()
 	require.NoError(t, err)
 	assert.True(t, got, "mention-only must stay checked after reload")
+
+	gotDocumentsOnly, err := page.Locator("#metaDocumentsOnly").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, gotDocumentsOnly, "documents-only must stay checked after reload")
 
 	gotExternalReply, err := page.Locator("#metaExternalReply").IsChecked()
 	require.NoError(t, err)

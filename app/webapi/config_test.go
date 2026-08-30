@@ -1848,7 +1848,7 @@ func TestUpdateSettingsFromForm_ProhibitedLangsMinEmptyPreserves(t *testing.T) {
 func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	// when the meta master toggle is off (metaEnabled absent) and the form
 	// contains at least one meta-related field, the server-side authoritative
-	// toggle must clear ALL 12 fields used by IsMetaEnabled so a checked
+	// toggle must clear ALL 14 fields used by IsMetaEnabled so a checked
 	// per-feature box (e.g., metaImageOnly) cannot keep meta enabled
 	settings := &config.Settings{
 		Meta: config.MetaSettings{
@@ -1859,6 +1859,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 			LinksOnly:       true,
 			MentionOnly:     true,
 			VideosOnly:      true,
+			DocumentsOnly:   true,
 			AudiosOnly:      true,
 			Forward:         true,
 			Keyboard:        true,
@@ -1876,6 +1877,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	form.Add("metaLinksOnly", "on")
 	form.Add("metaMentionOnly", "on")
 	form.Add("metaVideoOnly", "on")
+	form.Add("metaDocumentsOnly", "on")
 	form.Add("metaAudioOnly", "on")
 	form.Add("metaForwarded", "on")
 	form.Add("metaKeyboard", "on")
@@ -1897,6 +1899,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	assert.False(t, settings.Meta.LinksOnly, "LinksOnly must be cleared")
 	assert.False(t, settings.Meta.MentionOnly, "MentionOnly must be cleared")
 	assert.False(t, settings.Meta.VideosOnly, "VideosOnly must be cleared")
+	assert.False(t, settings.Meta.DocumentsOnly, "DocumentsOnly must be cleared")
 	assert.False(t, settings.Meta.AudiosOnly, "AudiosOnly must be cleared")
 	assert.False(t, settings.Meta.Forward, "Forward must be cleared")
 	assert.False(t, settings.Meta.Keyboard, "Keyboard must be cleared")
@@ -1943,7 +1946,7 @@ func TestUpdateSettingsFromForm_MetaEnabled_HonorsAllFields(t *testing.T) {
 
 func TestUpdateSettingsFromForm_NoMetaFields_PreservesExisting(t *testing.T) {
 	// when the form contains zero meta-related fields, the meta block is
-	// skipped entirely so partial saves preserve all 12 fields
+	// skipped entirely so partial saves preserve all 14 fields
 	settings := &config.Settings{
 		Meta: config.MetaSettings{
 			LinksLimit:  10,
@@ -1990,6 +1993,36 @@ func TestUpdateSettingsFromForm_MetaEnabled_BooleanFieldsRespectPresence(t *test
 	assert.True(t, settings.Meta.ImageOnly, "rendered boolean present in form follows on/off")
 	assert.False(t, settings.Meta.LinksOnly, "rendered boolean absent from form is unchecked")
 	assert.False(t, settings.Meta.VideosOnly, "rendered boolean absent from form is unchecked")
+}
+
+func TestUpdateSettingsFromForm_MetaDocumentsOnly_RoundTrip(t *testing.T) {
+	// metaDocumentsOnly follows the same presence-of-on semantics as its
+	// sibling boolean fields: checked sets it, and a later save with the
+	// box unchecked (but metaEnabled still on) clears it back to false
+	settings := &config.Settings{}
+
+	setForm := url.Values{}
+	setForm.Add("metaEnabled", "on")
+	setForm.Add("metaDocumentsOnly", "on")
+
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(setForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.True(t, settings.Meta.DocumentsOnly, "checkbox checked must set DocumentsOnly")
+
+	clearForm := url.Values{}
+	clearForm.Add("metaEnabled", "on")
+
+	req = httptest.NewRequest("PUT", "/config", strings.NewReader(clearForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+
+	updateSettingsFromForm(settings, req)
+
+	assert.False(t, settings.Meta.DocumentsOnly, "checkbox unchecked must clear DocumentsOnly")
 }
 
 func TestUpdateConfigHandler_SaveFailure_RollsBackInMemory(t *testing.T) {
