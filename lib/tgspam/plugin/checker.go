@@ -208,6 +208,7 @@ func (c *Checker) createResultCheck(name string) ResultCheck {
 		metaTable.RawSetString("has_keyboard", lua.LBool(req.Meta.HasKeyboard))
 		metaTable.RawSetString("has_giveaway", lua.LBool(req.Meta.HasGiveaway))
 		metaTable.RawSetString("has_contact", lua.LBool(req.Meta.HasContact))
+		metaTable.RawSetString("has_document", lua.LBool(req.Meta.HasDocument))
 		metaTable.RawSetString("has_external_reply", lua.LBool(req.Meta.HasExternalReply))
 		metaTable.RawSetString("message_id", lua.LNumber(req.Meta.MessageID))
 		reqTable.RawSetString("meta", metaTable)
