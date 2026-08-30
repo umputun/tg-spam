@@ -42,8 +42,7 @@ type MetaData struct {
 	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
 	HasContact  bool `json:"has_contact"`  // true if the message has a shared contact
 	HasGiveaway bool `json:"has_giveaway"` // true if the message is a giveaway
-	// HasDocument is true if the message has a document (file attachment); telegram also sets this for animations
-	HasDocument bool `json:"has_document"`
+	HasDocument bool `json:"has_document"` // true if the message has a document; telegram also sets it for animations
 	// HasExternalReply is true if the message replies to a message from another chat (external_reply)
 	HasExternalReply bool `json:"has_external_reply"`
 	MessageID        int  `json:"message_id"` // telegram message ID
