@@ -515,7 +515,7 @@ func TestDocumentsCheck(t *testing.T) {
 		{
 			name: "forwarded document with long caption is ham", minTextLen: 50,
 			req: spamcheck.Request{
-				Msg:  "This is exactly fifty characters long, I promise!!",
+				Msg:  "This caption is well over fifty characters long, no doubt about it at all.",
 				Meta: spamcheck.MetaData{HasDocument: true, HasForward: true},
 			},
 			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},

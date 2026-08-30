@@ -361,12 +361,17 @@ func Test_makeDetector(t *testing.T) {
 	t.Run("documents-only registers the check when enabled", func(t *testing.T) {
 		settings := makeTestSettings()
 		settings.Meta.DocumentsOnly = true
+		settings.MinMsgLen = 50
 
 		det := makeDetector(settings)
-		_, cr := det.Check(spamcheck.Request{Msg: "", UserID: "u1", Meta: spamcheck.MetaData{HasDocument: true}})
+		// 45-rune caption is below the 50 min-msg-len threshold, so it must be flagged; this
+		// pins that makeDetector wires DocumentsCheck to settings.MinMsgLen, not some other value
+		_, cr := det.Check(spamcheck.Request{
+			Msg: strings.Repeat("a", 45), UserID: "u1", Meta: spamcheck.MetaData{HasDocument: true},
+		})
 		doc, ok := documentsResp(cr)
 		require.True(t, ok, "documents check must run")
-		assert.True(t, doc.Spam, "document without text is spam")
+		assert.True(t, doc.Spam, "45-rune caption is below the 50 min-msg-len threshold, spam")
 	})
 
 	t.Run("documents-only does not register the check when disabled", func(t *testing.T) {
