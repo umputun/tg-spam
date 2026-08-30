@@ -344,6 +344,9 @@ func transform(msg *tbapi.Message) *bot.Message {
 	if msg.Audio != nil {
 		message.WithAudio = true
 	}
+	if msg.Document != nil {
+		message.WithDocument = true
+	}
 	if msg.ForwardOrigin != nil {
 		message.WithForward = true
 	}

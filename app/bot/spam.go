@@ -128,6 +128,9 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	if msg.WithGiveaway {
 		spamReq.Meta.HasGiveaway = true
 	}
+	if msg.WithDocument {
+		spamReq.Meta.HasDocument = true
+	}
 	if msg.WithExternalReply {
 		spamReq.Meta.HasExternalReply = true
 	}
