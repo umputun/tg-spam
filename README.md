@@ -657,6 +657,7 @@ meta:
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.mention-only               enable mention only check [$META_MENTION_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
+      --meta.documents-only             enable documents only check [$META_DOCUMENTS_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.contact-only               enable contact only check [$META_CONTACT_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]

@@ -348,6 +348,36 @@ func Test_makeDetector(t *testing.T) {
 		require.True(t, ok, "images check must run")
 		assert.True(t, img.Spam, "45-rune caption is below the 50 min-msg-len fallback, spam")
 	})
+
+	documentsResp := func(cr []spamcheck.Response) (spamcheck.Response, bool) {
+		for _, r := range cr {
+			if r.Name == "documents" {
+				return r, true
+			}
+		}
+		return spamcheck.Response{}, false
+	}
+
+	t.Run("documents-only registers the check when enabled", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.Meta.DocumentsOnly = true
+
+		det := makeDetector(settings)
+		_, cr := det.Check(spamcheck.Request{Msg: "", UserID: "u1", Meta: spamcheck.MetaData{HasDocument: true}})
+		doc, ok := documentsResp(cr)
+		require.True(t, ok, "documents check must run")
+		assert.True(t, doc.Spam, "document without text is spam")
+	})
+
+	t.Run("documents-only does not register the check when disabled", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.Meta.DocumentsOnly = false
+
+		det := makeDetector(settings)
+		_, cr := det.Check(spamcheck.Request{Msg: "", UserID: "u1", Meta: spamcheck.MetaData{HasDocument: true}})
+		_, ok := documentsResp(cr)
+		assert.False(t, ok, "documents check must not run when disabled")
+	})
 }
 
 func Test_initLuaPlugins(t *testing.T) {

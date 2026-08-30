@@ -314,6 +314,7 @@ func TestOptToSettings(t *testing.T) {
 		o.Meta.LinksOnly = true
 		o.Meta.MentionOnly = true
 		o.Meta.VideosOnly = true
+		o.Meta.DocumentsOnly = true
 		o.Meta.AudiosOnly = true
 		o.Meta.Forward = true
 		o.Meta.Keyboard = true
@@ -460,6 +461,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.True(t, settings.Meta.LinksOnly)
 				assert.True(t, settings.Meta.MentionOnly)
 				assert.True(t, settings.Meta.VideosOnly)
+				assert.True(t, settings.Meta.DocumentsOnly)
 				assert.True(t, settings.Meta.AudiosOnly)
 				assert.True(t, settings.Meta.Forward)
 				assert.True(t, settings.Meta.Keyboard)
