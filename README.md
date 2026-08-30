@@ -172,6 +172,10 @@ By default the image caption threshold equals `--min-msg-len`. Use `--meta.image
 
 This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
+**Documents only check**
+
+This option is disabled by default. If `--meta.documents-only` set or `env:META_DOCUMENTS_ONLY` is `true`, the bot will check the message for the presence of any document (file attachment). If the message contains a document with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. A forwarded document is checked the same way, since Telegram delivers the original caption as message text. Note: Telegram also sets the document field for GIFs, so a GIF without a long enough caption is flagged too.
+
 **Audio only check**
 
 This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
