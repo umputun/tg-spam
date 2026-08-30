@@ -174,7 +174,7 @@ This option is disabled by default. If `--meta.video-only` set or `env:META_VIDE
 
 **Documents only check**
 
-This option is disabled by default. If `--meta.documents-only` set or `env:META_DOCUMENTS_ONLY` is `true`, the bot will check the message for the presence of any document (file attachment). If the message contains a document with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. A forwarded document is checked the same way, since Telegram delivers the original caption as message text. Note: Telegram also sets the document field for GIFs, so a GIF without a long enough caption is flagged too.
+This option is disabled by default. If `--meta.documents-only` set or `env:META_DOCUMENTS_ONLY` is `true`, the bot will check the message for the presence of any document (file attachment). If the message contains a document with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. A forwarded document is checked the same way, since Telegram delivers the original caption as message text. Note: Telegram also sets the document field for GIFs, so a GIF without a long enough caption is flagged too. Regardless of whether this check is enabled, caption-less files and GIFs now reach the detector and the message locator, so they also count toward `--max-short-msg-count` if that is configured.
 
 **Audio only check**
 

@@ -61,7 +61,7 @@ type Message struct {
 	WithForward   bool `json:",omitempty"`
 	WithAudio     bool `json:",omitempty"`
 	// WithDocument is true if the message carries a document (file attachment). Telegram also sets the
-	// document field for animations (GIFs) and for forwarded files, so this covers both cases as well.
+	// document field for animations (GIFs).
 	WithDocument bool `json:",omitempty"`
 	WithKeyboard bool `json:",omitempty"`
 	WithContact  bool `json:",omitempty"`
