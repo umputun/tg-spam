@@ -462,6 +462,74 @@ func TestAudioCheck(t *testing.T) {
 	}
 }
 
+func TestDocumentsCheck(t *testing.T) {
+	tests := []struct {
+		name       string
+		minTextLen int
+		req        spamcheck.Request
+		expected   spamcheck.Response
+	}{
+		{
+			name: "no document and text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text.", Meta: spamcheck.MetaData{HasDocument: false}},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
+		{
+			name: "document with long text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "This is a message with text and a document.", Meta: spamcheck.MetaData{HasDocument: true}},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
+		{
+			name: "document with empty text, minTextLen=0", minTextLen: 0,
+			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasDocument: true}},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document without text"},
+		},
+		{
+			name: "document with short text below threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "@spam_channel", Meta: spamcheck.MetaData{HasDocument: true}},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document with short text (13 chars)"},
+		},
+		{
+			name: "document with text at threshold", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "This is exactly fifty characters long, I promise!!", Meta: spamcheck.MetaData{HasDocument: true}},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
+		{
+			name: "no document with short text, minTextLen=50", minTextLen: 50,
+			req:      spamcheck.Request{Msg: "short", Meta: spamcheck.MetaData{HasDocument: false}},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
+		{
+			name: "multibyte text counted in runes, not bytes", minTextLen: 10,
+			req:      spamcheck.Request{Msg: "Привет!", Meta: spamcheck.MetaData{HasDocument: true}},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document with short text (7 chars)"},
+		},
+		{
+			name: "forwarded document with short caption is spam", minTextLen: 50,
+			req: spamcheck.Request{
+				Msg:  "See attached",
+				Meta: spamcheck.MetaData{HasDocument: true, HasForward: true},
+			},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document with short text (12 chars)"},
+		},
+		{
+			name: "forwarded document with long caption is ham", minTextLen: 50,
+			req: spamcheck.Request{
+				Msg:  "This is exactly fifty characters long, I promise!!",
+				Meta: spamcheck.MetaData{HasDocument: true, HasForward: true},
+			},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := DocumentsCheck(tt.minTextLen)
+			assert.Equal(t, tt.expected, check(tt.req))
+		})
+	}
+}
+
 func TestContactCheck(t *testing.T) {
 	tests := []struct {
 		name     string
