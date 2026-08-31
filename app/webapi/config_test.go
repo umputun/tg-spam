@@ -1877,7 +1877,7 @@ func TestUpdateSettingsFromForm_MetaDisabled_ClearsAllMetaFields(t *testing.T) {
 	form.Add("metaLinksOnly", "on")
 	form.Add("metaMentionOnly", "on")
 	form.Add("metaVideoOnly", "on")
-	form.Add("metaDocumentsOnly", "on")
+	form.Add("metaDocumentOnly", "on")
 	form.Add("metaAudioOnly", "on")
 	form.Add("metaForwarded", "on")
 	form.Add("metaKeyboard", "on")
@@ -1996,14 +1996,14 @@ func TestUpdateSettingsFromForm_MetaEnabled_BooleanFieldsRespectPresence(t *test
 }
 
 func TestUpdateSettingsFromForm_MetaDocumentsOnly_RoundTrip(t *testing.T) {
-	// metaDocumentsOnly follows the same presence-of-on semantics as its
+	// metaDocumentOnly follows the same presence-of-on semantics as its
 	// sibling boolean fields: checked sets it, and a later save with the
 	// box unchecked (but metaEnabled still on) clears it back to false
 	settings := &config.Settings{}
 
 	setForm := url.Values{}
 	setForm.Add("metaEnabled", "on")
-	setForm.Add("metaDocumentsOnly", "on")
+	setForm.Add("metaDocumentOnly", "on")
 
 	req := httptest.NewRequest("PUT", "/config", strings.NewReader(setForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

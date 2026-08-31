@@ -358,7 +358,7 @@ func Test_makeDetector(t *testing.T) {
 		return spamcheck.Response{}, false
 	}
 
-	t.Run("documents-only registers the check when enabled", func(t *testing.T) {
+	t.Run("document-only registers the check when enabled", func(t *testing.T) {
 		settings := makeTestSettings()
 		settings.Meta.DocumentsOnly = true
 		settings.MinMsgLen = 50
@@ -374,7 +374,7 @@ func Test_makeDetector(t *testing.T) {
 		assert.True(t, doc.Spam, "45-rune caption is below the 50 min-msg-len threshold, spam")
 	})
 
-	t.Run("documents-only does not register the check when disabled", func(t *testing.T) {
+	t.Run("document-only does not register the check when disabled", func(t *testing.T) {
 		settings := makeTestSettings()
 		settings.Meta.DocumentsOnly = false
 

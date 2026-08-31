@@ -357,8 +357,8 @@
                         <label class="form-check-label" for="metaAudioOnly">Meta Audio Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="metaDocumentsOnly" name="metaDocumentsOnly" {{if .Meta.DocumentsOnly}}checked{{end}}>
-                        <label class="form-check-label" for="metaDocumentsOnly">Meta Documents Only</label>
+                        <input class="form-check-input" type="checkbox" id="metaDocumentOnly" name="metaDocumentOnly" {{if .Meta.DocumentsOnly}}checked{{end}}>
+                        <label class="form-check-label" for="metaDocumentOnly">Meta Document Only</label>
                     </div>
                     <div class="form-check form-switch mt-2">
                         <input class="form-check-input" type="checkbox" id="metaKeyboard" name="metaKeyboard" {{if .Meta.Keyboard}}checked{{end}}>
@@ -386,7 +386,7 @@
                         <tr><th>Meta Image Text Len</th><td>{{if eq .Meta.ImageTextLen 0}}min-msg-len{{else}}{{.Meta.ImageTextLen}}{{end}}</td></tr>
                         <tr><th>Meta Video Only</th><td>{{.Meta.VideosOnly}}</td></tr>
                         <tr><th>Meta Audio Only</th><td>{{.Meta.AudiosOnly}}</td></tr>
-                        <tr><th>Meta Documents Only</th><td>{{.Meta.DocumentsOnly}}</td></tr>
+                        <tr><th>Meta Document Only</th><td>{{.Meta.DocumentsOnly}}</td></tr>
                         <tr><th>Meta Keyboard</th><td>{{.Meta.Keyboard}}</td></tr>
                         <tr><th>Meta External Reply</th><td>{{.Meta.ExternalReply}}</td></tr>
                         <tr><th>Meta Contact Only</th><td>{{.Meta.ContactOnly}}</td></tr>

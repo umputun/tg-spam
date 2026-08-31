@@ -91,7 +91,7 @@ type options struct {
 		LinksOnly       bool   `long:"links-only" env:"LINKS_ONLY" description:"enable links only check"`
 		MentionOnly     bool   `long:"mention-only" env:"MENTION_ONLY" description:"enable mention only check"`
 		VideosOnly      bool   `long:"video-only" env:"VIDEO_ONLY" description:"enable video only check"`
-		DocumentsOnly   bool   `long:"documents-only" env:"DOCUMENTS_ONLY" description:"enable documents only check"`
+		DocumentsOnly   bool   `long:"document-only" env:"DOCUMENT_ONLY" description:"enable document only check"`
 		AudiosOnly      bool   `long:"audio-only" env:"AUDIO_ONLY" description:"enable audio only check"`
 		ContactOnly     bool   `long:"contact-only" env:"CONTACT_ONLY" description:"enable contact only check"`
 		Forward         bool   `long:"forward" env:"FORWARD" description:"enable forward check"`
@@ -552,6 +552,7 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		WarnThreshold:           settings.Warn.Threshold,
 		WarnWindow:              settings.Warn.Window,
 		Warnings:                warningsStore,
+		AdmitDocuments:          settings.Meta.DocumentsOnly,
 	}
 
 	if settings.Delete.JoinMessages {

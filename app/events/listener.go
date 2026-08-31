@@ -68,6 +68,7 @@ type TelegramListener struct {
 	WarnThreshold           int           // auto-ban after N warns within window (0=disabled)
 	WarnWindow              time.Duration // sliding window for counting warns
 	Warnings                Warnings      // storage for admin /warn records
+	AdmitDocuments          bool          // pass text-less messages carrying a document to the detector
 
 	adminHandler    *admin
 	reportsHandler  *userReports
@@ -385,10 +386,16 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
+	// a text-less document is admitted only when the documents check is on. once admitted it is stored by
+	// the locator, inflating the per-user count --max-short-msg-count bans on, and it reaches the checks
+	// that need no message text: stop-words (matched against username and user ID too), username-symbols,
+	// lua plugins and CAS, which is on by default and bans permanently
+	documentAdmitted := msg.WithDocument && l.AdmitDocuments
+
 	// ignore messages with empty text, no media, no video, no video note, no forward, no external reply,
-	// no document
+	// no admitted document
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
-		!msg.WithForward && !msg.WithExternalReply && !msg.WithDocument {
+		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted {
 		return nil
 	}
 	ctx := context.TODO()

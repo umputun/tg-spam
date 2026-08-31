@@ -520,6 +520,33 @@ func TestDocumentsCheck(t *testing.T) {
 			},
 			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
 		},
+		{
+			name: "caption-less document replying to a long message is spam", minTextLen: 50,
+			req: spamcheck.Request{
+				Msg:   "\n" + "This parent message is well over fifty characters long, for sure.",
+				Quote: "This parent message is well over fifty characters long, for sure.",
+				Meta:  spamcheck.MetaData{HasDocument: true},
+			},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document without text"},
+		},
+		{
+			name: "short caption plus long quote is spam", minTextLen: 50,
+			req: spamcheck.Request{
+				Msg:   "See attached\n" + "This parent message is well over fifty characters long, for sure.",
+				Quote: "This parent message is well over fifty characters long, for sure.",
+				Meta:  spamcheck.MetaData{HasDocument: true},
+			},
+			expected: spamcheck.Response{Name: "documents", Spam: true, Details: "document with short text (12 chars)"},
+		},
+		{
+			name: "long caption with a quote is ham", minTextLen: 50,
+			req: spamcheck.Request{
+				Msg:   "This caption is well over fifty characters long, no doubt about it at all.\nparent",
+				Quote: "parent",
+				Meta:  spamcheck.MetaData{HasDocument: true},
+			},
+			expected: spamcheck.Response{Name: "documents", Spam: false, Details: "text or no document"},
+		},
 	}
 
 	for _, tt := range tests {

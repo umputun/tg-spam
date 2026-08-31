@@ -305,7 +305,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
 		"metaImageTextLen",
-		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaDocumentsOnly", "metaAudioOnly",
+		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaDocumentOnly", "metaAudioOnly",
 		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway", "metaExternalReply",
 	}
 	hasMetaForm := false
@@ -343,7 +343,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.MentionOnly = r.FormValue("metaMentionOnly") == "on"
 			settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
 			settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
-			settings.Meta.DocumentsOnly = r.FormValue("metaDocumentsOnly") == "on"
+			settings.Meta.DocumentsOnly = r.FormValue("metaDocumentOnly") == "on"
 			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 			settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 			settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
