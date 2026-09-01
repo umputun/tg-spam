@@ -68,7 +68,7 @@ type TelegramListener struct {
 	WarnThreshold           int           // auto-ban after N warns within window (0=disabled)
 	WarnWindow              time.Duration // sliding window for counting warns
 	Warnings                Warnings      // storage for admin /warn records
-	AdmitDocuments          bool          // pass text-less messages carrying a document to the detector
+	AdmitDocuments          bool          // admit text-less documents for detector checks and locator-backed counters
 
 	adminHandler    *admin
 	reportsHandler  *userReports
