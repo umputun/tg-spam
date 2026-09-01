@@ -172,6 +172,12 @@ By default the image caption threshold equals `--min-msg-len`. Use `--meta.image
 
 This option is disabled by default. If `--meta.video-only` set or `env:META_VIDEO_ONLY` is `true`, the bot will check the message for the presence of any video or video notes. If the message contains videos with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
+**Document only check**
+
+This option is disabled by default. If `--meta.document-only` set or `env:META_DOCUMENT_ONLY` is `true`, the bot will check the message for the presence of any document (file attachment). If the message contains a document with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. A forwarded document is checked the same way, since Telegram delivers the original caption as message text. Note: Telegram also sets the document field for GIFs, so a GIF without a long enough caption is flagged too. Only text the sender wrote counts toward the threshold: quoted and reply-to text is excluded, so replying to a long message does not exempt a caption-less file.
+
+Enabling this check also changes what reaches the rest of the pipeline. A file or GIF posted without a caption used to be dropped on intake; with the check on it is passed through, so it is stored in the message locator and counts toward `--max-short-msg-count` if that is configured, and the checks that do not need message text run against it: stopword matching (which also matches the username and user ID), the username-symbols check, Lua plugins, and CAS, which is enabled by default and can produce a permanent ban. Content checks find nothing in an empty message, and the LLM is not consulted unless `--openai.check-short-messages` is on. With the check off, a directly posted caption-less file is still dropped on intake, exactly as before. A forwarded one, or one attached to a reply to a message from another chat, is a different matter: those are admitted on their own regardless of this option — that is pre-existing behaviour and this option neither adds nor removes it.
+
 **Audio only check**
 
 This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
@@ -230,7 +236,7 @@ Configure with:
 
 This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
 
-Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold.
+Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold. A caption-less file or GIF posted directly counts only when `--meta.document-only` is enabled; without it, it is dropped before the counter sees it. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of that option and counts either way.
 
 **Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
@@ -469,7 +475,7 @@ local approved_user_ids = {
 
 function check(request)
     -- request contains: msg, user_id, user_name, first_name, last_name, is_premium, meta
-    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_external_reply, message_id
+    -- meta contains: images, links, mentions, has_video, has_audio, has_forward, has_keyboard, has_giveaway, has_contact, has_document, has_external_reply, message_id
 
     if string.match(request.msg, "some pattern") then
         return true, "matched suspicious pattern"
@@ -657,6 +663,7 @@ meta:
       --meta.links-only                 enable links only check [$META_LINKS_ONLY]
       --meta.mention-only               enable mention only check [$META_MENTION_ONLY]
       --meta.video-only                 enable video only check [$META_VIDEO_ONLY]
+      --meta.document-only              enable document only check [$META_DOCUMENT_ONLY]
       --meta.audio-only                 enable audio only check [$META_AUDIO_ONLY]
       --meta.contact-only               enable contact only check [$META_CONTACT_ONLY]
       --meta.forward                    enable forward check [$META_FORWARD]

@@ -293,19 +293,19 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 
 	// meta checks: server-side authoritative master toggle. Behavior:
 	//   - form contains zero meta-related fields → skip the entire block so
-	//     unrelated saves preserve all 13 IsMetaEnabled-contributing fields
+	//     unrelated saves preserve all 14 IsMetaEnabled-contributing fields
 	//   - metaEnabled=on → write rendered fields from form; rendered booleans
 	//     follow presence-of-on (absent == unchecked == false), unrendered
 	//     booleans (metaContactOnly, metaGiveaway) and the optional
 	//     metaUsernameSymbols are gated on r.Form presence so submits without
 	//     them preserve existing values
-	//   - metaEnabled absent → master toggle off, clear ALL 13 fields used by
+	//   - metaEnabled absent → master toggle off, clear ALL 14 fields used by
 	//     isMetaEnabled() so a checked per-feature box (e.g., metaImageOnly)
 	//     cannot keep meta enabled
 	metaFormFields := []string{
 		"metaEnabled", "metaLinksLimit", "metaMentionsLimit", "metaUsernameSymbols",
 		"metaImageTextLen",
-		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaAudioOnly",
+		"metaLinksOnly", "metaMentionOnly", "metaImageOnly", "metaVideoOnly", "metaDocumentOnly", "metaAudioOnly",
 		"metaForwarded", "metaKeyboard", "metaContactOnly", "metaGiveaway", "metaExternalReply",
 	}
 	hasMetaForm := false
@@ -343,6 +343,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.MentionOnly = r.FormValue("metaMentionOnly") == "on"
 			settings.Meta.ImageOnly = r.FormValue("metaImageOnly") == "on"
 			settings.Meta.VideosOnly = r.FormValue("metaVideoOnly") == "on"
+			settings.Meta.DocumentsOnly = r.FormValue("metaDocumentOnly") == "on"
 			settings.Meta.AudiosOnly = r.FormValue("metaAudioOnly") == "on"
 			settings.Meta.Forward = r.FormValue("metaForwarded") == "on"
 			settings.Meta.Keyboard = r.FormValue("metaKeyboard") == "on"
@@ -366,6 +367,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 			settings.Meta.MentionOnly = false
 			settings.Meta.ImageOnly = false
 			settings.Meta.VideosOnly = false
+			settings.Meta.DocumentsOnly = false
 			settings.Meta.AudiosOnly = false
 			settings.Meta.Forward = false
 			settings.Meta.Keyboard = false

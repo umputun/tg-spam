@@ -119,6 +119,7 @@ type MetaSettings struct {
 	LinksOnly       bool   `json:"links_only" yaml:"links_only" db:"meta_links_only"`
 	MentionOnly     bool   `json:"mention_only" yaml:"mention_only" db:"meta_mention_only"`
 	VideosOnly      bool   `json:"videos_only" yaml:"videos_only" db:"meta_videos_only"`
+	DocumentsOnly   bool   `json:"documents_only" yaml:"documents_only" db:"meta_documents_only"`
 	AudiosOnly      bool   `json:"audios_only" yaml:"audios_only" db:"meta_audios_only"`
 	Forward         bool   `json:"forward" yaml:"forward" db:"meta_forward"`
 	Keyboard        bool   `json:"keyboard" yaml:"keyboard" db:"meta_keyboard"`
@@ -324,6 +325,7 @@ func (s *Settings) IsMetaEnabled() bool {
 		s.Meta.LinksOnly ||
 		s.Meta.MentionOnly ||
 		s.Meta.VideosOnly ||
+		s.Meta.DocumentsOnly ||
 		s.Meta.AudiosOnly ||
 		s.Meta.Forward ||
 		s.Meta.Keyboard ||

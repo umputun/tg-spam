@@ -971,6 +971,93 @@ func TestTelegramListener_transformForward(t *testing.T) {
 	}
 }
 
+func TestTelegramListener_transformDocument(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "message with document",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Document:  &tbapi.Document{FileID: "doc1"},
+			},
+			out: bot.Message{
+				ID:           1,
+				From:         bot.User{ID: 123, Username: "user_name"},
+				ChatID:       456,
+				WithDocument: true,
+			},
+		},
+		{
+			name: "message with animation (GIF), telegram also sets document",
+			in: &tbapi.Message{
+				MessageID: 2,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Animation: &tbapi.Animation{FileID: "anim1"},
+				Document:  &tbapi.Document{FileID: "anim1"},
+			},
+			out: bot.Message{
+				ID:           2,
+				From:         bot.User{ID: 123, Username: "user_name"},
+				ChatID:       456,
+				WithDocument: true,
+			},
+		},
+		{
+			name: "plain text message has no document",
+			in: &tbapi.Message{
+				MessageID: 3,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+			},
+			out: bot.Message{
+				ID:           3,
+				From:         bot.User{ID: 123, Username: "user_name"},
+				ChatID:       456,
+				Text:         "text",
+				WithDocument: false,
+			},
+		},
+		{
+			name: "forwarded document carries caption, forward and document flags",
+			in: &tbapi.Message{
+				MessageID:     4,
+				From:          &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:          tbapi.Chat{ID: 456},
+				Document:      &tbapi.Document{FileID: "doc2"},
+				Caption:       "original caption",
+				ForwardOrigin: &tbapi.MessageOrigin{Type: "channel"},
+			},
+			out: bot.Message{
+				ID:           4,
+				From:         bot.User{ID: 123, Username: "user_name"},
+				ChatID:       456,
+				Text:         "original caption",
+				WithDocument: true,
+				WithForward:  true,
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.ID, res.ID)
+			assert.Equal(t, tt.out.From, res.From)
+			assert.Equal(t, tt.out.ChatID, res.ChatID)
+			assert.Equal(t, tt.out.Text, res.Text)
+			assert.Equal(t, tt.out.WithDocument, res.WithDocument)
+			assert.Equal(t, tt.out.WithForward, res.WithForward)
+		})
+	}
+}
+
 func TestTelegramListener_transformExternalReply(t *testing.T) {
 	tbl := []struct {
 		name string

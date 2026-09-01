@@ -60,6 +60,7 @@ type Message struct {
 	WithVideoNote bool `json:",omitempty"`
 	WithForward   bool `json:",omitempty"`
 	WithAudio     bool `json:",omitempty"`
+	WithDocument  bool `json:",omitempty"`
 	WithKeyboard  bool `json:",omitempty"`
 	WithContact   bool `json:",omitempty"`
 	WithGiveaway  bool `json:",omitempty"`

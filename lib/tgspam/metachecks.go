@@ -159,6 +159,35 @@ func AudioCheck(minTextLen int) MetaCheck {
 	}
 }
 
+// DocumentsCheck is a function that returns a MetaCheck function.
+// It checks if the message has a document with insufficient text. When minTextLen > 0, documents with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only documents without any text are flagged.
+// A forwarded document is not special-cased: telegram delivers the original caption as the message text, so a
+// forwarded file goes through the same text-length gate as a directly posted one.
+// Unlike the sibling media checks it measures req.AuthoredText() rather than req.Msg: bot.OnMessage appends
+// quoted and reply-to context to Msg, and that text was written by someone else, so replying to a long enough
+// message would otherwise buy a caption-less file immunity.
+func DocumentsCheck(minTextLen int) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if !req.Meta.HasDocument {
+			return spamcheck.Response{Spam: false, Name: "documents", Details: "text or no document"}
+		}
+		authored := req.AuthoredText()
+		if authored == "" {
+			return spamcheck.Response{Name: "documents", Spam: true, Details: "document without text"}
+		}
+		textLen := len([]rune(authored))
+		if minTextLen > 0 && textLen < minTextLen {
+			return spamcheck.Response{
+				Name:    "documents",
+				Spam:    true,
+				Details: fmt.Sprintf("document with short text (%d chars)", textLen),
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "documents", Details: "text or no document"}
+	}
+}
+
 // ContactCheck is a function that returns a MetaCheck function.
 // It checks if the message has a shared contact and the message is empty (i.e. it contains only contact).
 func ContactCheck() MetaCheck {

@@ -118,6 +118,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		linksOnly      bool
 		mentionOnly    bool
 		videosOnly     bool
+		documentsOnly  bool
 		audiosOnly     bool
 		forward        bool
 		keyboard       bool
@@ -134,6 +135,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 		{name: "linksOnly enabled", linksLimit: -1, mentionsLimit: -1, linksOnly: true, expected: true},
 		{name: "mentionOnly enabled", linksLimit: -1, mentionsLimit: -1, mentionOnly: true, expected: true},
 		{name: "videosOnly enabled", linksLimit: -1, mentionsLimit: -1, videosOnly: true, expected: true},
+		{name: "documentsOnly enabled", linksLimit: -1, mentionsLimit: -1, documentsOnly: true, expected: true},
 		{name: "audiosOnly enabled", linksLimit: -1, mentionsLimit: -1, audiosOnly: true, expected: true},
 		{name: "forward enabled", linksLimit: -1, mentionsLimit: -1, forward: true, expected: true},
 		{name: "keyboard enabled", linksLimit: -1, mentionsLimit: -1, keyboard: true, expected: true},
@@ -153,6 +155,7 @@ func TestSettings_IsMetaEnabled(t *testing.T) {
 			s.Meta.LinksOnly = tt.linksOnly
 			s.Meta.MentionOnly = tt.mentionOnly
 			s.Meta.VideosOnly = tt.videosOnly
+			s.Meta.DocumentsOnly = tt.documentsOnly
 			s.Meta.AudiosOnly = tt.audiosOnly
 			s.Meta.Forward = tt.forward
 			s.Meta.Keyboard = tt.keyboard
@@ -202,6 +205,7 @@ func newPopulatedSettings() *Settings {
 	s.Meta.ContactOnly = true
 	s.Meta.Giveaway = true
 	s.Meta.ExternalReply = true
+	s.Meta.DocumentsOnly = true
 
 	s.Gemini.Token = "gemini-secret"
 	s.Gemini.Veto = true
@@ -257,6 +261,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, jsonStr, `"contact_only"`)
 	assert.Contains(t, jsonStr, `"giveaway"`)
 	assert.Contains(t, jsonStr, `"external_reply"`)
+	assert.Contains(t, jsonStr, `"documents_only"`)
 
 	var restored Settings
 	require.NoError(t, json.Unmarshal(data, &restored))
@@ -273,6 +278,7 @@ func TestSettings_JSONRoundTrip_NewGroups(t *testing.T) {
 	assert.True(t, restored.Meta.ContactOnly)
 	assert.True(t, restored.Meta.Giveaway)
 	assert.True(t, restored.Meta.ExternalReply)
+	assert.True(t, restored.Meta.DocumentsOnly)
 }
 
 func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
@@ -294,6 +300,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.Contains(t, yamlStr, "contact_only:")
 	assert.Contains(t, yamlStr, "giveaway:")
 	assert.Contains(t, yamlStr, "external_reply:")
+	assert.Contains(t, yamlStr, "documents_only:")
 
 	var restored Settings
 	require.NoError(t, yaml.Unmarshal(data, &restored))
@@ -310,6 +317,7 @@ func TestSettings_YAMLRoundTrip_NewGroups(t *testing.T) {
 	assert.True(t, restored.Meta.ContactOnly)
 	assert.True(t, restored.Meta.Giveaway)
 	assert.True(t, restored.Meta.ExternalReply)
+	assert.True(t, restored.Meta.DocumentsOnly)
 }
 
 func TestSettings_ApplyDefaults_FillsZeroFromTemplate(t *testing.T) {

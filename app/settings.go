@@ -57,6 +57,7 @@ func optToSettings(opts options) *config.Settings {
 			LinksOnly:       opts.Meta.LinksOnly,
 			MentionOnly:     opts.Meta.MentionOnly,
 			VideosOnly:      opts.Meta.VideosOnly,
+			DocumentsOnly:   opts.Meta.DocumentsOnly,
 			AudiosOnly:      opts.Meta.AudiosOnly,
 			Forward:         opts.Meta.Forward,
 			Keyboard:        opts.Meta.Keyboard,
