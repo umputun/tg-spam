@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "antiscam"
+version = "0.1.0"
+description = "Anti-scam detection engine"
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi",
+    "pydantic",
+    "scikit-learn",
+    "tldextract",
+    "uvicorn",
+    "deep-translator"
+]
+
+
+[project.scripts]
+antiscam = "antiscam.cli:main"
+
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["antiscam*"]
