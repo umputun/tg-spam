@@ -578,6 +578,15 @@ func TestContactCheck(t *testing.T) {
 			req:      spamcheck.Request{Msg: "", Meta: spamcheck.MetaData{HasContact: true}},
 			expected: spamcheck.Response{Name: "contact", Spam: true, Details: "contact without text"},
 		},
+		{
+			name: "contact without own text, quoted parent appended",
+			req: spamcheck.Request{
+				Msg:   "\nlong enough parent message written by someone else",
+				Quote: "long enough parent message written by someone else",
+				Meta:  spamcheck.MetaData{HasContact: true},
+			},
+			expected: spamcheck.Response{Name: "contact", Spam: true, Details: "contact without text"},
+		},
 	}
 
 	for _, tt := range tests {
