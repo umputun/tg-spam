@@ -10,6 +10,11 @@ name: wb-image
 on:
   push:
     branches: [master]
+  pull_request:
+    paths:
+      - docker-compose.portainer.yml
+      - deploy/wb-compat/**
+      - .github/workflows/wb-image.yml
   workflow_dispatch:
 
 # :master is a moving tag, so two overlapping runs can publish out of order and leave it
@@ -19,7 +24,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Gate the deploy on the rendered production config, not just on the code: a broken
+  # compose file would otherwise reach the stacks through the webhook below. A pull
+  # request touching the stack files runs it too, so the config is verified before the
+  # merge instead of after the result has already become :master.
+  check-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: check rendered stack config
+        run: sh deploy/wb-compat/check-stack-config.sh
+
   build:
+    needs: check-config
     # :master and the deploy webhooks are master-only, so a manual run from another branch
     # would publish that branch as :master and push it into the two production chats
     if: github.ref == 'refs/heads/master'
@@ -32,11 +53,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      # Gate the deploy on the rendered production config, not just on the code: a broken
-      # compose file would otherwise reach the stacks through the webhook below.
-      - name: check rendered stack config
-        run: sh deploy/wb-compat/check-stack-config.sh
 
       # Plain docker instead of the docker/* actions: those are fetched from
       # codeload.github.com on every run, and a 429/503 there fails the job before it
