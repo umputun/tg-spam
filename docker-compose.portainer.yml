@@ -21,20 +21,23 @@ services:
       SUPER_USER: ${SUPER_USER:-evgeny_boger}
       TZ: ${TZ:-Europe/Moscow}
 
+      # Every default below is the value the support chat actually runs with, so a new
+      # chat deployed from this file needs no tuning at all and behaves like the live
+      # bot. deploy/wb-compat/README.md lists what the update channel overrides and why.
       DISABLE_ADMIN_SPAM_FORWARD: ${DISABLE_ADMIN_SPAM_FORWARD:-false}
       DRY: ${DRY:-false}
       SOFT_BAN: ${SOFT_BAN:-true}
       NO_SPAM_REPLY: ${NO_SPAM_REPLY:-true}
-      MAX_EMOJI: ${MAX_EMOJI:-3}
+      MAX_EMOJI: ${MAX_EMOJI:-2}
       MIN_MSG_LEN: ${MIN_MSG_LEN:-40}
-      MIN_PROBABILITY: ${MIN_PROBABILITY:-42}
+      MIN_PROBABILITY: ${MIN_PROBABILITY:-35}
       SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.65}
       # LLM checks run only for the first N messages of a user, and short-message
       # checking below needs this above zero to happen at all.
       FIRST_MESSAGES_COUNT: ${FIRST_MESSAGES_COUNT:-5}
 
-      META_LINKS_LIMIT: ${META_LINKS_LIMIT:-0}
-      META_MENTIONS_LIMIT: ${META_MENTIONS_LIMIT:-3}
+      META_LINKS_LIMIT: ${META_LINKS_LIMIT:-1}
+      META_MENTIONS_LIMIT: ${META_MENTIONS_LIMIT:-1}
       META_IMAGE_ONLY: ${META_IMAGE_ONLY:-true}
       META_LINKS_ONLY: ${META_LINKS_ONLY:-true}
       META_FORWARD: ${META_FORWARD:-true}
@@ -42,7 +45,7 @@ services:
       META_CONTACT_ONLY: ${META_CONTACT_ONLY:-true}
       META_GIVEAWAY: ${META_GIVEAWAY:-true}
 
-      AGGRESSIVE_CLEANUP: ${AGGRESSIVE_CLEANUP:-true}
+      AGGRESSIVE_CLEANUP: ${AGGRESSIVE_CLEANUP:-false}
       AGGRESSIVE_CLEANUP_LIMIT: ${AGGRESSIVE_CLEANUP_LIMIT:-200}
       HISTORY_DURATION: ${HISTORY_DURATION:-72h}
       HISTORY_MIN_SIZE: ${HISTORY_MIN_SIZE:-5000}
@@ -56,7 +59,7 @@ services:
 
       OPENAI_TOKEN: ${OPENAI_TOKEN}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol}
-      OPENAI_VETO: ${OPENAI_VETO:-true}
+      OPENAI_VETO: ${OPENAI_VETO:-false}
       # Messages shorter than MIN_MSG_LEN are checked by OpenAI only when this is set.
       OPENAI_CHECK_SHORT_MESSAGES: ${OPENAI_CHECK_SHORT_MESSAGES:-true}
       # Thinking budget for reasoning models: none, low, medium or high. none turns

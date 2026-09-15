@@ -59,6 +59,19 @@ if renders_without_env docker-compose.portainer.yml; then
   fail=1
 fi
 
+# The file defaults on their own must reproduce the support chat profile: a new chat is
+# deployed with credentials and volume names and nothing else, so a default that drifts
+# away from the live bot hands that chat different thresholds without anyone noticing.
+OUT=$(DATA_VOLUME_NAME=defaults-probe LOG_VOLUME_NAME=defaults-probe-log \
+  docker compose -f docker-compose.portainer.yml config 2>/dev/null)
+need 'SOFT_BAN: "?true"?'
+need 'OPENAI_VETO: "?false"?'
+need 'AGGRESSIVE_CLEANUP: "?false"?'
+need 'MAX_EMOJI: "?2"?'
+need 'MIN_PROBABILITY: "?35"?'
+need 'META_LINKS_LIMIT: "?1"?'
+need 'META_MENTIONS_LIMIT: "?1"?'
+
 ### update channel (deploy/wb-compat/docker-compose.update-channel.yml)
 
 UC=deploy/wb-compat/docker-compose.update-channel.yml

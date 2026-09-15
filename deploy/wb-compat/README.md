@@ -14,12 +14,47 @@ Portainer, not in the code.
 | Data volume | `tg-spam-wirenboard-chat_tg-spam-wb_data` → `/srv/data` | `tg-antispam-update_ch_data-tg-spam` → `/srv/var` |
 | Log volume | `tg-spam-wirenboard-chat_tg-spam-wb_log` | `tg-antispam-update_ch_log-tg-spam` |
 | Web UI | `:8081` | none |
-| Ban mode | hard ban | soft ban (restrict) |
+| Ban mode | soft ban (restrict) | same |
 
 Both pull `ghcr.io/wb-aleksandr-khlebnikov/tg-spam:master` through the stack variable
 `IMAGE`. CI publishes under whichever account owns the repository, so after a move to the
 wirenboard org the stacks only need `IMAGE=ghcr.io/wirenboard/tg-spam:master`. Every build
 also keeps a `:<sha>` tag, so setting `IMAGE` to it pins or rolls back one stack.
+
+## What the update channel overrides, and why
+
+The defaults in `docker-compose.portainer.yml` are the support chat profile, so that stack
+sets only credentials, volume names and the superuser list. The update channel carries
+announcements with comments rather than a conversation, and overrides these - and only
+these:
+
+| Variable | Support chat | Update channel | What it changes |
+|---|---|---|---|
+| `OPENAI_VETO` | `false` | `true` | In veto mode the model only confirms spam another check already flagged; with it off the model flags on its own. The channel leans on the model less and pays for fewer calls |
+| `MIN_MSG_LEN` | `40` | `20` | Shorter messages are skipped by the ordinary checks. Comments under a post are short, so the channel still looks at them |
+| `SIMILARITY_THRESHOLD` | `0.65` | `0.7` | How close to a known spam sample a message has to be. Higher catches less and misfires less |
+| `MAX_EMOJI` | `2` | `3` | |
+| `DISABLE_ADMIN_SPAM_FORWARD` | `false` | `true` | The channel reports what it caught but does not copy the spam itself into the admin chat |
+| `MIN_PROBABILITY`, `META_*`, `OPENAI_CHECK_SHORT_MESSAGES` | set | unset | The channel runs without the metadata checks (links, mentions, forwards, keyboards) and without the model check for short messages |
+| `SERVER_ENABLED` | `true`, published on `:8081` | no web UI | The channel's samples and stop-words can only be changed through the bot itself |
+| `SUPER_USER` | staff list | the same list plus one login | Both lists live in the stack environment, never in this public repository |
+
+Three further differences are structural rather than tuning, and they are why the two
+stacks still need two compose files:
+
+- **The data volume is mounted at `/srv/var`** and `FILES_DYNAMIC=/srv/var` follows it.
+  The application itself defaults to `data` relative to its working directory `/srv`,
+  which is what the support chat uses. `/srv/var` is inherited from the stack this one
+  replaced; nothing in the code needs it.
+- **The container runs as `root`**, because the files in that volume belong to root while
+  the image runs as `app` (uid 1000).
+- **The stack is not deployed from git.** Its compose was pasted into the Portainer web
+  editor with every value hard-coded, instead of coming from the stack environment.
+
+Recreating that stack from `docker-compose.portainer.yml` would remove all three at once,
+but its data has to reach `/srv/data` first - either by moving the files inside the volume
+or by turning the mount point into a variable. A stack's repository URL cannot be changed
+after creation, so moving the stack to this repository needs a recreation regardless.
 
 ## How an update reaches the bots
 
