@@ -1,0 +1,91 @@
+name: wb-image
+
+# Publishes the image this fork's Portainer stacks run. Upstream's docker.yml needs
+# PKG_TOKEN/DOCKER_HUB_TOKEN, which only exist in umputun/tg-spam, so it cannot serve
+# the fork. The built-in GITHUB_TOKEN is enough to push to the fork's own ghcr namespace.
+#
+# Only linux/amd64 is built: the deployment host is a single x86_64 EC2 instance, and
+# it is too slow to build this tree itself within the Portainer proxy timeout.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# :master is a moving tag, so two overlapping runs can publish out of order and leave it
+# pointing at the older build. Keep one run per ref and drop the superseded one.
+concurrency:
+  group: wb-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # :master and the deploy webhooks are master-only, so a manual run from another branch
+    # would publish that branch as :master and push it into the two production chats
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Gate the deploy on the rendered production config, not just on the code: a broken
+      # compose file would otherwise reach the stacks through the webhook below.
+      - name: check rendered stack config
+        run: sh deploy/wb-compat/check-stack-config.sh
+
+      # Plain docker instead of the docker/* actions: those are fetched from
+      # codeload.github.com on every run, and a 429/503 there fails the job before it
+      # starts (hit twice on 2026-08-17). The runner already ships docker with buildkit,
+      # so the build needs nothing downloaded.
+      - name: build and push to ghcr.io
+        env:
+          # owner-derived: after the repo moves to the wirenboard org this publishes
+          # ghcr.io/wirenboard/tg-spam with no change to this file
+          IMAGE: ghcr.io/${{ github.repository_owner }}/tg-spam
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build \
+            --build-arg CI=github \
+            --build-arg GITHUB_SHA="${{ github.sha }}" \
+            --build-arg GIT_BRANCH="${{ github.ref_name }}" \
+            -t "$IMAGE:master" -t "$IMAGE:${{ github.sha }}" .
+          docker push "$IMAGE:master"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker logout ghcr.io
+
+      # Deploy runs only after the image is published, so a red build never reaches the
+      # bots and the stack can never pull a tag that does not exist yet. The webhook is a
+      # Portainer "GitOps updates" URL: it makes the stack re-pull this repo and recreate
+      # the container. Without the secret the step is skipped, so the build stays usable
+      # for anyone without deploy access.
+      - name: trigger portainer redeploy
+        env:
+          WEBHOOK_CHAT: ${{ secrets.PORTAINER_WEBHOOK_WIRENBOARD_CHAT }}
+          WEBHOOK_UPDATE_CH: ${{ secrets.PORTAINER_WEBHOOK_UPDATE_CH }}
+        run: |
+          set -eu
+          triggered=0
+          failed=0
+          for name in WEBHOOK_CHAT WEBHOOK_UPDATE_CH; do
+            url="${!name-}"   # indirect expansion, never eval a secret value
+            if [ -z "$url" ]; then
+              echo "$name is not set, skipping that stack"
+              continue
+            fi
+            if curl -fsS --retry 3 --retry-delay 5 -X POST "$url"; then
+              echo "$name redeploy triggered"
+              triggered=$((triggered + 1))
+            else
+              echo "$name webhook call failed"          # keep going: the other stack must still deploy
+              failed=$((failed + 1))
+            fi
+          done
+          echo "stacks triggered: $triggered, failed: $failed"
+          [ "$failed" -eq 0 ]

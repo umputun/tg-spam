@@ -8,6 +8,23 @@ body, #result{
     color: white;
 }
 
+/* Version display styling */
+.table td {
+    word-break: break-word;
+    vertical-align: middle;
+}
+
+/* Prevent table headers from breaking across lines */
+.table th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Ensure consistent width for table cells */
+.table th[style*="width"] {
+    width: 30% !important;
+}
+
 
 .ds-timestamp {
     min-width: 50px;
@@ -21,19 +38,65 @@ body, #result{
     font-size: 1em;
     min-width: 200px;
     max-width: 500px;
+    width: 500px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+}
+
+.ds-username {
+    min-width: 50px;
+    max-width: 150px;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ds-checks {
     font-size: 0.9em;
-    min-width: 200px;
-    max-width: 500px;
-    overflow: hidden;
+    width: 300px;
+    max-width: 300px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+.ds-checks > div {
+    margin-bottom: 2px;
+}
+
+@media (max-width: 1200px) {
+    .ds-text {
+        max-width: 350px;
+        width: 350px;
+    }
+    .ds-checks {
+        max-width: 240px;
+        width: 240px;
+    }
 }
 
 @media (max-width: 768px) {
+    /* On mobile, we'll rely more on the table-responsive horizontal scrolling */
+    .ds-text {
+        max-width: 200px;
+        width: 200px;
+    }
+    .ds-checks {
+        max-width: 220px;
+        width: 220px;
+    }
+    
+    /* Reduce font sizes on mobile */
     .ds-text, .ds-checks {
-        max-width: 150px;
+        font-size: 0.85em;
+    }
+    
+    /* Make sure the timestamp is compact */
+    .ds-timestamp {
+        max-width: 120px;
+        white-space: normal;
     }
 }
 
@@ -49,6 +112,24 @@ body, #result{
     border-color: #3d86e5;
 }
 
+.btn-custom-blue-outline {
+    color: #286ea7;
+    background-color: #fff;
+    border-color: #286ea7;
+}
+
+.btn-custom-blue-outline:hover,
+.btn-custom-blue-outline:focus,
+.btn-custom-blue-outline:active {
+    color: #fff;
+    background-color: #286ea7;
+    border-color: #286ea7;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
 .htmx-indicator{
     opacity:0;
     transition: opacity 500ms ease-in;
@@ -58,4 +139,15 @@ body, #result{
 }
 .htmx-request.htmx-indicator{
     opacity:1
+}
+
+/* Fix dropdown toggle styling */
+.no-focus-highlight,
+.no-focus-highlight:focus,
+.no-focus-highlight:active,
+.no-focus-highlight.show {
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
 }

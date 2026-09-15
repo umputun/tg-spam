@@ -1,7 +1,7 @@
 # example of a compose file with server enabled, logging turned on and samples on named volume
 services:
   tg-spam:
-    image: umputun/tg-spam:latest # use :master tag for latest (unstable) version
+    image: ghcr.io/umputun/tg-spam:latest # use :master tag for latest (unstable) version
     hostname: tg-spam
     restart: always
     container_name: tg-spam
@@ -34,7 +34,7 @@ services:
   # reproxy is a reverse proxy to run multiple services on the same port, see https://reproxy.io for details
   # setup with automatic SSL certificates from Let's Encrypt
   reproxy:
-    image: umputun/reproxy:latest
+    image: ghcr.io/umputun/reproxy:latest
     hostname: reproxy
     container_name: reproxy
     restart: always

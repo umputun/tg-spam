@@ -57,7 +57,10 @@ func (s *Server) ListenAndServe() error {
 		Handler:           mux,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil {
+		return fmt.Errorf("server listen failed: %w", err)
+	}
+	return nil
 }
 
 // indexHandler handles the root endpoint ("/") and renders the "index.html" template with the last 100 messages from the storage.
@@ -142,7 +145,7 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 	spam, details := s.Detector.Check(spamcheck.Request{Msg: content, UserID: string(username)})
 	if spam {
 		log.Printf("spam detected: %+v", details)
-		w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
+		w.WriteHeader(http.StatusOK) // use OK status for HTMX to process
 		data := struct {
 			Content string
 			Checks  []spamcheck.Response
@@ -165,7 +168,7 @@ func (s *Server) postMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 // dismissSpamReportHandler handles requests to dismiss a spam report
 func (s *Server) dismissSpamReportHandler(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK) // Use OK status for HTMX to process
+	w.WriteHeader(http.StatusOK) // use OK status for HTMX to process
 }
 
 // loginHandler handles login requests.
@@ -206,7 +209,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 		if checkCredentials(username, password) {
 			sessionID := createSession(username)
-			http.SetCookie(w, &http.Cookie{Name: "session", Value: sessionID, Path: "/"})
+			http.SetCookie(w, &http.Cookie{ // #nosec G124 - simplechat can run over plain HTTP; keep Secure conditional
+				Name:     "session",
+				Value:    sessionID,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil,
+				SameSite: http.SameSiteLaxMode,
+			})
 			w.Header().Set("HX-Redirect", "/")
 			fmt.Fprint(w, "Login successful")
 		} else {

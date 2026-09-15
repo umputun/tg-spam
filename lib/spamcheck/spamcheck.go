@@ -1,33 +1,69 @@
 package spamcheck
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Request is a request to check a message for spam.
 type Request struct {
-	Msg      string   `json:"msg"`       // message to check
-	UserID   string   `json:"user_id"`   // user id
-	UserName string   `json:"user_name"` // user name
-	Meta     MetaData `json:"meta"`      // meta-info, provided by the client
+	Msg       string   `json:"msg"`             // message to check, includes any appended quoted/reply-to context
+	Quote     string   `json:"quote,omitempty"` // quoted/reply-to text appended to Msg, empty when the message has none
+	UserID    string   `json:"user_id"`         // user id
+	UserName  string   `json:"user_name"`       // user name
+	FirstName string   `json:"first_name"`      // user's first name
+	LastName  string   `json:"last_name"`       // user's last name
+	IsPremium bool     `json:"is_premium"`      // true if user has telegram premium
+	Meta      MetaData `json:"meta"`            // meta-info, provided by the client
+	CheckOnly bool     `json:"check_only"`      // if true, only check the message, do not write newly approved user to the database
+}
+
+// AuthoredText returns the text the user themselves wrote, excluding any quoted or
+// reply-to context. Msg carries the full text (authored text followed by "\n" and
+// Quote) so content checks see everything; hard policy checks that must not attribute
+// quoted content to the replying user (e.g. the prohibited-language block) call this to
+// drop the trailing quote. With no Quote it returns Msg unchanged, so API and library
+// callers that set only Msg are unaffected.
+func (r *Request) AuthoredText() string {
+	if r.Quote == "" {
+		return r.Msg
+	}
+	return strings.TrimSuffix(r.Msg, "\n"+r.Quote)
 }
 
 // MetaData is a meta-info about the message, provided by the client.
 type MetaData struct {
-	Images   int  `json:"images"`    // number of images in the message
-	Links    int  `json:"links"`     // number of links in the message
-	HasVideo bool `json:"has_video"` // true if the message has a video or video note
+	Images      int  `json:"images"`       // number of images in the message
+	Links       int  `json:"links"`        // number of links in the message
+	Mentions    int  `json:"mentions"`     // number of mentions (@username) in the message
+	HasVideo    bool `json:"has_video"`    // true if the message has a video or video note
+	HasAudio    bool `json:"has_audio"`    // true if the message has an audio
+	HasForward  bool `json:"has_forward"`  // true if the message has a forward
+	HasKeyboard bool `json:"has_keyboard"` // true if the message has a keyboard (buttons)
+	HasContact  bool `json:"has_contact"`  // true if the message has a shared contact
+	HasGiveaway bool `json:"has_giveaway"` // true if the message is a giveaway
+	// HasExternalReply is true if the message replies to a message from another chat (external_reply)
+	HasExternalReply bool `json:"has_external_reply"`
+	MessageID        int  `json:"message_id"` // telegram message ID
 }
 
 func (r *Request) String() string {
-	return fmt.Sprintf("msg:%q, user:%q, id:%s, images:%d, links:%d, has_video:%v",
-		r.Msg, r.UserName, r.UserID, r.Meta.Images, r.Meta.Links, r.Meta.HasVideo)
+	return fmt.Sprintf("msg:%q, user:%q, id:%s, first_name:%q, last_name:%q, is_premium:%v, "+
+		"images:%d, links:%d, mentions:%d, "+
+		"has_video:%v, has_audio:%v, has_forward:%v, has_keyboard:%v, has_contact:%v, has_giveaway:%v, has_external_reply:%v",
+		r.Msg, r.UserName, r.UserID, r.FirstName, r.LastName, r.IsPremium,
+		r.Meta.Images, r.Meta.Links, r.Meta.Mentions,
+		r.Meta.HasVideo, r.Meta.HasAudio, r.Meta.HasForward, r.Meta.HasKeyboard, r.Meta.HasContact, r.Meta.HasGiveaway,
+		r.Meta.HasExternalReply)
 }
 
 // Response is a result of spam check.
 type Response struct {
-	Name    string `json:"name"`    // name of the check
-	Spam    bool   `json:"spam"`    // true if spam
-	Details string `json:"details"` // details of the check
-	Error   error  `json:"-"`       // error message, if any. Do not serialize it
+	Name           string `json:"name"`                       // name of the check
+	Spam           bool   `json:"spam"`                       // true if spam
+	Details        string `json:"details"`                    // details of the check
+	Error          error  `json:"-"`                          // error message, if any. Do not serialize it
+	ExtraDeleteIDs []int  `json:"extra_delete_ids,omitempty"` // additional message IDs to delete when spam detected
 }
 
 func (r *Response) String() string {
@@ -36,4 +72,14 @@ func (r *Response) String() string {
 		spamOrHam = "spam"
 	}
 	return fmt.Sprintf("%s: %s, %s", r.Name, spamOrHam, r.Details)
+}
+
+// ChecksToString converts a slice of checks to a string
+func ChecksToString(checks []Response) string {
+	elems := make([]string, 0, len(checks))
+	for _, r := range checks {
+		elems = append(elems, "{"+r.String()+"}")
+
+	}
+	return fmt.Sprintf("[%s] ", strings.Join(elems, ", "))
 }

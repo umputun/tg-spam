@@ -8,8 +8,6 @@ import (
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-//go:generate moq --out mocks/http_client.go --pkg mocks --skip-ensure . HTTPClient:HTTPClient
-
 // PermanentBanDuration defines duration of permanent ban:
 // If user is restricted for more than 366 days or less than 30 seconds from the current time,
 // they are considered to be restricted forever.
@@ -21,7 +19,7 @@ type Response struct {
 	Send          bool                 // status
 	BanInterval   time.Duration        // bots banning user set the interval
 	User          User                 // user to ban
-	ChannelID     int64                // channel to ban, if set then User and BanInterval are ignored
+	ChannelID     int64                // channel to ban via BanChatSenderChatConfig, if set then User is ignored
 	ReplyTo       int                  // message to reply to, if 0 then no reply but common message
 	DeleteReplyTo bool                 // delete message what bot replays to
 	CheckResults  []spamcheck.Response // check results for the message
@@ -43,7 +41,7 @@ type SenderChat struct {
 type Message struct {
 	ID         int
 	From       User
-	SenderChat SenderChat `json:"sender_chat,omitempty"`
+	SenderChat SenderChat `json:"sender_chat,omitzero"`
 	ChatID     int64
 	Sent       time.Time
 	HTML       string    `json:",omitempty"`
@@ -54,11 +52,19 @@ type Message struct {
 		From       User
 		Text       string `json:",omitempty"`
 		Sent       time.Time
-		SenderChat SenderChat `json:"sender_chat,omitempty"`
-	} `json:",omitempty"`
+		SenderChat SenderChat `json:"sender_chat,omitzero"`
+	} `json:",omitzero"`
+	Quote string `json:",omitempty"` // quoted text from TextQuote
 
 	WithVideo     bool `json:",omitempty"`
 	WithVideoNote bool `json:",omitempty"`
+	WithForward   bool `json:",omitempty"`
+	WithAudio     bool `json:",omitempty"`
+	WithKeyboard  bool `json:",omitempty"`
+	WithContact   bool `json:",omitempty"`
+	WithGiveaway  bool `json:",omitempty"`
+	// WithExternalReply is true if the message replies to a message from another chat (external_reply)
+	WithExternalReply bool `json:",omitempty"`
 }
 
 // Entity represents one special entity in a text message.
@@ -67,13 +73,13 @@ type Entity struct {
 	Type   string
 	Offset int
 	Length int
-	URL    string `json:",omitempty"` // For “text_link” only, url that will be opened after user taps on the text
-	User   *User  `json:",omitempty"` // For “text_mention” only, the mentioned user
+	URL    string `json:",omitempty"` // for “text_link” only, url that will be opened after user taps on the text
+	User   *User  `json:",omitempty"` // for “text_mention” only, the mentioned user
 }
 
 // Image represents image
 type Image struct {
-	// FileID corresponds to Telegram file_id
+	// fileID corresponds to Telegram file_id
 	FileID   string
 	Width    int
 	Height   int
@@ -86,6 +92,20 @@ type User struct {
 	ID          int64  `json:"id"`
 	Username    string `json:"user_name,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
+	FirstName   string `json:"first_name,omitempty"`
+	LastName    string `json:"last_name,omitempty"`
+	IsPremium   bool   `json:"is_premium,omitempty"`
+}
+
+// String returns a human-readable representation of the user.
+func (u User) String() string {
+	if u.Username != "" {
+		return fmt.Sprintf("@%s (%d)", u.Username, u.ID)
+	}
+	if u.DisplayName != "" {
+		return fmt.Sprintf("%s (%d)", u.DisplayName, u.ID)
+	}
+	return fmt.Sprintf("id:%d", u.ID)
 }
 
 // DisplayName returns user's display name or username or id

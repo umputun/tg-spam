@@ -38,14 +38,9 @@ func a_store_16(addr uintptr, val uint16) {
 	*(*uint16)(unsafe.Pointer(addr)) = val
 }
 
-// static inline int a_ctz_l(unsigned long x)
-func _a_ctz_l(tls *TLS, x ulong) int32 {
-	return int32(mbits.TrailingZeros64(uint64(x)))
-}
-
 // static inline int a_ctz_64(uint64_t x)
 func _a_ctz_64(tls *TLS, x uint64) int32 {
-	return int32(mbits.TrailingZeros64(uint64(x)))
+	return int32(mbits.TrailingZeros64(x))
 }
 
 func AtomicAddFloat32(addr *float32, delta float32) (new float32) {

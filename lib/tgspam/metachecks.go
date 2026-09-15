@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -57,32 +58,256 @@ func LinkOnlyCheck() MetaCheck {
 	}
 }
 
-// ImagesCheck is a function that returns a MetaCheck function.
-// It checks if the number of images in the message is greater than zero and the message is empty (i.e. it contains only images).
-func ImagesCheck() MetaCheck {
+var mentionRe = regexp.MustCompile(`@[a-zA-Z0-9_]+`)
+
+// MentionOnlyCheck is a function that returns a MetaCheck function that checks if the req.Msg
+// contains nothing but mentions plus trivial content (digits, whitespace or punctuation) in any
+// position. It catches messages like "@user 3" where a spammer posts a bare mention and a number
+// and no real text. The check is gated on at least one mention being present, so messages without
+// mentions (e.g. a lone number) are never flagged.
+//
+// Limitations: only literal "@name" mentions are stripped, so a text_mention (a display-name
+// mention with no "@") keeps its name in the residue and is not flagged. The check also evaluates
+// req.Msg as given, which upstream includes quoted/reply-to text, so a mention-only message posted
+// alongside quoted text will not be flagged.
+func MentionOnlyCheck() MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		if req.Meta.Images > 0 && req.Msg == "" {
+		if req.Meta.Mentions == 0 {
+			return spamcheck.Response{Name: "mention-only", Spam: false, Details: "no mentions"}
+		}
+		if strings.TrimSpace(req.Msg) == "" {
+			return spamcheck.Response{Name: "mention-only", Spam: false, Details: "empty message"}
+		}
+		residue := mentionRe.ReplaceAllString(req.Msg, "")
+		for _, r := range residue {
+			if unicode.IsDigit(r) || unicode.IsSpace(r) || unicode.IsPunct(r) {
+				continue
+			}
+			// a letter, emoji or other meaningful symbol remains, so it is more than mentions
+			return spamcheck.Response{Name: "mention-only", Spam: false, Details: "message contains text"}
+		}
+		return spamcheck.Response{Name: "mention-only", Spam: true, Details: "message contains mentions only"}
+	}
+}
+
+// ImagesCheck is a function that returns a MetaCheck function.
+// It checks if the message has images with insufficient text. When minTextLen > 0, images with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only images without any text are flagged.
+func ImagesCheck(minTextLen int) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.Images == 0 {
+			return spamcheck.Response{Spam: false, Name: "images", Details: "text or no images"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "images", Spam: true, Details: "image without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
 			return spamcheck.Response{
 				Name:    "images",
 				Spam:    true,
-				Details: "images without text",
+				Details: fmt.Sprintf("image with short text (%d chars)", textLen),
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "images", Details: "no images without text"}
+		return spamcheck.Response{Spam: false, Name: "images", Details: "text or no images"}
 	}
 }
 
 // VideosCheck is a function that returns a MetaCheck function.
-// It checks if the message has a video or video note and the message is empty (i.e. it contains only videos).
-func VideosCheck() MetaCheck {
+// It checks if the message has a video with insufficient text. When minTextLen > 0, videos with text
+// shorter than minTextLen are flagged as spam. When minTextLen == 0, only videos without any text are flagged.
+func VideosCheck(minTextLen int) MetaCheck {
 	return func(req spamcheck.Request) spamcheck.Response {
-		if req.Meta.HasVideo && req.Msg == "" {
+		if !req.Meta.HasVideo {
+			return spamcheck.Response{Spam: false, Name: "videos", Details: "text or no video"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "videos", Spam: true, Details: "video without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
 			return spamcheck.Response{
 				Name:    "videos",
 				Spam:    true,
-				Details: "videos without text",
+				Details: fmt.Sprintf("video with short text (%d chars)", textLen),
 			}
 		}
-		return spamcheck.Response{Spam: false, Name: "videos", Details: "no videos without text"}
+		return spamcheck.Response{Spam: false, Name: "videos", Details: "text or no video"}
+	}
+}
+
+// AudioCheck is a function that returns a MetaCheck function.
+// It checks if the message has audio with insufficient text. When minTextLen > 0, audio with text
+// shorter than minTextLen is flagged as spam. When minTextLen == 0, only audio without any text is flagged.
+func AudioCheck(minTextLen int) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if !req.Meta.HasAudio {
+			return spamcheck.Response{Spam: false, Name: "audio", Details: "text or no audio"}
+		}
+		if req.Msg == "" {
+			return spamcheck.Response{Name: "audio", Spam: true, Details: "audio without text"}
+		}
+		textLen := len([]rune(req.Msg))
+		if minTextLen > 0 && textLen < minTextLen {
+			return spamcheck.Response{
+				Name:    "audio",
+				Spam:    true,
+				Details: fmt.Sprintf("audio with short text (%d chars)", textLen),
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "audio", Details: "text or no audio"}
+	}
+}
+
+// ContactCheck is a function that returns a MetaCheck function.
+// It checks if the message has a shared contact and the message is empty (i.e. it contains only contact).
+func ContactCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasContact && req.Msg == "" {
+			return spamcheck.Response{
+				Name:    "contact",
+				Spam:    true,
+				Details: "contact without text",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "contact", Details: "no contact without text"}
+	}
+}
+
+// ForwardedCheck is a function that returns a MetaCheck function.
+// It checks if the message is a forwarded message.
+func ForwardedCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasForward {
+			return spamcheck.Response{
+				Name:    "forward",
+				Spam:    true,
+				Details: "forwarded message",
+			}
+		}
+		return spamcheck.Response{
+			Name:    "forward",
+			Spam:    false,
+			Details: "not a forwarded message",
+		}
+	}
+}
+
+// ExternalReplyCheck is a function that returns a MetaCheck function.
+// It checks if the message replies to a message from another chat (external_reply).
+func ExternalReplyCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasExternalReply {
+			return spamcheck.Response{
+				Name:    "external-reply",
+				Spam:    true,
+				Details: "external reply",
+			}
+		}
+		return spamcheck.Response{
+			Name:    "external-reply",
+			Spam:    false,
+			Details: "not an external reply",
+		}
+	}
+}
+
+// KeyboardCheck is a function that returns a MetaCheck function.
+// It checks if the message has a keyboard (buttons).
+func KeyboardCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasKeyboard {
+			return spamcheck.Response{
+				Name:    "keyboard",
+				Spam:    true,
+				Details: "message with keyboard",
+			}
+		}
+		return spamcheck.Response{
+			Name:    "keyboard",
+			Spam:    false,
+			Details: "no keyboard",
+		}
+	}
+}
+
+// MentionsCheck is a function that returns a MetaCheck function.
+// It checks if the number of mentions in the message exceeds the specified limit.
+// If limit is negative, the check is disabled.
+func MentionsCheck(limit int) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if limit < 0 {
+			return spamcheck.Response{
+				Name:    "mentions",
+				Spam:    false,
+				Details: "check disabled",
+			}
+		}
+		if req.Meta.Mentions > limit {
+			return spamcheck.Response{
+				Name:    "mentions",
+				Spam:    true,
+				Details: fmt.Sprintf("too many mentions %d/%d", req.Meta.Mentions, limit),
+			}
+		}
+		return spamcheck.Response{
+			Name:    "mentions",
+			Spam:    false,
+			Details: fmt.Sprintf("mentions %d/%d", req.Meta.Mentions, limit),
+		}
+	}
+}
+
+// UsernameSymbolsCheck is a function that returns a MetaCheck function.
+// It checks if the username contains any of the prohibited symbols.
+// If symbols is empty, the check is disabled.
+func UsernameSymbolsCheck(symbols string) MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if symbols == "" {
+			return spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "check disabled",
+			}
+		}
+
+		if req.UserName == "" {
+			return spamcheck.Response{
+				Name:    "username-symbols",
+				Spam:    false,
+				Details: "no username",
+			}
+		}
+
+		for _, symbol := range symbols {
+			if strings.ContainsRune(req.UserName, symbol) {
+				return spamcheck.Response{
+					Name:    "username-symbols",
+					Spam:    true,
+					Details: fmt.Sprintf("username contains prohibited symbol '%c'", symbol),
+				}
+			}
+		}
+
+		return spamcheck.Response{
+			Name:    "username-symbols",
+			Spam:    false,
+			Details: "no prohibited symbols in username",
+		}
+	}
+}
+
+// GiveawayCheck is a function that returns a MetaCheck function.
+// It checks if the message has a giveaway.
+func GiveawayCheck() MetaCheck {
+	return func(req spamcheck.Request) spamcheck.Response {
+		if req.Meta.HasGiveaway {
+			return spamcheck.Response{
+				Name:    "giveaway",
+				Spam:    true,
+				Details: "giveaway message",
+			}
+		}
+		return spamcheck.Response{Spam: false, Name: "giveaway", Details: "no giveaway"}
 	}
 }

@@ -1,11 +1,21 @@
 package tgspam
 
-import "math"
+import (
+	"fmt"
+	"maps"
+	"math"
+)
 
 // based on the code from https://github.com/RadhiFadlillah/go-bayesian/blob/master/classifier.go
 
 // spamClass is alias of string, representing class of a document
 type spamClass string
+
+// enum for spamClass
+const (
+	ClassSpam spamClass = "spam"
+	ClassHam  spamClass = "ham"
+)
 
 // document is a group of tokens with certain class
 type document struct {
@@ -64,6 +74,56 @@ func (c *classifier) learn(docs ...document) {
 	}
 }
 
+// unlearn removes the learning results for given documents
+func (c *classifier) unlearn(docs ...document) error {
+	if len(docs) > c.nAllDocument {
+		return fmt.Errorf("trying to unlearn more documents than learned")
+	}
+
+	c.nAllDocument -= len(docs)
+
+	for _, doc := range docs {
+		if c.nDocumentByClass[doc.spamClass] <= 0 {
+			return fmt.Errorf("no documents of class %v to unlearn", doc.spamClass)
+		}
+
+		c.nDocumentByClass[doc.spamClass]--
+		tokens := c.removeDuplicate(doc.tokens...)
+
+		for _, token := range tokens {
+			if c.nFrequencyByClass[doc.spamClass] <= 0 {
+				return fmt.Errorf("no tokens of class %v to unlearn", doc.spamClass)
+			}
+			c.nFrequencyByClass[doc.spamClass]--
+
+			if c.learningResults[token][doc.spamClass] <= 0 {
+				return fmt.Errorf("token %q not found in class %v", token, doc.spamClass)
+			}
+			c.learningResults[token][doc.spamClass]--
+
+			// cleanup empty entries
+			if c.learningResults[token][doc.spamClass] == 0 {
+				delete(c.learningResults[token], doc.spamClass)
+			}
+			if len(c.learningResults[token]) == 0 {
+				delete(c.learningResults, token)
+			}
+		}
+
+		// cleanup empty class entries
+		if c.nDocumentByClass[doc.spamClass] == 0 {
+			delete(c.nDocumentByClass, doc.spamClass)
+			delete(c.nFrequencyByClass, doc.spamClass)
+			delete(c.priorProbabilities, doc.spamClass)
+		} else {
+			// update prior probability for the class
+			c.priorProbabilities[doc.spamClass] = math.Log(float64(c.nDocumentByClass[doc.spamClass]) / float64(c.nAllDocument))
+		}
+	}
+
+	return nil
+}
+
 // reset resets all learning results
 func (c *classifier) reset() {
 	c.learningResults = make(map[string]map[spamClass]int)
@@ -76,11 +136,8 @@ func (c *classifier) reset() {
 // classify executes the classifying process for tokens
 func (c *classifier) classify(tokens ...string) (spamClass, float64, bool) {
 	nVocabulary := len(c.learningResults)
-	posteriorProbabilities := make(map[spamClass]float64)
-
-	for class, priorProb := range c.priorProbabilities {
-		posteriorProbabilities[class] = priorProb
-	}
+	posteriorProbabilities := make(map[spamClass]float64, len(c.priorProbabilities))
+	maps.Copy(posteriorProbabilities, c.priorProbabilities)
 	tokens = c.removeDuplicate(tokens...)
 
 	for class, freqByClass := range c.nFrequencyByClass {
@@ -112,12 +169,11 @@ func (c *classifier) classify(tokens ...string) (spamClass, float64, bool) {
 
 func (c *classifier) removeDuplicate(tokens ...string) []string {
 	mapTokens := make(map[string]struct{})
-	newTokens := []string{}
-
 	for _, token := range tokens {
 		mapTokens[token] = struct{}{}
 	}
 
+	newTokens := make([]string, 0, len(mapTokens))
 	for key := range mapTokens {
 		newTokens = append(newTokens, key)
 	}
@@ -127,18 +183,56 @@ func (c *classifier) removeDuplicate(tokens ...string) []string {
 
 // softmax converts log probabilities to normalized probabilities
 func softmax(logProbs map[spamClass]float64) map[spamClass]float64 {
-	sum := 0.0
+	if len(logProbs) == 0 {
+		return nil
+	}
+
+	// step 1: Find the max value to subtract (prevents overflow)
+	maxVal := math.Inf(-1) // start with negative infinity
+	for _, v := range logProbs {
+		if !math.IsInf(v, -1) && v > maxVal {
+			maxVal = v
+		}
+	}
+
+	// handle case where all values are -Inf
+	if math.IsInf(maxVal, -1) {
+		// return uniform distribution
+		probs := make(map[spamClass]float64)
+		uniformProb := 1.0 / float64(len(logProbs))
+		for cat := range logProbs {
+			probs[cat] = uniformProb
+		}
+		return probs
+	}
+
+	// step 2: Compute exp(x - maxVal) and sum for normalization
+	expSum := 0.0
+	exps := make(map[spamClass]float64)
+	for cat, v := range logProbs {
+		if math.IsInf(v, -1) {
+			exps[cat] = 0.0
+		} else {
+			exps[cat] = math.Exp(v - maxVal) // shift by maxVal keeps exp safe
+		}
+		expSum += exps[cat]
+	}
+
+	// handle case where expSum is 0 or very small
+	if expSum == 0 || math.IsNaN(expSum) {
+		// return uniform distribution
+		probs := make(map[spamClass]float64)
+		uniformProb := 1.0 / float64(len(logProbs))
+		for cat := range logProbs {
+			probs[cat] = uniformProb
+		}
+		return probs
+	}
+
+	// step 3: Normalize to get probabilities
 	probs := make(map[spamClass]float64)
-
-	// convert log probabilities to standard probabilities
-	for _, logProb := range logProbs {
-		sum += math.Exp(logProb)
+	for cat, v := range exps {
+		probs[cat] = v / expSum
 	}
-
-	// normalize probabilities
-	for class, logProb := range logProbs {
-		probs[class] = math.Exp(logProb) / sum
-	}
-
 	return probs
 }

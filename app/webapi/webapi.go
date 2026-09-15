@@ -2,29 +2,38 @@
 package webapi
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha1" //nolint
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
+	"io/fs"
 	"math/big"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/didip/tollbooth/v7"
-	"github.com/didip/tollbooth_chi"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/didip/tollbooth/v8"
 	log "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"github.com/go-pkgz/routegroup"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/umputun/tg-spam/app/config"
+	"github.com/umputun/tg-spam/app/events"
 	"github.com/umputun/tg-spam/app/storage"
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -33,56 +42,52 @@ import (
 //go:generate moq --out mocks/spam_filter.go --pkg mocks --with-resets --skip-ensure . SpamFilter
 //go:generate moq --out mocks/locator.go --pkg mocks --with-resets --skip-ensure . Locator
 //go:generate moq --out mocks/detected_spam.go --pkg mocks --with-resets --skip-ensure . DetectedSpam
+//go:generate moq --out mocks/storage_engine.go --pkg mocks --with-resets --skip-ensure . StorageEngine
+//go:generate moq --out mocks/dictionary.go --pkg mocks --with-resets --skip-ensure . Dictionary
+//go:generate moq --out mocks/dm_users_provider.go --pkg mocks --with-resets --skip-ensure . DMUsersProvider
 
 //go:embed assets/* assets/components/*
 var templateFS embed.FS
 var tmpl = template.Must(template.ParseFS(templateFS, "assets/*.html", "assets/components/*.html"))
 
+// startTime tracks when the server started
+var startTime = time.Now()
+
 // Server is a web API server.
 type Server struct {
 	Config
+	// appSettingsMu guards AppSettings against data races between the config
+	// handlers (load/update/save) and read paths (settings pages, /settings API).
+	appSettingsMu sync.RWMutex
 }
 
-// Config defines  server parameters
+// Config defines server parameters
 type Config struct {
-	Version      string       // version to show in /ping
-	ListenAddr   string       // listen address
-	Detector     Detector     // spam detector
-	SpamFilter   SpamFilter   // spam filter (bot)
-	DetectedSpam DetectedSpam // detected spam accessor
-	Locator      Locator      // locator for user info
-	AuthPasswd   string       // basic auth password for user "tg-spam"
-	Dbg          bool         // debug mode
-	Settings     Settings     // application settings
-}
-
-// Settings contains all application settings
-type Settings struct {
-	PrimaryGroup            string   `json:"primary_group"`
-	AdminGroup              string   `json:"admin_group"`
-	DisableAdminSpamForward bool     `json:"disable_admin_spam_forward"`
-	LoggerEnabled           bool     `json:"logger_enabled"`
-	SuperUsers              []string `json:"super_users"`
-	NoSpamReply             bool     `json:"no_spam_reply"`
-	CasEnabled              bool     `json:"cas_enabled"`
-	MetaEnabled             bool     `json:"meta_enabled"`
-	MetaLinksLimit          int      `json:"meta_links_limit"`
-	MetaLinksOnly           bool     `json:"meta_links_only"`
-	MetaImageOnly           bool     `json:"meta_image_only"`
-	MetaVideoOnly           bool     `json:"meta_video_only"`
-	MultiLangLimit          int      `json:"multi_lang_limit"`
-	OpenAIEnabled           bool     `json:"openai_enabled"`
-	SamplesDataPath         string   `json:"samples_data_path"`
-	DynamicDataPath         string   `json:"dynamic_data_path"`
-	WatchIntervalSecs       int      `json:"watch_interval_secs"`
-	SimilarityThreshold     float64  `json:"similarity_threshold"`
-	MinMsgLen               int      `json:"min_msg_len"`
-	MaxEmoji                int      `json:"max_emoji"`
-	MinSpamProbability      float64  `json:"min_spam_probability"`
-	ParanoidMode            bool     `json:"paranoid_mode"`
-	FirstMessagesCount      int      `json:"first_messages_count"`
-	StartupMessageEnabled   bool     `json:"startup_message_enabled"`
-	TrainingEnabled         bool     `json:"training_enabled"`
+	Version         string           // version to show in /ping
+	ListenAddr      string           // listen address
+	Detector        Detector         // spam detector
+	SpamFilter      SpamFilter       // spam filter (bot)
+	DetectedSpam    DetectedSpam     // detected spam accessor
+	Locator         Locator          // locator for user info
+	Dictionary      Dictionary       // dictionary for stop phrases and ignored words
+	StorageEngine   StorageEngine    // database engine access for backups
+	DMUsersProvider DMUsersProvider  // provider for recent DM users
+	SettingsStore   SettingsStore    // configuration storage interface
+	AuthUser        string           // basic auth user; empty falls back to AppSettings.Server.AuthUser, then "tg-spam"
+	AuthHash        string           // basic auth bcrypt hash
+	Dbg             bool             // debug mode
+	BotUsername     string           // resolved telegram bot username
+	AppSettings     *config.Settings // application settings (domain model)
+	ConfigDBMode    bool             // indicates if app is running with database config
+	// ReloadNormalize, when non-nil, is invoked by loadConfigHandler on the
+	// freshly loaded *config.Settings before transient/auth preservation. It
+	// must perform the same defaults-fill and operational CLI override
+	// reapplication that startup performs (ApplyDefaults + path/listen/dry
+	// CLI overrides) so a partial/legacy DB blob and operator-supplied
+	// --files.dynamic / --files.samples / --server.listen / --dry survive
+	// POST /config/reload. Credentials (Telegram/OpenAI/Gemini tokens) are
+	// intentionally NOT reapplied here — DB rotation wins on reload.
+	ReloadNormalize func(*config.Settings)
 }
 
 // Detector is a spam detector interface.
@@ -91,6 +96,7 @@ type Detector interface {
 	ApprovedUsers() []approved.UserInfo
 	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
+	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
 
 // SpamFilter is a spam filter, bot interface.
@@ -99,40 +105,69 @@ type SpamFilter interface {
 	UpdateHam(msg string) error
 	ReloadSamples() (err error)
 	DynamicSamples() (spam, ham []string, err error)
-	RemoveDynamicSpamSample(sample string) (int, error)
-	RemoveDynamicHamSample(sample string) (int, error)
+	RemoveDynamicSpamSample(sample string) error
+	RemoveDynamicHamSample(sample string) error
 }
 
 // Locator is a storage interface used to get user id by name and vice versa.
 type Locator interface {
-	UserIDByName(userName string) int64
-	UserNameByID(userID int64) string
+	UserIDByName(ctx context.Context, userName string) int64
+	UserNameByID(ctx context.Context, userID int64) string
 }
 
 // DetectedSpam is a storage interface used to get detected spam messages and set added flag.
 type DetectedSpam interface {
-	Read() ([]storage.DetectedSpamInfo, error)
-	SetAddedToSamplesFlag(id int64) error
+	Read(ctx context.Context) ([]storage.DetectedSpamInfo, error)
+	SetAddedToSamplesFlag(ctx context.Context, id int64) error
+	FindByUserID(ctx context.Context, userID int64) (*storage.DetectedSpamInfo, error)
+}
+
+// StorageEngine provides access to the database engine for operations like backup
+type StorageEngine interface {
+	Backup(ctx context.Context, w io.Writer) error
+	Type() engine.Type
+	BackupSqliteAsPostgres(ctx context.Context, w io.Writer) error
+}
+
+// Dictionary is a storage interface for managing stop phrases and ignored words
+type Dictionary interface {
+	Add(ctx context.Context, t storage.DictionaryType, data string) error
+	Delete(ctx context.Context, id int64) error
+	Read(ctx context.Context, t storage.DictionaryType) ([]string, error)
+	ReadWithIDs(ctx context.Context, t storage.DictionaryType) ([]storage.DictionaryEntry, error)
+	Stats(ctx context.Context) (*storage.DictionaryStats, error)
+}
+
+// DMUsersProvider provides access to recent DM users for the admin UI
+type DMUsersProvider interface {
+	GetDMUsers() []events.DMUser
 }
 
 // NewServer creates a new web API server.
-func NewServer(config Config) *Server {
-	return &Server{Config: config}
+func NewServer(cfg Config) *Server {
+	return &Server{Config: cfg}
 }
 
 // Run starts server and accepts requests checking for spam messages.
 func (s *Server) Run(ctx context.Context) error {
-	router := chi.NewRouter()
+	router := routegroup.New(http.NewServeMux())
 	router.Use(rest.Recoverer(log.Default()))
 	router.Use(logger.New(logger.Log(log.Default()), logger.Prefix("[DEBUG]")).Handler)
-	router.Use(middleware.Throttle(1000), middleware.Timeout(60*time.Second))
+	router.Use(rest.Throttle(1000))
 	router.Use(rest.AppInfo("tg-spam", "umputun", s.Version), rest.Ping)
-	router.Use(tollbooth_chi.LimitHandler(tollbooth.NewLimiter(50, nil)))
+	router.Use(tollbooth.HTTPMiddleware(tollbooth.NewLimiter(50, nil)))
 	router.Use(rest.SizeLimit(1024 * 1024)) // 1M max request size
+	router.Use(http.NewCrossOriginProtection().Handler)
 
-	if s.AuthPasswd != "" {
-		log.Printf("[INFO] basic auth enabled for webapi server")
-		router.Use(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd))
+	// hash-based authentication for maximum security. The middleware reads the
+	// current hash from AppSettings under the same mutex used by the config
+	// handlers so DB-sourced rotations via POST /config/reload take effect
+	// immediately without restarting the server. Startup AuthHash is used as
+	// a safety fallback if AppSettings hash is empty so a DB that lost the
+	// hash can't silently unlock the API.
+	if s.AuthHash != "" {
+		log.Printf("[INFO] basic auth enabled for webapi server (user: %s)", s.activeAuthUser())
+		router.Use(s.basicAuthMiddleware)
 	} else {
 		log.Printf("[WARN] basic auth disabled, access to webapi is not protected")
 	}
@@ -156,65 +191,158 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) routes(router *chi.Mux) *chi.Mux {
-	// auth api routes
-	router.Group(func(authApi chi.Router) {
-		authApi.Use(s.authMiddleware(rest.BasicAuthWithUserPasswd("tg-spam", s.AuthPasswd)))
-		authApi.Post("/check", s.checkHandler) // check a message for spam
+// basicAuthMiddleware validates basic auth credentials against the current
+// hash in AppSettings, falling back to the startup hash when AppSettings has
+// no hash. Reading under RLock keeps it consistent with POST /config/reload
+// swaps, so DB hash rotations take effect without restarting. Mirrors
+// rest.BasicAuthWithBcryptHashAndPrompt's WWW-Authenticate prompt behavior.
+func (s *Server) basicAuthMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if ok && s.checkBasicAuth(u, p) {
+			h.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	})
+}
 
-		authApi.Route("/update", func(r chi.Router) { // update spam/ham samples
-			r.Post("/spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
-			r.Post("/ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
+// checkBasicAuth returns true when user matches the active auth user and
+// passwd matches the currently active bcrypt hash. The active user is
+// AppSettings.Server.AuthUser when non-empty, else the startup AuthUser, else
+// the historical default "tg-spam". The active hash follows the same precedence
+// over AuthHash; startup serves as a safety fallback so reloads that drop the
+// DB hash can't unlock the server.
+func (s *Server) checkBasicAuth(user, passwd string) bool {
+	if user != s.activeAuthUser() {
+		return false
+	}
+	hash := s.AuthHash
+	s.appSettingsMu.RLock()
+	if s.AppSettings != nil && s.AppSettings.Server.AuthHash != "" {
+		hash = s.AppSettings.Server.AuthHash
+	}
+	s.appSettingsMu.RUnlock()
+	if hash == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(passwd)) == nil
+}
+
+// activeAuthUser returns the configured basic auth username with the same
+// precedence as the hash: settings -> startup -> "tg-spam" default.
+func (s *Server) activeAuthUser() string {
+	s.appSettingsMu.RLock()
+	if s.AppSettings != nil && s.AppSettings.Server.AuthUser != "" {
+		u := s.AppSettings.Server.AuthUser
+		s.appSettingsMu.RUnlock()
+		return u
+	}
+	s.appSettingsMu.RUnlock()
+	if s.AuthUser != "" {
+		return s.AuthUser
+	}
+	return "tg-spam"
+}
+
+func (s *Server) routes(router *routegroup.Bundle) *routegroup.Bundle {
+	// auth api routes; auth is applied globally by router.Use in Run, so no per-subrouter auth here
+	router.Route(func(authApi *routegroup.Bundle) {
+		authApi.HandleFunc("POST /check", s.checkMsgHandler)         // check a message for spam
+		authApi.HandleFunc("GET /check/{user_id}", s.checkIDHandler) // check user id for spam
+
+		authApi.Mount("/update").Route(func(r *routegroup.Bundle) {
+			// update spam/ham samples
+			r.HandleFunc("POST /spam", s.updateSampleHandler(s.SpamFilter.UpdateSpam)) // update spam samples
+			r.HandleFunc("POST /ham", s.updateSampleHandler(s.SpamFilter.UpdateHam))   // update ham samples
 		})
 
-		authApi.Route("/delete", func(r chi.Router) { // delete spam/ham samples
-			r.Post("/spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
-			r.Post("/ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
+		authApi.Mount("/delete").Route(func(r *routegroup.Bundle) {
+			// delete spam/ham samples
+			r.HandleFunc("POST /spam", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicSpamSample))
+			r.HandleFunc("POST /ham", s.deleteSampleHandler(s.SpamFilter.RemoveDynamicHamSample))
 		})
 
-		authApi.Route("/download", func(r chi.Router) {
-			r.Get("/spam", s.downloadSampleHandler(func(spam, _ []string) ([]string, string) {
+		authApi.Mount("/download").Route(func(r *routegroup.Bundle) {
+			r.HandleFunc("GET /spam", s.downloadSampleHandler(func(spam, _ []string) ([]string, string) {
 				return spam, "spam.txt"
 			}))
-			r.Get("/ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
+			r.HandleFunc("GET /ham", s.downloadSampleHandler(func(_, ham []string) ([]string, string) {
 				return ham, "ham.txt"
 			}))
+			r.HandleFunc("GET /detected_spam", s.downloadDetectedSpamHandler)
+			r.HandleFunc("GET /backup", s.downloadBackupHandler)
+			r.HandleFunc("GET /export-to-postgres", s.downloadExportToPostgresHandler)
 		})
 
-		authApi.Get("/samples", s.getDynamicSamplesHandler)    // get dynamic samples
-		authApi.Put("/samples", s.reloadDynamicSamplesHandler) // reload samples
+		authApi.HandleFunc("GET /samples", s.getDynamicSamplesHandler)    // get dynamic samples
+		authApi.HandleFunc("PUT /samples", s.reloadDynamicSamplesHandler) // reload samples
 
-		authApi.Route("/users", func(r chi.Router) { // manage approved users
-			r.Post("/add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUser)) // add user to the approved list and storage
-			r.Post("/delete", s.updateApprovedUsersHandler(s.removeApprovedUser))    // remove user from approved list and storage
-			r.Get("/", s.getApprovedUsersHandler)                                    // get approved users
+		authApi.Mount("/users").Route(func(r *routegroup.Bundle) { // manage approved users
+			// add user to the approved list and storage
+			r.HandleFunc("POST /add", s.updateApprovedUsersHandler(s.Detector.AddApprovedUser))
+			// remove user from an approved list and storage
+			r.HandleFunc("POST /delete", s.updateApprovedUsersHandler(s.removeApprovedUser))
+			// get approved users
+			r.HandleFunc("GET /", s.getApprovedUsersHandler)
 		})
 
-		authApi.Get("/settings", func(w http.ResponseWriter, _ *http.Request) {
-			rest.RenderJSON(w, s.Settings)
+		authApi.HandleFunc("GET /settings", s.getSettingsHandler) // get application settings
+
+		authApi.Mount("/dictionary").Route(func(r *routegroup.Bundle) { // manage dictionary
+			// add stop phrase or ignored word
+			r.HandleFunc("POST /add", s.addDictionaryEntryHandler)
+			// delete entry by id
+			r.HandleFunc("POST /delete", s.deleteDictionaryEntryHandler)
+			// get all entries
+			r.HandleFunc("GET /", s.getDictionaryEntriesHandler)
 		})
 	})
 
-	router.Group(func(webUI chi.Router) {
-		webUI.Use(s.authMiddleware(rest.BasicAuthWithPrompt("tg-spam", s.AuthPasswd)))
-		webUI.Get("/", s.htmlSpamCheckHandler)                         // serve template for webUI UI
-		webUI.Get("/manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
-		webUI.Get("/manage_users", s.htmlManageUsersHandler)           // serve manage users page
-		webUI.Get("/detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
-		webUI.Get("/list_settings", s.htmlSettingsHandler)             // serve settings
-		webUI.Get("/styles.css", s.stylesHandler)                      // serve styles.css
-		webUI.Get("/logo.png", s.logoHandler)                          // serve logo.png
-		webUI.Get("/spinner.svg", s.spinnerHandler)                    // serve spinner.svg
-		webUI.Post("/detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+	router.Route(func(webUI *routegroup.Bundle) {
+		webUI.HandleFunc("GET /", s.htmlSpamCheckHandler)                         // serve template for webUI UI
+		webUI.HandleFunc("GET /manage_samples", s.htmlManageSamplesHandler)       // serve manage samples page
+		webUI.HandleFunc("GET /manage_users", s.htmlManageUsersHandler)           // serve manage users page
+		webUI.HandleFunc("GET /manage_dictionary", s.htmlManageDictionaryHandler) // serve manage dictionary page
+		webUI.HandleFunc("GET /detected_spam", s.htmlDetectedSpamHandler)         // serve detected spam page
+		webUI.HandleFunc("GET /list_settings", s.htmlSettingsHandler)             // serve settings
+		webUI.HandleFunc("POST /detected_spam/add", s.htmlAddDetectedSpamHandler) // add detected spam to samples
+		webUI.HandleFunc("GET /dm-users", s.getDMUsersHandler)                    // get recent DM users (HTMX/JSON)
+
+		// configuration management endpoints
+		if s.SettingsStore != nil && s.ConfigDBMode {
+			webUI.Route(func(cfgRouter *routegroup.Bundle) {
+				cfgRouter.HandleFunc("POST /config", s.saveConfigHandler) // save current configuration to database
+				// reload uses POST because it mutates state; GET would bypass cross-origin protection (safe methods are always allowed)
+				cfgRouter.HandleFunc("POST /config/reload", s.loadConfigHandler)
+				cfgRouter.HandleFunc("PUT /config", s.updateConfigHandler)    // update configuration
+				cfgRouter.HandleFunc("DELETE /config", s.deleteConfigHandler) // delete configuration
+			})
+		}
+
+		// handle logout - force Basic Auth re-authentication
+		webUI.HandleFunc("GET /logout", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="tg-spam"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(w, "Logged out successfully")
+		})
+
+		// serve only specific static files at root level
+		staticFiles := newStaticFS(templateFS,
+			staticFileMapping{urlPath: "styles.css", filesysPath: "assets/styles.css"},
+			staticFileMapping{urlPath: "logo.png", filesysPath: "assets/logo.png"},
+			staticFileMapping{urlPath: "spinner.svg", filesysPath: "assets/spinner.svg"},
+		)
+		webUI.HandleFiles("/", http.FS(staticFiles))
 	})
 
 	return router
 }
 
-// checkHandler handles POST /check request.
+// checkMsgHandler handles POST /check request.
 // it gets message text and user id from request body and returns spam status and check results.
-func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
-
+func (s *Server) checkMsgHandler(w http.ResponseWriter, r *http.Request) {
 	type CheckResultDisplay struct {
 		Spam   bool
 		Checks []spamcheck.Response
@@ -222,12 +350,11 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 
 	isHtmxRequest := r.Header.Get("HX-Request") == "true"
 
-	req := spamcheck.Request{}
+	req := spamcheck.Request{CheckOnly: true}
 	if !isHtmxRequest {
 		// API request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 			log.Printf("[WARN] can't decode request: %v", err)
 			return
 		}
@@ -245,9 +372,9 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Msg == "" || req.UserID == "" || req.UserID == "0" {
+	if req.Msg == "" {
 		w.Header().Set("HX-Retarget", "#error-message")
-		fmt.Fprintln(w, "<div class='alert alert-danger'>userid and valid message required.</div>")
+		fmt.Fprintln(w, "<div class='alert alert-danger'>Valid message required.</div>")
 		return
 	}
 
@@ -262,31 +389,65 @@ func (s *Server) checkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error rendering result", http.StatusInternalServerError)
 		return
 	}
+}
 
-	// the successful check may add user to the approved list. we want to avoid it
-	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
-		log.Printf("[DEBUG] failed to clenaup after check: %v", err)
+// checkIDHandler handles GET /check/{user_id} request.
+// it returns JSON with the status "spam" or "ham" for a given user id.
+// if user is spammer, it also returns check results.
+func (s *Server) checkIDHandler(w http.ResponseWriter, r *http.Request) {
+	type info struct {
+		UserName  string               `json:"user_name,omitempty"`
+		Message   string               `json:"message,omitempty"`
+		Timestamp time.Time            `json:"timestamp,omitzero"`
+		Checks    []spamcheck.Response `json:"checks,omitempty"`
 	}
+	resp := struct {
+		Status string `json:"status"`
+		Info   *info  `json:"info,omitempty"`
+	}{
+		Status: "ham",
+	}
+
+	userID, err := strconv.ParseInt(r.PathValue("user_id"), 10, 64)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't parse user id", "details": err.Error()})
+		return
+	}
+
+	si, err := s.DetectedSpam.FindByUserID(r.Context(), userID)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get user info", "details": err.Error()})
+		return
+	}
+	if si != nil {
+		resp.Status = "spam"
+		resp.Info = &info{
+			UserName:  si.UserName,
+			Message:   si.Text,
+			Timestamp: si.Timestamp,
+			Checks:    si.Checks,
+		}
+	}
+	rest.RenderJSON(w, resp)
 }
 
 // getDynamicSamplesHandler handles GET /samples request. It returns dynamic samples both for spam and ham.
 func (s *Server) getDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
 		return
 	}
 	rest.RenderJSON(w, rest.JSON{"spam": spam, "ham": ham})
 }
 
-// downloadSampleHandler handles GET /download/spam|ham request. It returns dynamic samples both for spam and ham.
-func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) func(w http.ResponseWriter, r *http.Request) {
+// downloadSampleHandler handles GET /download/spam|ham request.
+// It returns dynamic samples both for spam and ham.
+func (s *Server) downloadSampleHandler(pickFn func(spam, ham []string) ([]string, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		spam, ham, err := s.SpamFilter.DynamicSamples()
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get dynamic samples", "details": err.Error()})
 			return
 		}
 		samples, name := pickFn(spam, ham)
@@ -312,16 +473,14 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 			req.Msg = r.FormValue("msg")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
 
 		err := updFn(req.Msg)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't update samples", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't update samples", "details": err.Error()})
 			return
 		}
 
@@ -334,7 +493,7 @@ func (s *Server) updateSampleHandler(updFn func(msg string) error) func(w http.R
 }
 
 // deleteSampleHandler handles DELETE /samples request. It deletes dynamic samples both for spam and ham.
-func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteSampleHandler(delFn func(msg string) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Msg string `json:"msg"`
@@ -344,32 +503,28 @@ func (s *Server) deleteSampleHandler(delFn func(msg string) (int, error)) func(w
 			req.Msg = r.FormValue("msg")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
 
-		count, err := delFn(req.Msg)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't delete sample", "details": err.Error()})
+		if err := delFn(req.Msg); err != nil {
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't delete sample", "details": err.Error()})
 			return
 		}
 
 		if isHtmxRequest {
 			s.renderSamples(w, "samples_list")
 		} else {
-			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": count})
+			rest.RenderJSON(w, rest.JSON{"deleted": true, "msg": req.Msg, "count": 1})
 		}
 	}
 }
 
-// reloadDynamicSamplesHandler handles PUT /samples request. It reloads dynamic samples from files
+// reloadDynamicSamplesHandler handles PUT /samples request. It reloads dynamic samples from db storage.
 func (s *Server) reloadDynamicSamplesHandler(w http.ResponseWriter, _ *http.Request) {
 	if err := s.SpamFilter.ReloadSamples(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't reload samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't reload samples", "details": err.Error()})
 		return
 	}
 	rest.RenderJSON(w, rest.JSON{"reloaded": true})
@@ -385,15 +540,14 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 			req.UserName = r.FormValue("user_name")
 		} else {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				rest.RenderJSON(w, rest.JSON{"error": "can't decode request", "details": err.Error()})
+				_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
 				return
 			}
 		}
 
 		// try to get userID from request and fallback to userName lookup if it's empty
 		if req.UserID == "" {
-			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(req.UserName), 10)
+			req.UserID = strconv.FormatInt(s.Locator.UserIDByName(r.Context(), req.UserName), 10)
 		}
 
 		if req.UserID == "" || req.UserID == "0" {
@@ -402,15 +556,14 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 				fmt.Fprintln(w, "<div class='alert alert-danger'>Either userid or valid username required.</div>")
 				return
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			rest.RenderJSON(w, rest.JSON{"error": "user ID is required"})
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "user ID is required"})
 			return
 		}
 
 		// add or remove user from the approved list of detector
 		if err := updFn(req); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			rest.RenderJSON(w, rest.JSON{"error": "can't update approved users", "details": err.Error()})
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "can't update approved users", "details": err.Error()})
 			return
 		}
 
@@ -437,12 +590,168 @@ func (s *Server) updateApprovedUsersHandler(updFn func(ui approved.UserInfo) err
 
 // removeApprovedUser is adopter for updateApprovedUsersHandler updFn
 func (s *Server) removeApprovedUser(req approved.UserInfo) error {
-	return s.Detector.RemoveApprovedUser(req.UserID)
+	if err := s.Detector.RemoveApprovedUser(req.UserID); err != nil {
+		return fmt.Errorf("failed to remove approved user %s: %w", req.UserID, err)
+	}
+	return nil
 }
 
 // getApprovedUsersHandler handles GET /users request. It returns list of approved users.
 func (s *Server) getApprovedUsersHandler(w http.ResponseWriter, _ *http.Request) {
 	rest.RenderJSON(w, rest.JSON{"user_ids": s.Detector.ApprovedUsers()})
+}
+
+// getSettingsHandler returns application settings, including the list of available Lua plugins.
+// Sensitive credential fields (tokens, auth hash) are redacted in the response; the list of
+// available Lua plugins is exposed separately from the user-selected enabled plugins.
+func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+	// shallow copy so we can redact sensitive fields without mutating the live settings
+	s.appSettingsMu.RLock()
+	var safe config.Settings
+	if s.AppSettings != nil {
+		safe = *s.AppSettings
+	}
+	s.appSettingsMu.RUnlock()
+	safe.Telegram.Token = ""
+	safe.OpenAI.Token = ""
+	safe.Gemini.Token = ""
+	safe.Server.AuthHash = ""
+
+	resp := struct {
+		*config.Settings
+		LuaAvailablePlugins []string `json:"lua_available_plugins"`
+	}{
+		Settings:            &safe,
+		LuaAvailablePlugins: s.Detector.GetLuaPluginNames(),
+	}
+	rest.RenderJSON(w, resp)
+}
+
+// getDictionaryEntriesHandler handles GET /dictionary request. It returns stop phrases and ignored words.
+func (s *Server) getDictionaryEntriesHandler(w http.ResponseWriter, r *http.Request) {
+	stopPhrases, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get stop phrases", "details": err.Error()})
+		return
+	}
+
+	ignoredWords, err := s.Dictionary.Read(r.Context(), storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get ignored words", "details": err.Error()})
+		return
+	}
+
+	rest.RenderJSON(w, rest.JSON{"stop_phrases": stopPhrases, "ignored_words": ignoredWords})
+}
+
+// addDictionaryEntryHandler handles POST /dictionary/add request. It adds a stop phrase or ignored word.
+func (s *Server) addDictionaryEntryHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type string `json:"type"`
+		Data string `json:"data"`
+	}
+
+	isHtmxRequest := r.Header.Get("HX-Request") == "true"
+
+	if isHtmxRequest {
+		req.Type = r.FormValue("type")
+		req.Data = r.FormValue("data")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			return
+		}
+	}
+
+	if req.Data == "" {
+		if isHtmxRequest {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintln(w, "<div class='alert alert-danger'>Data cannot be empty.</div>")
+			return
+		}
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "data cannot be empty"})
+		return
+	}
+
+	dictType := storage.DictionaryType(req.Type)
+	if err := dictType.Validate(); err != nil {
+		if isHtmxRequest {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintf(w, "<div class='alert alert-danger'>Invalid type: %v</div>", err)
+			return
+		}
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "invalid type", "details": err.Error()})
+		return
+	}
+
+	if err := s.Dictionary.Add(r.Context(), dictType, req.Data); err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't add entry", "details": err.Error()})
+		return
+	}
+
+	// reload samples to apply dictionary changes immediately
+	if err := s.SpamFilter.ReloadSamples(); err != nil {
+		log.Printf("[WARN] failed to reload samples after dictionary add: %v", err)
+		if !isHtmxRequest {
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "entry added but reload failed", "details": err.Error()})
+			return
+		}
+		// for HTMX, log but continue rendering (entry was added successfully)
+	}
+
+	if isHtmxRequest {
+		s.renderDictionary(r.Context(), w, "dictionary_list")
+	} else {
+		rest.RenderJSON(w, rest.JSON{"added": true, "type": req.Type, "data": req.Data})
+	}
+}
+
+// deleteDictionaryEntryHandler handles POST /dictionary/delete request. It deletes an entry by data.
+func (s *Server) deleteDictionaryEntryHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID int64 `json:"id"`
+	}
+
+	isHtmxRequest := r.Header.Get("HX-Request") == "true"
+
+	if isHtmxRequest {
+		idStr := r.FormValue("id")
+		var err error
+		req.ID, err = strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			w.Header().Set("HX-Retarget", "#error-message")
+			fmt.Fprintf(w, "<div class='alert alert-danger'>Invalid ID: %v</div>", err)
+			return
+		}
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "can't decode request", "details": err.Error()})
+			return
+		}
+	}
+
+	if err := s.Dictionary.Delete(r.Context(), req.ID); err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't delete entry", "details": err.Error()})
+		return
+	}
+
+	// reload samples to apply dictionary changes immediately
+	if err := s.SpamFilter.ReloadSamples(); err != nil {
+		log.Printf("[WARN] failed to reload samples after dictionary delete: %v", err)
+		if !isHtmxRequest {
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError,
+				rest.JSON{"error": "entry deleted but reload failed", "details": err.Error()})
+			return
+		}
+		// for HTMX, log but continue rendering (entry was deleted successfully)
+	}
+
+	if isHtmxRequest {
+		s.renderDictionary(r.Context(), w, "dictionary_list")
+	} else {
+		rest.RenderJSON(w, rest.JSON{"deleted": true, "id": req.ID})
+	}
 }
 
 // htmlSpamCheckHandler handles GET / request.
@@ -485,8 +794,12 @@ func (s *Server) htmlManageUsersHandler(w http.ResponseWriter, _ *http.Request) 
 	}
 }
 
-func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request) {
-	ds, err := s.DetectedSpam.Read()
+func (s *Server) htmlManageDictionaryHandler(w http.ResponseWriter, r *http.Request) {
+	s.renderDictionary(r.Context(), w, "manage_dictionary.html")
+}
+
+func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	ds, err := s.DetectedSpam.Read(r.Context())
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch detected spam: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -504,14 +817,108 @@ func (s *Server) htmlDetectedSpamHandler(w http.ResponseWriter, _ *http.Request)
 		ds[i] = d
 	}
 
+	// get filter from query param, default to "all"
+	filter := r.URL.Query().Get("filter")
+	if filter == "" {
+		filter = "all"
+	}
+
+	// apply filtering
+	var filteredDS []storage.DetectedSpamInfo
+	switch filter {
+	case "non-classified":
+		for _, entry := range ds {
+			hasClassifierHam := false
+			for _, check := range entry.Checks {
+				if check.Name == "classifier" && !check.Spam {
+					hasClassifierHam = true
+					break
+				}
+			}
+			if hasClassifierHam {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
+	case "openai":
+		for _, entry := range ds {
+			hasOpenAI := false
+			for _, check := range entry.Checks {
+				if check.Name == "openai" {
+					hasOpenAI = true
+					break
+				}
+			}
+			if hasOpenAI {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
+	case "gemini":
+		for _, entry := range ds {
+			hasGemini := false
+			for _, check := range entry.Checks {
+				if check.Name == "gemini" {
+					hasGemini = true
+					break
+				}
+			}
+			if hasGemini {
+				filteredDS = append(filteredDS, entry)
+			}
+		}
+	default: // "all" or any other value
+		filteredDS = ds
+	}
+
+	s.appSettingsMu.RLock()
+	openAIEnabled := s.AppSettings != nil && s.AppSettings.IsOpenAIEnabled()
+	geminiEnabled := s.AppSettings != nil && s.AppSettings.Gemini.Token != ""
+	s.appSettingsMu.RUnlock()
+
 	tmplData := struct {
 		DetectedSpamEntries []storage.DetectedSpamInfo
 		TotalDetectedSpam   int
+		FilteredCount       int
+		Filter              string
+		OpenAIEnabled       bool
+		GeminiEnabled       bool
 	}{
-		DetectedSpamEntries: ds,
+		DetectedSpamEntries: filteredDS,
 		TotalDetectedSpam:   len(ds),
+		FilteredCount:       len(filteredDS),
+		Filter:              filter,
+		OpenAIEnabled:       openAIEnabled,
+		GeminiEnabled:       geminiEnabled,
 	}
 
+	// if it's an HTMX request, render both content and count display for OOB swap
+	if r.Header.Get("HX-Request") == "true" {
+		var buf bytes.Buffer
+
+		// first render the content template
+		if err := tmpl.ExecuteTemplate(&buf, "detected_spam_content", tmplData); err != nil {
+			log.Printf("[WARN] can't execute content template: %v", err)
+			http.Error(w, "Error executing template", http.StatusInternalServerError)
+			return
+		}
+
+		// then append OOB swap for the count display
+		countHTML := ""
+		if filter != "all" {
+			countHTML = fmt.Sprintf("(%d/%d)", len(filteredDS), len(ds))
+		} else {
+			countHTML = fmt.Sprintf("(%d)", len(ds))
+		}
+
+		buf.WriteString(`<span id="count-display" hx-swap-oob="true">` + countHTML + `</span>`)
+
+		// write the combined response
+		if _, err := buf.WriteTo(w); err != nil {
+			log.Printf("[WARN] failed to write response: %v", err)
+		}
+		return
+	}
+
+	// full page render for normal requests
 	if err := tmpl.ExecuteTemplate(w, "detected_spam.html", tmplData); err != nil {
 		log.Printf("[WARN] can't execute template: %v", err)
 		http.Error(w, "Error executing template", http.StatusInternalServerError)
@@ -539,7 +946,7 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 		return
 
 	}
-	if err := s.DetectedSpam.SetAddedToSamplesFlag(id); err != nil {
+	if err := s.DetectedSpam.SetAddedToSamplesFlag(r.Context(), id); err != nil {
 		log.Printf("[WARN] failed to update detected spam: %v", err)
 		reportErr(fmt.Errorf("can't update detected spam: %v", err), http.StatusInternalServerError)
 		return
@@ -547,13 +954,113 @@ func (s *Server) htmlAddDetectedSpamHandler(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	// get database information if StorageEngine is available
+	var dbInfo struct {
+		DatabaseType   string `json:"database_type"`
+		GID            string `json:"gid"`
+		DatabaseStatus string `json:"database_status"`
+	}
+
+	if s.StorageEngine != nil {
+		// try to cast to SQL engine to get type information
+		if sqlEngine, ok := s.StorageEngine.(*engine.SQL); ok {
+			dbInfo.DatabaseType = string(sqlEngine.Type())
+			dbInfo.GID = sqlEngine.GID()
+			dbInfo.DatabaseStatus = "Connected"
+		} else {
+			dbInfo.DatabaseType = "Unknown"
+			dbInfo.DatabaseStatus = "Connected (unknown type)"
+		}
+	} else {
+		dbInfo.DatabaseStatus = "Not connected"
+	}
+
+	// get backup information
+	backupURL := "/download/backup"
+	backupFilename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbInfo.DatabaseType, time.Now().Format("20060102-150405"))
+
+	// get system info - uptime since server start
+	uptime := time.Since(startTime)
+
+	// get the list of available Lua plugins
+	luaPlugins := s.Detector.GetLuaPluginNames()
+
+	// get configuration DB status
+	configAvailable := false
+	var lastUpdated time.Time
+	if s.SettingsStore != nil {
+		configAvailable = true
+		if lu, err := s.SettingsStore.LastUpdated(r.Context()); err == nil {
+			lastUpdated = lu
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("[WARN] failed to get last config update time: %v", err)
+		}
+	}
+
+	// snapshot AppSettings under the read lock so template rendering sees a
+	// consistent view even if a config handler mutates or swaps the pointer.
+	s.appSettingsMu.RLock()
+	var settingsSnapshot *config.Settings
+	if s.AppSettings != nil {
+		cp := *s.AppSettings
+		settingsSnapshot = &cp
+	}
+	s.appSettingsMu.RUnlock()
+
+	geminiEnabled := settingsSnapshot != nil && settingsSnapshot.Gemini.Token != ""
+
 	data := struct {
-		Settings
-		Version string
+		*config.Settings
+		LuaAvailablePlugins []string
+		Version             string
+		Database            struct {
+			Type   string
+			GID    string
+			Status string
+		}
+		Backup struct {
+			URL      string
+			Filename string
+		}
+		System struct {
+			Uptime string
+		}
+		ConfigAvailable bool
+		LastUpdated     time.Time
+		ConfigDBMode    bool
+		BotUsername     string
+		GeminiEnabled   bool
 	}{
-		Settings: s.Settings,
-		Version:  s.Version,
+		Settings:            settingsSnapshot,
+		LuaAvailablePlugins: luaPlugins,
+		Version:             s.Version,
+		Database: struct {
+			Type   string
+			GID    string
+			Status string
+		}{
+			Type:   dbInfo.DatabaseType,
+			GID:    dbInfo.GID,
+			Status: dbInfo.DatabaseStatus,
+		},
+		Backup: struct {
+			URL      string
+			Filename string
+		}{
+			URL:      backupURL,
+			Filename: backupFilename,
+		},
+		System: struct {
+			Uptime string
+		}{
+			Uptime: formatDuration(uptime),
+		},
+		ConfigAvailable: configAvailable,
+		LastUpdated:     lastUpdated,
+		ConfigDBMode:    s.ConfigDBMode,
+		BotUsername:     s.BotUsername,
+		GeminiEnabled:   geminiEnabled,
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -563,47 +1070,246 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// stylesHandler handles GET /styles.css request. It returns styles.css file.
-func (s *Server) stylesHandler(w http.ResponseWriter, _ *http.Request) {
-	body, err := templateFS.ReadFile("assets/styles.css")
-	if err != nil {
-		log.Printf("[WARN] can't read styles.css: %v", err)
-		http.Error(w, "Error reading styles.css", http.StatusInternalServerError)
+// getDMUsersHandler handles GET /dm-users. For HTMX requests it renders the dm_users.html partial,
+// for API requests it returns JSON with the list of recent DM users.
+func (s *Server) getDMUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if s.DMUsersProvider == nil {
+		http.Error(w, "DM users provider not configured", http.StatusServiceUnavailable)
 		return
 	}
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
+
+	users := s.DMUsersProvider.GetDMUsers()
+
+	if r.Header.Get("HX-Request") != "true" {
+		// api response — return raw timestamps, no relative time
+		type dmUserJSON struct {
+			UserID      int64     `json:"user_id"`
+			UserName    string    `json:"user_name"`
+			DisplayName string    `json:"display_name"`
+			Timestamp   time.Time `json:"timestamp"`
+		}
+		result := make([]dmUserJSON, len(users))
+		for i, u := range users {
+			result[i] = dmUserJSON{
+				UserID:      u.UserID,
+				UserName:    u.UserName,
+				DisplayName: u.DisplayName,
+				Timestamp:   u.Timestamp,
+			}
+		}
+		rest.RenderJSON(w, result)
+		return
+	}
+
+	// htmx response — render partial template with relative timestamps
+	type dmUserView struct {
+		UserID      int64
+		UserName    string
+		DisplayName string
+		When        string
+	}
+	viewUsers := make([]dmUserView, len(users))
+	for i, u := range users {
+		viewUsers[i] = dmUserView{
+			UserID:      u.UserID,
+			UserName:    u.UserName,
+			DisplayName: u.DisplayName,
+			When:        relativeTime(u.Timestamp),
+		}
+	}
+
+	data := struct {
+		Users []dmUserView
+	}{Users: viewUsers}
+
+	if err := tmpl.ExecuteTemplate(w, "dm_users.html", data); err != nil {
+		log.Printf("[WARN] can't execute dm_users template: %v", err)
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		return
+	}
 }
 
-// logoHandler handles GET /logo.png request. It returns assets/logo.png file.
-func (s *Server) logoHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/logo.png")
-	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
-		return
+// relativeTime formats a timestamp as a human-readable relative time string.
+// accepts an optional reference time; if omitted, uses time.Now().
+func relativeTime(t time.Time, now ...time.Time) string {
+	ref := time.Now()
+	if len(now) > 0 {
+		ref = now[0]
 	}
-	w.Header().Set("Content-Type", "image/png")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
+	d := ref.Sub(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
-func (s *Server) spinnerHandler(w http.ResponseWriter, _ *http.Request) {
-	img, err := templateFS.ReadFile("assets/spinner.svg")
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	}
+
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+
+	return fmt.Sprintf("%dm", minutes)
+}
+
+func (s *Server) downloadDetectedSpamHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	spam, err := s.DetectedSpam.Read(ctx)
 	if err != nil {
-		http.Error(w, "Logo not found", http.StatusNotFound)
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't get detected spam", "details": err.Error()})
 		return
 	}
-	w.Header().Set("Content-Type", "image/svg+xml")
+
+	type jsonSpamInfo struct {
+		ID        int64                `json:"id"`
+		GID       string               `json:"gid"`
+		Text      string               `json:"text"`
+		UserID    int64                `json:"user_id"`
+		UserName  string               `json:"user_name"`
+		Timestamp time.Time            `json:"timestamp"`
+		Added     bool                 `json:"added"`
+		Checks    []spamcheck.Response `json:"checks"`
+	}
+
+	// convert entries to jsonl format with lowercase fields
+	lines := make([]string, 0, len(spam))
+	for _, entry := range spam {
+		data, err := json.Marshal(jsonSpamInfo{
+			ID:        entry.ID,
+			GID:       entry.GID,
+			Text:      entry.Text,
+			UserID:    entry.UserID,
+			UserName:  entry.UserName,
+			Timestamp: entry.Timestamp,
+			Added:     entry.Added,
+			Checks:    entry.Checks,
+		})
+		if err != nil {
+			_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't marshal entry", "details": err.Error()})
+			return
+		}
+		lines = append(lines, string(data))
+	}
+
+	body := strings.Join(lines, "\n")
+	w.Header().Set("Content-Type", "application/x-jsonlines")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "detected_spam.jsonl"))
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(img)
+	_, _ = w.Write([]byte(body))
+}
+
+// downloadBackupHandler streams a database backup as an SQL file with gzip compression
+// Files are always compressed and always have .gz extension to ensure consistency
+func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// set filename based on database type and timestamp
+	dbType := "db"
+	sqlEng, ok := s.StorageEngine.(*engine.SQL)
+	if ok {
+		dbType = string(sqlEng.Type())
+	}
+	timestamp := time.Now().Format("20060102-150405")
+
+	// always use a .gz extension as the content is always compressed
+	filename := fmt.Sprintf("tg-spam-backup-%s-%s.sql.gz", dbType, timestamp)
+
+	// set headers for file download - note we're using application/octet-stream
+	// instead of application/sql to prevent browsers from trying to interpret the file
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// create a gzip writer that streams to response
+	gzipWriter := gzip.NewWriter(w)
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}()
+
+	// stream backup directly to response through gzip
+	if err := s.StorageEngine.Backup(r.Context(), gzipWriter); err != nil {
+		log.Printf("[ERROR] failed to create backup: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		return
+	}
+
+	// flush the gzip writer to ensure all data is written
+	if err := gzipWriter.Flush(); err != nil {
+		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
+	}
+}
+
+// downloadExportToPostgresHandler streams a PostgreSQL-compatible export from a SQLite database
+func (s *Server) downloadExportToPostgresHandler(w http.ResponseWriter, r *http.Request) {
+	if s.StorageEngine == nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "storage engine not available"})
+		return
+	}
+
+	// check if the database is SQLite
+	if s.StorageEngine.Type() != engine.Sqlite {
+		_ = rest.EncodeJSON(w, http.StatusBadRequest, rest.JSON{"error": "source database must be SQLite"})
+		return
+	}
+
+	// set filename based on timestamp
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("tg-spam-sqlite-to-postgres-%s.sql.gz", timestamp)
+
+	// set headers for file download
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// create a gzip writer that streams to response
+	gzipWriter := gzip.NewWriter(w)
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			log.Printf("[ERROR] failed to close gzip writer: %v", err)
+		}
+	}()
+
+	// stream export directly to response through gzip
+	if err := s.StorageEngine.BackupSqliteAsPostgres(r.Context(), gzipWriter); err != nil {
+		log.Printf("[ERROR] failed to create export: %v", err)
+		// we've already started writing the response, so we can't send a proper error response
+		return
+	}
+
+	// flush the gzip writer to ensure all data is written
+	if err := gzipWriter.Flush(); err != nil {
+		log.Printf("[ERROR] failed to flush gzip writer: %v", err)
+	}
 }
 
 func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	spam, ham, err := s.SpamFilter.DynamicSamples()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch samples", "details": err.Error()})
 		return
 	}
 
@@ -639,20 +1345,8 @@ func (s *Server) renderSamples(w http.ResponseWriter, tmplName string) {
 	}
 
 	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rest.RenderJSON(w, rest.JSON{"error": "can't execute template", "details": err.Error()})
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't execute template", "details": err.Error()})
 		return
-	}
-}
-
-func (s *Server) authMiddleware(mw func(next http.Handler) http.Handler) func(next http.Handler) http.Handler {
-	if s.AuthPasswd == "" {
-		return func(next http.Handler) http.Handler {
-			return next
-		}
-	}
-	return func(next http.Handler) http.Handler {
-		return mw(next)
 	}
 }
 
@@ -670,21 +1364,89 @@ func (s *Server) reverseSamples(spam, ham []string) (revSpam, revHam []string) {
 	return revSpam, revHam
 }
 
+// renderDictionary renders dictionary entries for HTMX or full page request
+func (s *Server) renderDictionary(ctx context.Context, w http.ResponseWriter, tmplName string) {
+	stopPhrases, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeStopPhrase)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch stop phrases", "details": err.Error()})
+		return
+	}
+
+	ignoredWords, err := s.Dictionary.ReadWithIDs(ctx, storage.DictionaryTypeIgnoredWord)
+	if err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't fetch ignored words", "details": err.Error()})
+		return
+	}
+
+	tmplData := struct {
+		StopPhrases       []storage.DictionaryEntry
+		IgnoredWords      []storage.DictionaryEntry
+		TotalStopPhrases  int
+		TotalIgnoredWords int
+	}{
+		StopPhrases:       stopPhrases,
+		IgnoredWords:      ignoredWords,
+		TotalStopPhrases:  len(stopPhrases),
+		TotalIgnoredWords: len(ignoredWords),
+	}
+
+	if err := tmpl.ExecuteTemplate(w, tmplName, tmplData); err != nil {
+		_ = rest.EncodeJSON(w, http.StatusInternalServerError, rest.JSON{"error": "can't execute template", "details": err.Error()})
+		return
+	}
+}
+
+// staticFS is a filtered filesystem that only exposes specific static files
+type staticFS struct {
+	fs        fs.FS
+	urlToPath map[string]string
+}
+
+// staticFileMapping defines a mapping between URL path and filesystem path
+type staticFileMapping struct {
+	urlPath     string
+	filesysPath string
+}
+
+func newStaticFS(fsys fs.FS, files ...staticFileMapping) *staticFS {
+	urlToPath := make(map[string]string)
+	for _, f := range files {
+		urlToPath[f.urlPath] = f.filesysPath
+	}
+
+	return &staticFS{
+		fs:        fsys,
+		urlToPath: urlToPath,
+	}
+}
+
+func (sfs *staticFS) Open(name string) (fs.File, error) {
+	cleanName := path.Clean("/" + name)[1:]
+
+	fsPath, ok := sfs.urlToPath[cleanName]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+
+	file, err := sfs.fs.Open(fsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open static file %s: %w", fsPath, err)
+	}
+	return file, nil
+}
+
 // GenerateRandomPassword generates a random password of a given length
 func GenerateRandomPassword(length int) (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+"
+	const charsetLen = int64(len(charset))
 
-	var password strings.Builder
-	charsetSize := big.NewInt(int64(len(charset)))
-
-	for i := 0; i < length; i++ {
-		randomNumber, err := rand.Int(rand.Reader, charsetSize)
+	result := make([]byte, length)
+	for i := range length {
+		n, err := rand.Int(rand.Reader, big.NewInt(charsetLen))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to generate random number: %w", err)
 		}
-
-		password.WriteByte(charset[randomNumber.Int64()])
+		result[i] = charset[n.Int64()]
 	}
-
-	return password.String(), nil
+	return string(result), nil
 }

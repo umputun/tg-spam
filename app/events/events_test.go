@@ -1,16 +1,61 @@
 package events
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
+	"unicode/utf8"
 
-	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/events/mocks"
 )
+
+func TestSpamLoggerFunc_Save(t *testing.T) {
+	// create a test message and response
+	msg := &bot.Message{
+		ID:     123,
+		ChatID: 456,
+		Text:   "test message",
+		From: bot.User{
+			ID:          789,
+			Username:    "testuser",
+			DisplayName: "Test User",
+		},
+	}
+
+	response := &bot.Response{
+		Text:        "test response",
+		Send:        true,
+		BanInterval: time.Minute,
+		User: bot.User{
+			ID:          789,
+			Username:    "testuser",
+			DisplayName: "Test User",
+		},
+	}
+
+	// create a counter to check if the function was called
+	counter := 0
+
+	// create a SpamLoggerFunc that increments the counter
+	loggerFunc := SpamLoggerFunc(func(m *bot.Message, r *bot.Response) {
+		counter++
+		assert.Equal(t, msg, m)
+		assert.Equal(t, response, r)
+	})
+
+	// call the Save method
+	loggerFunc.Save(msg, response)
+
+	// check that the function was called once
+	assert.Equal(t, 1, counter)
+}
 
 func TestEvents_escapeMarkDownV1Text(t *testing.T) {
 	tests := []struct {
@@ -45,6 +90,86 @@ func TestEvents_escapeMarkDownV1Text(t *testing.T) {
 	}
 }
 
+func TestEvents_truncateString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		maxRunes int
+		suffix   string
+		expected string
+	}{
+		{
+			name:     "short string not truncated",
+			input:    "hello",
+			maxRunes: 10,
+			suffix:   "...",
+			expected: "hello",
+		},
+		{
+			name:     "exact length not truncated",
+			input:    "hello",
+			maxRunes: 5,
+			suffix:   "...",
+			expected: "hello",
+		},
+		{
+			name:     "long ASCII string truncated",
+			input:    "hello world this is a test",
+			maxRunes: 10,
+			suffix:   "...",
+			expected: "hello worl...",
+		},
+		{
+			name:     "emoji truncation",
+			input:    "😀😁😂😃😄😅😆😇😈😉",
+			maxRunes: 5,
+			suffix:   "...",
+			expected: "😀😁😂😃😄...",
+		},
+		{
+			name:     "cyrillic truncation",
+			input:    "Привет мир это тест",
+			maxRunes: 10,
+			suffix:   "...",
+			expected: "Привет мир...",
+		},
+		{
+			name:     "mixed multibyte truncation",
+			input:    "Hello мир 😀 test",
+			maxRunes: 10,
+			suffix:   "...",
+			expected: "Hello мир ...",
+		},
+		{
+			name:     "arabic truncation",
+			input:    "مرحبا بك في العالم",
+			maxRunes: 8,
+			suffix:   "...",
+			expected: "مرحبا بك...",
+		},
+		{
+			name:     "empty suffix",
+			input:    "hello world",
+			maxRunes: 5,
+			suffix:   "",
+			expected: "hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := truncateString(tt.input, tt.maxRunes, tt.suffix)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+			// verify result is valid UTF-8
+			if !utf8.ValidString(result) {
+				t.Errorf("result is not valid UTF-8: %q", result)
+			}
+		})
+	}
+}
+
 func TestEvents_send(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
@@ -60,8 +185,8 @@ func TestEvents_send(t *testing.T) {
 	t.Run("send with markdown passed", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		err := send(tbapi.NewMessage(123, "test"), mockAPI)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, len(mockAPI.SendCalls()))
+		require.NoError(t, err)
+		assert.Len(t, mockAPI.SendCalls(), 1)
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "test", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
 		assert.Equal(t, "Markdown", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ParseMode)
@@ -70,9 +195,9 @@ func TestEvents_send(t *testing.T) {
 	t.Run("send with markdown failed", func(t *testing.T) {
 		mockAPI.ResetCalls()
 		err := send(tbapi.NewMessage(123, "badmd"), mockAPI)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.Equal(t, 2, len(mockAPI.SendCalls()))
+		assert.Len(t, mockAPI.SendCalls(), 2)
 
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "badmd", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
@@ -80,27 +205,21 @@ func TestEvents_send(t *testing.T) {
 
 		assert.Equal(t, int64(123), mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ChatID)
 		assert.Equal(t, "badmd", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, "", mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ParseMode)
+		assert.Empty(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ParseMode)
 	})
 
 }
 
 func TestTelegramListener_transformTextMessage(t *testing.T) {
-	assert.Equal(t,
-		&bot.Message{
-			ID: 30,
-			From: bot.User{
-				ID:          100000001,
-				Username:    "username",
-				DisplayName: "First Last",
-			},
-			Sent:   time.Unix(1578627415, 0),
-			Text:   "Message",
-			ChatID: 123456,
-		},
-		transform(
-			&tbapi.Message{
-				Chat: &tbapi.Chat{
+	tests := []struct {
+		name     string
+		input    *tbapi.Message
+		expected *bot.Message
+	}{
+		{
+			name: "Basic text message",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{
 					ID: 123456,
 				},
 				From: &tbapi.User{
@@ -113,8 +232,235 @@ func TestTelegramListener_transformTextMessage(t *testing.T) {
 				Date:      1578627415,
 				Text:      "Message",
 			},
-		),
-	)
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:   time.Unix(1578627415, 0),
+				Text:   "Message",
+				ChatID: 123456,
+			},
+		},
+		{
+			name: "Text message with nil values",
+			input: &tbapi.Message{
+				Chat:      tbapi.Chat{ID: 123456},
+				MessageID: 31,
+				Date:      1579627415,
+				Text:      "",
+			},
+			expected: &bot.Message{
+				ID:     31,
+				Sent:   time.Unix(1579627415, 0),
+				Text:   "",
+				ChatID: 123456,
+			},
+		},
+		{
+			name: "Text message with sender chat",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				SenderChat: &tbapi.Chat{
+					ID:       654321,
+					UserName: "channelname",
+				},
+				MessageID: 32,
+				Date:      1579627416,
+				Text:      "Channel Message",
+			},
+			expected: &bot.Message{
+				ID:     32,
+				Sent:   time.Unix(1579627416, 0),
+				Text:   "Channel Message",
+				ChatID: 123456,
+				SenderChat: bot.SenderChat{
+					ID:       654321,
+					UserName: "channelname",
+				},
+			},
+		},
+		{
+			name: "Message with forward",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID:     30,
+				Date:          1578627415,
+				Text:          "Forwarded message",
+				ForwardOrigin: &tbapi.MessageOrigin{Date: time.Unix(1578627415, 0).Unix()},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:        time.Unix(1578627415, 0),
+				Text:        "Forwarded message",
+				ChatID:      123456,
+				WithForward: true,
+			},
+		},
+		{
+			name: "Message with reply",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Text:      "Reply to message",
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 29,
+					Date:      1578627400,
+					Text:      "Original message",
+					From: &tbapi.User{
+						ID:        100000002,
+						UserName:  "original_user",
+						FirstName: "Original",
+						LastName:  "User",
+					},
+				},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:   time.Unix(1578627415, 0),
+				Text:   "Reply to message",
+				ChatID: 123456,
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Sent: time.Unix(1578627400, 0),
+					Text: "Original message",
+					From: bot.User{
+						ID:          100000002,
+						Username:    "original_user",
+						DisplayName: "Original User",
+						FirstName:   "Original",
+						LastName:    "User",
+					},
+				},
+			},
+		},
+		{
+			name: "Message with story",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Text:      "Message with story",
+				Story:     &tbapi.Story{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:      time.Unix(1578627415, 0),
+				Text:      "Message with story",
+				ChatID:    123456,
+				WithVideo: true,
+			},
+		},
+		{
+			name: "Message with audio",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Audio:     &tbapi.Audio{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:      time.Unix(1578627415, 0),
+				ChatID:    123456,
+				WithAudio: true,
+			},
+		},
+		{
+			name: "Message with giveaway",
+			input: &tbapi.Message{
+				Chat: tbapi.Chat{ID: 123456},
+				From: &tbapi.User{
+					ID:        100000001,
+					UserName:  "username",
+					FirstName: "First",
+					LastName:  "Last",
+				},
+				MessageID: 30,
+				Date:      1578627415,
+				Giveaway:  &tbapi.Giveaway{},
+			},
+			expected: &bot.Message{
+				ID: 30,
+				From: bot.User{
+					ID:          100000001,
+					Username:    "username",
+					DisplayName: "First Last",
+					FirstName:   "First",
+					LastName:    "Last",
+				},
+				Sent:         time.Unix(1578627415, 0),
+				ChatID:       123456,
+				WithGiveaway: true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, transform(tt.input))
+		})
+	}
 }
 
 func TestTelegramListener_transformPhoto(t *testing.T) {
@@ -172,26 +518,15 @@ func TestTelegramListener_transformPhoto(t *testing.T) {
 	)
 }
 
-func TestTelegramListener__transformEntities(t *testing.T) {
-	assert.Equal(t,
-		&bot.Message{
-			Sent: time.Unix(1578627415, 0),
-			Text: "@username тебя слишком много, отдохни...",
-			Entities: &[]bot.Entity{
-				{
-					Type:   "mention",
-					Offset: 0,
-					Length: 9,
-				},
-				{
-					Type:   "italic",
-					Offset: 10,
-					Length: 30,
-				},
-			},
-		},
-		transform(
-			&tbapi.Message{
+func TestTelegramListener_transformEntities(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *tbapi.Message
+		expected *bot.Message
+	}{
+		{
+			name: "Message with mentions and italics",
+			input: &tbapi.Message{
 				Date: 1578627415,
 				Text: "@username тебя слишком много, отдохни...",
 				Entities: []tbapi.MessageEntity{
@@ -207,6 +542,618 @@ func TestTelegramListener__transformEntities(t *testing.T) {
 					},
 				},
 			},
-		),
-	)
+			expected: &bot.Message{
+				Sent: time.Unix(1578627415, 0),
+				Text: "@username тебя слишком много, отдохни...",
+				Entities: &[]bot.Entity{
+					{
+						Type:   "mention",
+						Offset: 0,
+						Length: 9,
+					},
+					{
+						Type:   "italic",
+						Offset: 10,
+						Length: 30,
+					},
+				},
+			},
+		},
+		{
+			name: "Message with URL entity",
+			input: &tbapi.Message{
+				Date: 1578627416,
+				Text: "Check this link",
+				Entities: []tbapi.MessageEntity{
+					{
+						Type:   "url",
+						Offset: 6,
+						Length: 4,
+						URL:    "https://example.com",
+					},
+				},
+			},
+			expected: &bot.Message{
+				Sent: time.Unix(1578627416, 0),
+				Text: "Check this link",
+				Entities: &[]bot.Entity{
+					{
+						Type:   "url",
+						Offset: 6,
+						Length: 4,
+						URL:    "https://example.com",
+					},
+				},
+			},
+		},
+		{
+			name: "Message with user entity",
+			input: &tbapi.Message{
+				Date: 1578627417,
+				Text: "Message mentioning @user",
+				Entities: []tbapi.MessageEntity{
+					{
+						Type:   "mention",
+						Offset: 18,
+						Length: 5,
+						User: &tbapi.User{
+							ID:        100000002,
+							UserName:  "user",
+							FirstName: "First",
+							LastName:  "User",
+							IsPremium: true,
+						},
+					},
+				},
+			},
+			expected: &bot.Message{
+				Sent: time.Unix(1578627417, 0),
+				Text: "Message mentioning @user",
+				Entities: &[]bot.Entity{
+					{
+						Type:   "mention",
+						Offset: 18,
+						Length: 5,
+						User: &bot.User{
+							ID:          100000002,
+							Username:    "user",
+							DisplayName: "First User",
+							FirstName:   "First",
+							LastName:    "User",
+							IsPremium:   true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, transform(tt.input))
+		})
+	}
+}
+
+func TestTelegramListener_transformRichMessage(t *testing.T) {
+	// rich_message (bot api 10.2 "article" compose type) decodes as generic json, so each
+	// case is unmarshaled from raw json to exercise the real decode->flatten path in transform
+	tests := []struct {
+		name     string
+		rich     string // rich_message json value (object or null)
+		baseText string // pre-existing msg.Text
+		expected string // expected flattened message.Text
+	}{
+		{
+			name: "paragraphs flattened in order",
+			rich: `{"blocks":[{"type":"paragraph","text":"Лучший бесплатный ВПН!"},` +
+				`{"type":"paragraph","text":"Обход белых списков"},` +
+				`{"type":"paragraph","text":"Первые 3 дня бесплатно"},` +
+				`{"type":"paragraph","text":"Стабильный доступ в интернет"}]}`,
+			expected: "Лучший бесплатный ВПН!\nОбход белых списков\nПервые 3 дня бесплатно\nСтабильный доступ в интернет",
+		},
+		{
+			name: "inline spans in one run concatenate so a split word rejoins",
+			rich: `{"blocks":[{"type":"paragraph","text":[{"type":"bold","text":"ка"},` +
+				`{"type":"italic","text":"зи"},"но"]}]}`,
+			expected: "казино",
+		},
+		{
+			name: "inline spans preserve spacing, url anchor kept and target dropped",
+			rich: `{"blocks":[{"type":"paragraph","text":["free ",` +
+				`{"type":"url","text":"vpn","url":"http://spam.example"}]}]}`,
+			expected: "free vpn",
+		},
+		{
+			name: "details block summary and body collected",
+			rich: `{"blocks":[{"type":"details","summary":"more",` +
+				`"blocks":[{"type":"paragraph","text":"body"}]}]}`,
+			expected: "body\nmore",
+		},
+		{
+			name:     "pull quotation credit and text in sorted-key order",
+			rich:     `{"blocks":[{"type":"pull_quotation","text":"quote","credit":"author"}]}`,
+			expected: "author\nquote",
+		},
+		{
+			name:     "math expression collected",
+			rich:     `{"blocks":[{"type":"mathematical_expression","expression":"E=mc^2"}]}`,
+			expected: "E=mc^2",
+		},
+		{
+			name:     "table caption collected",
+			rich:     `{"blocks":[{"type":"table","caption":"totals","cells":[[{"text":"c"}]]}]}`,
+			expected: "totals\nc",
+		},
+		{
+			name: "whitespace-only span dropped, padding trimmed",
+			rich: `{"blocks":[{"type":"paragraph","text":"   "},` +
+				`{"type":"paragraph","text":"  free vpn  "}]}`,
+			expected: "free vpn",
+		},
+		{
+			name: "table cells collected in row order",
+			rich: `{"blocks":[{"type":"table","cells":[[{"text":"test","is_header":true},{"text":"test"}],` +
+				`[{"text":"test2"},{"text":"test2"}]]}]}`,
+			expected: "test\ntest\ntest2\ntest2",
+		},
+		{
+			name: "list item block text collected, marker label ignored",
+			rich: `{"blocks":[{"type":"list","items":[{"label":"1.","blocks":[{"type":"paragraph","text":"first"}]},` +
+				`{"label":"2.","blocks":[{"type":"paragraph","text":"second"}]}]}]}`,
+			expected: "first\nsecond",
+		},
+		{
+			name:     "custom emoji alternative text collected",
+			rich:     `{"blocks":[{"type":"paragraph","text":[{"type":"custom_emoji","alternative_text":"👍","custom_emoji_id":"5"}]}]}`,
+			expected: "👍",
+		},
+		{
+			name:     "appended to existing text",
+			rich:     `{"blocks":[{"type":"paragraph","text":"free vpn"}]}`,
+			baseText: "hello",
+			expected: "hello\nfree vpn",
+		},
+		{name: "empty blocks leave text unchanged", rich: `{"blocks":[]}`, baseText: "keep me", expected: "keep me"},
+		{name: "no rich message leaves text unchanged", rich: `null`, baseText: "plain text", expected: "plain text"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := fmt.Sprintf(`{"message_id":1,"date":1578627415,"chat":{"id":1},"from":{"id":2},"text":%q,"rich_message":%s}`,
+				tt.baseText, tt.rich)
+			var msg tbapi.Message
+			require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+			assert.Equal(t, tt.expected, transform(&msg).Text)
+		})
+	}
+}
+
+func TestTelegramListener_transformReplyTo(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "reply with spaces in display name",
+			in: &tbapi.Message{
+				MessageID: 100,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "reply message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				ReplyToMessage: &tbapi.Message{
+					Text: "original message",
+					From: &tbapi.User{
+						ID:        789,
+						UserName:  "user2",
+						FirstName: "  John  ",
+						LastName:  " Doe ",
+					},
+				},
+			},
+			out: bot.Message{
+				ID:     100,
+				ChatID: 123,
+				Text:   "reply message",
+				From:   bot.User{ID: 456, Username: "user1"},
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "original message",
+					From: bot.User{
+						ID:          789,
+						Username:    "user2",
+						DisplayName: "John Doe",
+						FirstName:   "John",
+						LastName:    "Doe",
+					},
+				},
+			},
+		},
+		{
+			name: "reply with empty last name",
+			in: &tbapi.Message{
+				MessageID: 101,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "reply message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				ReplyToMessage: &tbapi.Message{
+					Text: "original message",
+					From: &tbapi.User{
+						ID:        789,
+						UserName:  "user2",
+						FirstName: "John",
+						LastName:  "",
+					},
+				},
+			},
+			out: bot.Message{
+				ID:     101,
+				ChatID: 123,
+				Text:   "reply message",
+				From:   bot.User{ID: 456, Username: "user1"},
+				ReplyTo: struct {
+					From       bot.User
+					Text       string `json:",omitempty"`
+					Sent       time.Time
+					SenderChat bot.SenderChat `json:"sender_chat,omitzero"`
+				}{
+					Text: "original message",
+					From: bot.User{
+						ID:          789,
+						Username:    "user2",
+						DisplayName: "John",
+						FirstName:   "John",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.ReplyTo.From, res.ReplyTo.From)
+			assert.Equal(t, tt.out.ReplyTo.Text, res.ReplyTo.Text)
+		})
+	}
+}
+
+func TestTelegramListener_transformQuote(t *testing.T) {
+	tbl := []struct {
+		name  string
+		in    *tbapi.Message
+		quote string
+	}{
+		{
+			name: "message with Quote (TextQuote)",
+			in: &tbapi.Message{
+				MessageID: 100,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				Quote: &tbapi.TextQuote{
+					Text:     "quoted spam text",
+					Position: 18,
+				},
+			},
+			quote: "quoted spam text",
+		},
+		{
+			name: "message without Quote",
+			in: &tbapi.Message{
+				MessageID: 101,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+			},
+			quote: "",
+		},
+		{
+			name: "message with empty Quote text",
+			in: &tbapi.Message{
+				MessageID: 102,
+				Chat:      tbapi.Chat{ID: 123},
+				Text:      "user message",
+				From:      &tbapi.User{ID: 456, UserName: "user1"},
+				Quote:     &tbapi.TextQuote{Text: ""},
+			},
+			quote: "",
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.quote, res.Quote)
+		})
+	}
+}
+
+func TestTelegramListener_transformForward(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "forward from channel with ForwardOrigin",
+			in: &tbapi.Message{
+				MessageID:     1,
+				From:          &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:          tbapi.Chat{ID: 456},
+				Text:          "text",
+				ForwardOrigin: &tbapi.MessageOrigin{},
+			},
+			out: bot.Message{
+				ID:          1,
+				From:        bot.User{ID: 123, Username: "user_name"},
+				ChatID:      456,
+				Text:        "text",
+				WithForward: true,
+			},
+		},
+		{
+			name: "real message with video and forward",
+			in: &tbapi.Message{
+				MessageID: 600627,
+				From: &tbapi.User{
+					ID:        2010123477,
+					UserName:  "Zxcdaun",
+					FirstName: "Yaroslav",
+				},
+				Chat: tbapi.Chat{
+					ID:       -1001358715993,
+					Type:     "supergroup",
+					Title:    "radio-t chat",
+					UserName: "radio_t_chat",
+				},
+				ForwardOrigin: &tbapi.MessageOrigin{
+					Type: "channel",
+					Chat: &tbapi.Chat{
+						ID:       -1002160119872,
+						Type:     "channel",
+						Title:    "sdhjrt",
+						UserName: "srdfjtj",
+					},
+					MessageID: 2,
+				},
+				Video: &tbapi.Video{
+					FileID:       "BAACAgIAAx0CUPxcWQABCSozZ5_mO2Yf-5dx-_6m_kiz7-kcJ4IAAt5wAAKsCwFJz-NbffiygqI2BA",
+					FileUniqueID: "AgAD3nAAAqwLAUk",
+					Width:        464,
+					Height:       848,
+					Duration:     18,
+				},
+				Caption: "👁‍🗨Гᴧᴀɜ Бᴏᴦᴀ 3.0👁‍🗨\n✅ГОЛЫЕ ЖОПЫПЕР🍑\n✅СЛИВЫ ПРЕРЕПИСОКЛИС📨\n✅ИНТИМА💋 \n❗️И ЕЩЕ МНОГОЕ В ОБНОВЛЕННОМ ИНТИМ ПОИСКЕ❗️\n\n➡️t.me/glaz_Fahjhe_bot⬅️",
+			},
+			out: bot.Message{
+				ID:          600627,
+				From:        bot.User{ID: 2010123477, Username: "Zxcdaun", DisplayName: "Yaroslav", FirstName: "Yaroslav"},
+				ChatID:      -1001358715993,
+				Text:        "👁‍🗨Гᴧᴀɜ Бᴏᴦᴀ 3.0👁‍🗨\n✅ГОЛЫЕ ЖОПЫПЕР🍑\n✅СЛИВЫ ПРЕРЕПИСОКЛИС📨\n✅ИНТИМА💋 \n❗️И ЕЩЕ МНОГОЕ В ОБНОВЛЕННОМ ИНТИМ ПОИСКЕ❗️\n\n➡️t.me/glaz_Fahjhe_bot⬅️",
+				WithVideo:   true,
+				WithForward: true,
+			},
+		},
+		{
+			name: "no forward",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+			},
+			out: bot.Message{
+				ID:          1,
+				From:        bot.User{ID: 123, Username: "user_name"},
+				ChatID:      456,
+				Text:        "text",
+				WithForward: false,
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.ID, res.ID)
+			assert.Equal(t, tt.out.From, res.From)
+			assert.Equal(t, tt.out.ChatID, res.ChatID)
+			assert.Equal(t, tt.out.Text, res.Text)
+			assert.Equal(t, tt.out.WithForward, res.WithForward)
+			assert.Equal(t, tt.out.WithVideo, res.WithVideo)
+		})
+	}
+}
+
+func TestTelegramListener_transformExternalReply(t *testing.T) {
+	tbl := []struct {
+		name string
+		in   *tbapi.Message
+		out  bot.Message
+	}{
+		{
+			name: "reply to a message from another chat",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "Пришло быстро!",
+				Quote:     &tbapi.TextQuote{Text: "Написать менеджеру: @Beeline"},
+				ExternalReply: &tbapi.ExternalReplyInfo{
+					Chat:      &tbapi.Chat{ID: -1004353023986, Type: "channel", Title: "Билайн Информация", UserName: "belbvbotz"},
+					MessageID: 4,
+				},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "Пришло быстро!",
+				Quote:             "Написать менеджеру: @Beeline",
+				WithExternalReply: true,
+			},
+		},
+		{
+			name: "reply across forum topics within the same chat is not flagged",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+				ExternalReply: &tbapi.ExternalReplyInfo{
+					Chat:      &tbapi.Chat{ID: 456, Type: "supergroup"},
+					MessageID: 7,
+				},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: false,
+			},
+		},
+		{
+			name: "external reply with hidden origin chat is flagged",
+			in: &tbapi.Message{
+				MessageID:     1,
+				From:          &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:          tbapi.Chat{ID: 456},
+				Text:          "text",
+				ExternalReply: &tbapi.ExternalReplyInfo{MessageID: 4},
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: true,
+			},
+		},
+		{
+			name: "no external reply",
+			in: &tbapi.Message{
+				MessageID: 1,
+				From:      &tbapi.User{ID: 123, UserName: "user_name"},
+				Chat:      tbapi.Chat{ID: 456},
+				Text:      "text",
+			},
+			out: bot.Message{
+				ID:                1,
+				From:              bot.User{ID: 123, Username: "user_name"},
+				ChatID:            456,
+				Text:              "text",
+				WithExternalReply: false,
+			},
+		},
+	}
+
+	for _, tt := range tbl {
+		t.Run(tt.name, func(t *testing.T) {
+			res := transform(tt.in)
+			assert.Equal(t, tt.out.Text, res.Text)
+			assert.Equal(t, tt.out.Quote, res.Quote)
+			assert.Equal(t, tt.out.WithExternalReply, res.WithExternalReply)
+		})
+	}
+}
+
+func Test_parseCallbackData(t *testing.T) {
+	var tests = []struct {
+		name       string
+		data       string
+		wantUserID int64
+		wantMsgID  int
+		wantErr    bool
+	}{
+		{"Valid data", "12345:678", 12345, 678, false},
+		{"Data too short", "12", 0, 0, true},
+		{"No colon separator", "12345678", 0, 0, true},
+		{"Invalid userID", "abc:678", 0, 0, true},
+		{"Invalid msgID", "12345:xyz", 0, 0, true},
+		{"wrong prefix with valid data", "c12345:678", 0, 0, true},
+		{"valid prefix+ with valid data", "+12345:678", 12345, 678, false},
+		{"valid prefix! with valid data", "!12345:678", 12345, 678, false},
+		{"valid prefix? with valid data", "?12345:678", 12345, 678, false},
+		{"valid prefix R+ with valid data", "R+12345:678", 12345, 678, false},
+		{"valid prefix R- with valid data", "R-12345:678", 12345, 678, false},
+		{"valid prefix R? with valid data", "R?12345:678", 12345, 678, false},
+		{"valid prefix R! with valid data", "R!12345:678", 12345, 678, false},
+		{"valid prefix RX with valid data", "RX12345:678", 12345, 678, false},
+		{"negative channel ID", "-100123456:678", -100123456, 678, false},
+		{"negative channel ID with prefix", "?-100123456:678", -100123456, 678, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUserID, gotMsgID, err := parseCallbackData(tt.data)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantUserID, gotUserID)
+				assert.Equal(t, tt.wantMsgID, gotMsgID)
+			}
+		})
+	}
+}
+
+func Test_parseCallbackDataWithSpamReply(t *testing.T) {
+	var tests = []struct {
+		name            string
+		data            string
+		wantUserID      int64
+		wantMsgID       int
+		wantSpamReplyID int
+		wantErr         bool
+	}{
+		{"all three ids", "12345:678:910", 12345, 678, 910, false},
+		{"two ids only, no spam reply", "12345:678", 12345, 678, 0, false},
+		{"prefix? with three ids", "?12345:678:910", 12345, 678, 910, false},
+		{"prefix! with three ids", "!12345:678:910", 12345, 678, 910, false},
+		{"prefix+ with three ids", "+12345:678:910", 12345, 678, 910, false},
+		{"two-char report prefix with three ids", "R?12345:678:910", 12345, 678, 910, false},
+		{"reaction sentinel, no message and no reply", "?42:0:0", 42, 0, 0, false},
+		{"negative channel ID", "?-100123456:678:910", -100123456, 678, 910, false},
+		{"invalid spamReplyID", "12345:678:xyz", 0, 0, 0, true},
+		{"invalid msgID", "12345:xyz:910", 0, 0, 0, true},
+		{"data too short", "12", 0, 0, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUserID, gotMsgID, gotSpamReplyID, err := parseCallbackDataWithSpamReply(tt.data)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantUserID, gotUserID)
+			assert.Equal(t, tt.wantMsgID, gotMsgID)
+			assert.Equal(t, tt.wantSpamReplyID, gotSpamReplyID)
+		})
+	}
+}
+
+func Test_channelIDFromCallback(t *testing.T) {
+	tests := []struct {
+		name string
+		id   int64
+		want int64
+	}{
+		{"positive user ID", 12345, 0},
+		{"zero ID", 0, 0},
+		{"negative channel ID", -100123456, -100123456},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, channelIDFromCallback(tt.id))
+		})
+	}
 }

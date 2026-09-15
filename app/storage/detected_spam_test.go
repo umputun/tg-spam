@@ -1,186 +1,436 @@
 package storage
 
 import (
-	"encoding/json"
-	"testing"
+	"context"
+	"fmt"
 	"time"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
+	"github.com/umputun/tg-spam/app/storage/engine"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
 
-func TestDetectedSpam_NewDetectedSpam(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestNewDetectedSpam() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			s.Run("with empty database", func() {
+				if db.Type() != engine.Sqlite {
+					s.T().Skip("skipping for non-sqlite database")
+				}
+				ds, err := NewDetectedSpam(ctx, db)
+				s.Require().NoError(err)
+				defer db.Exec("DROP TABLE detected_spam")
 
-	_, err = NewDetectedSpam(db)
-	require.NoError(t, err)
+				s.Require().NotNil(ds)
 
-	var exists int
-	err = db.Get(&exists, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='detected_spam'")
-	require.NoError(t, err)
-	assert.Equal(t, 1, exists)
+				var cols []struct {
+					CID       int     `db:"cid"`
+					Name      string  `db:"name"`
+					Type      string  `db:"type"`
+					NotNull   bool    `db:"notnull"`
+					DfltValue *string `db:"dflt_value"`
+					PK        bool    `db:"pk"`
+				}
+				err = db.Select(&cols, "PRAGMA table_info(detected_spam)")
+				s.Require().NoError(err)
+
+				colMap := make(map[string]string)
+				for _, col := range cols {
+					colMap[col.Name] = col.Type
+				}
+
+				s.Equal("TEXT", colMap["gid"])
+				s.Equal("TEXT", colMap["text"])
+				s.Equal("INTEGER", colMap["user_id"])
+				s.Equal("TEXT", colMap["user_name"])
+			})
+
+			s.Run("with existing old schema", func() {
+				if db.Type() != engine.Sqlite {
+					s.T().Skip("skipping for non-sqlite database")
+				}
+				defer db.Exec("DROP TABLE detected_spam")
+
+				_, err := db.Exec(`
+					CREATE TABLE detected_spam (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						text TEXT,
+						user_id INTEGER,
+						user_name TEXT,
+						timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+						added BOOLEAN DEFAULT 0,
+						checks TEXT
+					)
+				`)
+				s.Require().NoError(err)
+
+				_, err = db.Exec(`
+					INSERT INTO detected_spam (text, user_id, user_name, checks)
+					VALUES (?, ?, ?, ?)`,
+					"test spam", 123, "test_user", `[{"Name":"test","Spam":true}]`)
+				s.Require().NoError(err)
+
+				ds, err := NewDetectedSpam(ctx, db)
+				s.Require().NoError(err)
+				s.Require().NotNil(ds)
+
+				entries, err := ds.Read(ctx)
+				s.Require().NoError(err)
+				s.Require().Len(entries, 1)
+
+				s.Equal(db.GID(), entries[0].GID)
+				s.Equal("test spam", entries[0].Text)
+				s.Equal(int64(123), entries[0].UserID)
+				s.Equal("test_user", entries[0].UserName)
+			})
+
+			s.Run("with nil db", func() {
+				defer db.Exec("DROP TABLE detected_spam")
+				_, err := NewDetectedSpam(ctx, nil)
+				s.Require().Error(err)
+				s.Contains(err.Error(), "db connection is nil")
+			})
+
+			s.Run("with canceled context", func() {
+				defer db.Exec("DROP TABLE detected_spam")
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				_, err := NewDetectedSpam(ctx, db)
+				s.Require().Error(err)
+			})
+		})
+	}
 }
 
-func TestDetectedSpam_Write(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestDetectedSpam_Write() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			ds, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE detected_spam")
 
-	ds, err := NewDetectedSpam(db)
-	require.NoError(t, err)
+			spamEntry := DetectedSpamInfo{
+				Text:      "spam message",
+				UserID:    1,
+				UserName:  "Spammer",
+				Timestamp: time.Now(),
+				GID:       "group123",
+			}
 
-	spamEntry := DetectedSpamInfo{
-		Text:      "spam message",
-		UserID:    1,
-		UserName:  "Spammer",
-		Timestamp: time.Now(),
+			checks := []spamcheck.Response{
+				{
+					Name:    "Check1",
+					Spam:    true,
+					Details: "Details 1",
+				},
+			}
+
+			err = ds.Write(ctx, spamEntry, checks)
+			s.Require().NoError(err)
+
+			var count int
+			err = db.Get(&count, "SELECT COUNT(*) FROM detected_spam")
+			s.Require().NoError(err)
+			s.Equal(1, count)
+		})
 	}
-
-	checks := []spamcheck.Response{
-		{
-			Name:    "Check1",
-			Spam:    true,
-			Details: "Details 1",
-		},
-	}
-
-	err = ds.Write(spamEntry, checks)
-	require.NoError(t, err)
-
-	var count int
-	err = db.Get(&count, "SELECT COUNT(*) FROM detected_spam")
-	require.NoError(t, err)
-	assert.Equal(t, 1, count)
 }
 
-func TestSetAddedToSamplesFlag(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestDetectedSpam_SetAddedToSamplesFlag() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
 
-	ds, err := NewDetectedSpam(db)
-	require.NoError(t, err)
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			ds, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE detected_spam")
 
-	spamEntry := DetectedSpamInfo{
-		Text:      "spam message",
-		UserID:    1,
-		UserName:  "Spammer",
-		Timestamp: time.Now(),
+			spamEntry := DetectedSpamInfo{
+				Text:      "spam message",
+				UserID:    1,
+				UserName:  "Spammer",
+				Timestamp: time.Now(),
+				GID:       "group123",
+			}
+
+			checks := []spamcheck.Response{
+				{
+					Name:    "Check1",
+					Spam:    true,
+					Details: "Details 1",
+				},
+			}
+
+			err = ds.Write(ctx, spamEntry, checks)
+			s.Require().NoError(err)
+			var added bool
+			err = db.Get(&added, db.Adopt("SELECT added FROM detected_spam WHERE text = ?"), spamEntry.Text)
+			s.Require().NoError(err)
+			s.False(added)
+
+			err = ds.SetAddedToSamplesFlag(ctx, 1)
+			s.Require().NoError(err)
+
+			err = db.Get(&added, db.Adopt("SELECT added FROM detected_spam WHERE text = ?"), spamEntry.Text)
+			s.Require().NoError(err)
+			s.True(added)
+		})
 	}
-
-	checks := []spamcheck.Response{
-		{
-			Name:    "Check1",
-			Spam:    true,
-			Details: "Details 1",
-		},
-	}
-
-	err = ds.Write(spamEntry, checks)
-	require.NoError(t, err)
-	var added bool
-	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
-	require.NoError(t, err)
-	assert.False(t, added)
-
-	err = ds.SetAddedToSamplesFlag(1)
-	require.NoError(t, err)
-
-	err = db.Get(&added, "SELECT added FROM detected_spam WHERE text = ?", spamEntry.Text)
-	require.NoError(t, err)
-	assert.True(t, added)
 }
 
-func TestDetectedSpam_Read(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestDetectedSpam_Read() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			ds, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE detected_spam")
 
-	ds, err := NewDetectedSpam(db)
-	require.NoError(t, err)
+			// add a sample first
+			entry := DetectedSpamInfo{
+				GID:       "gr1", // use the store's GID here
+				Text:      "test spam",
+				UserID:    456,
+				UserName:  "spammer",
+				Timestamp: time.Now().UTC().Truncate(time.Second), // ensure consistent time comparison
+			}
+			checks := []spamcheck.Response{{Name: "test", Spam: true, Details: "test details"}}
 
-	spamEntry := DetectedSpamInfo{
-		Text:      "spam message",
-		UserID:    1,
-		UserName:  "Spammer",
-		Timestamp: time.Now(),
+			err = ds.Write(ctx, entry, checks)
+			s.Require().NoError(err)
+
+			entries, err := ds.Read(ctx)
+			s.Require().NoError(err)
+			s.Require().Len(entries, 1)
+
+			s.Equal(entry.GID, entries[0].GID)
+			s.Equal(entry.Text, entries[0].Text)
+			s.Equal(entry.UserID, entries[0].UserID)
+			s.Equal(entry.UserName, entries[0].UserName)
+			s.Equal(checks, entries[0].Checks)
+		})
 	}
-
-	checks := []spamcheck.Response{
-		{
-			Name:    "Check1",
-			Spam:    true,
-			Details: "Details 1",
-		},
-	}
-
-	checksJSON, err := json.Marshal(checks)
-	require.NoError(t, err)
-	_, err = db.Exec("INSERT INTO detected_spam (text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?)", spamEntry.Text, spamEntry.UserID, spamEntry.UserName, spamEntry.Timestamp, checksJSON)
-	require.NoError(t, err)
-
-	entries, err := ds.Read()
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-
-	assert.Equal(t, spamEntry.Text, entries[0].Text)
-	assert.Equal(t, spamEntry.UserID, entries[0].UserID)
-	assert.Equal(t, spamEntry.UserName, entries[0].UserName)
-
-	var retrievedChecks []spamcheck.Response
-	err = json.Unmarshal([]byte(entries[0].ChecksJSON), &retrievedChecks)
-	require.NoError(t, err)
-	assert.Equal(t, checks, retrievedChecks)
-	t.Logf("retrieved checks: %+v", retrievedChecks)
 }
 
-func TestDetectedSpam_Read_LimitExceeded(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestDetectedSpam_Read_LimitExceeded() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			ds, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE detected_spam")
 
-	ds, err := NewDetectedSpam(db)
-	require.NoError(t, err)
+			// add maxDetectedSpamEntries + 10 entries
+			for i := range maxDetectedSpamEntries + 10 {
+				spamEntry := DetectedSpamInfo{
+					GID:       "gr1", // use the correct GID
+					Text:      "spam message",
+					UserID:    int64(i + 500),
+					UserName:  "Spammer",
+					Timestamp: time.Now(),
+				}
 
-	for i := 0; i < maxDetectedSpamEntries+10; i++ {
-		spamEntry := DetectedSpamInfo{
-			Text:      "spam message",
-			UserID:    int64(i),
-			UserName:  "Spammer",
-			Timestamp: time.Now(),
-		}
+				checks := []spamcheck.Response{{Name: "test", Spam: true}}
+				err = ds.Write(ctx, spamEntry, checks)
+				s.Require().NoError(err)
+			}
 
-		checks := []spamcheck.Response{
-			{
-				Name:    "Check1",
-				Spam:    true,
-				Details: "Details 1",
-			},
-		}
-
-		err = ds.Write(spamEntry, checks)
-		require.NoError(t, err)
+			entries, err := ds.Read(ctx)
+			s.Require().NoError(err)
+			s.Len(entries, maxDetectedSpamEntries, "expected to retrieve only the maximum number of entries")
+		})
 	}
-
-	entries, err := ds.Read()
-	require.NoError(t, err)
-	assert.Len(t, entries, maxDetectedSpamEntries, "expected to retrieve only the maximum number of entries")
 }
 
-func TestDetectedSpam_Read_EmptyDB(t *testing.T) {
-	db, err := sqlx.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+func (s *StorageTestSuite) TestDetectedSpam() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			tests := []struct {
+				name    string
+				entry   DetectedSpamInfo
+				checks  []spamcheck.Response
+				wantErr bool
+			}{
+				{
+					name: "basic spam entry",
+					entry: DetectedSpamInfo{
+						GID:       "gr1", // use the store's GID here
+						Text:      "spam message",
+						UserID:    1,
+						UserName:  "Spammer",
+						Timestamp: time.Now(),
+					},
+					checks: []spamcheck.Response{{
+						Name:    "Check1",
+						Spam:    true,
+						Details: "Details 1",
+					}},
+					wantErr: false,
+				},
+				{
+					name: "empty gid",
+					entry: DetectedSpamInfo{
+						Text:      "spam message",
+						UserID:    1,
+						UserName:  "Spammer",
+						Timestamp: time.Now(),
+					},
+					checks: []spamcheck.Response{{
+						Name:    "Check1",
+						Spam:    true,
+						Details: "Details 1",
+					}},
+					wantErr: true,
+				},
+			}
 
-	ds, err := NewDetectedSpam(db)
-	require.NoError(t, err)
+			for _, tt := range tests {
+				s.Run(tt.name, func() {
+					ds, err := NewDetectedSpam(ctx, db)
+					s.Require().NoError(err)
+					defer db.Exec("DROP TABLE detected_spam")
 
-	entries, err := ds.Read()
-	require.NoError(t, err)
-	assert.Empty(t, entries, "Expected no entries in an empty database")
+					err = ds.Write(ctx, tt.entry, tt.checks)
+					if tt.wantErr {
+						s.Require().Error(err)
+						return
+					}
+					s.Require().NoError(err)
+
+					entries, err := ds.Read(ctx)
+					s.Require().NoError(err)
+					s.Require().Len(entries, 1)
+
+					s.Equal(tt.entry.GID, entries[0].GID)
+					s.Equal(tt.entry.Text, entries[0].Text)
+					s.Equal(tt.entry.UserID, entries[0].UserID)
+					s.Equal(tt.entry.UserName, entries[0].UserName)
+					s.Equal(tt.checks, entries[0].Checks)
+				})
+			}
+		})
+	}
+}
+
+func (s *StorageTestSuite) TestDetectedSpam_FindByUserID() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			ds, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			defer db.Exec("DROP TABLE detected_spam")
+
+			s.Run("user not found", func() {
+				entry, err := ds.FindByUserID(ctx, 123)
+				s.Require().NoError(err)
+				s.Nil(entry)
+			})
+
+			s.Run("basic case", func() {
+				ts := time.Now().UTC().Truncate(time.Second) // explicit UTC time
+				expected := DetectedSpamInfo{
+					GID:       db.GID(),
+					Text:      "test spam",
+					UserID:    456,
+					UserName:  "spammer",
+					Timestamp: ts,
+				}
+				checks := []spamcheck.Response{{
+					Name:    "test",
+					Spam:    true,
+					Details: "test details",
+				}}
+
+				err := ds.Write(ctx, expected, checks)
+				s.Require().NoError(err)
+
+				entry, err := ds.FindByUserID(ctx, 456)
+				s.Require().NoError(err)
+				s.Require().NotNil(entry)
+				s.Equal(expected.GID, entry.GID)
+				s.Equal(expected.Text, entry.Text)
+				s.Equal(expected.UserID, entry.UserID)
+				s.Equal(expected.UserName, entry.UserName)
+				s.Equal(checks, entry.Checks)
+				s.Equal(ts.Unix(), entry.Timestamp.UTC().Unix()) // ensure UTC comparison
+			})
+
+			s.Run("multiple entries", func() {
+				// write two entries for same user
+				for i := range 2 {
+					entry := DetectedSpamInfo{
+						GID:       db.GID(),
+						Text:      fmt.Sprintf("spam %d", i),
+						UserID:    789,
+						UserName:  "spammer",
+						Timestamp: time.Now().Add(time.Duration(i) * time.Hour),
+					}
+					checks := []spamcheck.Response{{Name: fmt.Sprintf("check%d", i), Spam: true}}
+					err := ds.Write(ctx, entry, checks)
+					s.Require().NoError(err)
+				}
+
+				// should get the latest one
+				entry, err := ds.FindByUserID(ctx, 789)
+				s.Require().NoError(err)
+				s.Require().NotNil(entry)
+				s.Equal("spam 1", entry.Text)
+				s.Equal("check1", entry.Checks[0].Name)
+			})
+
+			s.Run("invalid checks json", func() {
+				// insert invalid json directly to db
+				query := db.Adopt("INSERT INTO detected_spam (gid, text, user_id, user_name, timestamp, checks) VALUES (?, ?, ?, ?, ?, ?)")
+				_, err := db.Exec(query, db.GID(), "test", 999, "test", time.Now(), "{invalid}")
+				s.Require().NoError(err)
+
+				entry, err := ds.FindByUserID(ctx, 999)
+				s.Require().Error(err)
+				s.Contains(err.Error(), "failed to unmarshal checks")
+				s.Nil(entry)
+			})
+		})
+	}
+}
+
+func (s *StorageTestSuite) TestDetectedSpam_DropStrayIndex() {
+	ctx := context.Background()
+	for _, dbt := range s.getTestDB() {
+		db := dbt.DB
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			db.Exec("DROP TABLE IF EXISTS detected_spam")
+			defer db.Exec("DROP TABLE IF EXISTS detected_spam")
+
+			// create the table via first init, then plant the stray index older versions created
+			_, err := NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+			db.Exec("DROP INDEX IF EXISTS idx_spam_gid_time") // free the name in case another table owns it
+			_, err = db.Exec("CREATE INDEX idx_spam_gid_time ON detected_spam(gid, timestamp DESC)")
+			s.Require().NoError(err)
+
+			// re-init runs the migration which must drop the stray index
+			_, err = NewDetectedSpam(ctx, db)
+			s.Require().NoError(err)
+
+			var count int
+			switch db.Type() {
+			case engine.Sqlite:
+				err = db.Get(&count, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_spam_gid_time'")
+			case engine.Postgres:
+				err = db.Get(&count, "SELECT COUNT(*) FROM pg_indexes WHERE indexname='idx_spam_gid_time' AND tablename='detected_spam'")
+			}
+			s.Require().NoError(err)
+			s.Equal(0, count, "stray index should be dropped by migration")
+		})
+	}
 }

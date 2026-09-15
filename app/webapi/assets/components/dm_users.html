@@ -1,0 +1,33 @@
+{{define "dm_users.html"}}
+<div class="d-flex justify-content-end mb-2">
+    <button class="btn btn-sm btn-outline-secondary" hx-get="/dm-users" hx-target="#dm-users-container" hx-swap="innerHTML">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+</div>
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Display Name</th>
+            <th>Username</th>
+            <th>When</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Users}}
+        <tr>
+            <td>{{.UserID}}</td>
+            <td>{{.DisplayName}}</td>
+            <td>{{if .UserName}}@{{.UserName}}{{end}}</td>
+            <td>{{.When}}</td>
+            <td><button class="btn btn-sm btn-outline-primary" onclick="copyUserID({{.UserID}}, this)">Copy ID</button></td>
+        </tr>
+        {{else}}
+        <tr>
+            <td colspan="5" class="text-muted text-center">No recent DM users. Send a message to the bot, then click Refresh.</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

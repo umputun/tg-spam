@@ -1,0 +1,64 @@
+# The update-channel bot, managed exactly like the support-chat one: git-deployed stack,
+# image published by .github/workflows/wb-image.yml, redeploy triggered by a webhook.
+# It keeps its own file because the deployment shape differs - no web UI, no published
+# port, data mounted where this volume already holds it (/srv/var), and the detector
+# tuned for a channel comment section rather than the support chat.
+#
+# Chat ids, the superuser list and both tokens stay in the stack's environment in
+# Portainer: this repository is public.
+services:
+  tg-aspam:
+    image: ${IMAGE:-ghcr.io/wb-aleksandr-khlebnikov/tg-spam:master}
+    # Set PULL_POLICY=never when the image was built on the host by build-image.sh
+    # instead of being pulled (CI unavailable).
+    pull_policy: ${PULL_POLICY:-always}
+    container_name: ${CONTAINER_NAME:-tg-aspam}
+    hostname: tg-aspam
+    restart: always
+    # the existing data volume is root-owned, so the app runs as root here
+    user: root
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:?set the bot token, a token shared with another running bot breaks both}
+      TELEGRAM_GROUP: ${TELEGRAM_GROUP:?set the chat to protect}
+      ADMIN_GROUP: ${ADMIN_GROUP:?set the admin chat for spam reports}
+      SUPER_USER: ${SUPER_USER:?set the superuser list}
+      TZ: ${TZ:-Europe/Moscow}
+
+      # dynamic data lives at the volume root, which this volume has mounted at /srv/var
+      FILES_DYNAMIC: ${FILES_DYNAMIC:-/srv/var}
+
+      DRY: ${DRY:-false}
+      SOFT_BAN: ${SOFT_BAN:-true}
+      NO_SPAM_REPLY: ${NO_SPAM_REPLY:-true}
+      DISABLE_ADMIN_SPAM_FORWARD: ${DISABLE_ADMIN_SPAM_FORWARD:-true}
+      MAX_EMOJI: ${MAX_EMOJI:-3}
+      MIN_MSG_LEN: ${MIN_MSG_LEN:-20}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.7}
+
+      MESSAGE_SPAM: ${MESSAGE_SPAM:-Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.}
+      MESSAGE_RESTORE: ${MESSAGE_RESTORE:-прошу прощения, принял вас за спамера. Вот ваше сообщение}
+
+      OPENAI_TOKEN: ${OPENAI_TOKEN}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol}
+      OPENAI_VETO: ${OPENAI_VETO:-true}
+
+      LOGGER_ENABLED: ${LOGGER_ENABLED:-true}
+      LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
+      LOGGER_MAX_SIZE: ${LOGGER_MAX_SIZE:-5M}
+      DEBUG: ${DEBUG:-true}
+      TGSPAM_IN_DOCKER: "1"
+    volumes:
+      - log-tg-spam:/srv/log
+      - data-tg-spam:/srv/var
+
+volumes:
+  # external, because these volumes were created by the stack this one replaces and
+  # compose refuses to adopt a volume labelled for another project. It also means a
+  # missing volume fails the deploy instead of silently starting on an empty database,
+  # and that tearing the stack down can never delete the learned data.
+  log-tg-spam:
+    name: ${LOG_VOLUME_NAME:?set an explicit per-stack log volume name}
+    external: true
+  data-tg-spam:
+    name: ${DATA_VOLUME_NAME:?set an explicit per-stack data volume name}
+    external: true

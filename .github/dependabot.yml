@@ -5,27 +5,13 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-    ignore:
-      - dependency-name: "goreleaser/goreleaser-action"
-    groups:
-      "GitHub Actions updates":
-        patterns:
-          - "*"
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "monthly"
-    groups:
-      "Go modules updates":
-        dependency-type: "production"
+      interval: "weekly"
+    open-pull-requests-limit: 0
   - package-ecosystem: "gomod"
     directory: "/_examples/simplechat"
     schedule:
-      interval: "monthly"
-    groups:
-      "Go modules updates":
-        dependency-type: "production"
+      interval: "weekly"
+    open-pull-requests-limit: 0

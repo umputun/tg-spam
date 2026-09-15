@@ -40,5 +40,20 @@ build_site: prep_site
 	pip3 install -r requirements.txt &&\
 	mkdocs build -d public
 
+unfuck-ai-comments:
+	@echo "unfuck ai comments"
+	unfuck-ai-comments run --fmt --skip=mocks ./...
 
-.PHONY: docker race_test prep_site release build test
+# install playwright browsers (run once or after playwright-go version update)
+e2e-ui-setup:
+	go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
+
+# run e2e ui tests headless (default, for CI and quick checks)
+e2e-ui:
+	go test -v -count=1 -timeout=5m -tags=e2e ./e2e-ui/...
+
+# run e2e ui tests with visible browser (for debugging)
+e2e-ui-debug:
+	export E2E_HEADLESS=false && go test -v -count=1 -timeout=10m -tags=e2e ./e2e-ui/...
+
+.PHONY: docker race_test prep_site release build test e2e-ui-setup e2e-ui e2e-ui-debug

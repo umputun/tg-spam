@@ -130,8 +130,7 @@ and added to the request's context.
 
 ### Deprecation middleware
 
-Adds the HTTP Deprecation response header, see [draft-dalal-deprecation-header-00](https://tools.ietf.org/id/draft-dalal-deprecation-header-00.html
-) 
+Adds the HTTP Deprecation response header, see [draft-ietf-httpapi-deprecation-header-02](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-deprecation-header-02) 
 
 ### BasicAuth middleware
 
@@ -158,7 +157,14 @@ Compresses response with gzip.
 
 ### RealIP middleware
 
-RealIP is a middleware that sets a http.Request's RemoteAddr to the results of parsing either the X-Forwarded-For or X-Real-IP headers.
+RealIP is a middleware that sets a http.Request's RemoteAddr to the results of parsing various headers that contain the client's real IP address. It checks headers in the following priority order:
+
+1. `X-Real-IP` - trusted proxy (nginx/reproxy) sets this to actual client
+2. `CF-Connecting-IP` - Cloudflare's header for original client
+3. `X-Forwarded-For` - leftmost public IP (original client in CDN/proxy chain)
+4. `RemoteAddr` - fallback for direct connections
+
+Only public IPs are accepted from headers; private/loopback/link-local IPs are skipped. This makes the middleware compatible with CDN setups like Cloudflare where the leftmost IP in `X-Forwarded-For` is the actual client.
 
 ### Maybe middleware
 
@@ -182,6 +188,58 @@ example with chi router:
 	
 	router.Use(rest.Reject(http.StatusBadRequest, "X-Request-Id header is required", rejectFn))
 ```
+
+### BasicAuth middleware family
+
+The package provides several BasicAuth middleware implementations for different authentication needs:
+
+#### BasicAuth
+The base middleware that requires basic auth and matches user & passwd with a client-provided checker function.
+```go
+checkFn := func(user, passwd string) bool {
+    return user == "admin" && passwd == "secret"
+}
+router.Use(rest.BasicAuth(checkFn))
+```
+
+#### BasicAuthWithUserPasswd
+A simpler version comparing user & password with provided values directly.
+```go
+router.Use(rest.BasicAuthWithUserPasswd("admin", "secret"))
+```
+
+#### BasicAuthWithBcryptHash
+Matches username and bcrypt-hashed password. Useful when storing hashed passwords.
+```go
+hash, err := rest.GenerateBcryptHash("secret")
+if err != nil {
+    // handle error
+}
+router.Use(rest.BasicAuthWithBcryptHash("admin", hash))
+```
+
+#### BasicAuthWithArgon2Hash
+Similar to bcrypt version but uses Argon2id hash with a separate salt. Both hash and salt are base64 encoded.
+```go
+hash, salt, err := rest.GenerateArgon2Hash("secret")
+if err != nil {
+    // handle error
+}
+router.Use(rest.BasicAuthWithArgon2Hash("admin", hash, salt))
+```
+
+#### BasicAuthWithPrompt
+Similar to BasicAuthWithUserPasswd but adds browser's authentication prompt by setting the WWW-Authenticate header.
+```go
+router.Use(rest.BasicAuthWithPrompt("admin", "secret"))
+```
+
+All BasicAuth middlewares:
+- Return `StatusUnauthorized` (401) if no auth header provided
+- Return `StatusForbidden` (403) if credentials check failed
+- Add IsAuthorized flag to the request context, retrievable with `rest.IsAuthorized(r.Context())`
+- Use constant-time comparison to prevent timing attacks
+- Support secure password hashing with bcrypt and Argon2id
 
 ### Benchmarks middleware
 
@@ -225,6 +283,8 @@ example with chi router:
 - `rest.FileServer` - creates a file server for static assets with directory listing disabled
 - `realip.Get` - returns client's IP address
 - `rest.ParseFromTo` - parses "from" and "to" request's query params with various formats
+- `rest.DecodeJSON` - decodes request body to the provided struct
+- `rest.EncodeJSON` - encodes response body from the provided struct, sets `Content-Type` to `application/json` and sends the status code
 
 ## Profiler
 

@@ -61,8 +61,8 @@ func _a_sc(*TLS, uintptr, int32) int32 {
 }
 
 // static inline int a_ll(volatile int *p)
-func _a_ll(*TLS, uintptr) int32 {
-	panic(todo(""))
+func _a_ll(tls *TLS, p uintptr) int32 {
+	return atomic.LoadInt32((*int32)(unsafe.Pointer(p)))
 }
 
 func _a_clz_32(tls *TLS, x uint32) int32 {

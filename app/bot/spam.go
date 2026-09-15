@@ -1,26 +1,24 @@
 package bot
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-multierror"
 
+	"github.com/umputun/tg-spam/app/storage"
 	"github.com/umputun/tg-spam/lib/approved"
 	"github.com/umputun/tg-spam/lib/spamcheck"
 	"github.com/umputun/tg-spam/lib/tgspam"
 )
 
 //go:generate moq --out mocks/detector.go --pkg mocks --skip-ensure --with-resets . Detector
+//go:generate moq --out mocks/samples.go --pkg mocks --skip-ensure --with-resets . SamplesStore
+//go:generate moq --out mocks/dictionary.go --pkg mocks --skip-ensure --with-resets . DictStore
 
 // SpamFilter bot checks if a user is a spammer using lib.Detector
 // Reloads spam samples, stop words and excluded tokens on file change.
@@ -31,21 +29,13 @@ type SpamFilter struct {
 
 // SpamConfig is a full set of parameters for spam bot
 type SpamConfig struct {
-
-	// samples file names need to be watched for changes and reload.
-	SpamSamplesFile    string
-	HamSamplesFile     string
-	StopWordsFile      string
-	ExcludedTokensFile string
-	SpamDynamicFile    string
-	HamDynamicFile     string
+	SamplesStore SamplesStore // storage for spam samples
+	DictStore    DictStore    // storage for stop words and excluded tokens
 
 	SpamMsg    string
 	SpamDryMsg string
-
-	WatchDelay time.Duration
-
-	Dry bool
+	GroupID    string
+	Dry        bool
 }
 
 // Detector is a spam detector interface
@@ -55,53 +45,133 @@ type Detector interface {
 	LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
+	RemoveHam(msg string) error
+	RemoveSpam(msg string) error
 	AddApprovedUser(user approved.UserInfo) error
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
+	RecordReaction(userID int64) spamcheck.Response
+	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
+}
+
+// SamplesStore is a storage for spam samples
+type SamplesStore interface {
+	Read(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) ([]string, error)
+	Reader(ctx context.Context, t storage.SampleType, o storage.SampleOrigin) (io.ReadCloser, error)
+	Stats(ctx context.Context) (*storage.SamplesStats, error)
+}
+
+// DictStore is a storage for dictionaries, i.e. stop words and ignored words
+type DictStore interface {
+	Reader(ctx context.Context, t storage.DictionaryType) (io.ReadCloser, error)
 }
 
 // NewSpamFilter creates new spam filter
-func NewSpamFilter(ctx context.Context, detector Detector, params SpamConfig) *SpamFilter {
-	res := &SpamFilter{Detector: detector, params: params}
-	go func() {
-		if err := res.watch(ctx, params.WatchDelay); err != nil {
-			log.Printf("[WARN] samples file watcher failed: %v", err)
-		}
-	}()
-	return res
+func NewSpamFilter(detector Detector, params SpamConfig) *SpamFilter {
+	return &SpamFilter{Detector: detector, params: params}
 }
 
 // OnMessage checks if user already approved and if not checks if user is a spammer
-func (s *SpamFilter) OnMessage(msg Message) (response Response) {
+func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) {
 	if msg.From.ID == 0 { // don't check system messages
 		return Response{}
 	}
 	displayUsername := DisplayName(msg)
 
-	spamReq := spamcheck.Request{Msg: msg.Text, UserID: strconv.FormatInt(msg.From.ID, 10), UserName: msg.From.Username}
+	// include quoted/reply-to text in spam check - spammers use quotes from external channels to spread spam
+	// quote (TextQuote) takes precedence over ReplyTo.Text as it contains the actual quoted portion.
+	// the appended quote is also kept in quoteText so hard policy checks can drop it via Request.AuthoredText
+	msgText := msg.Text
+	quoteText := ""
+	switch {
+	case msg.Quote != "":
+		quoteText = msg.Quote
+		msgText = msg.Text + "\n" + msg.Quote
+	case msg.ReplyTo.Text != "":
+		quoteText = msg.ReplyTo.Text
+		msgText = msg.Text + "\n" + msg.ReplyTo.Text
+	}
+
+	// use channel identity for spam check when message is from a channel,
+	// so that approved/banned status is tracked per-channel, not for the shared Channel_Bot user
+	checkUserID := msg.From.ID
+	checkUserName := msg.From.Username
+	firstName, lastName, isPremium := msg.From.FirstName, msg.From.LastName, msg.From.IsPremium
+	if msg.SenderChat.ID != 0 {
+		checkUserID = msg.SenderChat.ID
+		checkUserName = msg.SenderChat.UserName
+		firstName, lastName, isPremium = "", "", false // channels don't have personal user fields
+	}
+
+	spamReq := spamcheck.Request{Msg: msgText, Quote: quoteText, CheckOnly: checkOnly,
+		UserID: strconv.FormatInt(checkUserID, 10), UserName: checkUserName,
+		FirstName: firstName, LastName: lastName, IsPremium: isPremium}
 	if msg.Image != nil {
 		spamReq.Meta.Images = 1
 	}
 	if msg.WithVideo || msg.WithVideoNote {
 		spamReq.Meta.HasVideo = true
 	}
-	spamReq.Meta.Links = strings.Count(msg.Text, "http://") + strings.Count(msg.Text, "https://")
+	if msg.WithAudio {
+		spamReq.Meta.HasAudio = true
+	}
+	if msg.WithForward {
+		spamReq.Meta.HasForward = true
+	}
+	if msg.WithKeyboard {
+		spamReq.Meta.HasKeyboard = true
+	}
+	if msg.WithContact {
+		spamReq.Meta.HasContact = true
+	}
+	if msg.WithGiveaway {
+		spamReq.Meta.HasGiveaway = true
+	}
+	if msg.WithExternalReply {
+		spamReq.Meta.HasExternalReply = true
+	}
+	spamReq.Meta.MessageID = msg.ID
+
+	// count mentions and links from entities (both regular and caption entities)
+	// links are counted from entities only - telegram provides url/text_link entities for all links
+	if msg.Entities != nil {
+		for _, entity := range *msg.Entities {
+			switch entity.Type {
+			case "mention", "text_mention":
+				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
+			}
+		}
+	}
+	if msg.Image != nil && msg.Image.Entities != nil {
+		for _, entity := range *msg.Image.Entities {
+			switch entity.Type {
+			case "mention", "text_mention":
+				spamReq.Meta.Mentions++
+			case "url", "text_link":
+				spamReq.Meta.Links++
+			}
+		}
+	}
 	isSpam, checkResults := s.Check(spamReq)
-	crs := []string{}
+	crs := make([]string, 0, len(checkResults))
 	for _, cr := range checkResults {
 		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
 	}
 	checkResultStr := strings.Join(crs, ", ")
 	if isSpam {
-		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msg.Text)
+		log.Printf("[INFO] user %s detected as spammer: %s, %q", displayUsername, checkResultStr, msgText)
 		msgPrefix := s.params.SpamMsg
 		if s.params.Dry {
 			msgPrefix = s.params.SpamDryMsg
 		}
-		spamRespMsg := fmt.Sprintf("%s: %q (%d)", msgPrefix, displayUsername, msg.From.ID)
+		// Keep group-visible reply generic to avoid exposing spammer identity.
+		spamRespMsg := msgPrefix
 		return Response{Text: spamRespMsg, Send: true, ReplyTo: msg.ID, BanInterval: PermanentBanDuration, CheckResults: checkResults,
 			DeleteReplyTo: true, User: User{Username: msg.From.Username, ID: msg.From.ID, DisplayName: msg.From.DisplayName},
+			ChannelID: msg.SenderChat.ID,
 		}
 	}
 	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)
@@ -115,6 +185,7 @@ func (s *SpamFilter) UpdateSpam(msg string) error {
 	if err := s.Detector.UpdateSpam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update spam samples: %w", err)
 	}
+	log.Printf("[INFO] updated spam samples with %q", cleanMsg)
 	return nil
 }
 
@@ -125,12 +196,32 @@ func (s *SpamFilter) UpdateHam(msg string) error {
 	if err := s.Detector.UpdateHam(cleanMsg); err != nil {
 		return fmt.Errorf("can't update ham samples: %w", err)
 	}
+	log.Printf("[INFO] updated ham samples with %q", cleanMsg)
 	return nil
 }
 
 // IsApprovedUser checks if user is in the list of approved users
 func (s *SpamFilter) IsApprovedUser(userID int64) bool {
 	return s.Detector.IsApprovedUser(fmt.Sprintf("%d", userID))
+}
+
+// OnReaction records one net-new reaction from a user and returns a ban response if the threshold is exceeded.
+// Approved users are skipped. Callers should invoke this once per added reaction; if a single Telegram update
+// adds multiple reactions, each added reaction is counted separately.
+func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
+	if s.IsApprovedUser(userID) {
+		return Response{}
+	}
+	resp := s.RecordReaction(userID)
+	if resp.Spam {
+		log.Printf("[INFO] user %s (%d) detected as reaction spammer", userName, userID)
+		return Response{
+			BanInterval:  PermanentBanDuration,
+			User:         User{ID: userID, Username: userName},
+			CheckResults: []spamcheck.Response{resp},
+		}
+	}
+	return Response{}
 }
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage
@@ -151,113 +242,53 @@ func (s *SpamFilter) RemoveApprovedUser(id int64) error {
 	return nil
 }
 
-// watch watches for changes in samples files and reloads them
-// delay is a time to wait after the last change before reloading to avoid multiple reloads
-func (s *SpamFilter) watch(ctx context.Context, delay time.Duration) error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create watcher: %w", err)
-	}
-	defer watcher.Close()
-
-	done := make(chan bool)
-	reloadTimer := time.NewTimer(delay)
-	reloadPending := false
-
-	go func() {
-		defer close(done)
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("[INFO] stopping watcher for samples: %v", ctx.Err())
-				return
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op == fsnotify.Remove {
-					// may happen when the file is renamed, ignore
-					continue
-				}
-				log.Printf("[DEBUG] file %q updated, op: %v", event.Name, event.Op)
-				if !reloadPending {
-					reloadPending = true
-					reloadTimer.Reset(delay)
-				}
-			case <-reloadTimer.C:
-				if reloadPending {
-					reloadPending = false
-					if err := s.ReloadSamples(); err != nil {
-						log.Printf("[WARN] %v", err)
-					}
-				}
-			case e, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Printf("[WARN] watcher error: %v", e)
-			}
-		}
-	}()
-
-	errs := new(multierror.Error)
-	addToWatcher := func(file string) error {
-		if _, err := os.Stat(file); err != nil {
-			return fmt.Errorf("failed to stat file %q: %w", file, err)
-		}
-		log.Printf("[DEBUG] add file %q to watcher", file)
-		return watcher.Add(file)
-	}
-	errs = multierror.Append(errs, addToWatcher(s.params.ExcludedTokensFile))
-	errs = multierror.Append(errs, addToWatcher(s.params.SpamSamplesFile))
-	errs = multierror.Append(errs, addToWatcher(s.params.HamSamplesFile))
-	errs = multierror.Append(errs, addToWatcher(s.params.StopWordsFile))
-	if err := errs.ErrorOrNil(); err != nil {
-		return fmt.Errorf("failed to add some files to watcher: %w", err)
-	}
-	<-done
-	return nil
-}
-
 // ReloadSamples reloads samples and stop-words
 func (s *SpamFilter) ReloadSamples() (err error) {
 	log.Printf("[DEBUG] reloading samples")
 
 	var exclReader, spamReader, hamReader, stopWordsReader, spamDynamicReader, hamDynamicReader io.ReadCloser
+	ctx := context.TODO()
 
-	// open mandatory spam and ham samples files
-	if spamReader, err = os.Open(s.params.SpamSamplesFile); err != nil {
-		return fmt.Errorf("failed to open spam samples file %q: %w", s.params.SpamSamplesFile, err)
+	// check mandatory data presence
+	st, err := s.params.SamplesStore.Stats(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get samples store stats: %w", err)
+	}
+	if st.PresetSpam == 0 || st.PresetHam == 0 {
+		return fmt.Errorf("no pesistent spam or ham samples found in the store")
+	}
+
+	if spamReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeSpam, storage.SampleOriginPreset); err != nil {
+		return fmt.Errorf("failed to get persistent spam samples: %w", err)
 	}
 	defer spamReader.Close()
 
-	if hamReader, err = os.Open(s.params.HamSamplesFile); err != nil {
-		return fmt.Errorf("failed to open ham samples file %q: %w", s.params.HamSamplesFile, err)
+	if hamReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeHam, storage.SampleOriginPreset); err != nil {
+		return fmt.Errorf("failed to get persistent ham samples: %w", err)
 	}
 	defer hamReader.Close()
 
+	if spamDynamicReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
+		return fmt.Errorf("failed to get dynamic spam samples: %w", err)
+	}
+	defer spamDynamicReader.Close()
+
+	if hamDynamicReader, err = s.params.SamplesStore.Reader(ctx, storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
+		return fmt.Errorf("failed to get dynamic ham samples: %w", err)
+	}
+	defer hamDynamicReader.Close()
+
 	// stop-words are optional
-	if stopWordsReader, err = os.Open(s.params.StopWordsFile); err != nil {
-		stopWordsReader = io.NopCloser(bytes.NewReader([]byte("")))
+	if stopWordsReader, err = s.params.DictStore.Reader(ctx, storage.DictionaryTypeStopPhrase); err != nil {
+		return fmt.Errorf("failed to get stop words: %w", err)
 	}
 	defer stopWordsReader.Close()
 
 	// excluded tokens are optional
-	if exclReader, err = os.Open(s.params.ExcludedTokensFile); err != nil {
-		exclReader = io.NopCloser(bytes.NewReader([]byte("")))
+	if exclReader, err = s.params.DictStore.Reader(ctx, storage.DictionaryTypeIgnoredWord); err != nil {
+		return fmt.Errorf("failed to get excluded tokens: %w", err)
 	}
 	defer exclReader.Close()
-
-	// dynamic samples are optional
-	if spamDynamicReader, err = os.Open(s.params.SpamDynamicFile); err != nil {
-		spamDynamicReader = io.NopCloser(bytes.NewReader([]byte("")))
-	}
-	defer spamDynamicReader.Close()
-
-	if hamDynamicReader, err = os.Open(s.params.HamDynamicFile); err != nil {
-		hamDynamicReader = io.NopCloser(bytes.NewReader([]byte("")))
-	}
-	defer hamDynamicReader.Close()
 
 	// reload samples and stop-words. note: we don't need reset as LoadSamples and LoadStopWords clear the state first
 	lr, err := s.LoadSamples(exclReader, []io.Reader{spamReader, spamDynamicReader},
@@ -281,144 +312,36 @@ func (s *SpamFilter) ReloadSamples() (err error) {
 func (s *SpamFilter) DynamicSamples() (spam, ham []string, err error) {
 	errs := new(multierror.Error)
 
-	if spamDynamicReader, err := os.Open(s.params.SpamDynamicFile); err != nil {
-		spam = []string{}
-	} else {
-		defer spamDynamicReader.Close()
-		scanner := bufio.NewScanner(spamDynamicReader)
-		for scanner.Scan() {
-			spam = append(spam, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to read spam dynamic file: %w", err))
-		}
+	if spam, err = s.params.SamplesStore.Read(context.TODO(), storage.SampleTypeSpam, storage.SampleOriginUser); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to read dynamic spam samples: %w", err))
 	}
 
-	if hamDynamicReader, err := os.Open(s.params.HamDynamicFile); err != nil {
-		ham = []string{}
-	} else {
-		defer hamDynamicReader.Close()
-		scanner := bufio.NewScanner(hamDynamicReader)
-		for scanner.Scan() {
-			ham = append(ham, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to read ham dynamic file: %w", err))
-		}
+	if ham, err = s.params.SamplesStore.Read(context.TODO(), storage.SampleTypeHam, storage.SampleOriginUser); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to read dynamic ham samples: %w", err))
 	}
 
-	return spam, ham, errs.ErrorOrNil()
+	if err := errs.ErrorOrNil(); err != nil {
+		return spam, ham, fmt.Errorf("failed to read dynamic samples: %w", err)
+	}
+	return spam, ham, nil
 }
 
 // RemoveDynamicSpamSample removes a sample from the spam dynamic samples file and reloads samples after this
-func (s *SpamFilter) RemoveDynamicSpamSample(sample string) (int, error) {
-	log.Printf("[DEBUG] remove dynamic spam sample: %q", sample)
-	count, err := s.removeDynamicSample(sample, s.params.SpamDynamicFile)
-	if err != nil {
-		return 0, fmt.Errorf("failed to remove dynamic spam sample: %w", err)
+func (s *SpamFilter) RemoveDynamicSpamSample(sample string) error {
+	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
+	log.Printf("[INFO] remove dynamic spam sample: %q", sample)
+	if err := s.RemoveSpam(cleanMsg); err != nil {
+		return fmt.Errorf("can't remove spam sample %q: %w", sample, err)
 	}
-	if err := s.ReloadSamples(); err != nil {
-		return 0, fmt.Errorf("failed to reload samples after removing dynamic spam sample: %w", err)
-	}
-	return count, nil
+	return nil
 }
 
 // RemoveDynamicHamSample removes a sample from the ham dynamic samples file and reloads samples after this
-func (s *SpamFilter) RemoveDynamicHamSample(sample string) (int, error) {
-	log.Printf("[DEBUG] remove dynamic ham sample: %q", sample)
-	count, err := s.removeDynamicSample(sample, s.params.HamDynamicFile)
-	if err != nil {
-		return 0, fmt.Errorf("failed to remove dynamic ham sample: %w", err)
+func (s *SpamFilter) RemoveDynamicHamSample(sample string) error {
+	cleanMsg := strings.ReplaceAll(sample, "\n", " ")
+	log.Printf("[INFO] remove dynamic ham sample: %q", sample)
+	if err := s.RemoveHam(cleanMsg); err != nil {
+		return fmt.Errorf("can't remove hma sample %q: %w", sample, err)
 	}
-	if err := s.ReloadSamples(); err != nil {
-		return 0, fmt.Errorf("failed to reload samples after removing dynamic ham sample: %w", err)
-	}
-	return count, nil
-}
-
-// removeDynamicSample removes a sample from the spam dynamic samples file and reloads samples after this
-func (s *SpamFilter) removeDynamicSample(msg, fileName string) (int, error) {
-	spamDynamicReader, err := os.Open(fileName) //nolint:gosec // file name is not user input
-	if err != nil {
-		return 0, fmt.Errorf("failed to open spam dynamic file %s: %w", fileName, err)
-	}
-	defer spamDynamicReader.Close()
-
-	// create a temporary file
-	spamDynamicWriter, err := os.CreateTemp("", "spam-dynamic-*.txt")
-	if err != nil {
-		return 0, fmt.Errorf("failed to create temporary file for spam dynamic samples: %w", err)
-	}
-	defer spamDynamicWriter.Close()
-
-	// read from the original file and write to a temporary file, skipping the message to remove
-	scanner := bufio.NewScanner(spamDynamicReader)
-	count := 0
-	for scanner.Scan() {
-		sample := scanner.Text()
-		if sample != msg {
-			if _, err = spamDynamicWriter.WriteString(sample + "\n"); err != nil {
-				return 0, fmt.Errorf("failed to write to temporary spam dynamic file: %w", err)
-			}
-		} else {
-			count++
-		}
-	}
-	if err = scanner.Err(); err != nil {
-		return 0, fmt.Errorf("failed to read spam dynamic file: %w", err)
-	}
-
-	// ensure all writes are flushed to disk
-	if err = spamDynamicWriter.Sync(); err != nil {
-		return 0, fmt.Errorf("failed to flush writes to temporary file: %w", err)
-	}
-	if err = spamDynamicWriter.Close(); err != nil {
-		return 0, fmt.Errorf("failed to close temporary spam dynamic file: %w", err)
-	}
-
-	// get the file info of the original file to retrieve its permissions
-	fileInfo, err := os.Stat(fileName)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get file info of the original spam dynamic file: %w", err)
-	}
-
-	// set the permissions of the temporary file to match the original file
-	if err = os.Chmod(spamDynamicWriter.Name(), fileInfo.Mode()); err != nil {
-		return 0, fmt.Errorf("failed to set permissions of the temporary spam dynamic file: %w", err)
-	}
-
-	if count == 0 {
-		// not found, no need to replace the original file
-		if err := os.Remove(spamDynamicWriter.Name()); err != nil {
-			// cleanup temporary file as we won't replace the original file with it
-			return 0, fmt.Errorf("failed to remove temporary spam dynamic file: %w", err)
-		}
-		return 0, fmt.Errorf("sample %q not found in %s", msg, fileName)
-	}
-
-	// replace the original file with the temporary file
-	if err := s.fileReplace(spamDynamicWriter.Name(), fileName, fileInfo.Mode()); err != nil {
-		return 0, fmt.Errorf("failed to replace the original spam dynamic file with the temporary file: %w", err)
-	}
-	log.Printf("[DEBUG] removed %d samples from %s", count, fileName)
-	return count, nil
-}
-
-// fileReplace copies the file content from src to dst and removes the src file.
-// This function is used as a workaround for the "invalid cross-device link" error.
-func (s *SpamFilter) fileReplace(src, dst string, perm os.FileMode) error {
-	input, err := os.ReadFile(src) //nolint:gosec // file name is not user input
-	if err != nil {
-		return fmt.Errorf("failed to read from the source file: %w", err)
-	}
-
-	if err := os.WriteFile(dst, input, perm); err != nil {
-		return fmt.Errorf("failed to write to the destination file: %w", err)
-	}
-
-	if err := os.Remove(src); err != nil {
-		return fmt.Errorf("failed to remove the source file after copy: %w", err)
-	}
-
 	return nil
 }

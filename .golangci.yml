@@ -1,66 +1,105 @@
+version: "2"
 run:
-  timeout: 5m
-  tests: false
-
-linters-settings:
-  govet:
-    enable:
-      - shadow
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  misspell:
-    locale: US
-  lll:
-    line-length: 140
-  gocritic:
-    enabled-tags:
-      - performance
-      - style
-      - experimental
-    disabled-checks:
-      - wrapperFunc
-      - hugeParam
-      - rangeValCopy
-      - singleCaseSwitch
-      - ifElseChain
-
-linters:
-  enable:
-    - revive
-    - govet
-    - unconvert
-    - staticcheck
-    - unused
-    - gosec
-    - dupl
-    - misspell
-    - unparam
-    - typecheck
-    - ineffassign
-    - stylecheck
-    - gochecknoinits
-    - copyloopvar
-    - gocritic
-    - nakedret
-    - gosimple
-    - prealloc
-  fast: false
-  disable-all: true
-
+  concurrency: 4
 issues:
-  exclude-dirs:
-    - vendor
-  exclude-rules:
-    - text: "at least one file in a package should have a package comment"
-      linters:
-        - stylecheck
-    - text: "should have a package comment"
-      linters:
-        - revive
-    - path: _test\.go
-      linters:
-        - gosec
-        - dupl
-  exclude-use-default: false
-
+  max-issues-per-linter: 0
+  max-same-issues: 0
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - dupl
+    - gochecknoinits
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - testifylint
+    - wrapcheck
+    - modernize
+    - lll
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+        - hugeParam
+        - rangeValCopy
+        - singleCaseSwitch
+        - ifElseChain
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+    govet:
+      enable:
+        - shadow
+    lll:
+      line-length: 130
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - staticcheck
+        text: at least one file in a package should have a package comment
+      - linters:
+          - revive
+        text: should have a package comment
+      - linters:
+          - revive
+          - unparam
+          - unused
+        path: _test\.go$
+        text: unused-parameter
+      - linters:
+          - revive
+        path: lib/tgspam/plugin/
+        text: avoid package names that conflict with Go standard library package names
+      - linters:
+          - dupl
+          - gosec
+          - unparam
+          - wrapcheck
+        path: _test\.go$
+      - linters:
+          - lll
+        source: "`.*`"
+      - linters:
+          - lll
+        path: _test\.go$
+      - linters:
+          - gosec
+        text: "G705:|G706:|G704:|G118:|G120:"
+      - linters:
+          - staticcheck
+        text: "QF1012:"
+      - linters:
+          - revive
+        text: "var-naming: avoid package names"
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$

@@ -13,6 +13,7 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+coverage.html
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -27,6 +28,23 @@ data/spam-dynamic.txt
 data/ham-dynamic.txt
 data/approved-users.txt
 tg-spam.db
+tg-spam.db-shm
+tg-spam.db-wal
 logs/
 site/public/
 _examples/simplechat/messages.db
+*.loaded
+var/
+tg-spam
+tg-spam-*
+_examples/lua_plugins/example
+docs/prompts/
+
+# ralphex progress logs
+.ralphex/progress/
+
+.claude/
+issue.md
+*.bak
+*.local
+.DS_Store

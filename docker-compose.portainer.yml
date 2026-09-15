@@ -1,0 +1,92 @@
+services:
+  tg-spam-wb:
+    # Built and published by .github/workflows/wb-image.yml. The deployment host is a
+    # 2-CPU instance that cannot finish this build within the Portainer proxy timeout,
+    # so it only ever pulls. The package is public, so no registry credential is needed.
+    image: ${IMAGE:-ghcr.io/wb-aleksandr-khlebnikov/tg-spam:master}
+    # master is a moving tag, so never reuse whatever happens to be cached on the host;
+    # pin the :<sha> tag instead when a specific build must be held. A failed pull then
+    # fails the deploy loudly rather than silently starting a stale image.
+    # Set PULL_POLICY=never when the image was built on the host by
+    # deploy/wb-compat/build-image.sh instead of being pulled (CI unavailable).
+    pull_policy: ${PULL_POLICY:-always}
+    container_name: ${CONTAINER_NAME:-tg-spam-wb}
+    restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_GROUP: ${TELEGRAM_GROUP}
+      ADMIN_GROUP: ${ADMIN_GROUP}
+      # must arrive as an env var, never as --super on the command line: go-flags lets an
+      # explicit flag win over the env var, which silently discarded the list set in Portainer
+      SUPER_USER: ${SUPER_USER:-evgeny_boger}
+      TZ: ${TZ:-Europe/Moscow}
+
+      DISABLE_ADMIN_SPAM_FORWARD: ${DISABLE_ADMIN_SPAM_FORWARD:-false}
+      DRY: ${DRY:-false}
+      SOFT_BAN: ${SOFT_BAN:-true}
+      NO_SPAM_REPLY: ${NO_SPAM_REPLY:-true}
+      MAX_EMOJI: ${MAX_EMOJI:-3}
+      MIN_MSG_LEN: ${MIN_MSG_LEN:-40}
+      MIN_PROBABILITY: ${MIN_PROBABILITY:-42}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.65}
+      # LLM checks run only for the first N messages of a user, and short-message
+      # checking below needs this above zero to happen at all.
+      FIRST_MESSAGES_COUNT: ${FIRST_MESSAGES_COUNT:-5}
+
+      META_LINKS_LIMIT: ${META_LINKS_LIMIT:-0}
+      META_MENTIONS_LIMIT: ${META_MENTIONS_LIMIT:-3}
+      META_IMAGE_ONLY: ${META_IMAGE_ONLY:-true}
+      META_LINKS_ONLY: ${META_LINKS_ONLY:-true}
+      META_FORWARD: ${META_FORWARD:-true}
+      META_KEYBOARD: ${META_KEYBOARD:-true}
+      META_CONTACT_ONLY: ${META_CONTACT_ONLY:-true}
+      META_GIVEAWAY: ${META_GIVEAWAY:-true}
+
+      AGGRESSIVE_CLEANUP: ${AGGRESSIVE_CLEANUP:-true}
+      AGGRESSIVE_CLEANUP_LIMIT: ${AGGRESSIVE_CLEANUP_LIMIT:-200}
+      HISTORY_DURATION: ${HISTORY_DURATION:-72h}
+      HISTORY_MIN_SIZE: ${HISTORY_MIN_SIZE:-5000}
+      SUPPRESS_JOIN_MESSAGE: ${SUPPRESS_JOIN_MESSAGE:-true}
+      DELETE_JOIN_MESSAGES: ${DELETE_JOIN_MESSAGES:-true}
+      DELETE_LEAVE_MESSAGES: ${DELETE_LEAVE_MESSAGES:-true}
+
+      MESSAGE_SPAM: ${MESSAGE_SPAM:-Кажется, тут был спам. Если вы человек, напишите админам и попробуйте снова.}
+      MESSAGE_DRY: ${MESSAGE_DRY:-this is spam (dry mode)}
+      MESSAGE_RESTORE: ${MESSAGE_RESTORE:-Прошу прощения, принял вас за спамера. Вот ваше сообщение:}
+
+      OPENAI_TOKEN: ${OPENAI_TOKEN}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol}
+      OPENAI_VETO: ${OPENAI_VETO:-true}
+      # Messages shorter than MIN_MSG_LEN are checked by OpenAI only when this is set.
+      OPENAI_CHECK_SHORT_MESSAGES: ${OPENAI_CHECK_SHORT_MESSAGES:-true}
+      # Thinking budget for reasoning models: none, low, medium or high. none turns
+      # thinking off entirely.
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-low}
+      # Reasoning tokens count against this limit, so a low value leaves the reply
+      # truncated and the check unusable.
+      OPENAI_MAX_TOKENS_RESPONSE: ${OPENAI_MAX_TOKENS_RESPONSE:-4096}
+
+      LOGGER_ENABLED: ${LOGGER_ENABLED:-true}
+      LOGGER_FILE: ${LOGGER_FILE:-/srv/log/tg-spam.log}
+      LOGGER_MAX_SIZE: ${LOGGER_MAX_SIZE:-5M}
+      SERVER_ENABLED: ${SERVER_ENABLED:-true}
+      SERVER_LISTEN: ${SERVER_LISTEN:-:8081}
+      # bcrypt hash for web UI basic auth (user tg-spam); when empty the bot
+      # generates a random password on every start and prints it to the log.
+      SERVER_AUTH_HASH: ${SERVER_AUTH_HASH:-}
+      TGSPAM_IN_DOCKER: "1"
+    volumes:
+      - tg-spam-wb_data:/srv/data
+      - tg-spam-wb_log:/srv/log
+    ports:
+      - "${SERVER_PORT:-8081}:8081"
+
+volumes:
+  # Explicit per-stack names: the data must survive stack renames (implicit
+  # project-prefixed names recreate empty volumes on rename — this is how the
+  # learned db was lost on 2026-04-16), and :? makes a deploy without names fail
+  # loudly so a second stack can never silently attach another stack's volumes.
+  tg-spam-wb_data:
+    name: ${DATA_VOLUME_NAME:?set an explicit per-stack data volume name}
+  tg-spam-wb_log:
+    name: ${LOG_VOLUME_NAME:?set an explicit per-stack log volume name}

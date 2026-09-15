@@ -20,8 +20,11 @@ import (
 //			IsApprovedUserFunc: func(userID int64) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
-//			OnMessageFunc: func(msg bot.Message) bot.Response {
+//			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 //				panic("mock out the OnMessage method")
+//			},
+//			OnReactionFunc: func(userID int64, userName string) bot.Response {
+//				panic("mock out the OnReaction method")
 //			},
 //			RemoveApprovedUserFunc: func(id int64) error {
 //				panic("mock out the RemoveApprovedUser method")
@@ -46,7 +49,10 @@ type BotMock struct {
 	IsApprovedUserFunc func(userID int64) bool
 
 	// OnMessageFunc mocks the OnMessage method.
-	OnMessageFunc func(msg bot.Message) bot.Response
+	OnMessageFunc func(msg bot.Message, checkOnly bool) bot.Response
+
+	// OnReactionFunc mocks the OnReaction method.
+	OnReactionFunc func(userID int64, userName string) bot.Response
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id int64) error
@@ -75,6 +81,15 @@ type BotMock struct {
 		OnMessage []struct {
 			// Msg is the msg argument value.
 			Msg bot.Message
+			// CheckOnly is the checkOnly argument value.
+			CheckOnly bool
+		}
+		// OnReaction holds details about calls to the OnReaction method.
+		OnReaction []struct {
+			// UserID is the userID argument value.
+			UserID int64
+			// UserName is the userName argument value.
+			UserName string
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
 		RemoveApprovedUser []struct {
@@ -95,6 +110,7 @@ type BotMock struct {
 	lockAddApprovedUser    sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockOnMessage          sync.RWMutex
+	lockOnReaction         sync.RWMutex
 	lockRemoveApprovedUser sync.RWMutex
 	lockUpdateHam          sync.RWMutex
 	lockUpdateSpam         sync.RWMutex
@@ -183,19 +199,21 @@ func (mock *BotMock) ResetIsApprovedUserCalls() {
 }
 
 // OnMessage calls OnMessageFunc.
-func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
+func (mock *BotMock) OnMessage(msg bot.Message, checkOnly bool) bot.Response {
 	if mock.OnMessageFunc == nil {
 		panic("BotMock.OnMessageFunc: method is nil but Bot.OnMessage was just called")
 	}
 	callInfo := struct {
-		Msg bot.Message
+		Msg       bot.Message
+		CheckOnly bool
 	}{
-		Msg: msg,
+		Msg:       msg,
+		CheckOnly: checkOnly,
 	}
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = append(mock.calls.OnMessage, callInfo)
 	mock.lockOnMessage.Unlock()
-	return mock.OnMessageFunc(msg)
+	return mock.OnMessageFunc(msg, checkOnly)
 }
 
 // OnMessageCalls gets all the calls that were made to OnMessage.
@@ -203,10 +221,12 @@ func (mock *BotMock) OnMessage(msg bot.Message) bot.Response {
 //
 //	len(mockedBot.OnMessageCalls())
 func (mock *BotMock) OnMessageCalls() []struct {
-	Msg bot.Message
+	Msg       bot.Message
+	CheckOnly bool
 } {
 	var calls []struct {
-		Msg bot.Message
+		Msg       bot.Message
+		CheckOnly bool
 	}
 	mock.lockOnMessage.RLock()
 	calls = mock.calls.OnMessage
@@ -219,6 +239,49 @@ func (mock *BotMock) ResetOnMessageCalls() {
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = nil
 	mock.lockOnMessage.Unlock()
+}
+
+// OnReaction calls OnReactionFunc.
+func (mock *BotMock) OnReaction(userID int64, userName string) bot.Response {
+	if mock.OnReactionFunc == nil {
+		panic("BotMock.OnReactionFunc: method is nil but Bot.OnReaction was just called")
+	}
+	callInfo := struct {
+		UserID   int64
+		UserName string
+	}{
+		UserID:   userID,
+		UserName: userName,
+	}
+	mock.lockOnReaction.Lock()
+	mock.calls.OnReaction = append(mock.calls.OnReaction, callInfo)
+	mock.lockOnReaction.Unlock()
+	return mock.OnReactionFunc(userID, userName)
+}
+
+// OnReactionCalls gets all the calls that were made to OnReaction.
+// Check the length with:
+//
+//	len(mockedBot.OnReactionCalls())
+func (mock *BotMock) OnReactionCalls() []struct {
+	UserID   int64
+	UserName string
+} {
+	var calls []struct {
+		UserID   int64
+		UserName string
+	}
+	mock.lockOnReaction.RLock()
+	calls = mock.calls.OnReaction
+	mock.lockOnReaction.RUnlock()
+	return calls
+}
+
+// ResetOnReactionCalls reset all the calls that were made to OnReaction.
+func (mock *BotMock) ResetOnReactionCalls() {
+	mock.lockOnReaction.Lock()
+	mock.calls.OnReaction = nil
+	mock.lockOnReaction.Unlock()
 }
 
 // RemoveApprovedUser calls RemoveApprovedUserFunc.
@@ -351,6 +414,10 @@ func (mock *BotMock) ResetCalls() {
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = nil
 	mock.lockOnMessage.Unlock()
+
+	mock.lockOnReaction.Lock()
+	mock.calls.OnReaction = nil
+	mock.lockOnReaction.Unlock()
 
 	mock.lockRemoveApprovedUser.Lock()
 	mock.calls.RemoveApprovedUser = nil

@@ -19,10 +19,10 @@ import (
 //			ReloadSamplesFunc: func() error {
 //				panic("mock out the ReloadSamples method")
 //			},
-//			RemoveDynamicHamSampleFunc: func(sample string) (int, error) {
+//			RemoveDynamicHamSampleFunc: func(sample string) error {
 //				panic("mock out the RemoveDynamicHamSample method")
 //			},
-//			RemoveDynamicSpamSampleFunc: func(sample string) (int, error) {
+//			RemoveDynamicSpamSampleFunc: func(sample string) error {
 //				panic("mock out the RemoveDynamicSpamSample method")
 //			},
 //			UpdateHamFunc: func(msg string) error {
@@ -45,10 +45,10 @@ type SpamFilterMock struct {
 	ReloadSamplesFunc func() error
 
 	// RemoveDynamicHamSampleFunc mocks the RemoveDynamicHamSample method.
-	RemoveDynamicHamSampleFunc func(sample string) (int, error)
+	RemoveDynamicHamSampleFunc func(sample string) error
 
 	// RemoveDynamicSpamSampleFunc mocks the RemoveDynamicSpamSample method.
-	RemoveDynamicSpamSampleFunc func(sample string) (int, error)
+	RemoveDynamicSpamSampleFunc func(sample string) error
 
 	// UpdateHamFunc mocks the UpdateHam method.
 	UpdateHamFunc func(msg string) error
@@ -162,7 +162,7 @@ func (mock *SpamFilterMock) ResetReloadSamplesCalls() {
 }
 
 // RemoveDynamicHamSample calls RemoveDynamicHamSampleFunc.
-func (mock *SpamFilterMock) RemoveDynamicHamSample(sample string) (int, error) {
+func (mock *SpamFilterMock) RemoveDynamicHamSample(sample string) error {
 	if mock.RemoveDynamicHamSampleFunc == nil {
 		panic("SpamFilterMock.RemoveDynamicHamSampleFunc: method is nil but SpamFilter.RemoveDynamicHamSample was just called")
 	}
@@ -201,7 +201,7 @@ func (mock *SpamFilterMock) ResetRemoveDynamicHamSampleCalls() {
 }
 
 // RemoveDynamicSpamSample calls RemoveDynamicSpamSampleFunc.
-func (mock *SpamFilterMock) RemoveDynamicSpamSample(sample string) (int, error) {
+func (mock *SpamFilterMock) RemoveDynamicSpamSample(sample string) error {
 	if mock.RemoveDynamicSpamSampleFunc == nil {
 		panic("SpamFilterMock.RemoveDynamicSpamSampleFunc: method is nil but SpamFilter.RemoveDynamicSpamSample was just called")
 	}

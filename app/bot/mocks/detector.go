@@ -26,6 +26,12 @@ import (
 //			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
+//			RecordReactionFunc: func(userID int64) spamcheck.Response {
+//				panic("mock out the RecordReaction method")
+//			},
+//			GetLuaPluginNamesFunc: func() []string {
+//				panic("mock out the GetLuaPluginNames method")
+//			},
 //			IsApprovedUserFunc: func(userID string) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
@@ -37,6 +43,12 @@ import (
 //			},
 //			RemoveApprovedUserFunc: func(id string) error {
 //				panic("mock out the RemoveApprovedUser method")
+//			},
+//			RemoveHamFunc: func(msg string) error {
+//				panic("mock out the RemoveHam method")
+//			},
+//			RemoveSpamFunc: func(msg string) error {
+//				panic("mock out the RemoveSpam method")
 //			},
 //			UpdateHamFunc: func(msg string) error {
 //				panic("mock out the UpdateHam method")
@@ -60,6 +72,12 @@ type DetectorMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
+	// RecordReactionFunc mocks the RecordReaction method.
+	RecordReactionFunc func(userID int64) spamcheck.Response
+
+	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
+	GetLuaPluginNamesFunc func() []string
+
 	// IsApprovedUserFunc mocks the IsApprovedUser method.
 	IsApprovedUserFunc func(userID string) bool
 
@@ -71,6 +89,12 @@ type DetectorMock struct {
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id string) error
+
+	// RemoveHamFunc mocks the RemoveHam method.
+	RemoveHamFunc func(msg string) error
+
+	// RemoveSpamFunc mocks the RemoveSpam method.
+	RemoveSpamFunc func(msg string) error
 
 	// UpdateHamFunc mocks the UpdateHam method.
 	UpdateHamFunc func(msg string) error
@@ -92,6 +116,14 @@ type DetectorMock struct {
 		Check []struct {
 			// Request is the request argument value.
 			Request spamcheck.Request
+		}
+		// RecordReaction holds details about calls to the RecordReaction method.
+		RecordReaction []struct {
+			// UserID is the userID argument value.
+			UserID int64
+		}
+		// GetLuaPluginNames holds details about calls to the GetLuaPluginNames method.
+		GetLuaPluginNames []struct {
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
 		IsApprovedUser []struct {
@@ -117,6 +149,16 @@ type DetectorMock struct {
 			// ID is the id argument value.
 			ID string
 		}
+		// RemoveHam holds details about calls to the RemoveHam method.
+		RemoveHam []struct {
+			// Msg is the msg argument value.
+			Msg string
+		}
+		// RemoveSpam holds details about calls to the RemoveSpam method.
+		RemoveSpam []struct {
+			// Msg is the msg argument value.
+			Msg string
+		}
 		// UpdateHam holds details about calls to the UpdateHam method.
 		UpdateHam []struct {
 			// Msg is the msg argument value.
@@ -131,10 +173,14 @@ type DetectorMock struct {
 	lockAddApprovedUser    sync.RWMutex
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
+	lockRecordReaction     sync.RWMutex
+	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
 	lockLoadStopWords      sync.RWMutex
 	lockRemoveApprovedUser sync.RWMutex
+	lockRemoveHam          sync.RWMutex
+	lockRemoveSpam         sync.RWMutex
 	lockUpdateHam          sync.RWMutex
 	lockUpdateSpam         sync.RWMutex
 }
@@ -249,6 +295,79 @@ func (mock *DetectorMock) ResetCheckCalls() {
 	mock.lockCheck.Lock()
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
+}
+
+// RecordReaction calls RecordReactionFunc.
+func (mock *DetectorMock) RecordReaction(userID int64) spamcheck.Response {
+	if mock.RecordReactionFunc == nil {
+		panic("DetectorMock.RecordReactionFunc: method is nil but Detector.RecordReaction was just called")
+	}
+	callInfo := struct {
+		UserID int64
+	}{
+		UserID: userID,
+	}
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = append(mock.calls.RecordReaction, callInfo)
+	mock.lockRecordReaction.Unlock()
+	return mock.RecordReactionFunc(userID)
+}
+
+// RecordReactionCalls gets all the calls that were made to RecordReaction.
+// Check the length with:
+//
+//	len(mockedDetector.RecordReactionCalls())
+func (mock *DetectorMock) RecordReactionCalls() []struct {
+	UserID int64
+} {
+	var calls []struct {
+		UserID int64
+	}
+	mock.lockRecordReaction.RLock()
+	calls = mock.calls.RecordReaction
+	mock.lockRecordReaction.RUnlock()
+	return calls
+}
+
+// ResetRecordReactionCalls reset all the calls that were made to RecordReaction.
+func (mock *DetectorMock) ResetRecordReactionCalls() {
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
+}
+
+// GetLuaPluginNames calls GetLuaPluginNamesFunc.
+func (mock *DetectorMock) GetLuaPluginNames() []string {
+	if mock.GetLuaPluginNamesFunc == nil {
+		panic("DetectorMock.GetLuaPluginNamesFunc: method is nil but Detector.GetLuaPluginNames was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = append(mock.calls.GetLuaPluginNames, callInfo)
+	mock.lockGetLuaPluginNames.Unlock()
+	return mock.GetLuaPluginNamesFunc()
+}
+
+// GetLuaPluginNamesCalls gets all the calls that were made to GetLuaPluginNames.
+// Check the length with:
+//
+//	len(mockedDetector.GetLuaPluginNamesCalls())
+func (mock *DetectorMock) GetLuaPluginNamesCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetLuaPluginNames.RLock()
+	calls = mock.calls.GetLuaPluginNames
+	mock.lockGetLuaPluginNames.RUnlock()
+	return calls
+}
+
+// ResetGetLuaPluginNamesCalls reset all the calls that were made to GetLuaPluginNames.
+func (mock *DetectorMock) ResetGetLuaPluginNamesCalls() {
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = nil
+	mock.lockGetLuaPluginNames.Unlock()
 }
 
 // IsApprovedUser calls IsApprovedUserFunc.
@@ -415,6 +534,84 @@ func (mock *DetectorMock) ResetRemoveApprovedUserCalls() {
 	mock.lockRemoveApprovedUser.Unlock()
 }
 
+// RemoveHam calls RemoveHamFunc.
+func (mock *DetectorMock) RemoveHam(msg string) error {
+	if mock.RemoveHamFunc == nil {
+		panic("DetectorMock.RemoveHamFunc: method is nil but Detector.RemoveHam was just called")
+	}
+	callInfo := struct {
+		Msg string
+	}{
+		Msg: msg,
+	}
+	mock.lockRemoveHam.Lock()
+	mock.calls.RemoveHam = append(mock.calls.RemoveHam, callInfo)
+	mock.lockRemoveHam.Unlock()
+	return mock.RemoveHamFunc(msg)
+}
+
+// RemoveHamCalls gets all the calls that were made to RemoveHam.
+// Check the length with:
+//
+//	len(mockedDetector.RemoveHamCalls())
+func (mock *DetectorMock) RemoveHamCalls() []struct {
+	Msg string
+} {
+	var calls []struct {
+		Msg string
+	}
+	mock.lockRemoveHam.RLock()
+	calls = mock.calls.RemoveHam
+	mock.lockRemoveHam.RUnlock()
+	return calls
+}
+
+// ResetRemoveHamCalls reset all the calls that were made to RemoveHam.
+func (mock *DetectorMock) ResetRemoveHamCalls() {
+	mock.lockRemoveHam.Lock()
+	mock.calls.RemoveHam = nil
+	mock.lockRemoveHam.Unlock()
+}
+
+// RemoveSpam calls RemoveSpamFunc.
+func (mock *DetectorMock) RemoveSpam(msg string) error {
+	if mock.RemoveSpamFunc == nil {
+		panic("DetectorMock.RemoveSpamFunc: method is nil but Detector.RemoveSpam was just called")
+	}
+	callInfo := struct {
+		Msg string
+	}{
+		Msg: msg,
+	}
+	mock.lockRemoveSpam.Lock()
+	mock.calls.RemoveSpam = append(mock.calls.RemoveSpam, callInfo)
+	mock.lockRemoveSpam.Unlock()
+	return mock.RemoveSpamFunc(msg)
+}
+
+// RemoveSpamCalls gets all the calls that were made to RemoveSpam.
+// Check the length with:
+//
+//	len(mockedDetector.RemoveSpamCalls())
+func (mock *DetectorMock) RemoveSpamCalls() []struct {
+	Msg string
+} {
+	var calls []struct {
+		Msg string
+	}
+	mock.lockRemoveSpam.RLock()
+	calls = mock.calls.RemoveSpam
+	mock.lockRemoveSpam.RUnlock()
+	return calls
+}
+
+// ResetRemoveSpamCalls reset all the calls that were made to RemoveSpam.
+func (mock *DetectorMock) ResetRemoveSpamCalls() {
+	mock.lockRemoveSpam.Lock()
+	mock.calls.RemoveSpam = nil
+	mock.lockRemoveSpam.Unlock()
+}
+
 // UpdateHam calls UpdateHamFunc.
 func (mock *DetectorMock) UpdateHam(msg string) error {
 	if mock.UpdateHamFunc == nil {
@@ -507,6 +704,14 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
 
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
+
+	mock.lockGetLuaPluginNames.Lock()
+	mock.calls.GetLuaPluginNames = nil
+	mock.lockGetLuaPluginNames.Unlock()
+
 	mock.lockIsApprovedUser.Lock()
 	mock.calls.IsApprovedUser = nil
 	mock.lockIsApprovedUser.Unlock()
@@ -522,6 +727,14 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockRemoveApprovedUser.Lock()
 	mock.calls.RemoveApprovedUser = nil
 	mock.lockRemoveApprovedUser.Unlock()
+
+	mock.lockRemoveHam.Lock()
+	mock.calls.RemoveHam = nil
+	mock.lockRemoveHam.Unlock()
+
+	mock.lockRemoveSpam.Lock()
+	mock.calls.RemoveSpam = nil
+	mock.lockRemoveSpam.Unlock()
 
 	mock.lockUpdateHam.Lock()
 	mock.calls.UpdateHam = nil
