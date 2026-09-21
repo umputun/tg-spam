@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -793,4 +794,107 @@ func TestSettings_Validate(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestSettings_ValidateJev(t *testing.T) {
+	valid := func() *Settings {
+		s := &Settings{}
+		s.Jev.Token = "t"
+		s.Jev.Question = "Is `message` spam?"
+		s.Jev.CriteriaSpam = "promotes"
+		s.Jev.CriteriaHam = "conversation"
+		s.Jev.Threshold = 0.3
+		return s
+	}
+
+	t.Run("valid config passes", func(t *testing.T) {
+		require.NoError(t, valid().Validate())
+	})
+
+	t.Run("disabled jev skips validation entirely", func(t *testing.T) {
+		s := valid()
+		s.Jev.Token = ""
+		s.Jev.Threshold = 0
+		s.Jev.Question = ""
+		require.NoError(t, s.Validate())
+	})
+
+	tests := []struct {
+		name   string
+		mutate func(*Settings)
+		errMsg string
+	}{
+		{"zero threshold", func(s *Settings) { s.Jev.Threshold = 0 }, "(0, 1]"},
+		{"threshold above one", func(s *Settings) { s.Jev.Threshold = 1.5 }, "(0, 1]"},
+		{"negative threshold", func(s *Settings) { s.Jev.Threshold = -0.1 }, "(0, 1]"},
+		{"NaN threshold", func(s *Settings) { s.Jev.Threshold = math.NaN() }, "finite"},
+		{"inf threshold", func(s *Settings) { s.Jev.Threshold = math.Inf(1) }, "finite"},
+		{"negative max symbols", func(s *Settings) { s.Jev.MaxSymbolsRequest = -1 }, "max-symbols-request"},
+		{"empty question", func(s *Settings) { s.Jev.Question = "" }, "question"},
+		{"empty spam criteria", func(s *Settings) { s.Jev.CriteriaSpam = "" }, "criteria-spam"},
+		{"empty ham criteria", func(s *Settings) { s.Jev.CriteriaHam = "" }, "criteria-ham"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := valid()
+			tt.mutate(s)
+			err := s.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errMsg)
+		})
+	}
+}
+
+func TestSettings_IsJevEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		token   string
+		apiBase string
+		want    bool
+	}{
+		{"token set", "t", "", true},
+		{"nothing set", "", "", false},
+		{"apibase alone does not enable", "", "https://proxy.example/v1", false},
+		{"token and apibase", "t", "https://proxy.example/v1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Settings{}
+			s.Jev.Token, s.Jev.APIBase = tt.token, tt.apiBase
+			assert.Equal(t, tt.want, s.IsJevEnabled())
+		})
+	}
+}
+
+func TestSettings_JevHistorySizeZeroSurvivesMerge(t *testing.T) {
+	stored := &Settings{}
+	stored.Jev.HistorySize = 0
+	stored.Jev.Token = "t"
+
+	template := &Settings{}
+	template.Jev.HistorySize = 10
+
+	stored.ApplyDefaults(template)
+	assert.Equal(t, 0, stored.Jev.HistorySize, "zero history size means disabled and must survive the merge")
+}
+
+// pins the legacy-DB case: settings stored before these fields existed arrive zero-valued
+// and must pick up the template defaults rather than failing validation
+func TestSettings_JevLegacyStoredSettingsTakeTemplateDefaults(t *testing.T) {
+	legacy := &Settings{}
+	legacy.Jev.Token = "t"
+
+	template := &Settings{}
+	template.Jev.Question = "Is `message` spam?"
+	template.Jev.CriteriaSpam = "promotes"
+	template.Jev.CriteriaHam = "conversation"
+	template.Jev.Threshold = 0.3
+	template.Jev.MaxSymbolsRequest = 6000
+	template.Jev.Model = "jev-1.13.0"
+
+	legacy.ApplyDefaults(template)
+	assert.Equal(t, "Is `message` spam?", legacy.Jev.Question)
+	assert.Equal(t, "jev-1.13.0", legacy.Jev.Model)
+	assert.InDelta(t, 0.3, legacy.Jev.Threshold, 0.0001)
+	require.NoError(t, legacy.Validate())
 }

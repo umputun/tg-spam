@@ -410,35 +410,41 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/config/settings.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] add the `jev` flag group to `app/main.go` mirroring the `gemini` group: `token`, `veto`,
+- [x] add the `jev` flag group to `app/main.go` mirroring the `gemini` group: `token`, `veto`,
       `apibase`, `model` (default `jev-1.13.0`), `question`, `criteria-spam`, `criteria-ham`,
       `threshold` (default `0.30`), `max-symbols-request` (default `6000`), `retry-count`,
       `history-size`, `check-short-messages`, with `namespace:"jev" env-namespace:"JEV"`
-- [ ] give `question`, `criteria-spam` and `criteria-ham` non-empty `default:` struct tags copied
+- [x] give `question`, `criteria-spam` and `criteria-ham` non-empty `default:` struct tags copied
       verbatim from the appendix — NOT constructor fallbacks: `defaultSettingsTemplate`
       (`app/settings.go:214`) fills by reflection over the tags and then runs `optToSettings`, so a
       constructor-only default never reaches `Validate()` and token-only startup would fail its own
       empty-`Question` check
-- [ ] add `JevSettings` to `app/config/settings.go` with `json`/`yaml`/`db` tags, copying the
+- [x] add `JevSettings` to `app/config/settings.go` with `json`/`yaml`/`db` tags, copying the
       `GeminiSettings` shape, and add the `Jev` field to `Settings`
-- [ ] add `IsJevEnabled()` returning `s.Jev.Token != ""` — token only, the Gemini precedent, NOT
+- [x] add `IsJevEnabled()` returning `s.Jev.Token != ""` — token only, the Gemini precedent, NOT
       `IsOpenAIEnabled`'s token-or-apibase form; `--jev.apibase` gets no `default:` tag
-- [ ] map the flags in `optToSettings` (`app/settings.go`) and in the token-override block
-- [ ] add `Jev.HistorySize` to `zeroAwarePaths` with the same comment form as `Gemini.HistorySize`
-- [ ] add validation to `Settings.Validate()` gated on `IsJevEnabled()` — the same predicate Task 4
+- [x] map the flags in `optToSettings` (`app/settings.go`) and in the token-override block
+- [x] add `Jev.HistorySize` to `zeroAwarePaths` with the same comment form as `Gemini.HistorySize`
+- [x] add validation to `Settings.Validate()` gated on `IsJevEnabled()` — the same predicate Task 4
       wires on, and the SAME contract `newJevChecker` enforces, so a saved config can never construct
       successfully at validation time and then fail at startup: finite `Threshold` in (0, 1],
       non-negative `MaxSymbolsRequest`, and non-empty `Question`, `CriteriaSpam` and `CriteriaHam`
-- [ ] write tests for `optToSettings` mapping every new field
-- [ ] write tests for `Validate` rejecting a threshold of 0, of 1.5, and an empty question
-- [ ] write a test proving `Jev.HistorySize` zero survives an `ApplyDefaults` merge
-- [ ] write a token-only startup test: setting just `--jev.token` passes `Validate()` because the
+- [x] write tests for `optToSettings` mapping every new field
+- [x] write tests for `Validate` rejecting a threshold of 0, of 1.5, and an empty question
+- [x] write a test proving `Jev.HistorySize` zero survives an `ApplyDefaults` merge
+- [x] write a token-only startup test: setting just `--jev.token` passes `Validate()` because the
       question and criteria defaults arrived from the struct tags
-- [ ] write a test proving a custom `--jev.question` overrides the default rather than merging
-- [ ] write a legacy-DB test: settings stored before these fields existed get the tag defaults
-- [ ] write a test rejecting a NaN threshold from the CLI path
-- [ ] run tests - must pass before task 4
+- [x] write a test proving a custom `--jev.question` overrides the default rather than merging
+- [x] write a legacy-DB test: settings stored before these fields existed get the tag defaults
+- [x] write a test rejecting a NaN threshold from the CLI path
+- [x] run tests - must pass before task 4
 
+
+- [x] ➕ add the jev flags to the README "All Application Options" block. Moved here from
+      Task 7: `TestREADMEAllOptionsMatchesHelp` (`app/main_test.go:1253`) asserts every long
+      flag and env var appears in that block, so adding the flag group breaks it immediately
+      and Task 3's own gate cannot pass without it. The block uses an unwrapped single-line
+      style at description column 40, not raw `--help` output, which wraps long env names
 ### Task 4: Construct the checker at startup and protect the credential
 
 **Files:**
@@ -509,8 +515,8 @@ Exports (justification per item: who outside the package calls this?):
 
 ### Task 7: [Final] Update documentation
 
-- [ ] add every new flag to the "All Application Options" section of README.md, matching `--help`
-      output exactly
+- [x] add every new flag to the "All Application Options" section of README.md (done in Task 3,
+      forced by `TestREADMEAllOptionsMatchesHelp`)
 - [ ] add a descriptive jev section to README.md covering what the provider is, the one-question
       design, the threshold, and that 0.30 is a development candidate rather than a validated default
 - [ ] add a CLAUDE.md section documenting the provider, the threshold's development-candidate status,

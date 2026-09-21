@@ -699,6 +699,20 @@ gemini:
       --gemini.history-size=            gemini history size (default: 0) [$GEMINI_HISTORY_SIZE]
       --gemini.check-short-messages     check messages shorter than min-msg-len with Gemini [$GEMINI_CHECK_SHORT_MESSAGES]
 
+jev:
+      --jev.token=                      jev token, disabled if not set [$JEV_TOKEN]
+      --jev.apibase=                    custom jev API base [$JEV_API_BASE]
+      --jev.veto                        veto mode, confirm detected spam [$JEV_VETO]
+      --jev.model=                      jev model, pinned version not an alias (default: jev-1.13.0) [$JEV_MODEL]
+      --jev.question=                   jev spam question (default: Is `message`, posted in a public Telegram group chat, spam?) [$JEV_QUESTION]
+      --jev.criteria-spam=              jev criteria for spam (default: It promotes, advertises, or offers paid services, paid subscriptions, paid content, donations, crypto wallets, paid promotion of content or accounts, job recruitment, hiring, looking for employees, unsolicited job postings, easy money offers, work-from-home offers with specific payment amounts, VPN promotion, or invitations to join Telegram bots or channels for earnings.) [$JEV_CRITERIA_SPAM]
+      --jev.criteria-ham=               jev criteria for ham (default: Ordinary conversation between chat members. Casual discussion or mentioning prices of well-known services and products such as GitHub Copilot, ChatGPT Plus, cloud providers or software tools is NOT spam. Off-topic banter, rudeness, profanity, questions, and links shared as part of a conversation are NOT spam. Only direct selling, promoting, or advertising counts as spam.) [$JEV_CRITERIA_HAM]
+      --jev.threshold=                  spam probability at or above this is spam (default: 0.30) [$JEV_THRESHOLD]
+      --jev.max-symbols-request=        jev max symbols in request (default: 6000) [$JEV_MAX_SYMBOLS_REQUEST]
+      --jev.retry-count=                jev retry count (default: 1) [$JEV_RETRY_COUNT]
+      --jev.history-size=               jev history size (default: 0) [$JEV_HISTORY_SIZE]
+      --jev.check-short-messages        check messages shorter than min-msg-len with jev [$JEV_CHECK_SHORT_MESSAGES]
+
 llm:
       --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]
       --llm.request-timeout=            timeout for individual LLM requests (default: 30s) [$LLM_REQUEST_TIMEOUT]

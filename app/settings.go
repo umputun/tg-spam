@@ -94,6 +94,20 @@ func optToSettings(opts options) *config.Settings {
 			CheckShortMessages: opts.Gemini.CheckShortMessages,
 		},
 
+		Jev: config.JevSettings{
+			APIBase:            opts.Jev.APIBase,
+			Veto:               opts.Jev.Veto,
+			Model:              opts.Jev.Model,
+			Question:           opts.Jev.Question,
+			CriteriaSpam:       opts.Jev.CriteriaSpam,
+			CriteriaHam:        opts.Jev.CriteriaHam,
+			Threshold:          opts.Jev.Threshold,
+			MaxSymbolsRequest:  opts.Jev.MaxSymbolsRequest,
+			RetryCount:         opts.Jev.RetryCount,
+			HistorySize:        opts.Jev.HistorySize,
+			CheckShortMessages: opts.Jev.CheckShortMessages,
+		},
+
 		LLM: config.LLMSettings{
 			Consensus:      opts.LLM.Consensus,
 			RequestTimeout: opts.LLM.RequestTimeout,
@@ -196,6 +210,7 @@ func optToSettings(opts options) *config.Settings {
 	settings.Telegram.Token = opts.Telegram.Token
 	settings.OpenAI.Token = opts.OpenAI.Token
 	settings.Gemini.Token = opts.Gemini.Token
+	settings.Jev.Token = opts.Jev.Token
 	settings.Server.AuthHash = opts.Server.AuthHash
 
 	return settings
@@ -339,6 +354,9 @@ func applyCLIOverrides(settings *config.Settings, opts options, defaults *config
 	}
 	if opts.Gemini.Token != "" {
 		settings.Gemini.Token = opts.Gemini.Token
+	}
+	if opts.Jev.Token != "" {
+		settings.Jev.Token = opts.Jev.Token
 	}
 
 	// override auth password if explicitly provided (not using default "auto")

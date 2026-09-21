@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1529,4 +1530,99 @@ func Test_applyAutoAuthFallback_NonEmptyPasswdHonored(t *testing.T) {
 
 	assert.Equal(t, "custom", settings.Transient.WebAuthPasswd, "existing custom password must not be overwritten by 'auto'")
 	assert.Empty(t, settings.Server.AuthHash)
+}
+
+func TestOptToSettings_Jev(t *testing.T) {
+	var opts options
+	opts.Jev.Token = "jev-token"
+	opts.Jev.APIBase = "https://proxy.example/v1"
+	opts.Jev.Veto = true
+	opts.Jev.Model = "jev-1.13.0"
+	opts.Jev.Question = "Is `message` spam?"
+	opts.Jev.CriteriaSpam = "promotes"
+	opts.Jev.CriteriaHam = "conversation"
+	opts.Jev.Threshold = 0.42
+	opts.Jev.MaxSymbolsRequest = 1234
+	opts.Jev.RetryCount = 3
+	opts.Jev.HistorySize = 7
+	opts.Jev.CheckShortMessages = true
+
+	got := optToSettings(opts)
+	assert.Equal(t, "jev-token", got.Jev.Token)
+	assert.Equal(t, "https://proxy.example/v1", got.Jev.APIBase)
+	assert.True(t, got.Jev.Veto)
+	assert.Equal(t, "jev-1.13.0", got.Jev.Model)
+	assert.Equal(t, "Is `message` spam?", got.Jev.Question)
+	assert.Equal(t, "promotes", got.Jev.CriteriaSpam)
+	assert.Equal(t, "conversation", got.Jev.CriteriaHam)
+	assert.InDelta(t, 0.42, got.Jev.Threshold, 0.0001)
+	assert.Equal(t, 1234, got.Jev.MaxSymbolsRequest)
+	assert.Equal(t, 3, got.Jev.RetryCount)
+	assert.Equal(t, 7, got.Jev.HistorySize)
+	assert.True(t, got.Jev.CheckShortMessages)
+}
+
+// the question and criteria defaults must arrive from the struct tags, because
+// defaultSettingsTemplate fills by reflection over them before Validate runs
+func TestJevTokenOnlyStartupPassesValidate(t *testing.T) {
+	template, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	require.NotEmpty(t, template.Jev.Question, "question default must come from the struct tag")
+	require.NotEmpty(t, template.Jev.CriteriaSpam)
+	require.NotEmpty(t, template.Jev.CriteriaHam)
+	assert.InDelta(t, 0.30, template.Jev.Threshold, 0.0001)
+	assert.Equal(t, 6000, template.Jev.MaxSymbolsRequest)
+	assert.Equal(t, "jev-1.13.0", template.Jev.Model)
+	assert.Empty(t, template.Jev.APIBase, "apibase must carry no default, or token-only gating breaks")
+
+	template.Jev.Token = "only-a-token"
+	require.NoError(t, template.Validate())
+}
+
+func TestJevFrozenPolicyDefaultsMatchAppendix(t *testing.T) {
+	template, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	const (
+		wantQuestion     = "Is `message`, posted in a public Telegram group chat, spam?"
+		wantCriteriaSpam = "It promotes, advertises, or offers paid services, paid subscriptions, paid content, donations, crypto wallets, paid promotion of content or accounts, job recruitment, hiring, looking for employees, unsolicited job postings, easy money offers, work-from-home offers with specific payment amounts, VPN promotion, or invitations to join Telegram bots or channels for earnings."
+		wantCriteriaHam  = "Ordinary conversation between chat members. Casual discussion or mentioning prices of well-known services and products such as GitHub Copilot, ChatGPT Plus, cloud providers or software tools is NOT spam. Off-topic banter, rudeness, profanity, questions, and links shared as part of a conversation are NOT spam. Only direct selling, promoting, or advertising counts as spam."
+	)
+	assert.Equal(t, wantQuestion, template.Jev.Question)
+	assert.Equal(t, wantCriteriaSpam, template.Jev.CriteriaSpam)
+	assert.Equal(t, wantCriteriaHam, template.Jev.CriteriaHam)
+}
+
+func TestJevCustomQuestionOverridesDefault(t *testing.T) {
+	template, err := defaultSettingsTemplate()
+	require.NoError(t, err)
+
+	var opts options
+	opts.Jev.Token = "t"
+	opts.Jev.Question = "a different question entirely"
+	opts.Jev.CriteriaSpam = "custom spam"
+	opts.Jev.CriteriaHam = "custom ham"
+	opts.Jev.Threshold = 0.5
+
+	got := optToSettings(opts)
+	got.ApplyDefaults(template)
+	assert.Equal(t, "a different question entirely", got.Jev.Question,
+		"an explicit question must replace the default, not merge with it")
+	assert.Equal(t, "custom spam", got.Jev.CriteriaSpam)
+	require.NoError(t, got.Validate())
+}
+
+func TestJevNaNThresholdRejectedFromCLIPath(t *testing.T) {
+	var opts options
+	opts.Jev.Token = "t"
+	opts.Jev.Question = "q"
+	opts.Jev.CriteriaSpam = "s"
+	opts.Jev.CriteriaHam = "h"
+	opts.Jev.Threshold = math.NaN()
+
+	got := optToSettings(opts)
+	err := got.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "finite")
 }
