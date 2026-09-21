@@ -2,20 +2,24 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	lgr "github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	"github.com/jessevdk/go-flags"
 	"github.com/stretchr/testify/assert"
@@ -1367,4 +1371,131 @@ func TestREADMEAllOptionsMatchesHelp(t *testing.T) {
 		assert.Contains(t, flagNames, token,
 			"README options block lists flag %s that is not defined in options struct", token)
 	}
+}
+
+func Test_makeDetectorJev(t *testing.T) {
+	jevSettings := func() *config.Settings {
+		s := makeTestSettings()
+		s.Jev.Token = "jev-token"
+		s.Jev.Question = "Is `message` spam?"
+		s.Jev.CriteriaSpam = "promotes"
+		s.Jev.CriteriaHam = "conversation"
+		s.Jev.Threshold = 0.3
+		s.Jev.Veto = true
+		s.Jev.HistorySize = 5
+		return s
+	}
+
+	t.Run("enabled by token", func(t *testing.T) {
+		res := makeDetector(jevSettings())
+		require.NotNil(t, res)
+		assert.True(t, res.JevVeto)
+		assert.Equal(t, 5, res.JevHistorySize)
+	})
+
+	t.Run("apibase alone leaves jev disabled", func(t *testing.T) {
+		s := makeTestSettings()
+		s.Jev.APIBase = "https://proxy.example/v1"
+		s.Jev.Question = "Is `message` spam?"
+		s.Jev.CriteriaSpam = "promotes"
+		s.Jev.CriteriaHam = "conversation"
+		s.Jev.Threshold = 0.3
+		require.False(t, s.IsJevEnabled(), "apibase must not enable jev on its own")
+
+		res := makeDetector(s)
+		require.NotNil(t, res)
+		assert.False(t, res.JevVeto)
+	})
+}
+
+// a bad jev config cannot reach makeDetector's log.Fatalf because Validate runs first at
+// startup (main.go:360); this pins that the two use the same predicate and the same contract
+func TestJevBadConfigRejectedBeforeStartup(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*config.Settings)
+	}{
+		{"zero threshold", func(s *config.Settings) { s.Jev.Threshold = 0 }},
+		{"threshold above one", func(s *config.Settings) { s.Jev.Threshold = 2 }},
+		{"NaN threshold", func(s *config.Settings) { s.Jev.Threshold = math.NaN() }},
+		{"empty question", func(s *config.Settings) { s.Jev.Question = "" }},
+		{"empty spam criteria", func(s *config.Settings) { s.Jev.CriteriaSpam = "" }},
+		{"empty ham criteria", func(s *config.Settings) { s.Jev.CriteriaHam = "" }},
+		{"negative max symbols", func(s *config.Settings) { s.Jev.MaxSymbolsRequest = -1 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := makeTestSettings()
+			s.Jev.Token = "t"
+			s.Jev.Question = "Is `message` spam?"
+			s.Jev.CriteriaSpam = "promotes"
+			s.Jev.CriteriaHam = "conversation"
+			s.Jev.Threshold = 0.3
+			tt.mutate(s)
+			require.Error(t, s.Validate(), "startup validation must reject this before makeDetector runs")
+		})
+	}
+}
+
+func TestCollectMaskedSecrets(t *testing.T) {
+	t.Run("every provider token is masked", func(t *testing.T) {
+		s := makeTestSettings()
+		s.Telegram.Token = "tg-secret"
+		s.OpenAI.Token = "openai-secret"
+		s.Gemini.Token = "gemini-secret"
+		s.Jev.Token = "jev-secret"
+		s.Server.AuthHash = "hash-secret"
+
+		masked := collectMaskedSecrets(s)
+		assert.Contains(t, masked, "tg-secret")
+		assert.Contains(t, masked, "openai-secret")
+		assert.Contains(t, masked, "gemini-secret")
+		assert.Contains(t, masked, "jev-secret")
+		assert.Contains(t, masked, "hash-secret")
+	})
+
+	t.Run("empty tokens are skipped", func(t *testing.T) {
+		s := makeTestSettings()
+		s.Jev.Token = "jev-secret"
+		masked := collectMaskedSecrets(s)
+		assert.Contains(t, masked, "jev-secret")
+		assert.NotContains(t, masked, "")
+	})
+
+	t.Run("auto web password is not masked because it is printed", func(t *testing.T) {
+		s := makeTestSettings()
+		s.Transient.WebAuthPasswd = "auto"
+		assert.NotContains(t, collectMaskedSecrets(s), "auto")
+
+		s.Transient.WebAuthPasswd = "chosen-password"
+		assert.Contains(t, collectMaskedSecrets(s), "chosen-password")
+	})
+}
+
+// pins the ordering regression: lgr replaces secrets sequentially, so an encrypt key that is a
+// prefix of the web password must be masked after it or the password's tail survives in the log
+func TestCollectMaskedSecrets_OverlappingSecretsFullyRedacted(t *testing.T) {
+	const (
+		encryptKey = "synthetic-overlap-master-key"
+		webPasswd  = encryptKey + "-K8r9"
+	)
+
+	s := makeTestSettings()
+	s.Transient.ConfigDBEncryptKey = encryptKey
+	s.Transient.WebAuthPasswd = webPasswd
+
+	secrets := collectMaskedSecrets(s)
+	keyIdx := slices.Index(secrets, encryptKey)
+	passIdx := slices.Index(secrets, webPasswd)
+	require.NotEqual(t, -1, keyIdx)
+	require.NotEqual(t, -1, passIdx)
+	assert.Less(t, passIdx, keyIdx, "the longer overlapping secret must be masked first")
+
+	// run it through the real logger, since the ordering only matters via lgr's sequential replace
+	buf := &bytes.Buffer{}
+	lg := lgr.New(lgr.Out(buf), lgr.Secret(secrets...))
+	lg.Logf("web=%s key=%s", webPasswd, encryptKey)
+
+	assert.NotContains(t, buf.String(), "K8r9", "the password tail must not survive redaction")
+	assert.NotContains(t, buf.String(), encryptKey)
 }

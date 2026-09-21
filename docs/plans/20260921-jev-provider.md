@@ -453,28 +453,32 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/config/crypt_test.go`
 - Modify: `app/main_test.go`
 
-- [ ] in `makeDetector`, build `tgspam.JevConfig` from settings and call `detector.WithJevChecker`
+- [x] in `makeDetector`, build `tgspam.JevConfig` from settings and call `detector.WithJevChecker`
       when `settings.IsJevEnabled()`, logging `[WARN] jev enabled` like the others
-- [ ] treat a `WithJevChecker` error as a startup failure rather than continuing with jev silently
+- [x] treat a `WithJevChecker` error as a startup failure rather than continuing with jev silently
       disabled — an operator who set a token and a bad threshold must be told, not quietly left
       without the provider he configured
-- [ ] write a test proving a bad jev config fails startup rather than booting with jev off
-- [ ] write a test proving jev stays disabled when only `--jev.apibase` is set with no token
-- [ ] set `Config.JevVeto` and `Config.JevHistorySize` from settings alongside the OpenAI pair
-- [ ] pass jev its OWN `*http.Client`, not `Config.HTTPClient` — that instance is built with
+- [x] write a test proving a bad jev config fails startup rather than booting with jev off
+- [x] write a test proving jev stays disabled when only `--jev.apibase` is set with no token
+- [x] set `Config.JevVeto` and `Config.JevHistorySize` from settings alongside the OpenAI pair
+- [x] pass jev its OWN `*http.Client`, not `Config.HTTPClient` — that instance is built with
       `settings.CAS.Timeout` (`app/main.go:763`) and would impose a CAS deadline on LLM calls. The
       per-request deadline comes from the detector's LLM context via `NewRequestWithContext`
-- [ ] add the jev token to the masking list in `app/main.go:331`
-- [ ] add `FieldJevToken` and its entry in `sensitiveFieldAccessors` (`app/config/crypt.go:155`) so
+- [x] add the jev token to the masking list in `app/main.go:331`
+- [x] add `FieldJevToken` and its entry in `sensitiveFieldAccessors` (`app/config/crypt.go:155`) so
       the credential is encrypted at rest in `--confdb`. **Documented exemption to the visibility
       rule:** `FieldTelegramToken`, `FieldOpenAIToken`, `FieldGeminiToken` and `FieldServerAuthHash`
       (`crypt.go:21-24`) all have zero callers outside `app/config`, so the rule says lowercase —
       but a lone `fieldJevToken` among four exported siblings in one const block is worse. Keep it
       exported for const-block consistency; lowercasing all four is separate cleanup
-- [ ] write tests for encrypt/decrypt round-trip of the jev token
-- [ ] write a test proving the jev token is masked in log output
-- [ ] run tests - must pass before task 5
+- [x] write tests for encrypt/decrypt round-trip of the jev token
+- [x] write a test proving the jev token is masked in log output
+- [x] run tests - must pass before task 5
 
+
+- [x] ➕ extract `collectMaskedSecrets` from `main()`. The masking list was built inline, so
+      no token had a test and jev's could not get one without a seam. One production caller,
+      and the test now covers all four provider tokens plus the auto-password exclusion
 ### Task 5: Add the settings UI and its e2e coverage
 
 **Files:**

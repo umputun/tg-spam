@@ -338,35 +338,7 @@ func main() {
 	// setup logger with masked secrets BEFORE any subcommand dispatch so any
 	// error wrapping inside saveConfigToDB or later stages benefits from the
 	// secret masker. Tokens come directly from the resolved domain settings.
-	masked := []string{}
-
-	if appSettings.Telegram.Token != "" {
-		masked = append(masked, appSettings.Telegram.Token)
-	}
-	if appSettings.OpenAI.Token != "" {
-		masked = append(masked, appSettings.OpenAI.Token)
-	}
-	if appSettings.Gemini.Token != "" {
-		masked = append(masked, appSettings.Gemini.Token)
-	}
-
-	// add temporary web password if not "auto"
-	if appSettings.Transient.WebAuthPasswd != "auto" && appSettings.Transient.WebAuthPasswd != "" {
-		// auto passwd should not be masked as we print it
-		masked = append(masked, appSettings.Transient.WebAuthPasswd)
-	}
-
-	// add auth hash
-	if appSettings.Server.AuthHash != "" {
-		masked = append(masked, appSettings.Server.AuthHash)
-	}
-
-	// add config DB encryption master key - must be masked before the %+v settings dump below
-	if appSettings.Transient.ConfigDBEncryptKey != "" {
-		masked = append(masked, appSettings.Transient.ConfigDBEncryptKey)
-	}
-
-	setupLog(appSettings.Transient.Dbg, masked...)
+	setupLog(appSettings.Transient.Dbg, collectMaskedSecrets(appSettings)...)
 
 	// handle save-config command (after setupLog so any error output is masked)
 	if p.Active != nil && p.Active.Name == "save-config" {
@@ -764,6 +736,32 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 	return nil
 }
 
+// collectMaskedSecrets gathers every value setupLog must redact from log output. A credential
+// missing from this list is printed in clear by the %+v settings dump below it.
+func collectMaskedSecrets(appSettings *config.Settings) []string {
+	// ORDER MATTERS. lgr.hideSecrets calls bytes.ReplaceAll once per secret in slice order, so a
+	// longer secret must come before any shorter secret it contains, or only the shorter part is
+	// redacted: masking an encrypt key "k" before a password "k-9" leaves "******-9" in the log.
+	// The web password stays ahead of the auth hash and the encrypt key for exactly that reason.
+	masked := []string{}
+	add := func(secret string) {
+		if secret != "" {
+			masked = append(masked, secret)
+		}
+	}
+	add(appSettings.Telegram.Token)
+	add(appSettings.OpenAI.Token)
+	add(appSettings.Gemini.Token)
+	add(appSettings.Jev.Token)
+	// the auto-generated password is printed for the operator, so it is not masked
+	if appSettings.Transient.WebAuthPasswd != "auto" {
+		add(appSettings.Transient.WebAuthPasswd)
+	}
+	add(appSettings.Server.AuthHash)
+	add(appSettings.Transient.ConfigDBEncryptKey)
+	return masked
+}
+
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
 func makeDetector(settings *config.Settings) *tgspam.Detector {
@@ -778,6 +776,8 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		HTTPClient:          &http.Client{Timeout: settings.CAS.Timeout},
 		FirstMessageOnly:    !settings.ParanoidMode,
 		FirstMessagesCount:  settings.FirstMessagesCount,
+		JevVeto:             settings.Jev.Veto,
+		JevHistorySize:      settings.Jev.HistorySize,
 		OpenAIVeto:          settings.OpenAI.Veto,
 		OpenAIHistorySize:   settings.OpenAI.HistorySize, // how many last requests sent to openai
 		GeminiVeto:          settings.Gemini.Veto,
@@ -877,6 +877,28 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		}
 		log.Printf("[DEBUG] gemini config: %+v", geminiConfig)
 		detector.WithGeminiChecker(client.Models, geminiConfig)
+	}
+
+	if settings.IsJevEnabled() {
+		log.Printf("[WARN] jev enabled")
+		jevConfig := tgspam.JevConfig{
+			Token:              settings.Jev.Token,
+			APIBase:            settings.Jev.APIBase,
+			Model:              settings.Jev.Model,
+			Question:           settings.Jev.Question,
+			CriteriaSpam:       settings.Jev.CriteriaSpam,
+			CriteriaHam:        settings.Jev.CriteriaHam,
+			Threshold:          settings.Jev.Threshold,
+			MaxSymbolsRequest:  settings.Jev.MaxSymbolsRequest,
+			RetryCount:         settings.Jev.RetryCount,
+			CheckShortMessages: settings.Jev.CheckShortMessages,
+		}
+		// jev gets its own client: Config.HTTPClient carries settings.CAS.Timeout, which would
+		// impose a CAS deadline on LLM calls. The per-request deadline comes from the detector's
+		// LLM context, threaded through NewRequestWithContext.
+		if err := detector.WithJevChecker(&http.Client{}, jevConfig); err != nil {
+			log.Fatalf("[ERROR] %v", err)
+		}
 	}
 
 	if settings.AbnormalSpace.Enabled {

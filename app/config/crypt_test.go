@@ -247,3 +247,39 @@ func TestCrypter_DecryptFirstErrorShortCircuits(t *testing.T) {
 	// error message must reference the failing field, not accumulate multiple
 	assert.Contains(t, err.Error(), "failed to decrypt")
 }
+
+func TestCrypter_JevTokenRoundTrip(t *testing.T) {
+	crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+
+	settings := &Settings{
+		Jev: JevSettings{
+			Token:        "jev-token-secret",
+			Model:        "jev-1.13.0",
+			Question:     "Is `message` spam?",
+			CriteriaSpam: "promotes",
+			CriteriaHam:  "conversation",
+		},
+	}
+
+	require.NoError(t, crypter.EncryptSensitiveFields(settings))
+	assert.True(t, IsEncrypted(settings.Jev.Token))
+	assert.Equal(t, "jev-1.13.0", settings.Jev.Model, "model is not sensitive")
+	assert.Equal(t, "Is `message` spam?", settings.Jev.Question, "the policy text is not sensitive")
+	assert.Equal(t, "promotes", settings.Jev.CriteriaSpam)
+
+	decrypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+	require.NoError(t, decrypter.DecryptSensitiveFields(settings))
+	assert.Equal(t, "jev-token-secret", settings.Jev.Token)
+}
+
+func TestSensitiveFieldAccessors_CoversJev(t *testing.T) {
+	entry, ok := sensitiveFieldAccessors[FieldJevToken]
+	require.True(t, ok, "jev token must be registered or it is stored in clear under --confdb")
+	assert.Equal(t, "Jev token", entry.label)
+
+	s := &Settings{}
+	s.Jev.Token = "x"
+	assert.Equal(t, "x", *entry.get(s))
+}
