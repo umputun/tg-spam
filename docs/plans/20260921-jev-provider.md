@@ -380,27 +380,27 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `lib/tgspam/detector.go`
 - Modify: `lib/tgspam/detector_test.go`
 
-- [ ] add `jevChecker *jevChecker` field to `Detector`
-- [ ] add `JevVeto bool` and `JevHistorySize int` to `Config`, next to the OpenAI and Gemini pairs
-- [ ] add `WithJevChecker(client HTTPClient, config JevConfig) error` alongside `WithOpenAIChecker`,
+- [x] add `jevChecker *jevChecker` field to `Detector`
+- [x] add `JevVeto bool` and `JevHistorySize int` to `Config`, next to the OpenAI and Gemini pairs
+- [x] add `WithJevChecker(client HTTPClient, config JevConfig) error` alongside `WithOpenAIChecker`,
       returning the constructor's error and assigning `d.jevChecker` only on success
       (`WithLuaEngine` at `detector.go:604` is the error-returning precedent)
-- [ ] write a test proving a rejected config leaves `d.jevChecker` nil and the detector usable
-- [ ] add the `jev` entry to the `llmChecks` slice (`detector.go:395-416`)
-- [ ] bump the `llmResults` preallocation at `detector.go:394` from 2 to 3 — housekeeping, not a
+- [x] write a test proving a rejected config leaves `d.jevChecker` nil and the detector usable
+- [x] add the `jev` entry to the `llmChecks` slice (`detector.go:395-416`)
+- [x] bump the `llmResults` preallocation at `detector.go:394` from 2 to 3 — housekeeping, not a
       correctness requirement, since `append` reallocates
-- [ ] add `jevChecksShort` to the short-message eligibility block (`detector.go:343-352`) and include
+- [x] add `jevChecksShort` to the short-message eligibility block (`detector.go:343-352`) and include
       it in the `(!openaiChecksShort && !geminiChecksShort)` condition. **The slice alone is not
       enough, conditionally:** the early return fires only when no provider sets its short-message
       flag, so a slice-only jev misses short messages precisely when neither OpenAI nor Gemini is
       already short-checking, and runs on them when one of them is. That configuration dependence is
       what makes the omission hard to spot
-- [ ] write tests for jev participating in `any` and `all` consensus
-- [ ] write tests for jev in veto mode (clears heuristic spam) and non-veto mode (flips ham)
-- [ ] write a test proving a short message reaches jev when `CheckShortMessages` is set, and does not
+- [x] write tests for jev participating in `any` and `all` consensus
+- [x] write tests for jev in veto mode (clears heuristic spam) and non-veto mode (flips ham)
+- [x] write a test proving a short message reaches jev when `CheckShortMessages` is set, and does not
       when it is not
-- [ ] write a test proving a jev error leaves the base decision unchanged (`flip` stays false)
-- [ ] run tests - must pass before task 3
+- [x] write a test proving a jev error leaves the base decision unchanged (`flip` stays false)
+- [x] run tests - must pass before task 3
 
 ### Task 3: Add CLI flags and the settings struct
 
