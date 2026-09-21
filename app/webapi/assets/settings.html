@@ -554,7 +554,7 @@
                 <div class="col-md-6 mb-3">
                     <label for="jevThreshold" class="form-label">Jev Threshold</label>
                     <input type="number" step="any" min="0" max="1" class="form-control" id="jevThreshold" name="jevThreshold" value="{{.Jev.Threshold}}">
-                    <div class="form-text">Spam probability at or above this is spam, in (0, 1]. The 0.30 default flagged nothing legitimate on 148 labeled messages; raise it if you see false positives, lower it toward 0.25 if spam gets through</div>
+                    <div class="form-text">Spam probability at or above this is spam, in (0, 1]. Start at 0.30. Raise it to reduce false positives; lower it toward 0.25 to catch more potential spam. Lower values can flag more legitimate messages. Check the results in your chat</div>
                 </div>
             </div>
 
