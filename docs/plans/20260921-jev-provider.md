@@ -341,38 +341,38 @@ Exports (justification per item: who outside the package calls this?):
   and is called from `app/main.go`. It returns the constructor's error and assigns `d.jevChecker`
   only on success, so a `Detector` never holds a half-valid checker.)
 
-- [ ] create `lib/tgspam/jev.go` with `JevConfig`, `jevChecker`, `newJevChecker` and the wire types
-- [ ] implement `buildRequest` (truncate to `MaxSymbolsRequest` by runes, build the one noul question)
-- [ ] implement `sendRequest`: `http.NewRequestWithContext` so the detector's LLM deadline is
+- [x] create `lib/tgspam/jev.go` with `JevConfig`, `jevChecker`, `newJevChecker` and the wire types
+- [x] implement `buildRequest` (truncate to `MaxSymbolsRequest` by runes, build the one noul question)
+- [x] implement `sendRequest`: `http.NewRequestWithContext` so the detector's LLM deadline is
       honored, bearer auth, `defer resp.Body.Close()`, surface status and raw `detail` on non-2xx
-- [ ] decode the probability into a `*float64` so a missing or null `noul` is distinguishable from a
+- [x] decode the probability into a `*float64` so a missing or null `noul` is distinguishable from a
       legitimate `0` and returns an error
-- [ ] implement `verdict`: threshold the probability, set direction-aware `Confidence`, format `Reason`
-- [ ] have `newJevChecker` return `(*jevChecker, error)` and validate before constructing, so direct
+- [x] implement `verdict`: threshold the probability, set direction-aware `Confidence`, format `Reason`
+- [x] have `newJevChecker` return `(*jevChecker, error)` and validate before constructing, so direct
       library use cannot bypass the app validator. The full contract, identical to the one
       `Settings.Validate()` enforces in Task 3: `Threshold` finite and in (0, 1]; `MaxSymbolsRequest`
       non-negative, with zero meaning the 6000 default; `Question`, `CriteriaSpam` and `CriteriaHam`
       all non-empty. Supply the intended defaults for zero-valued fields, but never silently replace
       an invalid non-zero input — reject it
-- [ ] implement `check` delegating to `runLLMProviderCheck` with name `jev`, returning an empty
+- [x] implement `check` delegating to `runLLMProviderCheck` with name `jev`, returning an empty
       response when the client is nil (mirrors `openAIChecker.check`)
-- [ ] log the resolved `model` from the response at DEBUG so an alias move is visible
-- [ ] write tests for the happy path: assert outgoing URL, bearer header and exact JSON body
-- [ ] write tests for the threshold boundary (p just below, at, and above `Threshold`)
-- [ ] write tests for direction-aware `Confidence` on both a spam and a ham verdict
-- [ ] write tests for error paths: non-2xx, absent `answers.spam`, wrong `type`, out-of-range `noul`
-- [ ] write SEPARATE tests for a missing `noul` key, an explicit `"noul": null`, and a legitimate
+- [x] log the resolved `model` from the response at DEBUG so an alias move is visible
+- [x] write tests for the happy path: assert outgoing URL, bearer header and exact JSON body
+- [x] write tests for the threshold boundary (p just below, at, and above `Threshold`)
+- [x] write tests for direction-aware `Confidence` on both a spam and a ham verdict
+- [x] write tests for error paths: non-2xx, absent `answers.spam`, wrong `type`, out-of-range `noul`
+- [x] write SEPARATE tests for a missing `noul` key, an explicit `"noul": null`, and a legitimate
       `"noul": 0` — the first two must error, the third must be a valid ham verdict
-- [ ] write tests for attempt counts under the inherited retry contract: a 422 and a 429 both
+- [x] write tests for attempt counts under the inherited retry contract: a 422 and a 429 both
       consume all `RetryCount` attempts, and a cancelled context stops early
-- [ ] write a test asserting context cancellation aborts the in-flight request
-- [ ] write tests rejecting, at construction, each of: a NaN threshold, a threshold of 0, a
+- [x] write a test asserting context cancellation aborts the in-flight request
+- [x] write tests rejecting, at construction, each of: a NaN threshold, a threshold of 0, a
       threshold of 1.5, a negative `MaxSymbolsRequest`, an empty `Question`, an empty `CriteriaSpam`
       and an empty `CriteriaHam` — each returning an error rather than a checker
-- [ ] write a test proving zero-valued `MaxSymbolsRequest` and `Model` get their defaults while an
+- [x] write a test proving zero-valued `MaxSymbolsRequest` and `Model` get their defaults while an
       invalid non-zero value is rejected rather than normalized
-- [ ] write a test asserting rune-safe truncation at `MaxSymbolsRequest`
-- [ ] run tests - must pass before task 2
+- [x] write a test asserting rune-safe truncation at `MaxSymbolsRequest`
+- [x] run tests - must pass before task 2
 
 ### Task 2: Wire jev into the detector
 
