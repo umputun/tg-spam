@@ -487,24 +487,27 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/webapi/config_test.go`
 - Modify: `e2e-ui/e2e_test.go`
 
-- [ ] add a `jev` tab, nav link and edit panel to `settings.html` mirroring the Gemini block at
+- [x] add a `jev` tab, nav link and edit panel to `settings.html` mirroring the Gemini block at
       :468-512, with ids `jevVeto`, `jevCheckShortMessages`, `jevHistorySize`, `jevModel`,
       `jevQuestion`, `jevCriteriaSpam`, `jevCriteriaHam`, `jevThreshold`, `jevRetryCount`,
       `jevMaxSymbolsRequest`
-- [ ] add the read-only display rows for the same fields
-- [ ] parse the new form fields in `app/webapi/config.go` following the Gemini block at :396-430;
+- [x] add the read-only display rows for the same fields
+- [x] parse the new form fields in `app/webapi/config.go` following the Gemini block at :396-430;
       `jevThreshold` uses `strconv.ParseFloat` as at :549, and the jev token is NOT read from the
       form (credential stays in CLI/DB, same as Gemini)
-- [ ] run the same validation at the settings-save boundary before persisting, rolling back the
+- [x] run the same validation at the settings-save boundary before persisting, rolling back the
       in-memory mutation on failure — the existing pattern at `app/webapi/config.go:158` — so the UI
       cannot accept a negative cap or an emptied criteria field that bricks the next startup
-- [ ] write tests for parsing every new form field, including a malformed threshold leaving the
+- [x] write tests for parsing every new form field, including a malformed threshold leaving the
       stored value untouched, `NaN` being rejected rather than stored, and a negative cap or an
       emptied criteria field being rejected with the prior settings restored
-- [ ] add the new fields to the settings round-trip test in `e2e-ui/e2e_test.go`
-- [ ] run tests - must pass before task 6
-- [ ] run the e2e suite - must pass before task 6
+- [x] add the new fields to the settings round-trip test in `e2e-ui/e2e_test.go`
+- [x] run tests - must pass before task 6
+- [x] run the e2e suite - must pass before task 6
 
+
+- [x] ➕ add `JevEnabled` to the settings template data (`app/webapi/webapi.go`). The read-only
+      panel needs it the way the Gemini panel uses `.GeminiEnabled`, and it was not in the plan
 ### Task 6: Verify acceptance criteria
 
 - [ ] verify all requirements from Overview are implemented

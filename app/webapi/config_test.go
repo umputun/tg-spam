@@ -2270,3 +2270,183 @@ func TestNormalizeLuaEnabledPlugins(t *testing.T) {
 		})
 	}
 }
+
+func jevFormRequest(t *testing.T, form url.Values) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+	return req
+}
+
+func TestUpdateSettingsFromForm_Jev(t *testing.T) {
+	t.Run("every field maps", func(t *testing.T) {
+		settings := &config.Settings{}
+		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{
+			"jevVeto":               {"on"},
+			"jevCheckShortMessages": {"on"},
+			"jevHistorySize":        {"7"},
+			"jevModel":              {"jev-1.13.0"},
+			"jevQuestion":           {"Is `message` spam?"},
+			"jevCriteriaSpam":       {"promotes"},
+			"jevCriteriaHam":        {"conversation"},
+			"jevThreshold":          {"0.42"},
+			"jevMaxSymbolsRequest":  {"1234"},
+			"jevRetryCount":         {"3"},
+		}))
+
+		assert.True(t, settings.Jev.Veto)
+		assert.True(t, settings.Jev.CheckShortMessages)
+		assert.Equal(t, 7, settings.Jev.HistorySize)
+		assert.Equal(t, "jev-1.13.0", settings.Jev.Model)
+		assert.Equal(t, "Is `message` spam?", settings.Jev.Question)
+		assert.Equal(t, "promotes", settings.Jev.CriteriaSpam)
+		assert.Equal(t, "conversation", settings.Jev.CriteriaHam)
+		assert.InDelta(t, 0.42, settings.Jev.Threshold, 0.0001)
+		assert.Equal(t, 1234, settings.Jev.MaxSymbolsRequest)
+		assert.Equal(t, 3, settings.Jev.RetryCount)
+	})
+
+	t.Run("token is never read from the form", func(t *testing.T) {
+		settings := &config.Settings{}
+		settings.Jev.Token = "from-cli"
+		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{"jevToken": {"from-browser"}}))
+		assert.Equal(t, "from-cli", settings.Jev.Token, "the credential lives in CLI/DB, not the form")
+	})
+
+	t.Run("malformed numbers leave the stored value untouched", func(t *testing.T) {
+		settings := &config.Settings{}
+		settings.Jev.Threshold = 0.3
+		settings.Jev.MaxSymbolsRequest = 6000
+		settings.Jev.RetryCount = 2
+		settings.Jev.HistorySize = 5
+
+		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{
+			"jevThreshold":         {"not-a-number"},
+			"jevMaxSymbolsRequest": {"abc"},
+			"jevRetryCount":        {"x"},
+			"jevHistorySize":       {"y"},
+		}))
+
+		assert.InDelta(t, 0.3, settings.Jev.Threshold, 0.0001)
+		assert.Equal(t, 6000, settings.Jev.MaxSymbolsRequest)
+		assert.Equal(t, 2, settings.Jev.RetryCount)
+		assert.Equal(t, 5, settings.Jev.HistorySize)
+	})
+
+	t.Run("absent checkbox clears the flag", func(t *testing.T) {
+		settings := &config.Settings{}
+		settings.Jev.Veto = true
+		settings.Jev.CheckShortMessages = true
+		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{}))
+		assert.False(t, settings.Jev.Veto)
+		assert.False(t, settings.Jev.CheckShortMessages)
+	})
+}
+
+// ParseFloat accepts "NaN", so the parse step stores it and Validate is what must reject it;
+// every p >= NaN is false, which would clear every message instead of flagging it
+func TestUpdateSettingsFromForm_JevInvalidValuesRejectedByValidate(t *testing.T) {
+	tests := []struct {
+		name   string
+		form   url.Values
+		errMsg string
+	}{
+		{"NaN threshold", url.Values{"jevThreshold": {"NaN"}}, "finite"},
+		{"zero threshold", url.Values{"jevThreshold": {"0"}}, "(0, 1]"},
+		{"threshold above one", url.Values{"jevThreshold": {"1.5"}}, "(0, 1]"},
+		{"negative cap", url.Values{"jevMaxSymbolsRequest": {"-1"}}, "max-symbols-request"},
+		{"emptied question", url.Values{"jevQuestion": {""}}, "question"},
+		{"emptied spam criteria", url.Values{"jevCriteriaSpam": {""}}, "criteria-spam"},
+		{"emptied ham criteria", url.Values{"jevCriteriaHam": {""}}, "criteria-ham"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			settings := &config.Settings{}
+			settings.Jev.Token = "t"
+			settings.Jev.Question = "Is `message` spam?"
+			settings.Jev.CriteriaSpam = "promotes"
+			settings.Jev.CriteriaHam = "conversation"
+			settings.Jev.Threshold = 0.3
+
+			updateSettingsFromForm(settings, jevFormRequest(t, tt.form))
+			err := settings.Validate()
+			require.Error(t, err, "the save boundary must reject this and roll back")
+			assert.Contains(t, err.Error(), tt.errMsg)
+		})
+	}
+}
+
+// the parser-plus-Validate tests above do not prove rollback, only that Validate objects.
+// this drives the real handler so a rejected jev update is shown to restore prior settings
+// and never reach the store.
+func TestUpdateConfigHandler_JevInvalidRollsBackAndDoesNotSave(t *testing.T) {
+	tests := []struct {
+		name   string
+		form   url.Values
+		errMsg string
+	}{
+		{"NaN threshold", url.Values{"jevThreshold": {"NaN"}}, "finite"},
+		{"zero threshold", url.Values{"jevThreshold": {"0"}}, "(0, 1]"},
+		{"threshold above one", url.Values{"jevThreshold": {"3"}}, "(0, 1]"},
+		{"negative cap", url.Values{"jevMaxSymbolsRequest": {"-5"}}, "max-symbols-request"},
+		{"emptied question", url.Values{"jevQuestion": {""}}, "question"},
+		{"emptied spam criteria", url.Values{"jevCriteriaSpam": {""}}, "criteria-spam"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			settingsStore := &mocks.SettingsStoreMock{
+				SaveFunc: func(ctx context.Context, s *config.Settings) error { return nil },
+			}
+			appSettings := &config.Settings{InstanceID: "test-instance"}
+			appSettings.Jev.Token = "keep-me-secret"
+			appSettings.Jev.Question = "Is `message` spam?"
+			appSettings.Jev.CriteriaSpam = "promotes"
+			appSettings.Jev.CriteriaHam = "conversation"
+			appSettings.Jev.Threshold = 0.3
+			appSettings.Jev.MaxSymbolsRequest = 6000
+			before := *appSettings
+
+			srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+			form := tt.form
+			form.Set("saveToDb", "true")
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			srv.updateConfigHandler(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), tt.errMsg)
+			assert.Empty(t, settingsStore.SaveCalls(), "an invalid update must never reach the store")
+			assert.Equal(t, before, *appSettings, "in-memory settings must be restored on rejection")
+			assert.Equal(t, "keep-me-secret", appSettings.Jev.Token, "the credential must survive a rejected save")
+		})
+	}
+}
+
+func TestUpdateConfigHandler_JevValidUpdateIsSaved(t *testing.T) {
+	settingsStore := &mocks.SettingsStoreMock{
+		SaveFunc: func(ctx context.Context, s *config.Settings) error { return nil },
+	}
+	appSettings := &config.Settings{InstanceID: "test-instance"}
+	appSettings.Jev.Token = "keep-me-secret"
+	appSettings.Jev.Question = "Is `message` spam?"
+	appSettings.Jev.CriteriaSpam = "promotes"
+	appSettings.Jev.CriteriaHam = "conversation"
+	appSettings.Jev.Threshold = 0.3
+
+	srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+	form := url.Values{"jevThreshold": {"0.305"}, "jevVeto": {"on"}, "saveToDb": {"true"}}
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.updateConfigHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.InDelta(t, 0.305, appSettings.Jev.Threshold, 0.0001, "a finer-precision threshold must be accepted")
+	assert.True(t, appSettings.Jev.Veto)
+	assert.Equal(t, "keep-me-secret", appSettings.Jev.Token)
+	require.Len(t, settingsStore.SaveCalls(), 1)
+}

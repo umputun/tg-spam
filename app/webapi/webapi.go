@@ -1009,6 +1009,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	s.appSettingsMu.RUnlock()
 
 	geminiEnabled := settingsSnapshot != nil && settingsSnapshot.Gemini.Token != ""
+	jevEnabled := settingsSnapshot != nil && settingsSnapshot.IsJevEnabled()
 
 	data := struct {
 		*config.Settings
@@ -1031,6 +1032,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		ConfigDBMode    bool
 		BotUsername     string
 		GeminiEnabled   bool
+		JevEnabled      bool
 	}{
 		Settings:            settingsSnapshot,
 		LuaAvailablePlugins: luaPlugins,
@@ -1061,6 +1063,7 @@ func (s *Server) htmlSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		ConfigDBMode:    s.ConfigDBMode,
 		BotUsername:     s.BotUsername,
 		GeminiEnabled:   geminiEnabled,
+		JevEnabled:      jevEnabled,
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "settings.html", data); err != nil {
