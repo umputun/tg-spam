@@ -72,6 +72,12 @@ type jevResponse struct {
 // newJevChecker makes a checker for the jev decision API. It validates params rather than
 // normalizing them, so a caller using the library directly cannot bypass the app-level validator.
 func newJevChecker(client HTTPClient, params JevConfig) (*jevChecker, error) {
+	// a nil client would make check return an empty non-error response, which reads as a
+	// confident ham verdict and clears LLM-eligible heuristic spam in veto mode. The sibling
+	// providers tolerate it because their constructors cannot report an error; this one can.
+	if client == nil {
+		return nil, fmt.Errorf("jev client must not be nil")
+	}
 	if math.IsNaN(params.Threshold) || math.IsInf(params.Threshold, 0) {
 		return nil, fmt.Errorf("jev threshold must be a finite number, got %v", params.Threshold)
 	}

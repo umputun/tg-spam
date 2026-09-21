@@ -2131,6 +2131,7 @@ func TestTemplateRendering(t *testing.T) {
 				ConfigDBMode    bool
 				BotUsername     string
 				GeminiEnabled   bool
+				JevEnabled      bool
 			}{
 				Settings: &config.Settings{
 					InstanceID:          "test-instance",
@@ -2188,6 +2189,7 @@ func TestTemplateRendering(t *testing.T) {
 				Filter              string
 				OpenAIEnabled       bool
 				GeminiEnabled       bool
+				JevEnabled          bool
 			}{
 				DetectedSpamEntries: []storage.DetectedSpamInfo{
 					{
@@ -3237,4 +3239,103 @@ func TestDMUsers_settingsPageContainsDMUsersSection(t *testing.T) {
 	// verify copyUserID JS function
 	assert.Contains(t, body, "function copyUserID(userId, btn)")
 	assert.Contains(t, body, "navigator.clipboard")
+}
+
+// pins the credential leak revmux found: the handler promises to redact service tokens and
+// blanked four of five, so GET /settings returned the jev bearer token in cleartext
+func TestServer_getSettingsHandler_RedactsJevToken(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{GetLuaPluginNamesFunc: func() []string { return nil }}
+	live := &config.Settings{
+		InstanceID: "test",
+		Telegram:   config.TelegramSettings{Token: "tg-secret"},
+		OpenAI:     config.OpenAISettings{Token: "openai-secret"},
+		Gemini:     config.GeminiSettings{Token: "gemini-secret"},
+		Jev:        config.JevSettings{Token: "jev-secret", Model: "jev-1.13.0"},
+		Server:     config.ServerSettings{AuthHash: "$2a$bcrypt-hash"},
+	}
+	server := NewServer(Config{Version: "1.0", Detector: detectorMock, AppSettings: live})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(server.getSettingsHandler).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	body := rr.Body.String()
+	assert.NotContains(t, body, "jev-secret", "the jev token must be redacted like every other credential")
+	assert.NotContains(t, body, "tg-secret")
+	assert.NotContains(t, body, "openai-secret")
+	assert.NotContains(t, body, "gemini-secret")
+	assert.NotContains(t, body, "$2a$bcrypt-hash")
+	assert.Contains(t, body, "jev-1.13.0", "non-credential jev fields must still be visible")
+
+	assert.Equal(t, "jev-secret", live.Jev.Token, "redaction must not mutate the live settings")
+}
+
+func TestServer_htmlDetectedSpamHandler_JevFilter(t *testing.T) {
+	entries := []storage.DetectedSpamInfo{
+		{Text: "flagged by jev", UserName: "u1", Checks: []spamcheck.Response{{Name: "jev", Spam: true}}},
+		{Text: "cleared by jev", UserName: "u2", Checks: []spamcheck.Response{
+			{Name: "jev", Spam: false}, {Name: "classifier", Spam: true},
+		}},
+		{Text: "openai only", UserName: "u3", Checks: []spamcheck.Response{{Name: "openai", Spam: true}}},
+	}
+	newServer := func(jevToken string) *Server {
+		return NewServer(Config{
+			Version:  "1.0",
+			Detector: &mocks.DetectorMock{GetLuaPluginNamesFunc: func() []string { return nil }},
+			DetectedSpam: &mocks.DetectedSpamMock{
+				ReadFunc: func(ctx context.Context) ([]storage.DetectedSpamInfo, error) { return entries, nil },
+			},
+			AppSettings: &config.Settings{Jev: config.JevSettings{Token: jevToken}},
+		})
+	}
+
+	t.Run("option shows only when jev is enabled", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, token string
+			want        bool
+		}{
+			{"token set", "jev-secret", true},
+			{"no token", "", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rr := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/detected_spam", http.NoBody)
+				require.NoError(t, err)
+				http.HandlerFunc(newServer(tc.token).htmlDetectedSpamHandler).ServeHTTP(rr, req)
+				require.Equal(t, http.StatusOK, rr.Code)
+				assert.Equal(t, tc.want, strings.Contains(rr.Body.String(), `value="jev"`),
+					"the dropdown option must track whether jev is configured")
+			})
+		}
+	})
+
+	// the siblings select on a check being present, not on it having voted spam, so a message
+	// jev looked at and cleared must still appear under the jev filter
+	t.Run("selects entries carrying a jev check regardless of its verdict", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/detected_spam?filter=jev", http.NoBody)
+		require.NoError(t, err)
+		http.HandlerFunc(newServer("jev-secret").htmlDetectedSpamHandler).ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		body := rr.Body.String()
+		assert.Contains(t, body, "flagged by jev")
+		assert.Contains(t, body, "cleared by jev")
+		assert.NotContains(t, body, "openai only", "an entry with no jev check must be filtered out")
+	})
+
+	t.Run("htmx path filters the same way", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/detected_spam?filter=jev", http.NoBody)
+		require.NoError(t, err)
+		req.Header.Set("HX-Request", "true")
+		http.HandlerFunc(newServer("jev-secret").htmlDetectedSpamHandler).ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		body := rr.Body.String()
+		assert.Contains(t, body, "flagged by jev")
+		assert.NotContains(t, body, "openai only")
+	})
 }

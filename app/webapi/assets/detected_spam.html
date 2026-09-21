@@ -29,6 +29,9 @@
                     {{if .GeminiEnabled}}
                     <option value="gemini" {{if eq .Filter "gemini"}}selected{{end}}>Gemini</option>
                     {{end}}
+                    {{if .JevEnabled}}
+                    <option value="jev" {{if eq .Filter "jev"}}selected{{end}}>Jev</option>
+                    {{end}}
                 </select>
             </div>
         </div>

@@ -415,3 +415,28 @@ func TestJevChecker_BuildRequestNoTruncationWhenShort(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, bytes.Contains(body, []byte(`"type":"noul"`)))
 }
+
+// pins the nil-client defect: a missing dependency used to construct successfully and return an
+// empty non-error response, which reads as a confident ham verdict
+func TestNewJevChecker_RejectsNilClient(t *testing.T) {
+	checker, err := newJevChecker(nil, validJevConfig())
+	require.Error(t, err)
+	assert.Nil(t, checker)
+	assert.Contains(t, err.Error(), "must not be nil")
+}
+
+func TestDetector_WithJevCheckerNilClientLeavesSpamStanding(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, JevVeto: true})
+	_, err := d.LoadStopWords(strings.NewReader("spamword"))
+	require.NoError(t, err)
+
+	require.Error(t, d.WithJevChecker(nil, jevTestConfig()))
+	assert.Nil(t, d.jevChecker, "a rejected client must leave the detector without a jev checker")
+
+	spam, cr := d.Check(spamcheck.Request{Msg: "spamword in an otherwise ordinary message"})
+	assert.True(t, spam, "heuristic spam must stand when jev could not be constructed")
+	for _, c := range cr {
+		assert.NotEqual(t, "jev", c.Name, "no jev result should appear at all")
+		assert.NotEmpty(t, c.Name, "an empty check name is the symptom the nil client produced")
+	}
+}
