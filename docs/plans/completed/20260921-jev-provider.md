@@ -534,11 +534,11 @@ dies mid-read reaches the read error. Both are covered. The profile now shows on
 
 - [x] add every new flag to the "All Application Options" section of README.md (done in Task 3,
       forced by `TestREADMEAllOptionsMatchesHelp`)
-- [ ] add a descriptive jev section to README.md covering what the provider is, the one-question
+- [x] add a descriptive jev section to README.md covering what the provider is, the one-question
       design, the threshold, and that 0.30 is a development candidate rather than a validated default
-- [ ] add a CLAUDE.md section documenting the provider, the threshold's development-candidate status,
+- [x] add a CLAUDE.md section documenting the provider, the threshold's development-candidate status,
       and the two-place wiring trap at `detector.go:343-352`
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

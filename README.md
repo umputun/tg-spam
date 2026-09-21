@@ -126,14 +126,25 @@ Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemi
 - Short message checking can be enabled with `--gemini.check-short-messages`.
 - The default model is `gemma-4-31b-it`. You can change it with `--gemini.model=[$GEMINI_MODEL]`.
 
+**Jev integration**
+
+Setting `--jev.token [$JEV_TOKEN]` enables [jev](https://docs.typesafe.ai), a decision model rather than a text generator. Where OpenAI and Gemini are asked to write a JSON verdict, jev is asked one typed question and returns a bare probability, which TG-Spam thresholds itself. It can be used alongside or instead of the other providers and participates in `--llm.consensus` the same way.
+
+- By default the jev integration is disabled. To enable it, set `--jev.token` to a valid typesafe.ai API key. Setting `--jev.apibase` alone does NOT enable it, so pointing at a proxy without a credential cannot turn the provider on by accident.
+- One question is asked, not several. `--jev.question` carries it and `--jev.criteria-spam` / `--jev.criteria-ham` describe the two sides. All three ship with the text the threshold below was measured against; changing any of them invalidates that measurement.
+- `--jev.threshold` (default `0.30`) is the probability at or above which a message is spam. **It is a development candidate, not a validated default.** It was chosen on the same 150 production messages it was measured on, and that measurement joined a post to its quoted text with a newline where the shipped code fuses them. Treat it as a starting point and tune it against your own chat.
+- `--jev.model` pins a version such as `jev-1.13.0` and should never be an alias: an alias moves and silently changes what a tuned threshold means. The model the API actually resolved is logged at debug level on every check.
+- `--jev.veto`, `--jev.history-size` and `--jev.check-short-messages` behave exactly as their OpenAI and Gemini counterparts.
+- `--jev.retry-count` is total attempts, not retries after the first, and every error is retried regardless of its HTTP status. That is the behavior shared with the other providers, not something specific to jev.
+
 **LLM consensus**
 
 When multiple LLM providers are eligible for the same message, TG-Spam resolves their results with `--llm.consensus=[$LLM_CONSENSUS]`:
 
 - `any` is the default. If any eligible LLM disagrees with the base decision, the base decision flips.
 - `all` requires all eligible LLMs to agree before the base decision flips.
-- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, and the short-message flags.
-- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and the base decision is kept.
+- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, `--jev.veto`, and the short-message flags.
+- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and that provider contributes no flip. Under `any` another provider can still flip the base decision; under `all` the missing flip prevents one.
 
 
 **Emoji Count**
