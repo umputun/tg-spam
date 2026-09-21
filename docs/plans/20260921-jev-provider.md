@@ -510,16 +510,26 @@ Exports (justification per item: who outside the package calls this?):
       panel needs it the way the Gemini panel uses `.GeminiEnabled`, and it was not in the plan
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify jev stays disabled with no token set and that no behavior changes in that case
-- [ ] verify a jev failure is a non-flipping participant, tested in mixed `any` and `all` cases with
+- [x] verify all requirements from Overview are implemented
+- [x] verify jev stays disabled with no token set and that no behavior changes in that case
+- [x] verify a jev failure is a non-flipping participant, tested in mixed `any` and `all` cases with
       another provider — under `any` consensus a second successful provider can still flip the
       result, so this is not a global fallback
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run e2e tests: the Playwright suite in `e2e-ui/`
-- [ ] run `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
-- [ ] verify test coverage meets the project's 80% standard for the new file
+- [x] run full test suite: `go test -race ./...`
+- [x] run e2e tests: the Playwright suite in `e2e-ui/`
+- [x] run `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
+- [x] verify test coverage meets the project's 80% standard for the new file
 
+
+- [x] ➕ add a veto-mode error case: a failed jev check must leave heuristic spam standing,
+      since an absent verdict is not a clearance. Not in the plan and not covered by the
+      non-veto error case, which only proves a failure does not flip ham to spam
+
+Coverage of `lib/tgspam/jev.go`: `newJevChecker`, `check`, `buildRequest` and `verdict` at 100%,
+`sendRequest` at 97.4%. Two branches I first called unreachable were not: `APIBase` is not validated
+at construction, so a malformed endpoint reaches the request-construction error, and a body that
+dies mid-read reaches the read error. Both are covered. The profile now shows one uncovered block,
+`jev.go:152`, the `json.Marshal` error, which a struct of strings and maps cannot produce.
 ### Task 7: [Final] Update documentation
 
 - [x] add every new flag to the "All Application Options" section of README.md (done in Task 3,

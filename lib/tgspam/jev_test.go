@@ -329,6 +329,50 @@ func TestJevChecker_NilClient(t *testing.T) {
 	assert.Equal(t, spamcheck.Response{}, resp)
 }
 
+// APIBase is not validated at construction, so a malformed endpoint surfaces here as an
+// ordinary check error rather than a startup failure
+func TestJevChecker_MalformedAPIBase(t *testing.T) {
+	clientMock := &mocks.HTTPClientMock{
+		DoFunc: func(*http.Request) (*http.Response, error) {
+			assert.Fail(t, "the client must not be reached when the request cannot be built")
+			return nil, nil
+		},
+	}
+	cfg := validJevConfig()
+	cfg.APIBase = "://broken"
+	checker, err := newJevChecker(clientMock, cfg)
+	require.NoError(t, err)
+
+	spam, resp := checker.check(context.Background(), "msg", nil)
+	assert.False(t, spam)
+	require.Error(t, resp.Error)
+	assert.Contains(t, resp.Error.Error(), "can't make request")
+	assert.Empty(t, clientMock.DoCalls())
+}
+
+type failingReader struct{ err error }
+
+func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// a body that dies mid-read, as a reset connection would, must be an error rather than a verdict
+func TestJevChecker_ResponseBodyReadError(t *testing.T) {
+	clientMock := &mocks.HTTPClientMock{
+		DoFunc: func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(failingReader{err: fmt.Errorf("connection reset")}),
+			}, nil
+		},
+	}
+	checker, err := newJevChecker(clientMock, validJevConfig())
+	require.NoError(t, err)
+
+	spam, resp := checker.check(context.Background(), "msg", nil)
+	assert.False(t, spam)
+	require.Error(t, resp.Error)
+	assert.Contains(t, resp.Error.Error(), "can't read response")
+}
+
 func TestJevChecker_TransportError(t *testing.T) {
 	clientMock := &mocks.HTTPClientMock{
 		DoFunc: func(*http.Request) (*http.Response, error) { return nil, fmt.Errorf("dial failed") },
