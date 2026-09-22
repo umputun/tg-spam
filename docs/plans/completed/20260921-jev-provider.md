@@ -341,38 +341,38 @@ Exports (justification per item: who outside the package calls this?):
   and is called from `app/main.go`. It returns the constructor's error and assigns `d.jevChecker`
   only on success, so a `Detector` never holds a half-valid checker.)
 
-- [ ] create `lib/tgspam/jev.go` with `JevConfig`, `jevChecker`, `newJevChecker` and the wire types
-- [ ] implement `buildRequest` (truncate to `MaxSymbolsRequest` by runes, build the one noul question)
-- [ ] implement `sendRequest`: `http.NewRequestWithContext` so the detector's LLM deadline is
+- [x] create `lib/tgspam/jev.go` with `JevConfig`, `jevChecker`, `newJevChecker` and the wire types
+- [x] implement `buildRequest` (truncate to `MaxSymbolsRequest` by runes, build the one noul question)
+- [x] implement `sendRequest`: `http.NewRequestWithContext` so the detector's LLM deadline is
       honored, bearer auth, `defer resp.Body.Close()`, surface status and raw `detail` on non-2xx
-- [ ] decode the probability into a `*float64` so a missing or null `noul` is distinguishable from a
+- [x] decode the probability into a `*float64` so a missing or null `noul` is distinguishable from a
       legitimate `0` and returns an error
-- [ ] implement `verdict`: threshold the probability, set direction-aware `Confidence`, format `Reason`
-- [ ] have `newJevChecker` return `(*jevChecker, error)` and validate before constructing, so direct
+- [x] implement `verdict`: threshold the probability, set direction-aware `Confidence`, format `Reason`
+- [x] have `newJevChecker` return `(*jevChecker, error)` and validate before constructing, so direct
       library use cannot bypass the app validator. The full contract, identical to the one
       `Settings.Validate()` enforces in Task 3: `Threshold` finite and in (0, 1]; `MaxSymbolsRequest`
       non-negative, with zero meaning the 6000 default; `Question`, `CriteriaSpam` and `CriteriaHam`
       all non-empty. Supply the intended defaults for zero-valued fields, but never silently replace
       an invalid non-zero input — reject it
-- [ ] implement `check` delegating to `runLLMProviderCheck` with name `jev`, returning an empty
+- [x] implement `check` delegating to `runLLMProviderCheck` with name `jev`, returning an empty
       response when the client is nil (mirrors `openAIChecker.check`)
-- [ ] log the resolved `model` from the response at DEBUG so an alias move is visible
-- [ ] write tests for the happy path: assert outgoing URL, bearer header and exact JSON body
-- [ ] write tests for the threshold boundary (p just below, at, and above `Threshold`)
-- [ ] write tests for direction-aware `Confidence` on both a spam and a ham verdict
-- [ ] write tests for error paths: non-2xx, absent `answers.spam`, wrong `type`, out-of-range `noul`
-- [ ] write SEPARATE tests for a missing `noul` key, an explicit `"noul": null`, and a legitimate
+- [x] log the resolved `model` from the response at DEBUG so an alias move is visible
+- [x] write tests for the happy path: assert outgoing URL, bearer header and exact JSON body
+- [x] write tests for the threshold boundary (p just below, at, and above `Threshold`)
+- [x] write tests for direction-aware `Confidence` on both a spam and a ham verdict
+- [x] write tests for error paths: non-2xx, absent `answers.spam`, wrong `type`, out-of-range `noul`
+- [x] write SEPARATE tests for a missing `noul` key, an explicit `"noul": null`, and a legitimate
       `"noul": 0` — the first two must error, the third must be a valid ham verdict
-- [ ] write tests for attempt counts under the inherited retry contract: a 422 and a 429 both
+- [x] write tests for attempt counts under the inherited retry contract: a 422 and a 429 both
       consume all `RetryCount` attempts, and a cancelled context stops early
-- [ ] write a test asserting context cancellation aborts the in-flight request
-- [ ] write tests rejecting, at construction, each of: a NaN threshold, a threshold of 0, a
+- [x] write a test asserting context cancellation aborts the in-flight request
+- [x] write tests rejecting, at construction, each of: a NaN threshold, a threshold of 0, a
       threshold of 1.5, a negative `MaxSymbolsRequest`, an empty `Question`, an empty `CriteriaSpam`
       and an empty `CriteriaHam` — each returning an error rather than a checker
-- [ ] write a test proving zero-valued `MaxSymbolsRequest` and `Model` get their defaults while an
+- [x] write a test proving zero-valued `MaxSymbolsRequest` and `Model` get their defaults while an
       invalid non-zero value is rejected rather than normalized
-- [ ] write a test asserting rune-safe truncation at `MaxSymbolsRequest`
-- [ ] run tests - must pass before task 2
+- [x] write a test asserting rune-safe truncation at `MaxSymbolsRequest`
+- [x] run tests - must pass before task 2
 
 ### Task 2: Wire jev into the detector
 
@@ -380,27 +380,27 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `lib/tgspam/detector.go`
 - Modify: `lib/tgspam/detector_test.go`
 
-- [ ] add `jevChecker *jevChecker` field to `Detector`
-- [ ] add `JevVeto bool` and `JevHistorySize int` to `Config`, next to the OpenAI and Gemini pairs
-- [ ] add `WithJevChecker(client HTTPClient, config JevConfig) error` alongside `WithOpenAIChecker`,
+- [x] add `jevChecker *jevChecker` field to `Detector`
+- [x] add `JevVeto bool` and `JevHistorySize int` to `Config`, next to the OpenAI and Gemini pairs
+- [x] add `WithJevChecker(client HTTPClient, config JevConfig) error` alongside `WithOpenAIChecker`,
       returning the constructor's error and assigning `d.jevChecker` only on success
       (`WithLuaEngine` at `detector.go:604` is the error-returning precedent)
-- [ ] write a test proving a rejected config leaves `d.jevChecker` nil and the detector usable
-- [ ] add the `jev` entry to the `llmChecks` slice (`detector.go:395-416`)
-- [ ] bump the `llmResults` preallocation at `detector.go:394` from 2 to 3 — housekeeping, not a
+- [x] write a test proving a rejected config leaves `d.jevChecker` nil and the detector usable
+- [x] add the `jev` entry to the `llmChecks` slice (`detector.go:395-416`)
+- [x] bump the `llmResults` preallocation at `detector.go:394` from 2 to 3 — housekeeping, not a
       correctness requirement, since `append` reallocates
-- [ ] add `jevChecksShort` to the short-message eligibility block (`detector.go:343-352`) and include
+- [x] add `jevChecksShort` to the short-message eligibility block (`detector.go:343-352`) and include
       it in the `(!openaiChecksShort && !geminiChecksShort)` condition. **The slice alone is not
       enough, conditionally:** the early return fires only when no provider sets its short-message
       flag, so a slice-only jev misses short messages precisely when neither OpenAI nor Gemini is
       already short-checking, and runs on them when one of them is. That configuration dependence is
       what makes the omission hard to spot
-- [ ] write tests for jev participating in `any` and `all` consensus
-- [ ] write tests for jev in veto mode (clears heuristic spam) and non-veto mode (flips ham)
-- [ ] write a test proving a short message reaches jev when `CheckShortMessages` is set, and does not
+- [x] write tests for jev participating in `any` and `all` consensus
+- [x] write tests for jev in veto mode (clears heuristic spam) and non-veto mode (flips ham)
+- [x] write a test proving a short message reaches jev when `CheckShortMessages` is set, and does not
       when it is not
-- [ ] write a test proving a jev error leaves the base decision unchanged (`flip` stays false)
-- [ ] run tests - must pass before task 3
+- [x] write a test proving a jev error leaves the base decision unchanged (`flip` stays false)
+- [x] run tests - must pass before task 3
 
 ### Task 3: Add CLI flags and the settings struct
 
@@ -410,35 +410,41 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/config/settings.go`
 - Modify: `app/config/settings_test.go`
 
-- [ ] add the `jev` flag group to `app/main.go` mirroring the `gemini` group: `token`, `veto`,
+- [x] add the `jev` flag group to `app/main.go` mirroring the `gemini` group: `token`, `veto`,
       `apibase`, `model` (default `jev-1.13.0`), `question`, `criteria-spam`, `criteria-ham`,
       `threshold` (default `0.30`), `max-symbols-request` (default `6000`), `retry-count`,
       `history-size`, `check-short-messages`, with `namespace:"jev" env-namespace:"JEV"`
-- [ ] give `question`, `criteria-spam` and `criteria-ham` non-empty `default:` struct tags copied
+- [x] give `question`, `criteria-spam` and `criteria-ham` non-empty `default:` struct tags copied
       verbatim from the appendix — NOT constructor fallbacks: `defaultSettingsTemplate`
       (`app/settings.go:214`) fills by reflection over the tags and then runs `optToSettings`, so a
       constructor-only default never reaches `Validate()` and token-only startup would fail its own
       empty-`Question` check
-- [ ] add `JevSettings` to `app/config/settings.go` with `json`/`yaml`/`db` tags, copying the
+- [x] add `JevSettings` to `app/config/settings.go` with `json`/`yaml`/`db` tags, copying the
       `GeminiSettings` shape, and add the `Jev` field to `Settings`
-- [ ] add `IsJevEnabled()` returning `s.Jev.Token != ""` — token only, the Gemini precedent, NOT
+- [x] add `IsJevEnabled()` returning `s.Jev.Token != ""` — token only, the Gemini precedent, NOT
       `IsOpenAIEnabled`'s token-or-apibase form; `--jev.apibase` gets no `default:` tag
-- [ ] map the flags in `optToSettings` (`app/settings.go`) and in the token-override block
-- [ ] add `Jev.HistorySize` to `zeroAwarePaths` with the same comment form as `Gemini.HistorySize`
-- [ ] add validation to `Settings.Validate()` gated on `IsJevEnabled()` — the same predicate Task 4
+- [x] map the flags in `optToSettings` (`app/settings.go`) and in the token-override block
+- [x] add `Jev.HistorySize` to `zeroAwarePaths` with the same comment form as `Gemini.HistorySize`
+- [x] add validation to `Settings.Validate()` gated on `IsJevEnabled()` — the same predicate Task 4
       wires on, and the SAME contract `newJevChecker` enforces, so a saved config can never construct
       successfully at validation time and then fail at startup: finite `Threshold` in (0, 1],
       non-negative `MaxSymbolsRequest`, and non-empty `Question`, `CriteriaSpam` and `CriteriaHam`
-- [ ] write tests for `optToSettings` mapping every new field
-- [ ] write tests for `Validate` rejecting a threshold of 0, of 1.5, and an empty question
-- [ ] write a test proving `Jev.HistorySize` zero survives an `ApplyDefaults` merge
-- [ ] write a token-only startup test: setting just `--jev.token` passes `Validate()` because the
+- [x] write tests for `optToSettings` mapping every new field
+- [x] write tests for `Validate` rejecting a threshold of 0, of 1.5, and an empty question
+- [x] write a test proving `Jev.HistorySize` zero survives an `ApplyDefaults` merge
+- [x] write a token-only startup test: setting just `--jev.token` passes `Validate()` because the
       question and criteria defaults arrived from the struct tags
-- [ ] write a test proving a custom `--jev.question` overrides the default rather than merging
-- [ ] write a legacy-DB test: settings stored before these fields existed get the tag defaults
-- [ ] write a test rejecting a NaN threshold from the CLI path
-- [ ] run tests - must pass before task 4
+- [x] write a test proving a custom `--jev.question` overrides the default rather than merging
+- [x] write a legacy-DB test: settings stored before these fields existed get the tag defaults
+- [x] write a test rejecting a NaN threshold from the CLI path
+- [x] run tests - must pass before task 4
 
+
+- [x] ➕ add the jev flags to the README "All Application Options" block. Moved here from
+      Task 7: `TestREADMEAllOptionsMatchesHelp` (`app/main_test.go:1253`) asserts every long
+      flag and env var appears in that block, so adding the flag group breaks it immediately
+      and Task 3's own gate cannot pass without it. The block uses an unwrapped single-line
+      style at description column 40, not raw `--help` output, which wraps long env names
 ### Task 4: Construct the checker at startup and protect the credential
 
 **Files:**
@@ -447,28 +453,32 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/config/crypt_test.go`
 - Modify: `app/main_test.go`
 
-- [ ] in `makeDetector`, build `tgspam.JevConfig` from settings and call `detector.WithJevChecker`
+- [x] in `makeDetector`, build `tgspam.JevConfig` from settings and call `detector.WithJevChecker`
       when `settings.IsJevEnabled()`, logging `[WARN] jev enabled` like the others
-- [ ] treat a `WithJevChecker` error as a startup failure rather than continuing with jev silently
+- [x] treat a `WithJevChecker` error as a startup failure rather than continuing with jev silently
       disabled — an operator who set a token and a bad threshold must be told, not quietly left
       without the provider he configured
-- [ ] write a test proving a bad jev config fails startup rather than booting with jev off
-- [ ] write a test proving jev stays disabled when only `--jev.apibase` is set with no token
-- [ ] set `Config.JevVeto` and `Config.JevHistorySize` from settings alongside the OpenAI pair
-- [ ] pass jev its OWN `*http.Client`, not `Config.HTTPClient` — that instance is built with
+- [x] write a test proving a bad jev config fails startup rather than booting with jev off
+- [x] write a test proving jev stays disabled when only `--jev.apibase` is set with no token
+- [x] set `Config.JevVeto` and `Config.JevHistorySize` from settings alongside the OpenAI pair
+- [x] pass jev its OWN `*http.Client`, not `Config.HTTPClient` — that instance is built with
       `settings.CAS.Timeout` (`app/main.go:763`) and would impose a CAS deadline on LLM calls. The
       per-request deadline comes from the detector's LLM context via `NewRequestWithContext`
-- [ ] add the jev token to the masking list in `app/main.go:331`
-- [ ] add `FieldJevToken` and its entry in `sensitiveFieldAccessors` (`app/config/crypt.go:155`) so
+- [x] add the jev token to the masking list in `app/main.go:331`
+- [x] add `FieldJevToken` and its entry in `sensitiveFieldAccessors` (`app/config/crypt.go:155`) so
       the credential is encrypted at rest in `--confdb`. **Documented exemption to the visibility
       rule:** `FieldTelegramToken`, `FieldOpenAIToken`, `FieldGeminiToken` and `FieldServerAuthHash`
       (`crypt.go:21-24`) all have zero callers outside `app/config`, so the rule says lowercase —
       but a lone `fieldJevToken` among four exported siblings in one const block is worse. Keep it
       exported for const-block consistency; lowercasing all four is separate cleanup
-- [ ] write tests for encrypt/decrypt round-trip of the jev token
-- [ ] write a test proving the jev token is masked in log output
-- [ ] run tests - must pass before task 5
+- [x] write tests for encrypt/decrypt round-trip of the jev token
+- [x] write a test proving the jev token is masked in log output
+- [x] run tests - must pass before task 5
 
+
+- [x] ➕ extract `collectMaskedSecrets` from `main()`. The masking list was built inline, so
+      no token had a test and jev's could not get one without a seam. One production caller,
+      and the test now covers all four provider tokens plus the auto-password exclusion
 ### Task 5: Add the settings UI and its e2e coverage
 
 **Files:**
@@ -477,45 +487,58 @@ Exports (justification per item: who outside the package calls this?):
 - Modify: `app/webapi/config_test.go`
 - Modify: `e2e-ui/e2e_test.go`
 
-- [ ] add a `jev` tab, nav link and edit panel to `settings.html` mirroring the Gemini block at
+- [x] add a `jev` tab, nav link and edit panel to `settings.html` mirroring the Gemini block at
       :468-512, with ids `jevVeto`, `jevCheckShortMessages`, `jevHistorySize`, `jevModel`,
       `jevQuestion`, `jevCriteriaSpam`, `jevCriteriaHam`, `jevThreshold`, `jevRetryCount`,
       `jevMaxSymbolsRequest`
-- [ ] add the read-only display rows for the same fields
-- [ ] parse the new form fields in `app/webapi/config.go` following the Gemini block at :396-430;
+- [x] add the read-only display rows for the same fields
+- [x] parse the new form fields in `app/webapi/config.go` following the Gemini block at :396-430;
       `jevThreshold` uses `strconv.ParseFloat` as at :549, and the jev token is NOT read from the
       form (credential stays in CLI/DB, same as Gemini)
-- [ ] run the same validation at the settings-save boundary before persisting, rolling back the
+- [x] run the same validation at the settings-save boundary before persisting, rolling back the
       in-memory mutation on failure — the existing pattern at `app/webapi/config.go:158` — so the UI
       cannot accept a negative cap or an emptied criteria field that bricks the next startup
-- [ ] write tests for parsing every new form field, including a malformed threshold leaving the
+- [x] write tests for parsing every new form field, including a malformed threshold leaving the
       stored value untouched, `NaN` being rejected rather than stored, and a negative cap or an
       emptied criteria field being rejected with the prior settings restored
-- [ ] add the new fields to the settings round-trip test in `e2e-ui/e2e_test.go`
-- [ ] run tests - must pass before task 6
-- [ ] run the e2e suite - must pass before task 6
+- [x] add the new fields to the settings round-trip test in `e2e-ui/e2e_test.go`
+- [x] run tests - must pass before task 6
+- [x] run the e2e suite - must pass before task 6
 
+
+- [x] ➕ add `JevEnabled` to the settings template data (`app/webapi/webapi.go`). The read-only
+      panel needs it the way the Gemini panel uses `.GeminiEnabled`, and it was not in the plan
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify jev stays disabled with no token set and that no behavior changes in that case
-- [ ] verify a jev failure is a non-flipping participant, tested in mixed `any` and `all` cases with
+- [x] verify all requirements from Overview are implemented
+- [x] verify jev stays disabled with no token set and that no behavior changes in that case
+- [x] verify a jev failure is a non-flipping participant, tested in mixed `any` and `all` cases with
       another provider — under `any` consensus a second successful provider can still flip the
       result, so this is not a global fallback
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run e2e tests: the Playwright suite in `e2e-ui/`
-- [ ] run `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
-- [ ] verify test coverage meets the project's 80% standard for the new file
+- [x] run full test suite: `go test -race ./...`
+- [x] run e2e tests: the Playwright suite in `e2e-ui/`
+- [x] run `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
+- [x] verify test coverage meets the project's 80% standard for the new file
 
+
+- [x] ➕ add a veto-mode error case: a failed jev check must leave heuristic spam standing,
+      since an absent verdict is not a clearance. Not in the plan and not covered by the
+      non-veto error case, which only proves a failure does not flip ham to spam
+
+Coverage of `lib/tgspam/jev.go`: `newJevChecker`, `check`, `buildRequest` and `verdict` at 100%,
+`sendRequest` at 97.4%. Two branches I first called unreachable were not: `APIBase` is not validated
+at construction, so a malformed endpoint reaches the request-construction error, and a body that
+dies mid-read reaches the read error. Both are covered. The profile now shows one uncovered block,
+`jev.go:152`, the `json.Marshal` error, which a struct of strings and maps cannot produce.
 ### Task 7: [Final] Update documentation
 
-- [ ] add every new flag to the "All Application Options" section of README.md, matching `--help`
-      output exactly
-- [ ] add a descriptive jev section to README.md covering what the provider is, the one-question
+- [x] add every new flag to the "All Application Options" section of README.md (done in Task 3,
+      forced by `TestREADMEAllOptionsMatchesHelp`)
+- [x] add a descriptive jev section to README.md covering what the provider is, the one-question
       design, the threshold, and that 0.30 is a development candidate rather than a validated default
-- [ ] add a CLAUDE.md section documenting the provider, the threshold's development-candidate status,
+- [x] add a CLAUDE.md section documenting the provider, the threshold's development-candidate status,
       and the two-place wiring trap at `detector.go:343-352`
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

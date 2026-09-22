@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"time"
 
@@ -27,6 +28,7 @@ type Settings struct {
 	Meta          MetaSettings          `json:"meta" yaml:"meta" db:"meta"`
 	OpenAI        OpenAISettings        `json:"openai" yaml:"openai" db:"openai"`
 	Gemini        GeminiSettings        `json:"gemini" yaml:"gemini" db:"gemini"`
+	Jev           JevSettings           `json:"jev" yaml:"jev" db:"jev"`
 	LLM           LLMSettings           `json:"llm" yaml:"llm" db:"llm"`
 	LuaPlugins    LuaPluginsSettings    `json:"lua_plugins" yaml:"lua_plugins" db:"lua_plugins"`
 	AbnormalSpace AbnormalSpaceSettings `json:"abnormal_spacing" yaml:"abnormal_spacing" db:"abnormal_spacing"`
@@ -158,6 +160,22 @@ type GeminiSettings struct {
 	RetryCount         int      `json:"retry_count" yaml:"retry_count" db:"gemini_retry_count"`
 	HistorySize        int      `json:"history_size" yaml:"history_size" db:"gemini_history_size"`
 	CheckShortMessages bool     `json:"check_short_messages" yaml:"check_short_messages" db:"gemini_check_short_messages"`
+}
+
+// JevSettings contains jev decision-model integration settings
+type JevSettings struct {
+	Token              string  `json:"token" yaml:"token" db:"jev_token"`
+	APIBase            string  `json:"api_base" yaml:"api_base" db:"jev_api_base"`
+	Veto               bool    `json:"veto" yaml:"veto" db:"jev_veto"`
+	Model              string  `json:"model" yaml:"model" db:"jev_model"`
+	Question           string  `json:"question" yaml:"question" db:"jev_question"`
+	CriteriaSpam       string  `json:"criteria_spam" yaml:"criteria_spam" db:"jev_criteria_spam"`
+	CriteriaHam        string  `json:"criteria_ham" yaml:"criteria_ham" db:"jev_criteria_ham"`
+	Threshold          float64 `json:"threshold" yaml:"threshold" db:"jev_threshold"`
+	MaxSymbolsRequest  int     `json:"max_symbols_request" yaml:"max_symbols_request" db:"jev_max_symbols_request"`
+	RetryCount         int     `json:"retry_count" yaml:"retry_count" db:"jev_retry_count"`
+	HistorySize        int     `json:"history_size" yaml:"history_size" db:"jev_history_size"`
+	CheckShortMessages bool    `json:"check_short_messages" yaml:"check_short_messages" db:"jev_check_short_messages"`
 }
 
 // LLMSettings contains shared LLM orchestration settings
@@ -309,7 +327,44 @@ func (s *Settings) Validate() error {
 	if err := tgspam.ValidateProhibitedLangs(s.ProhibitedLangs, s.ProhibitedLangsMin); err != nil {
 		return err //nolint:wrapcheck // message is already contextual and shared across call sites
 	}
+	if err := s.validateJev(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateJev enforces the same contract newJevChecker does, gated on the same predicate the
+// startup wiring uses, so a config accepted here can never fail to construct at next startup.
+func (s *Settings) validateJev() error {
+	if !s.IsJevEnabled() {
+		return nil
+	}
+	if math.IsNaN(s.Jev.Threshold) || math.IsInf(s.Jev.Threshold, 0) {
+		return fmt.Errorf("jev.threshold (%v) must be a finite number", s.Jev.Threshold)
+	}
+	if s.Jev.Threshold <= 0 || s.Jev.Threshold > 1 {
+		return fmt.Errorf("jev.threshold (%v) must be in (0, 1]", s.Jev.Threshold)
+	}
+	if s.Jev.MaxSymbolsRequest < 0 {
+		return fmt.Errorf("jev.max-symbols-request (%d) must be >= 0 (0 uses the default)", s.Jev.MaxSymbolsRequest)
+	}
+	if s.Jev.Question == "" {
+		return fmt.Errorf("jev.question must not be empty")
+	}
+	if s.Jev.CriteriaSpam == "" {
+		return fmt.Errorf("jev.criteria-spam must not be empty")
+	}
+	if s.Jev.CriteriaHam == "" {
+		return fmt.Errorf("jev.criteria-ham must not be empty")
+	}
+	return nil
+}
+
+// IsJevEnabled returns true if jev integration is enabled. Token only, unlike IsOpenAIEnabled:
+// --jev.apibase carries no default tag, but gating on it would still enable jev for anyone who
+// points it at a proxy without a credential.
+func (s *Settings) IsJevEnabled() bool {
+	return s.Jev.Token != ""
 }
 
 // IsOpenAIEnabled returns true if OpenAI integration is enabled
@@ -368,6 +423,7 @@ var zeroAwarePaths = map[string]bool{
 	"Warn.Threshold":          true, // app/main.go, app/events/admin.go (> 0): 0 disables
 	"OpenAI.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"Gemini.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
+	"Jev.HistorySize":         true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"FirstMessagesCount":      true, // app/main.go:703, lib/tgspam/detector.go:205,208 (> 0): 0 disables
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam

@@ -126,14 +126,25 @@ Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemi
 - Short message checking can be enabled with `--gemini.check-short-messages`.
 - The default model is `gemma-4-31b-it`. You can change it with `--gemini.model=[$GEMINI_MODEL]`.
 
+**Jev integration**
+
+Setting `--jev.token [$JEV_TOKEN]` enables [jev](https://docs.typesafe.ai), a decision model rather than a text generator. Where OpenAI and Gemini are asked to write a JSON verdict, jev is asked one typed question and returns a bare probability, which TG-Spam thresholds itself. It can be used alongside or instead of the other providers and participates in `--llm.consensus` the same way.
+
+- By default the jev integration is disabled. To enable it, set `--jev.token` to a valid typesafe.ai API key. Setting `--jev.apibase` alone does NOT enable it, so pointing at a proxy without a credential cannot turn the provider on by accident.
+- One question is asked, not several. `--jev.question` carries it and `--jev.criteria-spam` / `--jev.criteria-ham` describe the two sides. All three ship with the text the threshold below was measured against; changing any of them invalidates that measurement.
+- `--jev.threshold` defaults to `0.30`. Start there. If legitimate messages are flagged, raise it, for example to `0.35`; if spam is missed, try lowering it toward `0.25`. A higher threshold flags fewer messages, which can also let more spam through; a lower one catches more potential spam but can flag more legitimate messages. Review the results in your chat after adjusting it. The default was chosen from a small replay of one chat rather than a separate validation set, and that replay preserved the newline between a post and its quote where production `cleanText` removes it, so its counts do not establish production error rates for this default.
+- `--jev.model` pins a version such as `jev-1.13.0` and should never be an alias: an alias moves and silently changes what a tuned threshold means. The model the API actually resolved is logged at debug level on every check.
+- `--jev.veto`, `--jev.history-size` and `--jev.check-short-messages` behave exactly as their OpenAI and Gemini counterparts.
+- `--jev.retry-count` is total attempts, not retries after the first, and every error is retried regardless of its HTTP status. That is the behavior shared with the other providers, not something specific to jev.
+
 **LLM consensus**
 
 When multiple LLM providers are eligible for the same message, TG-Spam resolves their results with `--llm.consensus=[$LLM_CONSENSUS]`:
 
 - `any` is the default. If any eligible LLM disagrees with the base decision, the base decision flips.
 - `all` requires all eligible LLMs to agree before the base decision flips.
-- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, and the short-message flags.
-- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and the base decision is kept.
+- Eligibility still depends on each provider's own settings, such as `--openai.veto`, `--gemini.veto`, `--jev.veto`, and the short-message flags.
+- Each LLM request is subject to `--llm.request-timeout` (default 30s). If a provider does not respond in time, the request is cancelled and that provider contributes no flip. Under `any` another provider can still flip the base decision; under `all` the missing flip prevents one.
 
 
 **Emoji Count**
@@ -698,6 +709,20 @@ gemini:
       --gemini.retry-count=             gemini retry count (default: 1) [$GEMINI_RETRY_COUNT]
       --gemini.history-size=            gemini history size (default: 0) [$GEMINI_HISTORY_SIZE]
       --gemini.check-short-messages     check messages shorter than min-msg-len with Gemini [$GEMINI_CHECK_SHORT_MESSAGES]
+
+jev:
+      --jev.token=                      jev token, disabled if not set [$JEV_TOKEN]
+      --jev.apibase=                    custom jev API base [$JEV_API_BASE]
+      --jev.veto                        veto mode, confirm detected spam [$JEV_VETO]
+      --jev.model=                      jev model, pinned version not an alias (default: jev-1.13.0) [$JEV_MODEL]
+      --jev.question=                   jev spam question (default: Is `message`, posted in a public Telegram group chat, spam?) [$JEV_QUESTION]
+      --jev.criteria-spam=              jev criteria for spam (default: It promotes, advertises, or offers paid services, paid subscriptions, paid content, donations, crypto wallets, paid promotion of content or accounts, job recruitment, hiring, looking for employees, unsolicited job postings, easy money offers, work-from-home offers with specific payment amounts, VPN promotion, or invitations to join Telegram bots or channels for earnings.) [$JEV_CRITERIA_SPAM]
+      --jev.criteria-ham=               jev criteria for ham (default: Ordinary conversation between chat members. Casual discussion or mentioning prices of well-known services and products such as GitHub Copilot, ChatGPT Plus, cloud providers or software tools is NOT spam. Off-topic banter, rudeness, profanity, questions, and links shared as part of a conversation are NOT spam. Only direct selling, promoting, or advertising counts as spam.) [$JEV_CRITERIA_HAM]
+      --jev.threshold=                  spam probability at or above this is spam (default: 0.30) [$JEV_THRESHOLD]
+      --jev.max-symbols-request=        jev max symbols in request (default: 6000) [$JEV_MAX_SYMBOLS_REQUEST]
+      --jev.retry-count=                jev retry count (default: 1) [$JEV_RETRY_COUNT]
+      --jev.history-size=               jev history size (default: 0) [$JEV_HISTORY_SIZE]
+      --jev.check-short-messages        check messages shorter than min-msg-len with jev [$JEV_CHECK_SHORT_MESSAGES]
 
 llm:
       --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]

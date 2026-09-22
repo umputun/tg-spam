@@ -130,6 +130,21 @@ type options struct {
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with Gemini"`
 	} `group:"gemini" namespace:"gemini" env-namespace:"GEMINI"`
 
+	Jev struct {
+		Token              string  `long:"token" env:"TOKEN" description:"jev token, disabled if not set"`
+		APIBase            string  `long:"apibase" env:"API_BASE" description:"custom jev API base"`
+		Veto               bool    `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
+		Model              string  `long:"model" env:"MODEL" default:"jev-1.13.0" description:"jev model, pinned version not an alias"`
+		Question           string  "long:\"question\" env:\"QUESTION\" default:\"Is `message`, posted in a public Telegram group chat, spam?\" description:\"jev spam question\""
+		CriteriaSpam       string  `long:"criteria-spam" env:"CRITERIA_SPAM" default:"It promotes, advertises, or offers paid services, paid subscriptions, paid content, donations, crypto wallets, paid promotion of content or accounts, job recruitment, hiring, looking for employees, unsolicited job postings, easy money offers, work-from-home offers with specific payment amounts, VPN promotion, or invitations to join Telegram bots or channels for earnings." description:"jev criteria for spam"`
+		CriteriaHam        string  `long:"criteria-ham" env:"CRITERIA_HAM" default:"Ordinary conversation between chat members. Casual discussion or mentioning prices of well-known services and products such as GitHub Copilot, ChatGPT Plus, cloud providers or software tools is NOT spam. Off-topic banter, rudeness, profanity, questions, and links shared as part of a conversation are NOT spam. Only direct selling, promoting, or advertising counts as spam." description:"jev criteria for ham"`
+		Threshold          float64 `long:"threshold" env:"THRESHOLD" default:"0.30" description:"spam probability at or above this is spam"`
+		MaxSymbolsRequest  int     `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"6000" description:"jev max symbols in request"`
+		RetryCount         int     `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"jev retry count"`
+		HistorySize        int     `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"jev history size"`
+		CheckShortMessages bool    `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with jev"`
+	} `group:"jev" namespace:"jev" env-namespace:"JEV"`
+
 	LLM struct {
 		Consensus      string        `long:"consensus" env:"CONSENSUS" choice:"any" choice:"all" default:"any" description:"how eligible LLMs flip the base decision"`
 		RequestTimeout time.Duration `long:"request-timeout" env:"REQUEST_TIMEOUT" default:"30s" description:"timeout for individual LLM requests"`
@@ -323,35 +338,7 @@ func main() {
 	// setup logger with masked secrets BEFORE any subcommand dispatch so any
 	// error wrapping inside saveConfigToDB or later stages benefits from the
 	// secret masker. Tokens come directly from the resolved domain settings.
-	masked := []string{}
-
-	if appSettings.Telegram.Token != "" {
-		masked = append(masked, appSettings.Telegram.Token)
-	}
-	if appSettings.OpenAI.Token != "" {
-		masked = append(masked, appSettings.OpenAI.Token)
-	}
-	if appSettings.Gemini.Token != "" {
-		masked = append(masked, appSettings.Gemini.Token)
-	}
-
-	// add temporary web password if not "auto"
-	if appSettings.Transient.WebAuthPasswd != "auto" && appSettings.Transient.WebAuthPasswd != "" {
-		// auto passwd should not be masked as we print it
-		masked = append(masked, appSettings.Transient.WebAuthPasswd)
-	}
-
-	// add auth hash
-	if appSettings.Server.AuthHash != "" {
-		masked = append(masked, appSettings.Server.AuthHash)
-	}
-
-	// add config DB encryption master key - must be masked before the %+v settings dump below
-	if appSettings.Transient.ConfigDBEncryptKey != "" {
-		masked = append(masked, appSettings.Transient.ConfigDBEncryptKey)
-	}
-
-	setupLog(appSettings.Transient.Dbg, masked...)
+	setupLog(appSettings.Transient.Dbg, collectMaskedSecrets(appSettings)...)
 
 	// handle save-config command (after setupLog so any error output is masked)
 	if p.Active != nil && p.Active.Name == "save-config" {
@@ -749,6 +736,32 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 	return nil
 }
 
+// collectMaskedSecrets gathers every value setupLog must redact from log output. A credential
+// missing from this list is printed in clear by the %+v settings dump below it.
+func collectMaskedSecrets(appSettings *config.Settings) []string {
+	// ORDER MATTERS. lgr.hideSecrets calls bytes.ReplaceAll once per secret in slice order, so a
+	// longer secret must come before any shorter secret it contains, or only the shorter part is
+	// redacted: masking an encrypt key "k" before a password "k-9" leaves "******-9" in the log.
+	// The web password stays ahead of the auth hash and the encrypt key for exactly that reason.
+	masked := []string{}
+	add := func(secret string) {
+		if secret != "" {
+			masked = append(masked, secret)
+		}
+	}
+	add(appSettings.Telegram.Token)
+	add(appSettings.OpenAI.Token)
+	add(appSettings.Gemini.Token)
+	add(appSettings.Jev.Token)
+	// the auto-generated password is printed for the operator, so it is not masked
+	if appSettings.Transient.WebAuthPasswd != "auto" {
+		add(appSettings.Transient.WebAuthPasswd)
+	}
+	add(appSettings.Server.AuthHash)
+	add(appSettings.Transient.ConfigDBEncryptKey)
+	return masked
+}
+
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
 func makeDetector(settings *config.Settings) *tgspam.Detector {
@@ -763,6 +776,8 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		HTTPClient:          &http.Client{Timeout: settings.CAS.Timeout},
 		FirstMessageOnly:    !settings.ParanoidMode,
 		FirstMessagesCount:  settings.FirstMessagesCount,
+		JevVeto:             settings.Jev.Veto,
+		JevHistorySize:      settings.Jev.HistorySize,
 		OpenAIVeto:          settings.OpenAI.Veto,
 		OpenAIHistorySize:   settings.OpenAI.HistorySize, // how many last requests sent to openai
 		GeminiVeto:          settings.Gemini.Veto,
@@ -862,6 +877,28 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		}
 		log.Printf("[DEBUG] gemini config: %+v", geminiConfig)
 		detector.WithGeminiChecker(client.Models, geminiConfig)
+	}
+
+	if settings.IsJevEnabled() {
+		log.Printf("[WARN] jev enabled")
+		jevConfig := tgspam.JevConfig{
+			Token:              settings.Jev.Token,
+			APIBase:            settings.Jev.APIBase,
+			Model:              settings.Jev.Model,
+			Question:           settings.Jev.Question,
+			CriteriaSpam:       settings.Jev.CriteriaSpam,
+			CriteriaHam:        settings.Jev.CriteriaHam,
+			Threshold:          settings.Jev.Threshold,
+			MaxSymbolsRequest:  settings.Jev.MaxSymbolsRequest,
+			RetryCount:         settings.Jev.RetryCount,
+			CheckShortMessages: settings.Jev.CheckShortMessages,
+		}
+		// jev gets its own client: Config.HTTPClient carries settings.CAS.Timeout, which would
+		// impose a CAS deadline on LLM calls. The per-request deadline comes from the detector's
+		// LLM context, threaded through NewRequestWithContext.
+		if err := detector.WithJevChecker(&http.Client{}, jevConfig); err != nil {
+			log.Fatalf("[ERROR] %v", err)
+		}
 	}
 
 	if settings.AbnormalSpace.Enabled {

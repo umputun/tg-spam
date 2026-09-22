@@ -21,6 +21,7 @@ const (
 	FieldTelegramToken  = "telegram.token"
 	FieldOpenAIToken    = "openai.token"
 	FieldGeminiToken    = "gemini.token"
+	FieldJevToken       = "jev.token"
 	FieldServerAuthHash = "server.auth_hash"
 )
 
@@ -159,6 +160,7 @@ var sensitiveFieldAccessors = map[string]struct {
 	FieldTelegramToken:  {"Telegram token", func(s *Settings) *string { return &s.Telegram.Token }},
 	FieldOpenAIToken:    {"OpenAI token", func(s *Settings) *string { return &s.OpenAI.Token }},
 	FieldGeminiToken:    {"Gemini token", func(s *Settings) *string { return &s.Gemini.Token }},
+	FieldJevToken:       {"Jev token", func(s *Settings) *string { return &s.Jev.Token }},
 	FieldServerAuthHash: {"Server auth hash", func(s *Settings) *string { return &s.Server.AuthHash }},
 }
 

@@ -4189,3 +4189,390 @@ func TestDetector_ProhibitedLang(t *testing.T) {
 		require.NotNil(t, findResponseByName(cr, "prohibited-language"))
 	})
 }
+
+func jevMockResponding(noul float64) *mocks.HTTPClientMock {
+	return &mocks.HTTPClientMock{
+		DoFunc: func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					fmt.Sprintf(`{"model":"jev-1.13.0","answers":{"spam":{"type":"noul","noul":%v}}}`, noul))),
+			}, nil
+		},
+	}
+}
+
+func jevTestConfig() JevConfig {
+	return JevConfig{
+		Token: "t", Question: "Is `message` spam?",
+		CriteriaSpam: "promotes", CriteriaHam: "conversation", Threshold: 0.3,
+	}
+}
+
+func TestDetector_WithJevChecker(t *testing.T) {
+	t.Run("valid config is accepted", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		require.NoError(t, d.WithJevChecker(jevMockResponding(0.1), jevTestConfig()))
+		assert.NotNil(t, d.jevChecker)
+	})
+
+	t.Run("rejected config leaves the checker nil and the detector usable", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		bad := jevTestConfig()
+		bad.Threshold = 1.5
+		err := d.WithJevChecker(jevMockResponding(0.1), bad)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create jev checker")
+		assert.Nil(t, d.jevChecker)
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "a perfectly ordinary message about nothing"})
+		assert.False(t, spam)
+		names := make([]string, 0, len(cr))
+		for _, c := range cr {
+			names = append(names, c.Name)
+		}
+		assert.NotContains(t, names, "jev")
+	})
+}
+
+func TestDetector_CheckWithJevConsensus(t *testing.T) {
+	makeOpenAIResp := func(spam bool) openai.ChatCompletionResponse {
+		return openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{{
+				Message: openai.ChatCompletionMessage{
+					Content: fmt.Sprintf(`{"spam": %t, "reason":"openai","confidence":95}`, spam),
+				},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		consensus  LLMConsensusMode
+		openAISpam bool
+		jevNoul    float64
+		wantSpam   bool
+	}{
+		{"any flips ham when jev alone flags", LLMConsensusAny, false, 0.9, true},
+		{"any flips ham when openai alone flags", LLMConsensusAny, true, 0.05, true},
+		{"any keeps ham when neither flags", LLMConsensusAny, false, 0.05, false},
+		{"all needs both to flip", LLMConsensusAll, true, 0.9, true},
+		{"all keeps ham when only jev flags", LLMConsensusAll, false, 0.9, false},
+		{"all keeps ham when only openai flags", LLMConsensusAll, true, 0.05, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, LLMConsensus: tc.consensus})
+			openAIMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return makeOpenAIResp(tc.openAISpam), nil
+				},
+			}
+			d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+			require.NoError(t, d.WithJevChecker(jevMockResponding(tc.jevNoul), jevTestConfig()))
+
+			spam, cr := d.Check(spamcheck.Request{Msg: "some ordinary message text here"})
+			assert.Equal(t, tc.wantSpam, spam)
+			names := make([]string, 0, len(cr))
+			for _, c := range cr {
+				names = append(names, c.Name)
+			}
+			assert.Contains(t, names, "jev")
+		})
+	}
+}
+
+func TestDetector_CheckWithJevVeto(t *testing.T) {
+	t.Run("veto mode clears heuristic spam when jev says ham", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, JevVeto: true})
+		_, err := d.LoadStopWords(strings.NewReader("spamword"))
+		require.NoError(t, err)
+		require.NoError(t, d.WithJevChecker(jevMockResponding(0.05), jevTestConfig()))
+
+		spam, cr := d.Check(spamcheck.Request{Msg: "spamword in an otherwise fine message"})
+		assert.False(t, spam)
+		names := make([]string, 0, len(cr))
+		for _, c := range cr {
+			names = append(names, c.Name)
+		}
+		assert.Contains(t, names, "jev")
+	})
+
+	t.Run("non-veto mode flips ham when jev says spam", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		require.NoError(t, d.WithJevChecker(jevMockResponding(0.9), jevTestConfig()))
+
+		spam, _ := d.Check(spamcheck.Request{Msg: "a message with no stop words in it"})
+		assert.True(t, spam)
+	})
+}
+
+func TestDetector_CheckWithJevShortMessages(t *testing.T) {
+	t.Run("short message reaches jev when CheckShortMessages is set", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		cfg := jevTestConfig()
+		cfg.CheckShortMessages = true
+		clientMock := jevMockResponding(0.05)
+		require.NoError(t, d.WithJevChecker(clientMock, cfg))
+
+		_, cr := d.Check(spamcheck.Request{Msg: "hi"})
+		assert.Len(t, clientMock.DoCalls(), 1)
+		names := make([]string, 0, len(cr))
+		for _, c := range cr {
+			names = append(names, c.Name)
+		}
+		assert.Contains(t, names, "jev")
+	})
+
+	t.Run("short message does not reach jev when the flag is unset", func(t *testing.T) {
+		d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, MinMsgLen: 50})
+		clientMock := jevMockResponding(0.05)
+		require.NoError(t, d.WithJevChecker(clientMock, jevTestConfig()))
+
+		_, cr := d.Check(spamcheck.Request{Msg: "hi"})
+		assert.Empty(t, clientMock.DoCalls())
+		names := make([]string, 0, len(cr))
+		for _, c := range cr {
+			names = append(names, c.Name)
+		}
+		assert.NotContains(t, names, "jev")
+	})
+}
+
+func TestDetector_CheckJevErrorLeavesBaseDecision(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+	clientMock := &mocks.HTTPClientMock{
+		DoFunc: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader("boom"))}, nil
+		},
+	}
+	require.NoError(t, d.WithJevChecker(clientMock, jevTestConfig()))
+
+	spam, cr := d.Check(spamcheck.Request{Msg: "a message with no stop words in it"})
+	assert.False(t, spam, "a jev failure must not flip the base decision")
+
+	var jevResp spamcheck.Response
+	for _, c := range cr {
+		if c.Name == "jev" {
+			jevResp = c
+		}
+	}
+	require.Error(t, jevResp.Error)
+	assert.False(t, jevResp.Spam)
+}
+
+func TestDetector_JevErrorIsNonFlippingParticipant(t *testing.T) {
+	failingJev := func() *mocks.HTTPClientMock {
+		return &mocks.HTTPClientMock{
+			DoFunc: func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Body:       io.NopCloser(strings.NewReader("upstream boom")),
+				}, nil
+			},
+		}
+	}
+	openAIResp := func(spam bool) openai.ChatCompletionResponse {
+		return openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{{
+				Message: openai.ChatCompletionMessage{
+					Content: fmt.Sprintf(`{"spam": %t, "reason":"openai","confidence":95}`, spam),
+				},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		consensus  LLMConsensusMode
+		openAISpam bool
+		wantSpam   bool
+		why        string
+	}{
+		{
+			name: "any: a working provider still flips despite the jev error", consensus: LLMConsensusAny,
+			openAISpam: true, wantSpam: true,
+			why: "a jev failure is not a global fallback, it only declines to vote",
+		},
+		{
+			name: "any: no flip when the only working provider agrees with the base", consensus: LLMConsensusAny,
+			openAISpam: false, wantSpam: false,
+		},
+		{
+			name: "all: the jev error blocks the flip the working provider wanted", consensus: LLMConsensusAll,
+			openAISpam: true, wantSpam: false,
+			why: "an errored result carries flip=false, and all-mode needs every result to flip",
+		},
+		{
+			name: "all: no flip when neither wants one", consensus: LLMConsensusAll,
+			openAISpam: false, wantSpam: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, LLMConsensus: tc.consensus})
+			openAIMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return openAIResp(tc.openAISpam), nil
+				},
+			}
+			d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+			require.NoError(t, d.WithJevChecker(failingJev(), jevTestConfig()))
+
+			spam, cr := d.Check(spamcheck.Request{Msg: "an ordinary message with no stop words"})
+			assert.Equal(t, tc.wantSpam, spam, tc.why)
+
+			var jevResp spamcheck.Response
+			for _, c := range cr {
+				if c.Name == "jev" {
+					jevResp = c
+				}
+			}
+			require.Error(t, jevResp.Error, "the jev participant must report its error")
+			assert.False(t, jevResp.Spam)
+		})
+	}
+}
+
+func TestDetector_JevVetoWithOpenAIMixed(t *testing.T) {
+	openAIResp := func(spam bool) openai.ChatCompletionResponse {
+		return openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{{
+				Message: openai.ChatCompletionMessage{
+					Content: fmt.Sprintf(`{"spam": %t, "reason":"openai","confidence":95}`, spam),
+				},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		consensus  LLMConsensusMode
+		openAISpam bool
+		jevNoul    float64
+		wantSpam   bool
+	}{
+		{"both veto, any: one clearing verdict clears even though the other confirms", LLMConsensusAny, true, 0.05, false},
+		{"both veto, any: both confirming keeps the base spam", LLMConsensusAny, true, 0.9, true},
+		{"both veto, all: one confirming keeps the base spam", LLMConsensusAll, true, 0.05, true},
+		{"both veto, all: both clearing clears the base spam", LLMConsensusAll, false, 0.05, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDetector(Config{
+				MaxAllowedEmoji: -1, FirstMessageOnly: true, LLMConsensus: tc.consensus,
+				OpenAIVeto: true, JevVeto: true,
+			})
+			_, err := d.LoadStopWords(strings.NewReader("spamword"))
+			require.NoError(t, err)
+
+			openAIMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return openAIResp(tc.openAISpam), nil
+				},
+			}
+			d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+			require.NoError(t, d.WithJevChecker(jevMockResponding(tc.jevNoul), jevTestConfig()))
+
+			spam, cr := d.Check(spamcheck.Request{Msg: "spamword in an otherwise ordinary message"})
+			assert.Equal(t, tc.wantSpam, spam)
+
+			names := make([]string, 0, len(cr))
+			for _, c := range cr {
+				names = append(names, c.Name)
+			}
+			assert.Contains(t, names, "jev")
+			assert.Contains(t, names, "openai")
+		})
+	}
+}
+
+// an errored jev result carries flip=false, which is the inherited consensus policy rather than a
+// rule of its own: under any-consensus a working provider can still clear the base spam
+func TestDetector_JevErrorWithWorkingVetoProvider(t *testing.T) {
+	tests := []struct {
+		name      string
+		consensus LLMConsensusMode
+		wantSpam  bool
+		why       string
+	}{
+		{
+			name: "any: openai clears the base spam despite the jev error", consensus: LLMConsensusAny,
+			wantSpam: false, why: "one flipping result is enough under any, the errored one simply does not vote",
+		},
+		{
+			name: "all: the jev error blocks the clearance openai wanted", consensus: LLMConsensusAll,
+			wantSpam: true, why: "all needs every result to flip and an errored result never does",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDetector(Config{
+				MaxAllowedEmoji: -1, FirstMessageOnly: true, LLMConsensus: tc.consensus,
+				OpenAIVeto: true, JevVeto: true,
+			})
+			_, err := d.LoadStopWords(strings.NewReader("spamword"))
+			require.NoError(t, err)
+
+			openAIMock := &mocks.OpenAIClientMock{
+				CreateChatCompletionFunc: func(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+					return openai.ChatCompletionResponse{Choices: []openai.ChatCompletionChoice{{
+						Message: openai.ChatCompletionMessage{Content: `{"spam": false, "reason":"openai clears","confidence":95}`},
+					}}}, nil
+				},
+			}
+			jevMock := &mocks.HTTPClientMock{
+				DoFunc: func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader("down"))}, nil
+				},
+			}
+			d.WithOpenAIChecker(openAIMock, OpenAIConfig{Model: "gpt4"})
+			require.NoError(t, d.WithJevChecker(jevMock, jevTestConfig()))
+
+			spam, cr := d.Check(spamcheck.Request{Msg: "spamword in an otherwise ordinary message"})
+			assert.Equal(t, tc.wantSpam, spam, tc.why)
+
+			assert.Len(t, jevMock.DoCalls(), 1, "jev must have been asked before it failed")
+			var jevResp spamcheck.Response
+			for _, c := range cr {
+				if c.Name == "jev" {
+					jevResp = c
+				}
+			}
+			require.Error(t, jevResp.Error)
+			assert.False(t, jevResp.Spam)
+		})
+	}
+}
+
+// with jev the only eligible provider, its error leaves nothing to flip the base decision
+func TestDetector_JevErrorInVetoModeKeepsBaseSpam(t *testing.T) {
+	d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true, JevVeto: true})
+	_, err := d.LoadStopWords(strings.NewReader("spamword"))
+	require.NoError(t, err)
+
+	clientMock := &mocks.HTTPClientMock{
+		DoFunc: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader("down"))}, nil
+		},
+	}
+	require.NoError(t, d.WithJevChecker(clientMock, jevTestConfig()))
+
+	spam, _ := d.Check(spamcheck.Request{Msg: "spamword in an otherwise ordinary message"})
+	assert.True(t, spam, "a failed veto check must leave the heuristic spam verdict standing")
+}
+
+func TestDetector_NoJevTokenLeavesBehaviorUnchanged(t *testing.T) {
+	withoutJev := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+	_, err := withoutJev.LoadStopWords(strings.NewReader("spamword"))
+	require.NoError(t, err)
+
+	spam, cr := withoutJev.Check(spamcheck.Request{Msg: "an ordinary message with no stop words"})
+	assert.False(t, spam)
+	for _, c := range cr {
+		assert.NotEqual(t, "jev", c.Name, "jev must not appear in the results when unconfigured")
+	}
+
+	spamHit, _ := withoutJev.Check(spamcheck.Request{Msg: "spamword here"})
+	assert.True(t, spamHit, "the heuristic path must be untouched when jev is off")
+}

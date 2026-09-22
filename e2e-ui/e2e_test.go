@@ -582,6 +582,55 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	gotImageTextLen, err := page.Locator("#metaImageTextLen").InputValue()
 	require.NoError(t, err)
 	assert.Equal(t, "40", gotImageTextLen, "image-text-len must persist after reload")
+
+	// jev fields round-trip through the same save and reload
+	require.NoError(t, page.Locator("#jev-tab").Click())
+	waitVisible(t, page.Locator("#jevVeto"))
+
+	require.NoError(t, page.Locator("#jevVeto").Check())
+	require.NoError(t, page.Locator("#jevCheckShortMessages").Check())
+	require.NoError(t, page.Locator("#jevHistorySize").Fill("7"))
+	require.NoError(t, page.Locator("#jevThreshold").Fill("0.305")) // finer than any step constraint would allow
+	require.NoError(t, page.Locator("#jevMaxSymbolsRequest").Fill("5000"))
+	require.NoError(t, page.Locator("#jevRetryCount").Fill("2"))
+	require.NoError(t, page.Locator("#jevModel").Fill("jev-1.13.0"))
+	require.NoError(t, page.Locator("#jevQuestion").Fill("Is `message` spam?"))
+	require.NoError(t, page.Locator("#jevCriteriaSpam").Fill("promotes or advertises"))
+	require.NoError(t, page.Locator("#jevCriteriaHam").Fill("ordinary conversation"))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	require.NoError(t, page.Locator("#jev-tab").Click())
+	waitVisible(t, page.Locator("#jevVeto"))
+
+	gotJevVeto, err := page.Locator("#jevVeto").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, gotJevVeto, "jev veto must stay checked after reload")
+
+	gotJevShort, err := page.Locator("#jevCheckShortMessages").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, gotJevShort, "jev check-short-messages must stay checked after reload")
+
+	for _, tc := range []struct{ selector, want string }{
+		{"#jevHistorySize", "7"},
+		{"#jevThreshold", "0.305"},
+		{"#jevMaxSymbolsRequest", "5000"},
+		{"#jevRetryCount", "2"},
+		{"#jevModel", "jev-1.13.0"},
+		{"#jevQuestion", "Is `message` spam?"},
+		{"#jevCriteriaSpam", "promotes or advertises"},
+		{"#jevCriteriaHam", "ordinary conversation"},
+	} {
+		got, err := page.Locator(tc.selector).InputValue()
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, got, "%s must persist after reload", tc.selector)
+	}
 }
 
 func TestSettings_ProhibitedLangsPersists(t *testing.T) {

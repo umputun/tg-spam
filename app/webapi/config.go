@@ -90,10 +90,10 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// preserve transient settings (never stored in DB). Tokens are NOT preserved:
-	// in --confdb mode the DB is authoritative for Telegram/OpenAI/Gemini tokens,
+	// in --confdb mode the DB is authoritative for the telegram and provider tokens,
 	// so reload must pick up fresh DB values. picking them up only refreshes the
-	// settings struct though: the Telegram bot API client and the OpenAI/Gemini
-	// clients are built once in main and are not rebuilt here, so a rotated
+	// settings struct though: the Telegram bot API client and every LLM provider
+	// client are built once in main and are not rebuilt here, so a rotated
 	// service token reaches them only after a restart. Auth hash is preserved only when
 	// transient.AuthFromCLI is set, which marks an in-memory hash that must
 	// survive reload (set by applyCLIOverrides for explicit --server.auth/-hash
@@ -426,6 +426,53 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 	if val := r.FormValue("geminiRetryCount"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			settings.Gemini.RetryCount = n
+		}
+	}
+
+	// jev settings (mirror gemini handling; do not touch Jev.Token from form - credential lives in CLI/DB only).
+	// a malformed number leaves the stored value in place; a parseable but invalid one (NaN, out of
+	// range, negative cap) is stored and then rejected by Validate, which rolls the whole update back
+	// so the operator sees why instead of having the field silently ignored.
+	settings.Jev.Veto = r.FormValue("jevVeto") == "on"
+	settings.Jev.CheckShortMessages = r.FormValue("jevCheckShortMessages") == "on"
+
+	if val := r.FormValue("jevHistorySize"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Jev.HistorySize = n
+		}
+	}
+
+	if val := r.FormValue("jevModel"); val != "" {
+		settings.Jev.Model = val
+	}
+
+	if _, ok := r.Form["jevQuestion"]; ok {
+		settings.Jev.Question = r.FormValue("jevQuestion")
+	}
+
+	if _, ok := r.Form["jevCriteriaSpam"]; ok {
+		settings.Jev.CriteriaSpam = r.FormValue("jevCriteriaSpam")
+	}
+
+	if _, ok := r.Form["jevCriteriaHam"]; ok {
+		settings.Jev.CriteriaHam = r.FormValue("jevCriteriaHam")
+	}
+
+	if val := r.FormValue("jevThreshold"); val != "" {
+		if th, err := strconv.ParseFloat(val, 64); err == nil {
+			settings.Jev.Threshold = th
+		}
+	}
+
+	if val := r.FormValue("jevMaxSymbolsRequest"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Jev.MaxSymbolsRequest = n
+		}
+	}
+
+	if val := r.FormValue("jevRetryCount"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			settings.Jev.RetryCount = n
 		}
 	}
 

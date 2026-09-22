@@ -40,6 +40,7 @@ type Detector struct {
 	classifier        classifier
 	openaiChecker     *openAIChecker
 	geminiChecker     *geminiChecker
+	jevChecker        *jevChecker
 	duplicateDetector *duplicateDetector
 	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
@@ -120,6 +121,8 @@ type Config struct {
 	OpenAIHistorySize   int              // history size for openai
 	GeminiVeto          bool             // if true, gemini vetos spam, otherwise vetos ham
 	GeminiHistorySize   int              // history size for gemini
+	JevVeto             bool             // if true, jev vetos spam, otherwise vetos ham
+	JevHistorySize      int              // history size for jev
 	LLMConsensus        LLMConsensusMode // how eligible LLM checks flip the base decision
 	LLMRequestTimeout   time.Duration    // timeout for individual LLM requests, if not set - 30s default
 	MultiLangWords      int              // if true, check for number of multi-lingual words
@@ -344,9 +347,10 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		// 3. LLM checkers are configured but LLMs won't run (FirstMessageOnly/FirstMessagesCount not set)
 		openaiChecksShort := d.openaiChecker != nil && d.openaiChecker.params.CheckShortMessagesWithOpenAI
 		geminiChecksShort := d.geminiChecker != nil && d.geminiChecker.params.CheckShortMessages
+		jevChecksShort := d.jevChecker != nil && d.jevChecker.params.CheckShortMessages
 		llmEligible := d.FirstMessageOnly || d.FirstMessagesCount > 0
 		softSpam := isSpamDetected(cr)
-		if softSpam || !llmEligible || (!openaiChecksShort && !geminiChecksShort) {
+		if softSpam || !llmEligible || (!openaiChecksShort && !geminiChecksShort && !jevChecksShort) {
 			if softSpam {
 				if approval, ok := luaApprovalResponse(luaApprovers); ok {
 					return false, append(cr, approval)
@@ -391,7 +395,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 	//  - checks failed (spam) and veto is true - improves false positive rate
 	// FirstMessageOnly or FirstMessagesCount has to be set to use LLMs, because they are slow and expensive to run on all messages
 	if !luaApproved && (d.FirstMessageOnly || d.FirstMessagesCount > 0) {
-		llmResults := make([]detectorLLMResult, 0, 2)
+		llmResults := make([]detectorLLMResult, 0, 3)
 		llmChecks := []detectorLLMCheck{
 			{
 				name:               "openai",
@@ -411,6 +415,16 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				historySize:        d.GeminiHistorySize,
 				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
 					return d.geminiChecker.check(ctx, msg, history)
+				},
+			},
+			{
+				name:               "jev",
+				enabled:            d.jevChecker != nil,
+				checkShortMessages: d.jevChecker != nil && d.jevChecker.params.CheckShortMessages,
+				veto:               d.JevVeto,
+				historySize:        d.JevHistorySize,
+				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
+					return d.jevChecker.check(ctx, msg, history)
 				},
 			},
 		}
@@ -598,6 +612,18 @@ func (d *Detector) WithOpenAIChecker(client openAIClient, config OpenAIConfig) {
 // WithGeminiChecker sets a geminiChecker for spam checking.
 func (d *Detector) WithGeminiChecker(client geminiClient, config GeminiConfig) {
 	d.geminiChecker = newGeminiChecker(client, config)
+}
+
+// WithJevChecker sets a jevChecker for spam checking. It returns the constructor's validation
+// error and leaves the detector without a jev checker in that case, so a rejected config can
+// never be half-applied.
+func (d *Detector) WithJevChecker(client HTTPClient, config JevConfig) error {
+	checker, err := newJevChecker(client, config)
+	if err != nil {
+		return fmt.Errorf("failed to create jev checker: %w", err)
+	}
+	d.jevChecker = checker
+	return nil
 }
 
 // WithLuaEngine sets a Lua plugin engine and loads plugins
