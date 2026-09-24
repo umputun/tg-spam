@@ -544,6 +544,8 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		}
 
 		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		require.Len(t, mockAPI.SendCalls(), 1)
+		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "ban skipped")
 	})
 
 	t.Run("DirectSpamReport_LinkedChannel", func(t *testing.T) {
@@ -574,6 +576,12 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Equal(t, 999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
 		assert.Equal(t, 789, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 		require.Len(t, botMock.UpdateSpamCalls(), 1)
+
+		// the admin chat is told the ban was skipped, not that it happened
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
+		assert.Contains(t, adminMsg, "ban skipped")
+		assert.NotContains(t, adminMsg, "the user banned")
 	})
 
 	t.Run("DirectSpamReport_OtherChannelWithLinkedChannelSet", func(t *testing.T) {
@@ -2213,6 +2221,10 @@ func TestAdmin_MsgHandler(t *testing.T) {
 			_, isMemberBan := call.C.(tbapi.BanChatMemberConfig)
 			assert.False(t, isMemberBan, "should not ban member for a linked channel post")
 		}
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
+		assert.Contains(t, adminMsg, "ban skipped")
+		assert.NotContains(t, adminMsg, "the user banned")
 	})
 
 	t.Run("message not found in locator with hidden user", func(t *testing.T) {

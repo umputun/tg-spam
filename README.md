@@ -432,6 +432,8 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
 
 Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
 
+Posts made on behalf of a channel or by an anonymous admin can't be reported by users; admins handle them with `/spam`.
+
 #### Advanced Reporting Features
 
 - **Approved Users Only**: Only users who have been automatically approved can submit reports. This is always enabled to prevent malicious actors from abusing the report system. Users are automatically approved after successfully sending a few non-spam messages (the threshold is configured via `--first-messages-count`, which defaults to 1 if `--first-messages` is enabled).
