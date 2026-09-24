@@ -4395,6 +4395,81 @@ func TestTelegramListener_ChatSenderAdminCommands(t *testing.T) {
 	}
 }
 
+// TestTelegramListener_OtherGroupAnonymousAdminIgnored checks that an anonymous admin of another group
+// the bot is in can't use /ban, /spam or /warn: the commands act on the monitored group
+func TestTelegramListener_OtherGroupAnonymousAdminIgnored(t *testing.T) {
+	const (
+		groupChatID      = int64(-1001688024850)
+		otherGroupChatID = int64(-1005555555555)
+	)
+
+	for _, command := range []string{"/ban", "/spam", "/warn"} {
+		t.Run(command, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: groupChatID}}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{Send: true, Text: "detected spam"}
+				},
+				UpdateSpamFunc:         func(msg string) error { return nil },
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+			}
+
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := TelegramListener{
+				SpamLogger: &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}},
+				TbAPI:      mockAPI,
+				Bot:        botMock,
+				Group:      fmt.Sprintf("%d", groupChatID),
+				Locator:    locator,
+				SuperUsers: SuperUsers{},
+				WarnMsg:    "You have been warned",
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- tbapi.Update{Message: &tbapi.Message{
+				MessageID:  1000,
+				Chat:       tbapi.Chat{ID: otherGroupChatID, Type: "supergroup"},
+				Text:       command,
+				From:       &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", IsBot: true},
+				SenderChat: &tbapi.Chat{ID: otherGroupChatID, Type: "supergroup", Title: "Other Group"},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999,
+					Chat:      tbapi.Chat{ID: otherGroupChatID, Type: "supergroup"},
+					From:      &tbapi.User{ID: 666, UserName: "member"},
+					Text:      "a message in the other group",
+				},
+			}}
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			err := l.Do(ctx)
+			require.EqualError(t, err, "telegram update chan closed")
+
+			assert.Empty(t, mockAPI.RequestCalls(), "no ban or delete requests expected")
+			assert.Empty(t, mockAPI.SendCalls(), "no warning expected")
+			assert.Empty(t, botMock.UpdateSpamCalls())
+		})
+	}
+}
+
 // TestTelegramListener_IsAnonymousGroupAdmin tables sender_chat / chat combinations
 // that isAnonymousGroupAdmin classifies as an "as-the-group" post.
 func TestTelegramListener_IsAnonymousGroupAdmin(t *testing.T) {
@@ -4428,11 +4503,19 @@ func TestTelegramListener_IsAnonymousGroupAdmin(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			name: "anonymous admin of another group",
+			msg: &tbapi.Message{
+				Chat:       tbapi.Chat{ID: -1009999999999},
+				SenderChat: &tbapi.Chat{ID: -1009999999999},
+			},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := &TelegramListener{}
+			l := &TelegramListener{chatID: groupChatID}
 			assert.Equal(t, tt.expected, l.isAnonymousGroupAdmin(tt.msg))
 		})
 	}

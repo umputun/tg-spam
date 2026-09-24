@@ -650,12 +650,14 @@ func (l *TelegramListener) isLinkedChannel(msg *tbapi.Message) bool {
 }
 
 // isAnonymousGroupAdmin reports whether the message was posted "as the chat"
-// by an anonymous group administrator. Per Bot API, sender_chat is set to the
-// supergroup itself only for such posts (the client-side "Send as chat" toggle
-// is only available to admins, and Bot API guarantees the fake From is
-// GroupAnonymousBot), so this branch is safe to treat as admin-authorized.
+// by an anonymous administrator of the monitored group. Per Bot API, sender_chat
+// is set to the supergroup itself only for such posts (the client-side "Send as
+// chat" toggle is only available to admins, and Bot API guarantees the fake From
+// is GroupAnonymousBot), so this branch is safe to treat as admin-authorized.
+// only the monitored group counts: an anonymous admin of any other group the bot
+// is in has no rights here, and super commands act on the monitored group.
 func (l *TelegramListener) isAnonymousGroupAdmin(msg *tbapi.Message) bool {
-	return msg.SenderChat != nil && msg.SenderChat.ID == msg.Chat.ID
+	return msg.SenderChat != nil && msg.Chat.ID == l.chatID && msg.SenderChat.ID == l.chatID
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {
