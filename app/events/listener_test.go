@@ -347,6 +347,39 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("post-as-channel reply is left alone, not consumed as a report", func(t *testing.T) {
+		// regression: the user-report handler deleted the command of a Channel_Bot pseudo-user and filed nothing
+		reports := &mocks.ReportsMock{}
+		mockAPI, botMock, l, teardown := prep(reports, true)
+		defer teardown()
+
+		deleteCalled := false
+		mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			if _, ok := c.(tbapi.DeleteMessageConfig); ok {
+				deleteCalled = true
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+		botMock.IsApprovedUserFunc = func(userID int64) bool { return false }
+
+		upd := reportUpdate("/report")
+		upd.Message.From = &tbapi.User{UserName: "Channel_Bot", ID: 136817688}
+		upd.Message.SenderChat = &tbapi.Chat{ID: -1001234567890, Type: "channel", UserName: "some_channel"}
+
+		updChan := make(chan tbapi.Update, 1)
+		updChan <- upd
+		close(updChan)
+		mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		err := l.Do(ctx)
+		require.EqualError(t, err, "telegram update chan closed")
+
+		assert.False(t, deleteCalled)
+		assert.Empty(t, reports.AddCalls())
+	})
+
 	t.Run("spam alias is suppressed when reporting is disabled, same as /report", func(t *testing.T) {
 		// the aliases are equivalent to the report forms in every path, so with the feature off they
 		// are suppressed rather than passed to the spam check

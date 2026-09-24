@@ -93,6 +93,7 @@
 - Admin `/spam` command (`directReport`) detects `origMsg.SenderChat` and passes channel ID for ban and cleanup
 - Anonymous admin posts (where `SenderChat.ID == group chat ID`) skip spam check entirely
 - Linked channel (resolved via `ChatFullInfo.LinkedChatID` at startup) is treated as superuser for `/ban`, `/spam`, `/warn` commands
+- An anonymous admin of the monitored group (`From` = `GroupAnonymousBot`, `SenderChat.ID == Chat.ID == l.chatID`) is also treated as superuser for `/ban`, `/spam`, `/warn`, via `isAnonymousGroupAdmin` in `fromSuper`. The check compares against `l.chatID`, never `msg.Chat.ID` alone or `isChatAllowed`: `fromSuper` is computed before any chat filter, and the super-command handlers always act on the primary chat, so an anonymous admin of any other group the bot is in (including `TestingIDs` chats and the admin chat) would otherwise ban, delete and train spam samples in the monitored group
 - Linked channel messages also skip spam checking (same as anonymous admin posts)
 - `isLinkedChannel(msg)` helper checks `l.linkedChannelID != 0 && msg.SenderChat != nil && msg.SenderChat.ID == l.linkedChannelID`
 - `channelDisplayName` resolves display name from `*tbapi.Chat`: UserName > Title > `channel_<ID>`
@@ -103,9 +104,9 @@
 
 ### Report Command Routing
 - `spam`, `/spam`, `report`, `/report` are equivalent for a non-superuser: all four are matched by `isReportCommand` (`app/events/listener.go`) and behave identically in every path. `/report@botname` is additionally accepted; there is no `/spam@botname` equivalent, deliberately (nothing autocompletes it, the bot never calls `SetMyCommands`)
-- The same text from a superuser or the linked channel never reaches `isReportCommand` — `procSuperReply` intercepts it earlier in the `Do` loop for ban + spam-sample training. Identical text, different handler, decided purely by sender privilege
+- The same text from a superuser, the linked channel, or an anonymous admin of the monitored group never reaches `isReportCommand` — `procSuperReply` intercepts it earlier in the `Do` loop for ban + spam-sample training. Identical text, different handler, decided purely by sender privilege
 - **`isReportCommand` has TWO consumers**, and this is the trap: `procUserReply` (files the report) and the orphaned-command cleanup in `Do`, which deletes a matching message sent *without* a reply. Anything added to the predicate immediately becomes deletable as an orphaned command, in every chat the bot receives updates for, and that branch is NOT gated on `ReportConfig.Enabled` — unlike `procUserReply`, which suppresses the command when reporting is off
-- The user-report dispatch requires `update.Message.SenderChat == nil`. Senders posting on behalf of a chat (anonymous admin `GroupAnonymousBot`, "post as channel" `Channel_Bot`) carry a pseudo-user in `From` that can never be an approved reporter, so without the guard `DirectUserReport` deletes their command message and files nothing
+- The user-report dispatch requires `update.Message.SenderChat == nil`. Senders posting on behalf of a chat carry a pseudo-user in `From` that can never be an approved reporter, so without the guard `DirectUserReport` deletes their command message and files nothing. Anonymous admins of the monitored group divert earlier through `fromSuper`, so the guard is what covers "post as channel" `Channel_Bot` senders from a non-linked channel and anonymous admins of other chats
 - Known gap, unrelated to the command forms: `DirectUserReport` never resolves `SenderChat` for the *reported* message, so a channel-origin spam post is filed and banned as the shared `Channel_Bot` identity rather than the channel. `admin.go`'s `directReport` handles this correctly; the user-report path does not
 
 ### ExtraDeleteIDs Feature
