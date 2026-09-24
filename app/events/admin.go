@@ -381,8 +381,13 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 			warnTargetName = chName
 		}
 	}
-	warnMsg := fmt.Sprintf("warning from %s\n\n%s %s", update.Message.From.UserName,
-		warnTargetName, a.warnMsg)
+	// a warning issued on behalf of a chat (linked channel or anonymous admin) comes from a
+	// telegram pseudo-user (Channel_Bot, GroupAnonymousBot); name the chat instead
+	warnFrom := update.Message.From.UserName
+	if sc := update.Message.SenderChat; sc != nil && sc.ID != 0 {
+		warnFrom = a.channelDisplayName(sc)
+	}
+	warnMsg := fmt.Sprintf("warning from %s\n\n%s %s", warnFrom, warnTargetName, a.warnMsg)
 	if err := send(tbapi.NewMessage(a.primChatID, escapeMarkDownV1Text(warnMsg)), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send warning to main chat: %w", err))
 	}
