@@ -304,9 +304,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
-			// handle spam reports from superusers and linked channel
+			// handle spam reports from superusers, the linked channel, and anonymous
+			// group admins (a message posted "as the chat" always comes from an admin
+			// per Bot API — sender_chat is described as "the supergroup itself for
+			// messages sent by its anonymous administrators")
 			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) ||
-				l.isLinkedChannel(update.Message)
+				l.isLinkedChannel(update.Message) ||
+				l.isAnonymousGroupAdmin(update.Message)
 			if update.Message.ReplyToMessage != nil && fromSuper {
 				if l.procSuperReply(update) {
 					// superuser command processed, skip the rest
@@ -643,6 +647,15 @@ func (l *TelegramListener) deleteSystemMessage(msgID int, chatID int64, msgType 
 // isLinkedChannel checks if the message was sent on behalf of the linked channel
 func (l *TelegramListener) isLinkedChannel(msg *tbapi.Message) bool {
 	return l.linkedChannelID != 0 && msg.SenderChat != nil && msg.SenderChat.ID == l.linkedChannelID
+}
+
+// isAnonymousGroupAdmin reports whether the message was posted "as the chat"
+// by an anonymous group administrator. Per Bot API, sender_chat is set to the
+// supergroup itself only for such posts (the client-side "Send as chat" toggle
+// is only available to admins, and Bot API guarantees the fake From is
+// GroupAnonymousBot), so this branch is safe to treat as admin-authorized.
+func (l *TelegramListener) isAnonymousGroupAdmin(msg *tbapi.Message) bool {
+	return msg.SenderChat != nil && msg.SenderChat.ID == msg.Chat.ID
 }
 
 func (l *TelegramListener) isChatAllowed(fromChat int64) bool {

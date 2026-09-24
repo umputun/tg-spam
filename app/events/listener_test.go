@@ -286,10 +286,23 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		assert.EqualValues(t, 2, reports.AddCalls()[0].Report.ReporterUserID)
 	})
 
-	t.Run("anonymous admin reply is left alone, not consumed as a report", func(t *testing.T) {
-		// From is the GroupAnonymousBot pseudo-user, which can never be an approved reporter. before
-		// the SenderChat guard the report handler deleted the command message and filed nothing
-		for _, command := range []string{"spam", "/spam", "/report"} {
+	t.Run("anonymous admin reply is routed through the super path, never the user-report path", func(t *testing.T) {
+		// From is the GroupAnonymousBot pseudo-user, sender_chat == chat means the message was
+		// posted "as the group" — Bot API guarantees only admins can do that. spam / /spam are
+		// treated as admin commands via procSuperReply; /report is not a super command and now
+		// falls through to procEvents's "skip spam check for anonymous admin post" branch,
+		// leaving no side effects. either way, the user-report handler must not fire because
+		// the pseudo-user can never become an approved reporter.
+		type expect struct {
+			delete    bool
+			onMessage bool
+		}
+		cases := map[string]expect{
+			"spam":    {delete: true, onMessage: true},
+			"/spam":   {delete: true, onMessage: true},
+			"/report": {delete: false, onMessage: false},
+		}
+		for command, exp := range cases {
 			t.Run(command, func(t *testing.T) {
 				reports := &mocks.ReportsMock{}
 				mockAPI, botMock, l, teardown := prep(reports, true)
@@ -302,8 +315,12 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 					}
 					return &tbapi.APIResponse{Ok: true}, nil
 				}
-				// the pseudo-user never reaches OnMessage, so it can never become approved
 				botMock.IsApprovedUserFunc = func(userID int64) bool { return false }
+				botMock.UpdateSpamFunc = func(msg string) error { return nil }
+				botMock.RemoveApprovedUserFunc = func(id int64) error { return nil }
+				botMock.OnMessageFunc = func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{Send: false}
+				}
 
 				upd := reportUpdate(command)
 				upd.Message.From = &tbapi.User{UserName: "GroupAnonymousBot", ID: 1087968824}
@@ -319,9 +336,13 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 				err := l.Do(ctx)
 				require.EqualError(t, err, "telegram update chan closed")
 
-				assert.False(t, deleteCalled, "anonymous admin command must not be deleted")
-				assert.Empty(t, reports.AddCalls(), "no report should be filed for a pseudo-user reporter")
-				assert.Empty(t, botMock.OnMessageCalls(), "anonymous admin post skips the spam check")
+				assert.Equal(t, exp.delete, deleteCalled, "delete expectation for %q", command)
+				assert.Empty(t, reports.AddCalls(), "user-report storage must stay untouched (pseudo-user can't be an approved reporter)")
+				if exp.onMessage {
+					assert.NotEmpty(t, botMock.OnMessageCalls(), "super /spam calls OnMessage for diagnostics")
+				} else {
+					assert.Empty(t, botMock.OnMessageCalls(), "non-super command must not reach the spam check")
+				}
 			})
 		}
 	})
@@ -4356,6 +4377,222 @@ func TestTelegramListener_LinkedChannelBanSpam(t *testing.T) {
 						if del.MessageID == 999999 {
 							foundDelete = true
 						}
+					}
+				}
+				assert.True(t, foundDelete, "expected original message to be deleted")
+			}
+		})
+	}
+}
+
+// TestTelegramListener_IsAnonymousGroupAdmin tables sender_chat / chat combinations
+// that isAnonymousGroupAdmin classifies as an "as-the-group" post.
+func TestTelegramListener_IsAnonymousGroupAdmin(t *testing.T) {
+	const groupChatID = int64(-1001688024850)
+
+	tests := []struct {
+		name     string
+		msg      *tbapi.Message
+		expected bool
+	}{
+		{
+			name: "sender_chat matches chat itself",
+			msg: &tbapi.Message{
+				Chat:       tbapi.Chat{ID: groupChatID},
+				SenderChat: &tbapi.Chat{ID: groupChatID},
+			},
+			expected: true,
+		},
+		{
+			name: "sender_chat is some other chat (e.g. linked channel)",
+			msg: &tbapi.Message{
+				Chat:       tbapi.Chat{ID: groupChatID},
+				SenderChat: &tbapi.Chat{ID: -1001234567890},
+			},
+			expected: false,
+		},
+		{
+			name: "no sender_chat",
+			msg: &tbapi.Message{
+				Chat: tbapi.Chat{ID: groupChatID},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &TelegramListener{}
+			assert.Equal(t, tt.expected, l.isAnonymousGroupAdmin(tt.msg))
+		})
+	}
+}
+
+// TestTelegramListener_AnonymousAdminBanSpam covers /ban, /spam, /warn issued by
+// an anonymous group administrator (Telegram's "Send as chat" toggle). The Bot
+// API delivers such messages with `From = GroupAnonymousBot` (id 1087968824)
+// and `SenderChat` equal to the chat itself; that combination did not enter the
+// `fromSuper` branch before this change, so the command was silently swallowed
+// by the "skip spam check for anonymous admin post" branch in procEvents.
+func TestTelegramListener_AnonymousAdminBanSpam(t *testing.T) {
+	const (
+		groupChatID           = int64(-1001688024850)
+		groupAnonymousBotID   = int64(1087968824)
+		groupAnonymousBotName = "GroupAnonymousBot"
+		targetUserID          = int64(666)
+	)
+
+	tests := []struct {
+		name           string
+		command        string
+		wantBan        bool
+		wantSpamTrain  bool
+		wantWarnMsg    bool
+		wantOnMessage  bool
+		wantDeleteOrig bool
+	}{
+		{
+			name:           "anonymous admin /ban bans target user",
+			command:        "/ban",
+			wantBan:        true,
+			wantOnMessage:  true,
+			wantDeleteOrig: true,
+		},
+		{
+			name:           "anonymous admin /spam bans and trains",
+			command:        "/spam",
+			wantBan:        true,
+			wantSpamTrain:  true,
+			wantOnMessage:  true,
+			wantDeleteOrig: true,
+		},
+		{
+			name:           "anonymous admin /warn sends warning",
+			command:        "/warn",
+			wantWarnMsg:    true,
+			wantDeleteOrig: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{
+						Chat: tbapi.Chat{ID: groupChatID},
+					}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+					return bot.Response{Send: true, Text: "detected spam"}
+				},
+				UpdateSpamFunc:         func(msg string) error { return nil },
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+			}
+
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := TelegramListener{
+				SpamLogger: mockLogger,
+				TbAPI:      mockAPI,
+				Bot:        botMock,
+				Group:      fmt.Sprintf("%d", groupChatID),
+				Locator:    locator,
+				SuperUsers: SuperUsers{}, // no superusers configured, anonymous-admin path must still work
+				WarnMsg:    "You have been warned",
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			// shape mirrors the raw update captured in production:
+			// From = GroupAnonymousBot fake user, SenderChat = the chat itself
+			updMsg := tbapi.Update{
+				Message: &tbapi.Message{
+					Chat: tbapi.Chat{ID: groupChatID},
+					Text: tt.command,
+					From: &tbapi.User{ID: groupAnonymousBotID, UserName: groupAnonymousBotName, IsBot: true, FirstName: "Group"},
+					SenderChat: &tbapi.Chat{
+						ID:       groupChatID,
+						Type:     "supergroup",
+						UserName: "test_supergroup",
+						Title:    "Test Supergroup",
+					},
+					ReplyToMessage: &tbapi.Message{
+						MessageID: 999999,
+						From:      &tbapi.User{ID: targetUserID, UserName: "spammer"},
+						Text:      "this is spam text",
+					},
+				},
+			}
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- updMsg
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			err := l.Do(ctx)
+			require.EqualError(t, err, "telegram update chan closed")
+
+			if tt.wantBan {
+				var foundBan bool
+				for _, call := range mockAPI.RequestCalls() {
+					if ban, ok := call.C.(tbapi.BanChatMemberConfig); ok {
+						assert.Equal(t, groupChatID, ban.ChatID)
+						assert.Equal(t, targetUserID, ban.UserID)
+						foundBan = true
+					}
+				}
+				assert.True(t, foundBan, "expected ban request for target user")
+			} else {
+				for _, call := range mockAPI.RequestCalls() {
+					_, isBan := call.C.(tbapi.BanChatMemberConfig)
+					assert.False(t, isBan, "unexpected ban request")
+				}
+			}
+
+			if tt.wantSpamTrain {
+				require.Len(t, botMock.UpdateSpamCalls(), 1)
+				assert.Equal(t, "this is spam text", botMock.UpdateSpamCalls()[0].Msg)
+			} else {
+				assert.Empty(t, botMock.UpdateSpamCalls())
+			}
+
+			if tt.wantOnMessage {
+				require.Len(t, botMock.OnMessageCalls(), 1)
+				assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
+			} else {
+				assert.Empty(t, botMock.OnMessageCalls())
+			}
+
+			if tt.wantWarnMsg {
+				var foundWarn bool
+				for _, call := range mockAPI.SendCalls() {
+					mc := call.C.(tbapi.MessageConfig)
+					if strings.Contains(mc.Text, "warning from") && strings.Contains(mc.Text, "You have been warned") {
+						foundWarn = true
+					}
+				}
+				assert.True(t, foundWarn, "expected warning message to be sent")
+			}
+
+			if tt.wantDeleteOrig {
+				var foundDelete bool
+				for _, call := range mockAPI.RequestCalls() {
+					if del, ok := call.C.(tbapi.DeleteMessageConfig); ok && del.MessageID == 999999 {
+						foundDelete = true
 					}
 				}
 				assert.True(t, foundDelete, "expected original message to be deleted")
