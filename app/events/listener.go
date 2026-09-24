@@ -305,9 +305,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			// handle spam reports from superusers, the linked channel, and anonymous
-			// group admins (a message posted "as the chat" always comes from an admin
-			// per Bot API — sender_chat is described as "the supergroup itself for
-			// messages sent by its anonymous administrators")
+			// group admins. a message posted "as the chat" always comes from an admin:
+			// the Bot API describes sender_chat as "the supergroup itself for messages
+			// sent by its anonymous administrators"
 			fromSuper := l.SuperUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) ||
 				l.isLinkedChannel(update.Message) ||
 				l.isAnonymousGroupAdmin(update.Message)
