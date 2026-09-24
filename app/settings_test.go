@@ -171,6 +171,18 @@ func TestApplyCLIOverrides(t *testing.T) {
 		assert.Equal(t, []string{config.FieldServerAuthHash}, settings.Transient.CredentialsFromCLI)
 	})
 
+	t.Run("cli auth password alone records the auth hash", func(t *testing.T) {
+		settings := config.Settings{}
+		applyCLIOverrides(&settings, makeOpts(t, "cli-password", ""), defaults)
+		assert.Equal(t, []string{config.FieldServerAuthHash}, settings.Transient.CredentialsFromCLI)
+	})
+
+	t.Run("cli auth hash alone records the auth hash", func(t *testing.T) {
+		settings := config.Settings{}
+		applyCLIOverrides(&settings, makeOpts(t, "auto", "cli-hash"), defaults) // "auto" is the default password
+		assert.Equal(t, []string{config.FieldServerAuthHash}, settings.Transient.CredentialsFromCLI)
+	})
+
 	t.Run("auto-generated auth is not recorded as a cli credential", func(t *testing.T) {
 		settings := config.Settings{Server: config.ServerSettings{Enabled: true}}
 		applyCLIOverrides(&settings, newDefaultOpts(t), defaults)
