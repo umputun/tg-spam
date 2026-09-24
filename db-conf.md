@@ -238,7 +238,7 @@ Settings resolve based on the run mode:
 - A credential supplied on the CLI or through the environment (`--telegram.token`, `--openai.token`, `--gemini.token`, `--jev.token`, `--server.auth`, `--server.auth-hash`) belongs to the running process: `applyCLIOverrides` records it in `Transient.CredentialsFromCLI`, `Store.Save` writes the value already stored in the DB for it (or nothing), so saving from the settings UI never copies it into the database or its backups, and `POST /config/reload` keeps the in-memory value. `save-config --confdb` with the same `--db`, `--instance-id` and `--confdb-encrypt-key` is the explicit way to store it in an existing config; plain `save-config` builds the whole config from CLI flags and is only for seeding a fresh database. The auto-generated password from the no-auth fallback is not a CLI credential and is persisted by a UI save as before
 - A credential that an earlier dashboard save already wrote stays in the config row and in older backups: `Store.Save` keeps writing back the stored value, so removing it is up to the operator
 - Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg` (marked transient, never persisted)
-- `Dry` is persisted in the DB and one-way-overridable from CLI: `--dry` forces true, CLI default (unset) preserves the DB value. To disable dry-run after enabling it, use the settings UI or `save-config`
+- `Dry` is persisted in the DB and one-way-overridable from CLI: `--dry` forces true, CLI default (unset) preserves the DB value. To disable dry-run after enabling it, use the settings UI; `--confdb` can only turn it on, and plain `save-config` replaces the whole stored config
 - CLI override path in `--confdb` mode (handled by `applyCLIOverrides`):
   - web auth password (`--server.auth`) and web auth hash (`--server.auth-hash`) — override-only so an operator can recover UI access
   - API tokens `--telegram.token`, `--openai.token`, `--gemini.token` — non-empty CLI values overlay the DB; empty CLI values leave the DB-stored token in place
@@ -302,9 +302,10 @@ written without this field continue to work unchanged.
 
 A short-lived intermediate revision dropped the field entirely; if a blob
 written during that window omits `auth_user`, the default `"tg-spam"`
-username applies. Operators who relied on a custom username can restore it
-through the settings UI or by re-running `save-config`. No action is
-required for blobs that already carry the field.
+username applies. Neither the settings UI nor a CLI flag sets it, so
+operators who relied on a custom username restore it by setting `auth_user`
+in the stored config. No action is required for blobs that already carry
+the field.
 
 ## Usage
 
@@ -335,7 +336,7 @@ To run the application with database configuration:
     --telegram.token "BOT_TOKEN"
 ```
 
-Note: tokens and the bcrypt auth hash are persisted in the config DB and (when `--confdb-encrypt-key` is set) encrypted at rest with the `ENC:` prefix. CLI flags like `--telegram.token`, `--openai.token`, `--gemini.token`, `--jev.token`, and `--server.auth`/`--server.auth-hash` are *override-only* and apply to the running process: saving from the settings UI never writes them to the DB, and reload keeps them. Use plain `save-config` to seed a fresh DB. To rotate a stored value in an existing config, run `save-config --confdb` with the same `--db`, `--instance-id` and `--confdb-encrypt-key`; with `--confdb`, an empty CLI value leaves the DB-stored value in place. Plain `save-config` builds the whole config from CLI flags and replaces everything set in the web UI, `server.enabled` included. See "CLI/DB Precedence" above for the full rule set.
+Note: tokens and the bcrypt auth hash are persisted in the config DB and (when `--confdb-encrypt-key` is set) encrypted at rest with the `ENC:` prefix. CLI flags like `--telegram.token`, `--openai.token`, `--gemini.token`, `--jev.token`, and `--server.auth`/`--server.auth-hash` are *override-only* and apply to the running process: saving from the settings UI never writes them to the DB, and reload keeps them. Use plain `save-config` to seed a fresh DB. To rotate a stored value in an existing config, run `save-config --confdb` with the same `--db`, `--instance-id` and `--confdb-encrypt-key`; on this `save-config --confdb` path, an empty token or `--server.auth-hash` leaves the DB-stored value in place, while an empty `--server.auth=` clears the stored hash. Plain `save-config` builds the whole config from CLI flags and replaces everything set in the web UI, `server.enabled` included. See "CLI/DB Precedence" above for the full rule set.
 
 ### Web UI Configuration Management
 

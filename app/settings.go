@@ -407,7 +407,7 @@ func applyCLIOverrides(settings *config.Settings, opts options, defaults *config
 func applyOperationalCLIOverrides(settings *config.Settings, opts options, defaults *config.Settings) {
 	// override dry-run if explicitly enabled via CLI (default is false).
 	// false never overrides the DB value; to disable dry-run after enabling it,
-	// use the settings UI or save-config.
+	// use the settings UI; plain save-config would replace the whole stored config.
 	if opts.Dry {
 		settings.Dry = true
 	}
