@@ -394,7 +394,7 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 
 **linked channel admin rights**
 
-If the monitored group is a discussion group linked to a Telegram channel, the linked channel automatically receives admin-like rights. When the channel owner sends commands "as the channel" in the discussion group, the bot recognises the channel identity and grants it the same privileges as a superuser. This means the linked channel can use `/ban`, `/spam`, and `/warn` commands without being explicitly listed in `--super=`. The linked channel is resolved at startup via the Telegram Bot API `getChat` method, and no additional configuration is required. Regular messages posted by the linked channel also skip spam checking, similar to anonymous admin posts from the group itself.
+If the monitored group is a discussion group linked to a Telegram channel, the linked channel automatically receives admin-like rights. When the channel owner sends commands "as the channel" in the discussion group, the bot recognises the channel identity and grants it the same privileges as a superuser. This means the linked channel can use `/ban`, `/spam`, and `/warn` commands without being explicitly listed in `--super=`. The linked channel is resolved at startup via the Telegram Bot API `getChat` method, and no additional configuration is required. Regular messages posted by the linked channel also skip spam checking, similar to anonymous admin posts from the group itself. The bot never bans the linked channel or the group itself: `/spam`, `/ban` or `/warn` in reply to their posts, or a forward of such a post to the admin chat, deletes the post without a ban, and user reports of such posts are rejected.
 
 **aggressive cleanup**
 
@@ -431,6 +431,8 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
    - **Ban Reporters**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
 
 Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
+
+Posts made on behalf of a channel or by an anonymous admin can't be reported by users; admins handle them with `/spam`.
 
 #### Advanced Reporting Features
 

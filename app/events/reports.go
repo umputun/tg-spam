@@ -58,8 +58,10 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("must reply to a message to report it")
 	}
 
-	// validate reported message has a user (not from channel or anonymous admin)
-	if origMsg.From == nil {
+	// validate reported message has a user (not from channel or anonymous admin). in groups the Bot API
+	// fills From for such messages with a shared placeholder (Channel_Bot, GroupAnonymousBot), and a ban
+	// of that placeholder would hit every channel or anonymous admin post, so SenderChat decides
+	if origMsg.From == nil || origMsg.SenderChat != nil {
 		log.Printf("[DEBUG] user report ignored: reported message from channel or anonymous admin")
 		return fmt.Errorf("cannot report messages from channels or anonymous admins")
 	}

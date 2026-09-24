@@ -32,6 +32,7 @@ type admin struct {
 	locator                Locator
 	superUsers             SuperUsers
 	primChatID             int64
+	linkedChannelID        int64 // channel linked to the primary chat, 0 if none
 	adminChatID            int64
 	trainingMode           bool
 	softBan                bool // if true, the user not banned automatically, but only restricted
@@ -183,8 +184,14 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	if len(spamInfo) > 0 {
 		spamInfoText = strings.Join(spamInfo, "\n")
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned and message deleted*",
-		escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText)
+	// posts by anonymous admins and by the linked channel are deleted but never banned
+	ownChatSender := a.isOwnChatSender(info.UserID)
+	outcome := "the user banned and message deleted"
+	if ownChatSender {
+		outcome = "message deleted, ban skipped for the group or its linked channel"
+	}
+	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*%s*",
+		escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText, outcome)
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
 	}
@@ -214,10 +221,10 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		log.Printf("[INFO] message %d deleted", info.MsgID)
 	}
 
-	// skip ban for anonymous admin posts - the locator may store them with the group's own chat ID,
-	// and banning that would attempt to ban the group from posting in itself
-	if info.UserID == a.primChatID {
-		log.Printf("[WARN] skipping ban in MsgHandler, user ID %d matches group chat", a.primChatID)
+	// skip ban for posts by anonymous admins and by the linked channel - the locator stores them under
+	// the sender chat ID, and banning that would ban the group or its linked channel from the group
+	if ownChatSender {
+		log.Printf("[WARN] skipping ban in MsgHandler, user ID %d is the group or its linked channel", info.UserID)
 	} else {
 		banReq := banRequest{duration: bot.PermanentBanDuration, userID: info.UserID,
 			channelID: channelIDFromCallback(info.UserID),
@@ -412,14 +419,15 @@ type warnTarget struct {
 
 // resolveWarnTarget extracts the warn target from the original message.
 // returns (target, true) for plain users and channel posts; (target, false) for
-// anonymous admin posts (SenderChat == group itself, From is shared GroupAnonymousBot)
-// and updates with no resolvable identity.
+// anonymous admin posts (SenderChat == group itself, From is shared GroupAnonymousBot),
+// linked channel posts and updates with no resolvable identity.
 func (a *admin) resolveWarnTarget(origMsg *tbapi.Message) (warnTarget, bool) {
 	if origMsg.SenderChat != nil && origMsg.SenderChat.ID != 0 {
 		// anonymous admin posts have SenderChat.ID == primChatID; From identity is the
-		// shared GroupAnonymousBot user. tracking warns against either is meaningless
-		// (banning the group itself or a shared bot id), so skip entirely.
-		if origMsg.SenderChat.ID == a.primChatID {
+		// shared GroupAnonymousBot user. linked channel posts come from the channel that
+		// owns the discussion group. tracking warns against either is meaningless
+		// (banning the group itself, its linked channel or a shared bot id), so skip entirely.
+		if a.isOwnChatSender(origMsg.SenderChat.ID) {
 			return warnTarget{}, false
 		}
 		return warnTarget{
@@ -540,6 +548,13 @@ func (a *admin) channelDisplayName(ch *tbapi.Chat) string {
 		return ch.Title
 	}
 	return fmt.Sprintf("channel_%d", ch.ID)
+}
+
+// isOwnChatSender checks if the sender chat ID is the primary chat itself (anonymous admin post)
+// or its linked channel. only admins post on behalf of either, and telegram accepts a ban of the
+// linked channel, which stops the channel from posting in its own discussion group
+func (a *admin) isOwnChatSender(senderChatID int64) bool {
+	return senderChatID != 0 && (senderChatID == a.primChatID || senderChatID == a.linkedChannelID)
 }
 
 // deleteUserMessages deletes all recent messages from a user with rate limiting
@@ -670,10 +685,15 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		displayName = a.channelDisplayName(origMsg.SenderChat)
 		displayID = channelID
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n"+
-		"*the user banned by %q and message deleted*",
-		escapeMarkDownV1Text(displayName), displayID, msgTxt, escapeMarkDownV1Text(spamInfoText),
-		escapeMarkDownV1Text(update.Message.From.UserName))
+	// posts by anonymous admins and by the linked channel are deleted but never banned
+	ownChatSender := origMsg.SenderChat != nil && a.isOwnChatSender(origMsg.SenderChat.ID)
+	outcome := fmt.Sprintf("the user banned by %q and message deleted", escapeMarkDownV1Text(update.Message.From.UserName))
+	if ownChatSender {
+		outcome = fmt.Sprintf("message deleted by %q, ban skipped for the group or its linked channel",
+			escapeMarkDownV1Text(update.Message.From.UserName))
+	}
+	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*%s*",
+		escapeMarkDownV1Text(displayName), displayID, msgTxt, escapeMarkDownV1Text(spamInfoText), outcome)
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
 	}
@@ -719,10 +739,11 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		username = a.channelDisplayName(origMsg.SenderChat)
 	}
 
-	// skip ban and cleanup for anonymous admin posts - banning the shared system bot user
-	// (GroupAnonymousBot) would affect all anonymous admin messages in the group
-	if origMsg.SenderChat != nil && origMsg.SenderChat.ID == a.primChatID {
-		log.Printf("[WARN] skipping ban for anonymous admin post, sender chat %d matches group chat", a.primChatID)
+	// skip ban and cleanup for anonymous admin posts and linked channel posts - banning the shared system
+	// bot user (GroupAnonymousBot) would affect all anonymous admin messages in the group, and banning
+	// the linked channel would stop it from posting in its own discussion group
+	if ownChatSender {
+		log.Printf("[WARN] skipping ban, sender chat %d is the group or its linked channel", origMsg.SenderChat.ID)
 	} else {
 		// ban user or channel
 		banReq := banRequest{duration: bot.PermanentBanDuration, userID: origMsg.From.ID, channelID: channelID,
@@ -735,12 +756,12 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 
 	// aggressive cleanup - delete all messages from the spammer (non-blocking)
 	// use channel ID for lookup when the message was sent on behalf of a channel;
-	// skip for anonymous admin posts (channelID == 0 and SenderChat matches group)
+	// skip for anonymous admin posts and linked channel posts, same as the ban above
 	cleanupUserID := origMsg.From.ID
 	if channelID != 0 {
 		cleanupUserID = channelID
 	}
-	if a.aggressiveCleanup && !a.dry && (origMsg.SenderChat == nil || origMsg.SenderChat.ID != a.primChatID) {
+	if a.aggressiveCleanup && !a.dry && !ownChatSender {
 		go func() {
 			deleted, err := a.deleteUserMessages(cleanupUserID)
 			if err != nil {
