@@ -546,6 +546,59 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
+	t.Run("reported message sent on behalf of a chat - should return error", func(t *testing.T) {
+		// in groups the Bot API sets From to a shared placeholder user for posts made on behalf of a chat
+		senders := []struct {
+			name       string
+			from       *tbapi.User
+			senderChat *tbapi.Chat
+		}{
+			{name: "linked channel", from: &tbapi.User{ID: 136817688, UserName: "Channel_Bot", IsBot: true},
+				senderChat: &tbapi.Chat{ID: -1001234567890, Type: "channel", UserName: "linked_channel"}},
+			{name: "anonymous admin", from: &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", IsBot: true},
+				senderChat: &tbapi.Chat{ID: 123, Type: "supergroup"}},
+			{name: "other channel", from: &tbapi.User{ID: 136817688, UserName: "Channel_Bot", IsBot: true},
+				senderChat: &tbapi.Chat{ID: -1009999999999, Type: "channel", UserName: "some_channel"}},
+		}
+		for _, s := range senders {
+			t.Run(s.name, func(t *testing.T) {
+				mockAPI := &mocks.TbAPIMock{}
+				mockReports := &mocks.ReportsMock{}
+				mockBot := &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return true }}
+
+				rep := &userReports{
+					tbAPI:        mockAPI,
+					bot:          mockBot,
+					primChatID:   123,
+					adminChatID:  456,
+					superUsers:   SuperUsers{},
+					ReportConfig: ReportConfig{Storage: mockReports},
+				}
+
+				update := tbapi.Update{
+					Message: &tbapi.Message{
+						MessageID: 789,
+						Chat:      tbapi.Chat{ID: 123},
+						Text:      "/report",
+						From:      &tbapi.User{UserName: "reporter", ID: 111},
+						ReplyToMessage: &tbapi.Message{
+							MessageID:  999,
+							From:       s.from,
+							SenderChat: s.senderChat,
+							Text:       "message sent on behalf of a chat",
+						},
+					},
+				}
+
+				err := rep.DirectUserReport(context.Background(), update)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+				assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+				assert.Empty(t, mockReports.AddCalls(), "should not store a report against the placeholder user")
+			})
+		}
+	})
+
 	t.Run("reports storage not initialized - should return error", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{
 			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {

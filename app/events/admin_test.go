@@ -546,6 +546,68 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		require.Len(t, botMock.UpdateSpamCalls(), 1)
 	})
 
+	t.Run("DirectSpamReport_LinkedChannel", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+		adm.linkedChannelID = -1001234567890
+
+		// post made by the channel linked to the group, e.g. an automatic forward of a channel post
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "Channel_Bot", ID: 136817688},
+					SenderChat: &tbapi.Chat{ID: -1001234567890, UserName: "linked_channel", Type: "channel"},
+					Text:       "channel post",
+				},
+			},
+		}
+
+		err := adm.DirectSpamReport(update)
+		require.NoError(t, err)
+
+		// only the two deletes, no ban: banning the linked channel stops it posting in its own discussion group
+		require.Len(t, mockAPI.RequestCalls(), 2)
+		assert.Equal(t, 999, mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig).MessageID)
+		assert.Equal(t, 789, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+	})
+
+	t.Run("DirectSpamReport_OtherChannelWithLinkedChannelSet", func(t *testing.T) {
+		mockAPI, _, adm, teardown := setupTest()
+		defer teardown()
+		adm.linkedChannelID = -1001234567890
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "Channel_Bot", ID: 136817688},
+					SenderChat: &tbapi.Chat{ID: -1009999999999, UserName: "spam_channel", Type: "channel"},
+					Text:       "spam message text",
+				},
+			},
+		}
+
+		err := adm.DirectSpamReport(update)
+		require.NoError(t, err)
+
+		// any other channel is still banned
+		var bannedChannels []int64
+		for _, call := range mockAPI.RequestCalls() {
+			if banCfg, ok := call.C.(tbapi.BanChatSenderChatConfig); ok {
+				bannedChannels = append(bannedChannels, banCfg.SenderChatID)
+			}
+		}
+		assert.Equal(t, []int64{-1009999999999}, bannedChannels)
+	})
+
 	t.Run("DirectWarnReport_ChannelMessage", func(t *testing.T) {
 		mockAPI, _, adm, teardown := setupTest()
 		defer teardown()
@@ -1019,6 +1081,36 @@ func TestAdmin_DirectWarnReport_AutoBan(t *testing.T) {
 		assert.Empty(t, warningsMock.CountWithinCalls(), "anonymous admin posts must not query count")
 		assert.Equal(t, 0, countMemberBans(mockAPI), "must not ban anything")
 		assert.Equal(t, 0, countChannelBans(mockAPI), "must not ban the group itself")
+	})
+
+	t.Run("linked channel post skips auto-ban", func(t *testing.T) {
+		mockAPI, warningsMock, adm := setupTest()
+		adm.linkedChannelID = -1001234567890
+		warningsMock.CountWithinFunc = func(ctx context.Context, userID int64, window time.Duration) (int, error) {
+			return 5, nil // well above threshold
+		}
+
+		update := tbapi.Update{
+			Message: &tbapi.Message{
+				MessageID: 789,
+				Chat:      tbapi.Chat{ID: 123},
+				From:      &tbapi.User{UserName: "admin", ID: 111},
+				ReplyToMessage: &tbapi.Message{
+					MessageID:  999,
+					From:       &tbapi.User{UserName: "Channel_Bot", ID: 136817688},
+					SenderChat: &tbapi.Chat{ID: -1001234567890, Title: "linked channel", Type: "channel"},
+					Text:       "channel post",
+				},
+			},
+		}
+
+		err := adm.DirectWarnReport(update)
+		require.NoError(t, err)
+
+		assert.Empty(t, warningsMock.AddCalls(), "linked channel posts must not record a warn")
+		assert.Empty(t, warningsMock.CountWithinCalls(), "linked channel posts must not query count")
+		assert.Equal(t, 0, countMemberBans(mockAPI), "must not ban anything")
+		assert.Equal(t, 0, countChannelBans(mockAPI), "must not ban the linked channel")
 	})
 
 	t.Run("soft-ban with channel target falls through to banned (no restrict for channels)", func(t *testing.T) {
@@ -2067,6 +2159,62 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("linked channel post skips ban in MsgHandler", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				return tbapi.Message{Text: "test"}, nil
+			},
+		}
+
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+				return bot.Response{CheckResults: []spamcheck.Response{{Name: "test", Spam: true, Details: "spam"}}}
+			},
+			UpdateSpamFunc: func(msg string) error { return nil },
+		}
+
+		// locator stores linked channel posts under the channel ID
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{UserID: -1001234567890, UserName: "linked_channel", MsgID: 999}, true
+			},
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				return storage.SpamData{}, true
+			},
+		}
+
+		adm := admin{
+			tbAPI: mockAPI, bot: botMock, locator: locatorMock,
+			primChatID: 123, linkedChannelID: -1001234567890, adminChatID: 456, superUsers: SuperUsers{"superuser"},
+		}
+
+		msg := &tbapi.Message{
+			MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			From: &tbapi.User{UserName: "admin", ID: 111},
+			Text: "channel post forwarded",
+			ForwardOrigin: &tbapi.MessageOrigin{
+				Type:      "channel",
+				Chat:      &tbapi.Chat{ID: -1001234567890, UserName: "linked_channel", Type: "channel"},
+				MessageID: 42,
+			},
+		}
+
+		err := adm.MsgHandler(tbapi.Update{Message: msg})
+		require.NoError(t, err)
+		require.Len(t, locatorMock.MessageCalls(), 1)
+
+		for _, call := range mockAPI.RequestCalls() {
+			_, isChannelBan := call.C.(tbapi.BanChatSenderChatConfig)
+			assert.False(t, isChannelBan, "should not ban the linked channel")
+			_, isMemberBan := call.C.(tbapi.BanChatMemberConfig)
+			assert.False(t, isMemberBan, "should not ban member for a linked channel post")
+		}
+	})
+
 	t.Run("message not found in locator with hidden user", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		botMock := &mocks.BotMock{}
@@ -2858,6 +3006,23 @@ func TestAdmin_DirectReportWithAggressiveCleanup(t *testing.T) {
 		// verify GetUserMessageIDs was NOT called in dry mode
 		assert.Empty(t, locatorMock.GetUserMessageIDsCalls())
 	})
+
+	t.Run("aggressive cleanup skips linked channel post", func(t *testing.T) {
+		_, locatorMock, adm := setupAggressiveCleanupTest(true, false, []int{100, 101, 102})
+		adm.linkedChannelID = -1001234567890
+		update := createSpamReportUpdate()
+		update.Message.ReplyToMessage.From = &tbapi.User{ID: 136817688, UserName: "Channel_Bot"}
+		update.Message.ReplyToMessage.SenderChat = &tbapi.Chat{ID: -1001234567890, UserName: "linked_channel", Type: "channel"}
+
+		err := adm.directReport(update, true)
+		require.NoError(t, err)
+
+		// wait for a cleanup goroutine, if one was started
+		time.Sleep(200 * time.Millisecond)
+
+		// deleting every message of the linked channel would wipe the channel posts from the discussion group
+		assert.Empty(t, locatorMock.GetUserMessageIDsCalls())
+	})
 }
 
 func TestAdmin_DeleteUserMessages(t *testing.T) {
@@ -2996,6 +3161,27 @@ func TestAdmin_DeleteUserMessages(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 0, deleted)
 	})
+}
+
+func TestAdmin_isOwnChatSender(t *testing.T) {
+	tests := []struct {
+		name            string
+		linkedChannelID int64
+		senderChatID    int64
+		want            bool
+	}{
+		{name: "group itself", linkedChannelID: -1001234567890, senderChatID: 123, want: true},
+		{name: "linked channel", linkedChannelID: -1001234567890, senderChatID: -1001234567890, want: true},
+		{name: "other channel", linkedChannelID: -1001234567890, senderChatID: -1009999999999, want: false},
+		{name: "other channel, no linked channel", linkedChannelID: 0, senderChatID: -1009999999999, want: false},
+		{name: "no sender chat, no linked channel", linkedChannelID: 0, senderChatID: 0, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adm := &admin{primChatID: 123, linkedChannelID: tt.linkedChannelID}
+			assert.Equal(t, tt.want, adm.isOwnChatSender(tt.senderChatID))
+		})
+	}
 }
 
 func TestAdmin_channelDisplayName(t *testing.T) {
