@@ -295,6 +295,20 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// linked-channel posts arrive with From == nil in some Bot API paths
+			// (anonymous "post as channel" with signatures off). synthesize From from
+			// SenderChat so the fromSuper/procSuperReply flow below and the admin
+			// handlers keep working without a nil-check at every downstream callsite.
+			// isLinkedChannel remains the authority: the synthetic From is display-only
+			// and never matches a real SuperUser entry.
+			if update.Message.From == nil && l.isLinkedChannel(update.Message) {
+				update.Message.From = &tbapi.User{
+					ID:        update.Message.SenderChat.ID,
+					UserName:  update.Message.SenderChat.UserName,
+					FirstName: update.Message.SenderChat.Title,
+				}
+			}
+
 			// messages without a sender can't be matched against superusers or report commands,
 			// send them straight to the regular processing which handles nil From safely
 			if update.Message.From == nil {
