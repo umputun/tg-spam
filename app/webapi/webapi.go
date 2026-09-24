@@ -85,8 +85,9 @@ type Config struct {
 	// reapplication that startup performs (ApplyDefaults + path/listen/dry
 	// CLI overrides) so a partial/legacy DB blob and operator-supplied
 	// --files.dynamic / --files.samples / --server.listen / --dry survive
-	// POST /config/reload. Credentials (telegram and service/provider tokens) are
-	// intentionally NOT reapplied here — DB rotation wins on reload.
+	// POST /config/reload. Credentials are not reapplied here: the reload
+	// handler keeps the in-memory values of fields listed in
+	// Transient.CredentialsFromCLI and takes the rest from the DB.
 	ReloadNormalize func(*config.Settings)
 }
 

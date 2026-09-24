@@ -334,6 +334,56 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.True(t, srv.AppSettings.Transient.AuthFromCLI)
 	})
 
+	t.Run("credentials supplied on the command line survive reload", func(t *testing.T) {
+		// a CLI credential is never written to the DB, so the DB has nothing (or a
+		// stale value) for it and reload must keep the in-memory one
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return &config.Settings{
+					Telegram: config.TelegramSettings{Token: "stored-token"},
+					OpenAI:   config.OpenAISettings{Token: "stored-openai-token"},
+				}, nil
+			},
+		}
+		appSettings := &config.Settings{
+			Telegram: config.TelegramSettings{Token: "cli-token"},
+			OpenAI:   config.OpenAISettings{Token: "memory-openai-token"},
+			Jev:      config.JevSettings{Token: "cli-jev-token"},
+			Transient: config.TransientSettings{
+				CredentialsFromCLI: []string{config.FieldTelegramToken, config.FieldJevToken},
+			},
+		}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, httptest.NewRequest("POST", "/config/reload", http.NoBody))
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "cli-token", srv.AppSettings.Telegram.Token)
+		assert.Equal(t, "cli-jev-token", srv.AppSettings.Jev.Token)
+		assert.Equal(t, "stored-openai-token", srv.AppSettings.OpenAI.Token, "non-CLI credentials still come from the DB")
+		assert.Equal(t, []string{config.FieldTelegramToken, config.FieldJevToken}, srv.AppSettings.Transient.CredentialsFromCLI)
+	})
+
+	t.Run("unknown cli credential field fails the reload", func(t *testing.T) {
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return &config.Settings{Telegram: config.TelegramSettings{Token: "stored-token"}}, nil
+			},
+		}
+		appSettings := &config.Settings{
+			Telegram:  config.TelegramSettings{Token: "memory-token"},
+			Transient: config.TransientSettings{CredentialsFromCLI: []string{"no.such.field"}},
+		}
+		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, httptest.NewRequest("POST", "/config/reload", http.NoBody))
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Same(t, appSettings, srv.AppSettings, "in-memory settings are left in place")
+	})
+
 	t.Run("db auth hash wins when not CLI-originated", func(t *testing.T) {
 		// simulates external DB hash rotation: in-memory hash was loaded from DB
 		// at startup (no CLI override), so reload must pick up the fresh DB value

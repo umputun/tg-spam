@@ -164,6 +164,23 @@ var sensitiveFieldAccessors = map[string]struct {
 	FieldServerAuthHash: {"Server auth hash", func(s *Settings) *string { return &s.Server.AuthHash }},
 }
 
+// CopySensitiveFields sets the named sensitive fields of dst to their values in src,
+// or to empty when src is nil. Returns an error on an unknown field name.
+func CopySensitiveFields(dst, src *Settings, fields ...string) error {
+	for _, field := range fields {
+		accessor, ok := sensitiveFieldAccessors[field]
+		if !ok {
+			return fmt.Errorf("unknown sensitive field: %s", field)
+		}
+		value := ""
+		if src != nil {
+			value = *accessor.get(src)
+		}
+		*accessor.get(dst) = value
+	}
+	return nil
+}
+
 // EncryptSensitiveFields encrypts sensitive fields in a Settings object
 // It can encrypt default fields or custom fields specified in sensitiveFields.
 // Returns an error on the first encryption failure or unknown field.

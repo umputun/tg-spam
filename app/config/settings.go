@@ -282,6 +282,14 @@ type TransientSettings struct {
 	// reloads so the override survives; when false, reload picks up fresh
 	// DB values.
 	AuthFromCLI bool `json:"-" yaml:"-"`
+
+	// CredentialsFromCLI lists the sensitive fields (Field* names) whose in-memory
+	// value was supplied on the command line or through the environment. Such a
+	// value belongs to the process, not to the database: Store.Save writes the
+	// value already stored in the database for these fields instead, and
+	// loadConfigHandler keeps the in-memory value across reloads. Explicit
+	// persistence (the save-config command) clears the list first.
+	CredentialsFromCLI []string `json:"-" yaml:"-"`
 }
 
 // New creates a new settings instance
