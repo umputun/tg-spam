@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"slices"
 	"strconv"
 	"time"
 
@@ -346,23 +347,36 @@ func setFieldFromDefaultTag(f reflect.Value, tag string) error {
 func applyCLIOverrides(settings *config.Settings, opts options, defaults *config.Settings) {
 	// override credentials if provided on CLI. This lets an operator rotate tokens
 	// without touching the DB — empty CLI value leaves the DB-stored token in place.
-	if opts.Telegram.Token != "" {
-		settings.Telegram.Token = opts.Telegram.Token
+	// a CLI-supplied credential is recorded in CredentialsFromCLI so dashboard saves
+	// never write it to the database and reloads keep it
+	markFromCLI := func(field string) {
+		if !slices.Contains(settings.Transient.CredentialsFromCLI, field) {
+			settings.Transient.CredentialsFromCLI = append(settings.Transient.CredentialsFromCLI, field)
+		}
 	}
-	if opts.OpenAI.Token != "" {
-		settings.OpenAI.Token = opts.OpenAI.Token
+	cliCredentials := []struct {
+		field string
+		value string
+		dst   *string
+	}{
+		{config.FieldTelegramToken, opts.Telegram.Token, &settings.Telegram.Token},
+		{config.FieldOpenAIToken, opts.OpenAI.Token, &settings.OpenAI.Token},
+		{config.FieldGeminiToken, opts.Gemini.Token, &settings.Gemini.Token},
+		{config.FieldJevToken, opts.Jev.Token, &settings.Jev.Token},
 	}
-	if opts.Gemini.Token != "" {
-		settings.Gemini.Token = opts.Gemini.Token
-	}
-	if opts.Jev.Token != "" {
-		settings.Jev.Token = opts.Jev.Token
+	for _, c := range cliCredentials {
+		if c.value == "" {
+			continue
+		}
+		*c.dst = c.value
+		markFromCLI(c.field)
 	}
 
 	// override auth password if explicitly provided (not using default "auto")
 	if opts.Server.AuthPasswd != "auto" {
 		settings.Transient.WebAuthPasswd = opts.Server.AuthPasswd
 		settings.Transient.AuthFromCLI = true
+		markFromCLI(config.FieldServerAuthHash)
 		// clear auth hash since we have a new password
 		settings.Server.AuthHash = ""
 	}
@@ -371,14 +385,17 @@ func applyCLIOverrides(settings *config.Settings, opts options, defaults *config
 	if opts.Server.AuthHash != "" {
 		settings.Server.AuthHash = opts.Server.AuthHash
 		settings.Transient.AuthFromCLI = true
+		markFromCLI(config.FieldServerAuthHash)
 		// clear password since hash takes precedence
 		settings.Transient.WebAuthPasswd = ""
 	}
 
 	// operational CLI overrides (dry-run, listen addr, file paths) live in a
 	// separate helper because they must also be reapplied after POST
-	// /config/reload — credentials/auth above intentionally are not reapplied
-	// (DB rotation wins on reload), so the split keeps reload semantics narrow.
+	// /config/reload — credentials/auth above are not reapplied: the reload
+	// handler keeps the in-memory values of fields listed in
+	// Transient.CredentialsFromCLI and takes the rest from the DB, so the split
+	// keeps reload semantics narrow.
 	applyOperationalCLIOverrides(settings, opts, defaults)
 }
 
@@ -573,8 +590,11 @@ func saveConfigToDB(ctx context.Context, settings *config.Settings) error {
 		settings.Server.AuthHash = hash
 	}
 
-	// save settings to database
-	if err := settingsStore.Save(ctx, settings); err != nil {
+	// save-config is the explicit way to store command-line credentials, so the
+	// protection Store.Save applies to CLI-supplied credentials is lifted here
+	toSave := *settings
+	toSave.Transient.CredentialsFromCLI = nil
+	if err := settingsStore.Save(ctx, &toSave); err != nil {
 		return fmt.Errorf("failed to save configuration to database: %w", err)
 	}
 

@@ -136,7 +136,11 @@ func defaultSensitiveFields() []string {
 func (s *Store) Load(ctx context.Context) (*Settings, error) {
 	s.RLock()
 	defer s.RUnlock()
+	return s.load(ctx)
+}
 
+// load reads and decrypts the stored settings; the caller holds the lock
+func (s *Store) load(ctx context.Context) (*Settings, error) {
 	var record struct {
 		Data string `db:"data"`
 	}
@@ -181,6 +185,18 @@ func (s *Store) Save(ctx context.Context, settings *Settings) error {
 
 	// create a safe copy without sensitive information
 	safeCopy := *settings // make a shallow copy
+
+	// credentials supplied on the command line or through the environment are never
+	// persisted from memory: write whatever the database already holds for them
+	if cliFields := settings.Transient.CredentialsFromCLI; len(cliFields) > 0 {
+		stored, err := s.load(ctx)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to read stored credentials: %w", err)
+		}
+		if err := CopySensitiveFields(&safeCopy, stored, cliFields...); err != nil {
+			return fmt.Errorf("failed to keep command-line credentials out of the database: %w", err)
+		}
+	}
 
 	// clear transient fields that shouldn't be persisted
 	safeCopy.Transient = TransientSettings{}

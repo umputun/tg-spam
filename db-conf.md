@@ -95,6 +95,7 @@ type TransientSettings struct {
     ConfigDBEncryptKey string        `json:"-" yaml:"-"`
     WebAuthPasswd      string        `json:"-" yaml:"-"`
     AuthFromCLI        bool          `json:"-" yaml:"-"` // tracks whether auth came from --server.auth/-hash so startup logs reflect CLI override
+    CredentialsFromCLI []string      `json:"-" yaml:"-"` // sensitive fields supplied on the CLI: never written by dashboard saves, kept across reload
 }
 ```
 
@@ -234,6 +235,7 @@ Settings resolve based on the run mode:
 
 - Without `--confdb`: CLI is the sole source of truth; `optToSettings` converts the flag struct to `*config.Settings`
 - With `--confdb`: the database is the source of truth for persisted fields; CLI-provided credentials (`--telegram.token`, `--openai.token`, `--gemini.token`), auth (`--server.auth`, `--server.auth-hash`), `--dry`, and non-default values for `--server.listen`, `--files.dynamic`, `--files.samples` are overlaid on top via `applyCLIOverrides` so an operator can rotate secrets, toggle dry-run, or relocate runtime paths without touching the DB
+- A credential supplied on the CLI or through the environment (`--telegram.token`, `--openai.token`, `--gemini.token`, `--jev.token`, `--server.auth`, `--server.auth-hash`) belongs to the running process: `applyCLIOverrides` records it in `Transient.CredentialsFromCLI`, `Store.Save` writes the value already stored in the DB for it (or nothing), so saving from the settings UI never copies it into the database or its backups, and `POST /config/reload` keeps the in-memory value. `save-config` is the explicit way to store it. The auto-generated password from the no-auth fallback is not a CLI credential and is persisted by a UI save as before
 - Always from CLI regardless of mode: `DataBaseURL`, `StorageTimeout`, `ConfigDB`, `ConfigDBEncryptKey`, `Dbg`, `TGDbg` (marked transient, never persisted)
 - `Dry` is persisted in the DB and one-way-overridable from CLI: `--dry` forces true, CLI default (unset) preserves the DB value. To disable dry-run after enabling it, use the settings UI or `save-config`
 - CLI override path in `--confdb` mode (handled by `applyCLIOverrides`):
@@ -332,7 +334,7 @@ To run the application with database configuration:
     --telegram.token "BOT_TOKEN"
 ```
 
-Note: tokens and the bcrypt auth hash are persisted in the config DB and (when `--confdb-encrypt-key` is set) encrypted at rest with the `ENC:` prefix. CLI flags like `--telegram.token`, `--openai.token`, `--gemini.token`, and `--server.auth`/`--server.auth-hash` are *override-only* — provide them when you want to seed a fresh DB or rotate without editing the blob; an empty CLI value leaves the DB-stored value in place. See "CLI/DB Precedence" above for the full rule set.
+Note: tokens and the bcrypt auth hash are persisted in the config DB and (when `--confdb-encrypt-key` is set) encrypted at rest with the `ENC:` prefix. CLI flags like `--telegram.token`, `--openai.token`, `--gemini.token`, `--jev.token`, and `--server.auth`/`--server.auth-hash` are *override-only* and apply to the running process: saving from the settings UI never writes them to the DB, and reload keeps them. Use `save-config` to seed a fresh DB or to rotate the stored value; an empty CLI value leaves the DB-stored value in place. See "CLI/DB Precedence" above for the full rule set.
 
 ### Web UI Configuration Management
 

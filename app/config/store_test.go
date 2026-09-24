@@ -180,6 +180,92 @@ func (s *SettingsTestSuite) TestStore_SaveLoad() {
 	}
 }
 
+func (s *SettingsTestSuite) TestStore_Save_KeepsCLICredentialsOutOfDB() {
+	rawData := func(db *engine.SQL) string {
+		var data string
+		err := db.GetContext(s.ctx, &data, db.Adopt("SELECT data FROM config WHERE gid = ?"), db.GID())
+		s.Require().NoError(err)
+		return data
+	}
+
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("no stored row, cli credential is not written, with %s", db.Type()), func() {
+			s.SetupTest()
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			settings := New()
+			settings.Jev.Token = "cli-jev-token"
+			settings.OpenAI.Token = "db-openai-token"
+			settings.Transient.CredentialsFromCLI = []string{FieldJevToken}
+			s.Require().NoError(store.Save(s.ctx, settings))
+
+			s.NotContains(rawData(db), "cli-jev-token")
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+			s.Empty(loaded.Jev.Token)
+			s.Equal("db-openai-token", loaded.OpenAI.Token, "credentials not supplied on the cli are saved as before")
+			s.Equal("cli-jev-token", settings.Jev.Token, "the caller's in-memory value is untouched")
+		})
+
+		s.Run(fmt.Sprintf("stored value is kept, other changes are saved, with %s", db.Type()), func() {
+			s.SetupTest()
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			initial := New()
+			initial.Telegram.Token = "db-telegram-token"
+			s.Require().NoError(store.Save(s.ctx, initial))
+
+			settings := New()
+			settings.Telegram.Token = "cli-telegram-token"
+			settings.Message.Spam = "updated spam message"
+			settings.Transient.CredentialsFromCLI = []string{FieldTelegramToken}
+			s.Require().NoError(store.Save(s.ctx, settings))
+
+			s.NotContains(rawData(db), "cli-telegram-token")
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+			s.Equal("db-telegram-token", loaded.Telegram.Token)
+			s.Equal("updated spam message", loaded.Message.Spam)
+		})
+
+		s.Run(fmt.Sprintf("encrypted stored value is kept, with %s", db.Type()), func() {
+			s.SetupTest()
+			crypter, err := NewCrypter("test-master-key-that-is-long-enough", "test-instance")
+			s.Require().NoError(err)
+			store, err := NewStore(s.ctx, db, WithCrypter(crypter))
+			s.Require().NoError(err)
+
+			initial := New()
+			initial.Server.AuthHash = "db-auth-hash"
+			s.Require().NoError(store.Save(s.ctx, initial))
+
+			settings := New()
+			settings.Server.AuthHash = "cli-auth-hash"
+			settings.Transient.CredentialsFromCLI = []string{FieldServerAuthHash}
+			s.Require().NoError(store.Save(s.ctx, settings))
+
+			raw := rawData(db)
+			s.NotContains(raw, "cli-auth-hash")
+			s.NotContains(raw, "db-auth-hash", "stored value stays encrypted")
+			loaded, err := store.Load(s.ctx)
+			s.Require().NoError(err)
+			s.Equal("db-auth-hash", loaded.Server.AuthHash)
+		})
+
+		s.Run(fmt.Sprintf("unknown field is rejected, with %s", db.Type()), func() {
+			s.SetupTest()
+			store, err := NewStore(s.ctx, db)
+			s.Require().NoError(err)
+
+			settings := New()
+			settings.Transient.CredentialsFromCLI = []string{"no.such.field"}
+			s.Require().Error(store.Save(s.ctx, settings))
+		})
+	}
+}
+
 func (s *SettingsTestSuite) TestStore_SaveNilSettings() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {

@@ -154,6 +154,31 @@ func TestApplyCLIOverrides(t *testing.T) {
 		assert.Equal(t, "cli-gemini", settings.Gemini.Token, "CLI gemini token must override DB value")
 	})
 
+	t.Run("cli credentials are recorded, empty ones are not", func(t *testing.T) {
+		settings := config.Settings{OpenAI: config.OpenAISettings{Token: "db-openai"}}
+		opts := newDefaultOpts(t)
+		opts.Telegram.Token = "cli-telegram"
+		opts.Jev.Token = "cli-jev"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, []string{config.FieldTelegramToken, config.FieldJevToken}, settings.Transient.CredentialsFromCLI)
+		assert.Equal(t, "cli-jev", settings.Jev.Token)
+		assert.Equal(t, "db-openai", settings.OpenAI.Token)
+	})
+
+	t.Run("cli auth flags record the auth hash once", func(t *testing.T) {
+		settings := config.Settings{}
+		applyCLIOverrides(&settings, makeOpts(t, "cli-password", "cli-hash"), defaults)
+		assert.Equal(t, []string{config.FieldServerAuthHash}, settings.Transient.CredentialsFromCLI)
+	})
+
+	t.Run("auto-generated auth is not recorded as a cli credential", func(t *testing.T) {
+		settings := config.Settings{Server: config.ServerSettings{Enabled: true}}
+		applyCLIOverrides(&settings, newDefaultOpts(t), defaults)
+		applyAutoAuthFallback(&settings)
+		assert.True(t, settings.Transient.AuthFromCLI, "fallback still keeps the hash across reloads")
+		assert.Empty(t, settings.Transient.CredentialsFromCLI)
+	})
+
 	t.Run("ListenAddr non-default overrides DB", func(t *testing.T) {
 		settings := config.Settings{Server: config.ServerSettings{ListenAddr: ":9090"}}
 		opts := newDefaultOpts(t)
@@ -1095,6 +1120,32 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		assert.Equal(t, settings.AggressiveCleanup, loaded.AggressiveCleanup)
 		assert.Equal(t, settings.AggressiveCleanupLimit, loaded.AggressiveCleanupLimit)
 	})
+}
+
+func TestSaveConfigToDB_StoresCLICredentials(t *testing.T) {
+	setupLog(true)
+	dbFile := filepath.Join(t.TempDir(), "cli-credentials.db")
+	ctx := context.Background()
+
+	// save-config after --confdb loading carries CredentialsFromCLI; the explicit
+	// command must still write the command-line credential to the database
+	settings := &config.Settings{
+		InstanceID: "test-instance",
+		Jev:        config.JevSettings{Token: "cli-jev-token"},
+		Transient: config.TransientSettings{
+			DataBaseURL:        dbFile,
+			CredentialsFromCLI: []string{config.FieldJevToken},
+		},
+	}
+	require.NoError(t, saveConfigToDB(ctx, settings))
+	assert.Equal(t, []string{config.FieldJevToken}, settings.Transient.CredentialsFromCLI, "caller's settings are untouched")
+
+	loaded := &config.Settings{
+		InstanceID: "test-instance",
+		Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+	}
+	require.NoError(t, loadConfigFromDB(ctx, loaded, nil))
+	assert.Equal(t, "cli-jev-token", loaded.Jev.Token)
 }
 
 func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {

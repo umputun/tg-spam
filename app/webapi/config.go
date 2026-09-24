@@ -89,18 +89,26 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 		s.ReloadNormalize(settings)
 	}
 
-	// preserve transient settings (never stored in DB). Tokens are NOT preserved:
-	// in --confdb mode the DB is authoritative for the telegram and provider tokens,
-	// so reload must pick up fresh DB values. picking them up only refreshes the
-	// settings struct though: the Telegram bot API client and every LLM provider
-	// client are built once in main and are not rebuilt here, so a rotated
-	// service token reaches them only after a restart. Auth hash is preserved only when
-	// transient.AuthFromCLI is set, which marks an in-memory hash that must
-	// survive reload (set by applyCLIOverrides for explicit --server.auth/-hash
-	// flags, and by applyAutoAuthFallback for the auto-generated safety net).
-	// when auth originated from the DB, fresh DB values win so external hash
-	// rotations are picked up.
+	// preserve transient settings (never stored in DB). Tokens stored in the DB are
+	// NOT preserved: in --confdb mode the DB is authoritative for them, so reload
+	// must pick up fresh DB values. picking them up only refreshes the settings
+	// struct though: the Telegram bot API client and every LLM provider client are
+	// built once in main and are not rebuilt here, so a rotated service token
+	// reaches them only after a restart. Credentials supplied on the command line
+	// (transient.CredentialsFromCLI) are never written to the DB, so they are kept
+	// from memory. Auth hash is also preserved when transient.AuthFromCLI is set,
+	// which marks an in-memory hash that must survive reload (set by
+	// applyCLIOverrides for explicit --server.auth/-hash flags, and by
+	// applyAutoAuthFallback for the auto-generated safety net). when auth
+	// originated from the DB, fresh DB values win so external hash rotations are
+	// picked up.
 	settings.Transient = s.AppSettings.Transient
+	if err := config.CopySensitiveFields(settings, s.AppSettings, s.AppSettings.Transient.CredentialsFromCLI...); err != nil {
+		s.appSettingsMu.Unlock()
+		log.Printf("[ERROR] failed to keep command-line credentials on reload: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to load configuration: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if s.AppSettings.Transient.AuthFromCLI {
 		settings.Server.AuthHash = s.AppSettings.Server.AuthHash
 	}
