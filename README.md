@@ -434,7 +434,7 @@ Only superusers configured by username can be included as Telegram `@username` m
 
 Posts made on behalf of a channel or by an anonymous admin can't be reported by users; admins handle them with `/spam`.
 
-Reports are accepted only in the monitored group. A report command sent in any other chat the bot is a member of, testing chats included, is not filed.
+Reports are accepted only in the monitored group. A report command sent in any other chat the bot is a member of, testing chats included, is ignored.
 
 #### Advanced Reporting Features
 

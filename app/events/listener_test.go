@@ -380,22 +380,34 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		assert.Empty(t, reports.AddCalls())
 	})
 
-	t.Run("report sent outside the monitored group is not filed", func(t *testing.T) {
-		// regression: a report from any other chat deleted and banned by foreign ids in the monitored group
-		tbl := []struct {
-			name      string
-			chatID    int64
-			onMessage bool
-		}{
-			{name: "other group", chatID: 456, onMessage: false},
-			{name: "testing chat", chatID: 789, onMessage: true},
+	t.Run("report sent outside the monitored group is dropped", func(t *testing.T) {
+		// regression: a report from any other chat deleted and banned by foreign ids in the monitored group,
+		// and in a testing chat the spam check could ban the reporter for the reported text
+		type tc struct {
+			name       string
+			chatID     int64
+			command    string
+			enabled    bool
+			senderChat *tbapi.Chat
 		}
-		for _, tt := range tbl {
+		cases := make([]tc, 0, 12)
+		for chatName, chatID := range map[string]int64{"other group": 456, "testing chat": 789} {
+			for _, command := range []string{"/report", "report", "spam", "/spam", "/report@testbot"} {
+				cases = append(cases, tc{name: chatName + " " + command, chatID: chatID, command: command, enabled: true})
+			}
+		}
+		cases = append(cases,
+			tc{name: "testing chat, reporting disabled", chatID: 789, command: "/report", enabled: false},
+			tc{name: "testing chat, post as channel", chatID: 789, command: "/report", enabled: true,
+				senderChat: &tbapi.Chat{ID: -1001234567890, Type: "channel", UserName: "some_channel"}},
+		)
+		for _, tt := range cases {
 			t.Run(tt.name, func(t *testing.T) {
 				reports := &mocks.ReportsMock{}
-				mockAPI, botMock, l, teardown := prep(reports, true)
+				mockAPI, botMock, l, teardown := prep(reports, tt.enabled)
 				defer teardown()
 				l.TestingIDs = []int64{789}
+				l.BotUsername = "testbot"
 
 				deleteCalled := false
 				mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
@@ -405,9 +417,13 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 					return &tbapi.APIResponse{Ok: true}, nil
 				}
 
-				upd := reportUpdate("/report")
+				upd := reportUpdate(tt.command)
 				upd.Message.Chat = tbapi.Chat{ID: tt.chatID}
 				upd.Message.ReplyToMessage.Chat = tbapi.Chat{ID: tt.chatID}
+				if tt.senderChat != nil {
+					upd.Message.From = &tbapi.User{UserName: "Channel_Bot", ID: 136817688}
+					upd.Message.SenderChat = tt.senderChat
+				}
 
 				updChan := make(chan tbapi.Update, 1)
 				updChan <- upd
@@ -421,7 +437,7 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 
 				assert.False(t, deleteCalled)
 				assert.Empty(t, reports.AddCalls())
-				assert.Equal(t, tt.onMessage, len(botMock.OnMessageCalls()) > 0)
+				assert.Empty(t, botMock.OnMessageCalls())
 			})
 		}
 	})
@@ -902,6 +918,61 @@ func TestTelegramListener_DoDeleteMessages(t *testing.T) {
 	require.Len(t, mockAPI.RequestCalls(), 2)
 	assert.Equal(t, 321, mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).MessageID)
 	assert.Equal(t, int64(123), mockAPI.RequestCalls()[1].C.(tbapi.DeleteMessageConfig).ChatID)
+}
+
+func TestTelegramListener_DoDeleteMessagesInTestingChat(t *testing.T) {
+	// regression: spam in a testing chat was deleted by its id in the monitored group, hitting an unrelated message
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{Text: c.(tbapi.MessageConfig).Text, From: &tbapi.User{UserName: "bot"}}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return nil, nil
+		},
+	}
+	b := &mocks.BotMock{OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
+		return bot.Response{DeleteReplyTo: true, ReplyTo: msg.ID, BanInterval: time.Hour, Send: true, Text: "spam",
+			User: bot.User{Username: "user", ID: 1}}
+	}}
+
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		SpamLogger: &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}},
+		TbAPI:      mockAPI,
+		Bot:        b,
+		Group:      "gr",
+		Locator:    locator,
+		TestingIDs: []int64{789},
+	}
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- tbapi.Update{Message: &tbapi.Message{MessageID: 321, Chat: tbapi.Chat{ID: 789}, Text: "text 123",
+		From: &tbapi.User{UserName: "user", ID: 1}, Date: time.Now().Unix()}}
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := l.Do(ctx)
+	require.EqualError(t, err, "telegram update chan closed")
+
+	var deletes []tbapi.DeleteMessageConfig
+	for _, call := range mockAPI.RequestCalls() {
+		if d, ok := call.C.(tbapi.DeleteMessageConfig); ok {
+			deletes = append(deletes, d)
+		}
+	}
+	require.Len(t, deletes, 1)
+	assert.Equal(t, int64(789), deletes[0].ChatID)
+	assert.Equal(t, 321, deletes[0].MessageID)
 }
 
 func TestTelegramListener_DoWithExtraDeleteIDs(t *testing.T) {
