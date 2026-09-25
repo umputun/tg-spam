@@ -683,23 +683,9 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 	// create settings store for database access if config DB mode is enabled
 	var settingsStore *config.Store
 	if settings.Transient.ConfigDB {
-		var storeOpts []config.StoreOption
-		if settings.Transient.ConfigDBEncryptKey != "" {
-			crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
-			if cryptErr != nil {
-				return fmt.Errorf("invalid encryption key for settings store: %w", cryptErr)
-			}
-			storeOpts = append(storeOpts, config.WithCrypter(crypter))
-		}
-		// POST /config/reload loads through this store, so it needs the same seed as startup
-		defaults, err := defaultSettingsTemplate()
+		store, err := makeSettingsStore(ctx, db, settings)
 		if err != nil {
-			return fmt.Errorf("failed to build defaults template for settings store: %w", err)
-		}
-		storeOpts = append(storeOpts, config.WithDefaults(defaults))
-		store, err := config.NewStore(ctx, db, storeOpts...)
-		if err != nil {
-			return fmt.Errorf("failed to create settings store: %w", err)
+			return err
 		}
 		settingsStore = store
 	}

@@ -1366,6 +1366,55 @@ func TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults(t *testing.T) {
 	}
 }
 
+func TestMakeSettingsStore(t *testing.T) {
+	const key = "test-master-key-at-least-20-chars"
+	tests := []struct {
+		name, encryptKey string
+	}{
+		{name: "plain", encryptKey: ""},
+		{name: "encrypted", encryptKey: key},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			token := "123:abc"
+			if tt.encryptKey != "" {
+				crypter, err := config.NewCrypter(tt.encryptKey, "test-instance")
+				require.NoError(t, err)
+				token, err = crypter.Encrypt(token)
+				require.NoError(t, err)
+			}
+			dbFile := filepath.Join(t.TempDir(), "store.db")
+			writeRawConfigBlob(t, dbFile, "test-instance", `{"telegram":{"token":"`+token+`"},"meta":{"mentions_limit":0}}`)
+
+			db, err := engine.New(ctx, dbFile, "test-instance")
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			settings := &config.Settings{InstanceID: "test-instance",
+				Transient: config.TransientSettings{ConfigDBEncryptKey: tt.encryptKey}}
+			store, err := makeSettingsStore(ctx, db, settings)
+			require.NoError(t, err)
+
+			loaded, err := store.Load(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, -1, loaded.Meta.LinksLimit, "omitted zero-aware key takes its default")
+			assert.Equal(t, 0, loaded.Meta.MentionsLimit, "stored zero kept")
+			assert.Equal(t, "123:abc", loaded.Telegram.Token)
+			assert.Empty(t, loaded.InstanceID)
+		})
+	}
+
+	t.Run("bad encryption key", func(t *testing.T) {
+		db, err := engine.New(context.Background(), filepath.Join(t.TempDir(), "store.db"), "test-instance")
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		settings := &config.Settings{Transient: config.TransientSettings{ConfigDBEncryptKey: "short"}}
+		_, err = makeSettingsStore(context.Background(), db, settings)
+		require.ErrorContains(t, err, "invalid encryption key for settings store")
+	})
+}
+
 func writeRawConfigBlob(t *testing.T, dbFile, gid, data string) {
 	t.Helper()
 	ctx := context.Background()
