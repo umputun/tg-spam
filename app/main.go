@@ -683,17 +683,9 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 	// create settings store for database access if config DB mode is enabled
 	var settingsStore *config.Store
 	if settings.Transient.ConfigDB {
-		var storeOpts []config.StoreOption
-		if settings.Transient.ConfigDBEncryptKey != "" {
-			crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
-			if cryptErr != nil {
-				return fmt.Errorf("invalid encryption key for settings store: %w", cryptErr)
-			}
-			storeOpts = append(storeOpts, config.WithCrypter(crypter))
-		}
-		store, err := config.NewStore(ctx, db, storeOpts...)
+		store, err := makeSettingsStore(ctx, db, settings)
 		if err != nil {
-			return fmt.Errorf("failed to create settings store: %w", err)
+			return err
 		}
 		settingsStore = store
 	}

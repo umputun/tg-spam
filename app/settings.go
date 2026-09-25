@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/umputun/tg-spam/app/config"
+	"github.com/umputun/tg-spam/app/storage/engine"
 )
 
 // optToSettings converts CLI options to the domain settings model
@@ -462,14 +463,14 @@ func applyAutoAuthFallback(settings *config.Settings) {
 	}
 }
 
-// loadConfigFromDB loads configuration from the database. Any field that was
-// absent in the persisted JSON blob (and therefore loaded as Go zero) is filled
-// from defaults, so legacy or partial blobs still yield a fully-populated
-// settings value. Fields whose zero is a meaningful operator choice
-// (zeroAwarePaths in the config package) are preserved regardless.
+// loadConfigFromDB loads configuration from the database. The blob is decoded
+// over the defaults, so a key absent from a legacy or partial blob takes its
+// default, zero-aware fields included, while a key stored as zero stays zero.
+// ApplyDefaults then refills zeros on fields whose zero is not a meaningful
+// operator choice (zeroAwarePaths in the config package).
 //
-// Passing a nil defaults template disables the fill step — used by a few tests
-// that care only about round-trip behavior.
+// Passing a nil defaults template skips the ApplyDefaults step — used by a few
+// tests that care only about round-trip behavior.
 func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) error {
 	log.Print("[INFO] loading configuration from database")
 
@@ -484,20 +485,12 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 		}
 	}()
 
-	// create settings store with encryption if key provided
-	var storeOpts []config.StoreOption
-	if settings.Transient.ConfigDBEncryptKey != "" {
-		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
-		if cryptErr != nil {
-			return fmt.Errorf("invalid encryption key: %w", cryptErr)
-		}
-		storeOpts = append(storeOpts, config.WithCrypter(crypter))
-		log.Print("[INFO] configuration encryption enabled for database access")
-	}
-
-	settingsStore, err := config.NewStore(ctx, db, storeOpts...)
+	settingsStore, err := makeSettingsStore(ctx, db, settings)
 	if err != nil {
-		return fmt.Errorf("failed to create settings store: %w", err)
+		return err
+	}
+	if settings.Transient.ConfigDBEncryptKey != "" {
+		log.Print("[INFO] configuration encryption enabled for database access")
 	}
 
 	// load settings
@@ -540,11 +533,34 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 			settings.InstanceID, instanceID)
 	}
 
-	// fill any field left zero by a partial/legacy blob from the CLI-default template
+	// refill stored zeros from the CLI-default template, except where zero is a meaningful choice
 	settings.ApplyDefaults(defaults)
 
 	log.Printf("[INFO] configuration loaded from database successfully")
 	return nil
+}
+
+// makeSettingsStore opens the --confdb settings store on db, encrypted when a key is set. Every
+// load decodes the stored blob over the CLI defaults, so a key missing from the blob takes its
+// default rather than zero. Startup and POST /config/reload both load through a store made here.
+func makeSettingsStore(ctx context.Context, db *engine.SQL, settings *config.Settings) (*config.Store, error) {
+	defaults, err := defaultSettingsTemplate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build defaults template for settings store: %w", err)
+	}
+	storeOpts := []config.StoreOption{config.WithDefaults(defaults)}
+	if settings.Transient.ConfigDBEncryptKey != "" {
+		crypter, cryptErr := config.NewCrypter(settings.Transient.ConfigDBEncryptKey, settings.InstanceID)
+		if cryptErr != nil {
+			return nil, fmt.Errorf("invalid encryption key for settings store: %w", cryptErr)
+		}
+		storeOpts = append(storeOpts, config.WithCrypter(crypter))
+	}
+	store, err := config.NewStore(ctx, db, storeOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create settings store: %w", err)
+	}
+	return store, nil
 }
 
 // saveConfigToDB saves the current configuration to the database
