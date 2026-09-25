@@ -332,6 +332,16 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				continue
 			}
 
+			// drop report commands sent in any other chat, testing chats included. the reports handler
+			// deletes and bans by message and user IDs in the monitored group, and those IDs belong to the
+			// chat the report came from; the spam check would judge the reported text as the reporter's
+			if update.Message.ReplyToMessage != nil && !fromSuper && update.Message.Chat.ID != l.chatID &&
+				l.isReportCommand(update.Message.Text) {
+				log.Printf("[DEBUG] ignoring report command %q from chat %d, not the monitored group",
+					update.Message.Text, update.Message.Chat.ID)
+				continue
+			}
+
 			// handle spam reports from regular users. senders posting on behalf of a chat
 			// (anonymous admin, "post as channel") are excluded: their From is a telegram pseudo-user
 			// which can never be an approved reporter, so the report would be dropped after the
@@ -481,7 +491,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	if canDelete {
 		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  resp.ReplyTo,
-			ChatConfig: tbapi.ChatConfig{ChatID: l.chatID},
+			ChatConfig: tbapi.ChatConfig{ChatID: fromChat},
 		}}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
