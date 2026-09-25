@@ -288,8 +288,10 @@ encrypted JSON blob. Sensitive string fields are encrypted individually with an
 The store writes a single JSON blob per row, wrapped by the Crypter for sensitive
 fields. Adding new fields is strictly additive:
 
-- Old blobs decode into newer `*config.Settings` with zero-value defaults on the
-  new fields; no migration is needed.
+- A key missing from the blob takes its CLI default, so old blobs and partial
+  blobs written from outside tg-spam need no migration. A key stored as zero
+  keeps its zero only where zero is a meaningful choice (`zeroAwarePaths` in
+  `app/config/settings.go`); elsewhere a stored zero is refilled with the default.
 - The next `Save` overwrites the entire blob, so any JSON keys present in storage
   that no longer exist on the struct are dropped on the next write.
 

@@ -691,6 +691,12 @@ func activateServer(ctx context.Context, settings *config.Settings, sf *bot.Spam
 			}
 			storeOpts = append(storeOpts, config.WithCrypter(crypter))
 		}
+		// POST /config/reload loads through this store, so it needs the same seed as startup
+		defaults, err := defaultSettingsTemplate()
+		if err != nil {
+			return fmt.Errorf("failed to build defaults template for settings store: %w", err)
+		}
+		storeOpts = append(storeOpts, config.WithDefaults(defaults))
 		store, err := config.NewStore(ctx, db, storeOpts...)
 		if err != nil {
 			return fmt.Errorf("failed to create settings store: %w", err)

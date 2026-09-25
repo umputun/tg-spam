@@ -462,13 +462,13 @@ func applyAutoAuthFallback(settings *config.Settings) {
 	}
 }
 
-// loadConfigFromDB loads configuration from the database. Any field that was
-// absent in the persisted JSON blob (and therefore loaded as Go zero) is filled
-// from defaults, so legacy or partial blobs still yield a fully-populated
-// settings value. Fields whose zero is a meaningful operator choice
-// (zeroAwarePaths in the config package) are preserved regardless.
+// loadConfigFromDB loads configuration from the database. The blob is decoded
+// over the defaults, so a key absent from a legacy or partial blob takes its
+// default, zero-aware fields included, while a key stored as zero stays zero.
+// ApplyDefaults then refills zeros on fields whose zero is not a meaningful
+// operator choice (zeroAwarePaths in the config package).
 //
-// Passing a nil defaults template disables the fill step — used by a few tests
+// Passing a nil defaults template disables both steps — used by a few tests
 // that care only about round-trip behavior.
 func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) error {
 	log.Print("[INFO] loading configuration from database")
@@ -493,6 +493,9 @@ func loadConfigFromDB(ctx context.Context, settings, defaults *config.Settings) 
 		}
 		storeOpts = append(storeOpts, config.WithCrypter(crypter))
 		log.Print("[INFO] configuration encryption enabled for database access")
+	}
+	if defaults != nil {
+		storeOpts = append(storeOpts, config.WithDefaults(defaults))
 	}
 
 	settingsStore, err := config.NewStore(ctx, db, storeOpts...)
