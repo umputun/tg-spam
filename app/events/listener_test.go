@@ -380,6 +380,52 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 		assert.Empty(t, reports.AddCalls())
 	})
 
+	t.Run("report sent outside the monitored group is not filed", func(t *testing.T) {
+		// regression: a report from any other chat deleted and banned by foreign ids in the monitored group
+		tbl := []struct {
+			name      string
+			chatID    int64
+			onMessage bool
+		}{
+			{name: "other group", chatID: 456, onMessage: false},
+			{name: "testing chat", chatID: 789, onMessage: true},
+		}
+		for _, tt := range tbl {
+			t.Run(tt.name, func(t *testing.T) {
+				reports := &mocks.ReportsMock{}
+				mockAPI, botMock, l, teardown := prep(reports, true)
+				defer teardown()
+				l.TestingIDs = []int64{789}
+
+				deleteCalled := false
+				mockAPI.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.DeleteMessageConfig); ok {
+						deleteCalled = true
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				}
+
+				upd := reportUpdate("/report")
+				upd.Message.Chat = tbapi.Chat{ID: tt.chatID}
+				upd.Message.ReplyToMessage.Chat = tbapi.Chat{ID: tt.chatID}
+
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- upd
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				err := l.Do(ctx)
+				require.EqualError(t, err, "telegram update chan closed")
+
+				assert.False(t, deleteCalled)
+				assert.Empty(t, reports.AddCalls())
+				assert.Equal(t, tt.onMessage, len(botMock.OnMessageCalls()) > 0)
+			})
+		}
+	})
+
 	t.Run("spam alias is suppressed when reporting is disabled, same as /report", func(t *testing.T) {
 		// the aliases are equivalent to the report forms in every path, so with the feature off they
 		// are suppressed rather than passed to the spam check

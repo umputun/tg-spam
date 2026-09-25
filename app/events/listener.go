@@ -335,8 +335,11 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			// handle spam reports from regular users. senders posting on behalf of a chat
 			// (anonymous admin, "post as channel") are excluded: their From is a telegram pseudo-user
 			// which can never be an approved reporter, so the report would be dropped after the
-			// command message is already deleted
-			if update.Message.ReplyToMessage != nil && !fromSuper && update.Message.SenderChat == nil {
+			// command message is already deleted. reports from any other chat, testing chats included,
+			// are excluded too: the reports handler deletes and bans by message and user IDs in the
+			// monitored group, and those IDs belong to the chat the report came from
+			if update.Message.ReplyToMessage != nil && !fromSuper && update.Message.SenderChat == nil &&
+				update.Message.Chat.ID == l.chatID {
 				if l.procUserReply(ctx, update) {
 					// user command processed, skip the rest
 					continue
