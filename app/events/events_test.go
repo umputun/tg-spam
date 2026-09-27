@@ -1207,3 +1207,20 @@ func Test_channelIDFromCallback(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactBotToken(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{name: "token in a request url",
+			in:   `failed to ban user: Post "https://api.telegram.org/bot1234567890:AAH_fake-token-abcdefghijklmnopqrstu/banChatMember": dial tcp: i/o timeout`,
+			want: `failed to ban user: Post "https://api.telegram.org/botxxxxx/banChatMember": dial tcp: i/o timeout`},
+		{name: "no token", in: "Bad Request: USER_ID_INVALID", want: "Bad Request: USER_ID_INVALID"},
+		{name: "time and ids are left alone", in: "banned at 12:30, user 123456:42", want: "banned at 12:30, user 123456:42"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, redactBotToken(tt.in))
+		})
+	}
+}

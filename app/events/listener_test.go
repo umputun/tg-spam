@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -5714,4 +5715,95 @@ func TestProcReaction(t *testing.T) {
 		require.Len(t, markup.InlineKeyboard, 1)
 		require.Len(t, markup.InlineKeyboard[0], 2)
 	})
+}
+
+// TestTelegramListener_CallbackErrorHidesBotToken asserts a callback error posted to the admin chat
+// doesn't carry the bot token, which a network error from the Bot API client has in its request URL
+func TestTelegramListener_CallbackErrorHidesBotToken(t *testing.T) {
+	const token = "1234567890:AAH_fake-token-abcdefghijklmnopqrstu"
+	var posts []string
+	mockAPI := &mocks.TbAPIMock{
+		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+			return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+		},
+		GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+			return []tbapi.ChatMember{{User: &tbapi.User{UserName: "admin", ID: 1}}}, nil
+		},
+		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			switch m := c.(type) {
+			case tbapi.MessageConfig:
+				posts = append(posts, m.Text)
+			case tbapi.EditMessageTextConfig:
+				posts = append(posts, m.Text)
+			}
+			return tbapi.Message{MessageID: 100}, nil
+		},
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+				return nil, &url.Error{Op: "Post", URL: "https://api.telegram.org/bot" + token + "/banChatMember",
+					Err: errors.New("dial tcp: i/o timeout")}
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		},
+	}
+	reportsMock := &mocks.ReportsMock{
+		GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+			return []storage.Report{{MsgID: 42, ChatID: 123, ReportedUserID: 999, ReportedUserName: "spammer"}}, nil
+		},
+	}
+	locator, teardown := prepTestLocator(t)
+	defer teardown()
+
+	l := TelegramListener{
+		TbAPI:        mockAPI,
+		Bot:          &mocks.BotMock{RemoveApprovedUserFunc: func(id int64) error { return nil }, UpdateSpamFunc: func(msg string) error { return nil }},
+		SuperUsers:   SuperUsers{"admin"},
+		Group:        "123",
+		AdminGroup:   "456",
+		Locator:      locator,
+		ReportConfig: ReportConfig{Storage: reportsMock, Enabled: true},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	updChan := make(chan tbapi.Update, 1)
+	updChan <- tbapi.Update{CallbackQuery: &tbapi.CallbackQuery{
+		ID: "callback123", Data: "R+999:42", From: &tbapi.User{UserName: "admin", ID: 1},
+		Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 100, Text: "User spam reported", Date: time.Now().Unix()},
+	}}
+	close(updChan)
+	mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+	require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+
+	var errorPost string
+	for _, p := range posts {
+		assert.NotContains(t, p, token)
+		if strings.HasPrefix(p, "error: ") {
+			errorPost = p
+		}
+	}
+	require.NotEmpty(t, errorPost, "the failed ban must reach the admin chat")
+	assert.Contains(t, errorPost, "failed to ban user 999")
+	assert.Contains(t, errorPost, "/botxxxxx/banChatMember")
+}
+
+func TestTelegramListener_PostErrorToAdmin(t *testing.T) {
+	const token = "1234567890:AAH_fake-token-abcdefghijklmnopqrstu"
+	var sent []tbapi.MessageConfig
+	mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+		if m, ok := c.(tbapi.MessageConfig); ok {
+			sent = append(sent, m)
+		}
+		return tbapi.Message{}, nil
+	}}
+	l := TelegramListener{TbAPI: mockAPI, adminChatID: 456}
+
+	l.postErrorToAdmin(fmt.Errorf("failed to ban user: %w", &url.Error{Op: "Post",
+		URL: "https://api.telegram.org/bot" + token + "/banChatMember", Err: errors.New("dial tcp: i/o timeout")}))
+
+	require.Len(t, sent, 1)
+	assert.Equal(t, int64(456), sent[0].ChatID)
+	assert.Equal(t, `error: failed to ban user: Post "https://api.telegram.org/botxxxxx/banChatMember": dial tcp: i/o timeout`,
+		sent[0].Text)
 }
