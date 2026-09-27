@@ -330,6 +330,11 @@ func (s *Settings) Validate() error {
 	if s.MaxShortMsgCount > 0 && s.ParanoidMode {
 		return fmt.Errorf("max-short-msg-count is incompatible with paranoid mode")
 	}
+	// isShortMsgFlood skips any message at least MinMsgLen runes long: 0 exempts everything and 1
+	// every non-empty message, so short text probes, the pattern the check targets, never count.
+	if s.MaxShortMsgCount > 0 && s.MinMsgLen <= 1 {
+		return fmt.Errorf("max-short-msg-count requires min-msg-len > 1 (got %d)", s.MinMsgLen)
+	}
 	// ValidateProhibitedLangs already returns a fully-formed, user-facing message
 	// shared across all call sites; return it verbatim.
 	if err := tgspam.ValidateProhibitedLangs(s.ProhibitedLangs, s.ProhibitedLangsMin); err != nil {

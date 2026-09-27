@@ -153,7 +153,7 @@ If the number of emojis in the message is greater than `--max-emoji=, [$MAX_EMOJ
 
 **Minimum message length**
 
-This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. This check is needed to avoid false positives on short messages.
+This is not a separate check, but rather a parameter to control the minimum message length. If the message length is less than `--min-msg-len=, [$MIN_MSG_LEN]` (default is 50), the message won't be checked for spam. Setting the min message length to 0 will effectively disable this check. When `--max-short-msg-count` is set, `--min-msg-len` must be 2 or more (see Short message flood detection). This check is needed to avoid false positives on short messages.
 
 **Note**: Messages shorter than `--min-msg-len` will not count towards user approval when `--first-messages-count` is configured. This prevents users from becoming approved by sending multiple short messages (like "hi", "ok", "yes") that bypass meaningful spam detection. Only messages that meet the minimum length requirement will increment the user's message count for approval purposes.
 
@@ -249,7 +249,7 @@ This option is disabled by default. When enabled, the bot bans an unapproved use
 
 Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold. A caption-less file or GIF posted directly counts only when `--meta.document-only` is enabled; without it, it is dropped before the counter sees it. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of that option and counts either way.
 
-**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
+**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. When it is enabled, the configuration also requires `--min-msg-len` of 2 or more, so that non-empty text can count as short; 0 and 1 are rejected at startup, which also rejects the media-only counting that 1 allowed. With `--confdb`, CLI flags do not override these two settings: if short-message flood detection is enabled with a stored `min_msg_len` of 1, change and save it through the web settings before upgrading, or startup will fail. A stored 0 is replaced by the default of 50 on load. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
 Configure with:
 - `--max-short-msg-count=, [$MAX_SHORT_MSG_COUNT]` (default: 0, disabled) - Ban after N short messages from an unapproved user
@@ -430,6 +430,8 @@ To enable user spam reporting, set `--report.enabled` to `true` and configure an
    - **Reject**: Reject this report without taking action
    - **Ban Reporters**: Open a dialog to select and ban a specific reporter who may be abusing the reporting system (requires confirmation)
 
+With `--dry` or `--training`, **Approve Ban** neither bans the user nor deletes the message; the report is resolved and the notification reads "would have been banned (dry)" or "would have been banned (training)". If Telegram rejects the ban, nothing is deleted, the report and its buttons stay, and the notification gets a "ban failed: <reason>" line, so the admin can press **Approve Ban** again.
+
 Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
 
 Posts made on behalf of a channel or by an anonymous admin can't be reported by users; admins handle them with `/spam`.
@@ -440,7 +442,7 @@ Reports are accepted only in the monitored group. A report command sent in any o
 
 - **Approved Users Only**: Only users who have been automatically approved can submit reports. This is always enabled to prevent malicious actors from abusing the report system. Users are automatically approved after successfully sending a few non-spam messages (the threshold is configured via `--first-messages-count`, which defaults to 1 if `--first-messages` is enabled).
 
-- **Auto-Ban Threshold**: Automatically ban reported users when a higher threshold is reached using `--report.auto-ban-threshold=`. When configured, the bot will automatically delete the message and ban the user once this many reports are received, without requiring admin approval. This threshold must be greater than or equal to the manual approval threshold (`--report.threshold`) or set to 0 to disable. The bot respects soft-ban mode when configured.
+- **Auto-Ban Threshold**: Automatically ban reported users when a higher threshold is reached using `--report.auto-ban-threshold=`. When configured, the bot will automatically delete the message and ban the user once this many reports are received, without requiring admin approval. This threshold must be greater than or equal to the manual approval threshold (`--report.threshold`) or set to 0 to disable. The bot respects soft-ban mode when configured. With `--dry` or `--training` the auto-ban neither bans nor deletes, and the admin notification says the user would have been banned. The bot attempts to delete the message before the auto-ban, so a rejected ban does not undo a successful deletion; the notification then says the user was not banned and gives the reason.
 
   Example: `--report.threshold=2 --report.auto-ban-threshold=5` will notify admins after 2 reports but automatically ban after 5 reports.
 
@@ -824,7 +826,7 @@ After that, the moment admin run into a spam message, they could forward it to t
 
 In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
 
-In this mode admin can ban users manually by clicking the "confirm ban" button on the message. This allows running the bot as a post-moderation tool and training it on the fly.
+In this mode admin can ban users manually by clicking the "Confirm ban" button on the bot's ban notification in the admin chat. This does not extend to user reports: **Approve Ban** on a report does not ban anyone in training mode. This allows running the bot as a post-moderation tool and training it on the fly.
 
 Pls note: Missed spam messages forwarded to the admin chat will be banned and removed from the primary chat group when possible. If the original message can't be located (e.g. after a bot restart), the bot will still ban the user when the sender's identity is available via Telegram's forward origin, and warn the admin to delete the original message manually.
 

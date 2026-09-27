@@ -5717,8 +5717,6 @@ func TestProcReaction(t *testing.T) {
 	})
 }
 
-// TestTelegramListener_CallbackErrorHidesBotToken asserts a callback error posted to the admin chat
-// doesn't carry the bot token, which a network error from the Bot API client has in its request URL
 func TestTelegramListener_CallbackErrorHidesBotToken(t *testing.T) {
 	const token = "1234567890:AAH_fake-token-abcdefghijklmnopqrstu"
 	var posts []string
