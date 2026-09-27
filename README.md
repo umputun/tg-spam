@@ -826,7 +826,7 @@ After that, the moment admin run into a spam message, they could forward it to t
 
 In case if such an active training on a live system is not possible, the bot can be trained without banning user and deleting messages automatically. Setting `--training ` parameter will disable banning and deleting messages by bot right away, but the rest of the functionality will be the same. This is useful for testing and training purposes as bot can be trained on false-positive samples, by unbanning them in the admin chat as well as with false-negative samples by forwarding them to the bot. Alternatively, admin can reply to the spam message with the text `spam` or `/spam` to mark it as spam.
 
-In this mode admin can ban users manually by clicking the "Confirm ban" button on the bot's ban notification in the admin chat. This does not extend to user reports: **Approve Ban** on a report does not ban anyone in training mode. This allows running the bot as a post-moderation tool and training it on the fly.
+In this mode admin can ban users manually from the bot's ban notification in the admin chat: press "⛔︎ change ban", then "Confirm ban". This does not extend to user reports: **Approve Ban** on a report does not ban anyone in training mode. This allows running the bot as a post-moderation tool and training it on the fly.
 
 Pls note: Missed spam messages forwarded to the admin chat will be banned and removed from the primary chat group when possible. If the original message can't be located (e.g. after a bot restart), the bot will still ban the user when the sender's identity is available via Telegram's forward origin, and warn the admin to delete the original message manually.
 
