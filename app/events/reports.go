@@ -369,7 +369,7 @@ func (r *userReports) banFailureNote(banErr error) string {
 }
 
 // hasBanFailureNote reports whether a notification's last paragraph is a ban failure note
-func hasBanFailureNote(text string) bool {
+func (r *userReports) hasBanFailureNote(text string) bool {
 	i := strings.LastIndex(text, "\n\n")
 	if i < 0 {
 		return false
@@ -773,7 +773,7 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 // inline keyboard so the admin can retry. the note is added once however many times the button is
 // pressed.
 func (r *userReports) reportBanFailure(query *tbapi.CallbackQuery, banErr error) error {
-	if hasBanFailureNote(query.Message.Text) {
+	if r.hasBanFailureNote(query.Message.Text) {
 		return nil
 	}
 	updText := query.Message.Text + r.banFailureNote(banErr)
