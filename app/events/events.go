@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,6 +61,16 @@ func escapeMarkDownV1Text(text string) string {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// botTokenRe matches a Telegram bot token. the Bot API client puts the token in its request URLs, so
+// a network error from it carries the token
+var botTokenRe = regexp.MustCompile(`\d{5,}:[A-Za-z0-9_-]{30,}`)
+
+// redactBotToken masks any bot token in text the bot is about to post. the log setup masks secrets in
+// log output, but not in messages sent to a chat
+func redactBotToken(text string) string {
+	return botTokenRe.ReplaceAllString(text, "xxxxx")
 }
 
 // truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.

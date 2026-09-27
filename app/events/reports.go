@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
+	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
@@ -355,22 +356,25 @@ func (r *userReports) banOutcome(banErr error, restricted bool) string {
 const banFailurePrefix = "ban failed: "
 
 // banFailureNote renders the reason a ban failed, empty when the ban succeeded or was never
-// attempted because the mode suppressed it.
+// attempted because the mode suppressed it. the reason stays outside any italic span: legacy
+// markdown doesn't honor an escaped underscore inside one, so an underscore in the reason would
+// make Telegram reject the whole message. its line breaks are flattened, so the note stays the one
+// last paragraph hasBanFailureNote looks for.
 func (r *userReports) banFailureNote(banErr error) string {
 	if banErr == nil || r.dry || r.trainingMode {
 		return ""
 	}
-	return "\n\n_" + banFailurePrefix + escapeMarkDownV1Text(banErr.Error()) + "_"
+	reason := strings.ReplaceAll(redactBotToken(banErr.Error()), "\n", " ")
+	return "\n\n" + banFailurePrefix + escapeMarkDownV1Text(reason)
 }
 
-// hasBanFailureNote reports whether a notification's last paragraph is a ban failure note. Telegram
-// returns the notification as rendered text, where the note has lost its markdown, so both forms match.
+// hasBanFailureNote reports whether a notification's last paragraph is a ban failure note
 func hasBanFailureNote(text string) bool {
 	i := strings.LastIndex(text, "\n\n")
 	if i < 0 {
 		return false
 	}
-	return strings.HasPrefix(strings.TrimPrefix(text[i+2:], "_"), banFailurePrefix)
+	return strings.HasPrefix(text[i+2:], banFailurePrefix)
 }
 
 // reportedUserMD formats the reported user as a markdown link "name (id)", matching the ban report format.
@@ -724,11 +728,12 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 	}
 	if banErr := banUserOrChannel(banReq); banErr != nil {
 		log.Printf("[WARN] failed to ban user %d: %v", reportedUserID, banErr)
+		banFailed := fmt.Errorf("failed to ban user %d: %w", reportedUserID, banErr)
 		// keep the reports and the inline keyboard so the admin can retry
 		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
-			return notifyErr
+			return multierror.Append(banFailed, notifyErr)
 		}
-		return fmt.Errorf("failed to ban user %d: %w", reportedUserID, banErr)
+		return banFailed
 	}
 
 	// delete reported message from primary chat. training suppresses the delete as well as the ban,
@@ -771,7 +776,7 @@ func (r *userReports) reportBanFailure(query *tbapi.CallbackQuery, banErr error)
 	if hasBanFailureNote(query.Message.Text) {
 		return nil
 	}
-	updText := query.Message.Text + "\n\n_" + banFailurePrefix + escapeMarkDownV1Text(banErr.Error()) + "_"
+	updText := query.Message.Text + r.banFailureNote(banErr)
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	// an edit without reply_markup removes the keyboard, so the current one is sent back
 	editMsg.ReplyMarkup = query.Message.ReplyMarkup
@@ -918,11 +923,12 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 	}
 	if banErr := banUserOrChannel(banReq); banErr != nil {
 		log.Printf("[WARN] failed to ban reporter %d: %v", reporterID, banErr)
+		banFailed := fmt.Errorf("failed to ban reporter %d: %w", reporterID, banErr)
 		// keep the reporter row and the inline keyboard so the admin can retry
 		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
-			return notifyErr
+			return multierror.Append(banFailed, notifyErr)
 		}
-		return fmt.Errorf("failed to ban reporter %d: %w", reporterID, banErr)
+		return banFailed
 	}
 
 	// delete reporter from database

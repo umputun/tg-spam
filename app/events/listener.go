@@ -204,10 +204,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				}
 				if err := l.adminHandler.MsgHandler(update); err != nil {
 					log.Printf("[WARN] failed to process admin chat message: %v", err)
-					errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
-					if errResp != nil {
-						log.Printf("[WARN] failed to respond on error, %v", errResp)
-					}
+					l.postErrorToAdmin(err)
 				}
 				continue
 			}
@@ -220,19 +217,13 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				if len(callbackData) >= 3 && callbackData[:1] == "R" {
 					if err := l.reportsHandler.HandleReportCallback(ctx, update.CallbackQuery); err != nil {
 						log.Printf("[WARN] failed to process report callback: %v", err)
-						errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
-						if errResp != nil {
-							log.Printf("[WARN] failed to respond on error, %v", errResp)
-						}
+						l.postErrorToAdmin(err)
 					}
 				} else {
 					// all other callbacks (?, +, !, or no prefix) go to admin handler
 					if err := l.adminHandler.InlineCallbackHandler(update.CallbackQuery); err != nil {
 						log.Printf("[WARN] failed to process callback: %v", err)
-						errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + err.Error()}, l.adminChatID, NotificationDefault)
-						if errResp != nil {
-							log.Printf("[WARN] failed to respond on error, %v", errResp)
-						}
+						l.postErrorToAdmin(err)
 					}
 				}
 				continue
@@ -717,6 +708,16 @@ const (
 	// NotificationSilent sends message without sound
 	NotificationSilent
 )
+
+// postErrorToAdmin reports a failed admin action in the admin chat. the log setup masks secrets in log
+// output but not in chat messages, and a network error from the Bot API client carries the bot token in
+// its request URL, so the token is masked here
+func (l *TelegramListener) postErrorToAdmin(err error) {
+	if errResp := l.sendBotResponse(bot.Response{Send: true, Text: "error: " + redactBotToken(err.Error())},
+		l.adminChatID, NotificationDefault); errResp != nil {
+		log.Printf("[WARN] failed to respond on error, %v", errResp)
+	}
+}
 
 // sendBotResponse sends bot's answer to tg channel
 // actionText is a text for the button to unban user, optional
