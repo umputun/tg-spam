@@ -1469,30 +1469,47 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 func TestUserReports_ChannelReport(t *testing.T) {
 	const channelID = int64(-100123)
 	tests := []struct {
-		name, username, title, wantName string
-		from                            *tbapi.User
+		name, username, title, wantName, wantRendered string
+		from                                          *tbapi.User
 	}{
 		{name: "username", username: "spam_channel", title: "Spam Channel", wantName: "@spam_channel",
-			from: &tbapi.User{ID: 136817688, UserName: "Channel_Bot"}},
-		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel"},
-		{name: "fallback without From", wantName: "channel_-100123"},
+			from:         &tbapi.User{ID: 136817688, UserName: "Channel_Bot"},
+			wantRendered: "[@spam\\_channel (-100123)](https://t.me/spam_channel)"},
+		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel", wantRendered: "Spam Channel (-100123)"},
+		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title impersonating a username", title: "@legit_admin", wantName: "legit_admin", wantRendered: "legit\\_admin (-100123)"},
+		{name: "title with repeated markers", title: "@@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title with link injection", title: "@a) [click](http://phish", wantName: "a) [click](http://phish",
+			wantRendered: "a) \\[click](http://phish (-100123)"},
+		{name: "title with only markers", title: "@@", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var stored storage.Report
 			mockReports := &mocks.ReportsMock{
-				AddFunc: func(ctx context.Context, report storage.Report) error { return nil },
-				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
-					return nil, nil
+				AddFunc: func(ctx context.Context, report storage.Report) error {
+					stored = report
+					return nil
 				},
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{stored}, nil
+				},
+				UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
 			}
+			var notification tbapi.MessageConfig
 			mockAPI := &mocks.TbAPIMock{
 				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 					return &tbapi.APIResponse{Ok: true}, nil
 				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					notification = c.(tbapi.MessageConfig)
+					return tbapi.Message{MessageID: 123}, nil
+				},
 			}
 			rep := &userReports{
-				ReportConfig: ReportConfig{Storage: mockReports, Threshold: 2},
-				tbAPI:        mockAPI, primChatID: -100456, superUsers: SuperUsers{"Channel_Bot"},
+				ReportConfig: ReportConfig{Storage: mockReports, Threshold: 1},
+				tbAPI:        mockAPI, primChatID: -100456, adminChatID: -100789, superUsers: SuperUsers{"Channel_Bot"},
 				bot: &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return id == 111 }},
 			}
 			update := tbapi.Update{Message: &tbapi.Message{
@@ -1504,7 +1521,6 @@ func TestUserReports_ChannelReport(t *testing.T) {
 			}}
 			require.NoError(t, rep.DirectUserReport(context.Background(), update))
 			require.Len(t, mockReports.AddCalls(), 1)
-			stored := mockReports.AddCalls()[0].Report
 			assert.Equal(t, channelID, stored.ReportedUserID)
 			assert.Equal(t, tt.wantName, stored.ReportedUserName)
 			assert.EqualValues(t, 111, stored.ReporterUserID)
@@ -1512,6 +1528,14 @@ func TestUserReports_ChannelReport(t *testing.T) {
 			require.Len(t, mockAPI.RequestCalls(), 1)
 			deleted := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
 			assert.Equal(t, 789, deleted.MessageID)
+			require.Len(t, mockAPI.SendCalls(), 1)
+			assert.Contains(t, notification.Text, "\n\n"+tt.wantRendered+"\n\n")
+			if tt.username == "" {
+				assert.NotContains(t, notification.Text, "https://t.me/")
+			}
+			keyboard := notification.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+			require.Len(t, keyboard.InlineKeyboard, 1)
+			assert.Equal(t, "R+-100123:999", *keyboard.InlineKeyboard[0][0].CallbackData)
 		})
 	}
 }

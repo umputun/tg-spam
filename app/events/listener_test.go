@@ -472,13 +472,16 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
 	const groupID, linkedID, otherID = int64(-100456), int64(-100789), int64(-100123)
 	tests := []struct {
-		name       string
-		senderID   int64
-		wantReport bool
+		name             string
+		senderID, linked int64
+		automaticForward bool
+		wantReport       bool
 	}{
-		{name: "group itself", senderID: groupID},
-		{name: "linked channel", senderID: linkedID},
-		{name: "other channel", senderID: otherID, wantReport: true},
+		{name: "group itself", senderID: groupID, linked: linkedID},
+		{name: "linked channel", senderID: linkedID, linked: linkedID},
+		{name: "other channel", senderID: otherID, linked: linkedID, wantReport: true},
+		{name: "automatic forward with unknown linked channel", senderID: otherID, automaticForward: true},
+		{name: "automatic forward after relink", senderID: otherID, linked: linkedID, automaticForward: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -492,12 +495,13 @@ func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
 			updates <- tbapi.Update{Message: &tbapi.Message{
 				MessageID: 50, Chat: tbapi.Chat{ID: groupID}, Text: "/report", From: &tbapi.User{ID: 111, UserName: "reporter"},
 				ReplyToMessage: &tbapi.Message{MessageID: 40, Chat: tbapi.Chat{ID: groupID}, Text: "spam text",
-					From: &tbapi.User{ID: 136817688, UserName: "Channel_Bot"}, SenderChat: &tbapi.Chat{ID: tt.senderID}},
+					From: &tbapi.User{ID: 136817688, UserName: "Channel_Bot"}, SenderChat: &tbapi.Chat{ID: tt.senderID},
+					IsAutomaticForward: tt.automaticForward},
 			}}
 			close(updates)
 			mockAPI := &mocks.TbAPIMock{
 				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
-					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: groupID}, LinkedChatID: linkedID}, nil
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: groupID}, LinkedChatID: tt.linked}, nil
 				},
 				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
 					return nil, nil

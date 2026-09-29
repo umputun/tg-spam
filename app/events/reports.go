@@ -65,17 +65,18 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	switch {
 	case origMsg.SenderChat != nil:
 		ch := origMsg.SenderChat
-		if ch.ID == r.primChatID || ch.ID == r.linkedChannelID {
+		if origMsg.IsAutomaticForward || ch.ID == r.primChatID || ch.ID == r.linkedChannelID {
 			return fmt.Errorf("cannot report messages from the group or its linked channel")
 		}
 		reportedID = ch.ID
-		switch {
-		case ch.UserName != "":
+		if ch.UserName != "" {
 			reportedName = "@" + ch.UserName
-		case ch.Title != "":
-			reportedName = ch.Title
-		default:
-			reportedName = fmt.Sprintf("channel_%d", ch.ID)
+		} else {
+			// reserve the @ prefix for actual usernames, never channel titles
+			reportedName = strings.TrimLeft(ch.Title, "@")
+			if reportedName == "" {
+				reportedName = fmt.Sprintf("channel_%d", ch.ID)
+			}
 		}
 	case origMsg.From != nil:
 		reportedID = origMsg.From.ID
