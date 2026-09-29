@@ -434,7 +434,7 @@ With `--dry` or `--training`, **Approve Ban** neither bans the user nor deletes 
 
 Only superusers configured by username can be included as Telegram `@username` mentions. Numeric IDs do not provide a username.
 
-Posts made on behalf of a channel or by an anonymous admin can't be reported by users; admins handle them with `/spam`.
+Users can report posts made on behalf of a channel. The report identifies the channel, and an approved report or the auto-ban threshold bans it from posting in the group. Channels are banned even in soft-ban mode, since Telegram cannot restrict channel senders. Posts made as the group itself or its linked channel can't be reported by users; admins handle them with `/spam`.
 
 Reports are accepted only in the monitored group. A report command sent in any other chat the bot is a member of, testing chats included, is ignored.
 
