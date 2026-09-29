@@ -511,16 +511,23 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Len(t, mockReports.AddCalls(), 1, "should add report with transformed text")
 	})
 
-	t.Run("reported message from channel - should return error", func(t *testing.T) {
+	t.Run("message without sender is rejected", func(t *testing.T) {
+		rep := &userReports{}
+		update := tbapi.Update{Message: &tbapi.Message{ReplyToMessage: &tbapi.Message{}}}
+		require.EqualError(t, rep.DirectUserReport(context.Background(), update), "cannot report messages without a sender")
+	})
+
+	t.Run("linked channel without From is rejected", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:        mockAPI,
-			primChatID:   123,
-			adminChatID:  456,
-			superUsers:   SuperUsers{},
-			ReportConfig: ReportConfig{Storage: mockReports},
+			tbAPI:           mockAPI,
+			primChatID:      123,
+			linkedChannelID: -100123456789,
+			adminChatID:     456,
+			superUsers:      SuperUsers{},
+			ReportConfig:    ReportConfig{Storage: mockReports},
 		}
 
 		update := tbapi.Update{
@@ -531,7 +538,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				From:      &tbapi.User{UserName: "reporter", ID: 111},
 				ReplyToMessage: &tbapi.Message{
 					MessageID: 999,
-					From:      nil, // channel or anonymous admin message
+					From:      nil,
 					SenderChat: &tbapi.Chat{
 						ID:   -100123456789,
 						Type: "channel",
@@ -543,13 +550,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+		assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
 		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
-	t.Run("reported message sent on behalf of a chat - should return error", func(t *testing.T) {
-		// in groups the Bot API sets From to a shared placeholder user for posts made on behalf of a chat
+	t.Run("group and linked channel with placeholder From are rejected", func(t *testing.T) {
 		senders := []struct {
 			name       string
 			from       *tbapi.User
@@ -559,8 +565,6 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				senderChat: &tbapi.Chat{ID: -1001234567890, Type: "channel", UserName: "linked_channel"}},
 			{name: "anonymous admin", from: &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", IsBot: true},
 				senderChat: &tbapi.Chat{ID: 123, Type: "supergroup"}},
-			{name: "other channel", from: &tbapi.User{ID: 136817688, UserName: "Channel_Bot", IsBot: true},
-				senderChat: &tbapi.Chat{ID: -1009999999999, Type: "channel", UserName: "some_channel"}},
 		}
 		for _, s := range senders {
 			t.Run(s.name, func(t *testing.T) {
@@ -569,12 +573,13 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				mockBot := &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return true }}
 
 				rep := &userReports{
-					tbAPI:        mockAPI,
-					bot:          mockBot,
-					primChatID:   123,
-					adminChatID:  456,
-					superUsers:   SuperUsers{},
-					ReportConfig: ReportConfig{Storage: mockReports},
+					tbAPI:           mockAPI,
+					bot:             mockBot,
+					primChatID:      123,
+					linkedChannelID: -1001234567890,
+					adminChatID:     456,
+					superUsers:      SuperUsers{},
+					ReportConfig:    ReportConfig{Storage: mockReports},
 				}
 
 				update := tbapi.Update{
@@ -594,7 +599,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 				err := rep.DirectUserReport(context.Background(), update)
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+				assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
 				assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
 				assert.Empty(t, mockReports.AddCalls(), "should not store a report against the placeholder user")
 			})
@@ -1450,10 +1455,163 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 		{"markdown chars escaped", "spam_user*bot", 666, "[spam\\_user\\*bot (666)](tg://user?id=666)"},
 		{"link delimiter injection escaped", "bad](http://evil)", 666, "[bad\\](http://evil) (666)](tg://user?id=666)"},
 		{"backslash escaped", "a\\b", 666, "[a\\\\b (666)](tg://user?id=666)"},
+		{"channel username", "@spam_channel", -100123, "[@spam\\_channel (-100123)](https://t.me/spam_channel)"},
+		{"channel title", "Spam *Channel*", -100123, "Spam \\*Channel\\* (-100123)"},
+		{"channel fallback", "channel_-100123", -100123, "channel\\_-100123 (-100123)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, rep.reportedUserMD(tc.userName, tc.id))
+		})
+	}
+}
+
+func TestUserReports_ChannelReport(t *testing.T) {
+	const channelID = int64(-100123)
+	tests := []struct {
+		name, username, title, wantName, wantRendered string
+		from                                          *tbapi.User
+	}{
+		{name: "username", username: "spam_channel", title: "Spam Channel", wantName: "@spam_channel",
+			from:         &tbapi.User{ID: 136817688, UserName: "Channel_Bot"},
+			wantRendered: "[@spam\\_channel (-100123)](https://t.me/spam_channel)"},
+		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel", wantRendered: "Spam Channel (-100123)"},
+		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title impersonating a username", title: "@legit_admin", wantName: "legit_admin", wantRendered: "legit\\_admin (-100123)"},
+		{name: "title with repeated markers", title: "@@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title with link injection", title: "@a) [click](http://phish", wantName: "a) [click](http://phish",
+			wantRendered: "a) \\[click](http://phish (-100123)"},
+		{name: "title with only markers", title: "@@", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stored storage.Report
+			mockReports := &mocks.ReportsMock{
+				AddFunc: func(ctx context.Context, report storage.Report) error {
+					stored = report
+					return nil
+				},
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{stored}, nil
+				},
+				UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
+			}
+			var notification tbapi.MessageConfig
+			mockAPI := &mocks.TbAPIMock{
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					notification = c.(tbapi.MessageConfig)
+					return tbapi.Message{MessageID: 123}, nil
+				},
+			}
+			rep := &userReports{
+				ReportConfig: ReportConfig{Storage: mockReports, Threshold: 1},
+				tbAPI:        mockAPI, primChatID: -100456, adminChatID: -100789, superUsers: SuperUsers{"Channel_Bot"},
+				bot: &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return id == 111 }},
+			}
+			update := tbapi.Update{Message: &tbapi.Message{
+				MessageID: 789, From: &tbapi.User{ID: 111, UserName: "reporter"},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: tt.from, Caption: "spam caption",
+					SenderChat: &tbapi.Chat{ID: channelID, Type: "channel", UserName: tt.username, Title: tt.title},
+				},
+			}}
+			require.NoError(t, rep.DirectUserReport(context.Background(), update))
+			require.Len(t, mockReports.AddCalls(), 1)
+			assert.Equal(t, channelID, stored.ReportedUserID)
+			assert.Equal(t, tt.wantName, stored.ReportedUserName)
+			assert.EqualValues(t, 111, stored.ReporterUserID)
+			assert.Equal(t, "spam caption", stored.MsgText)
+			require.Len(t, mockAPI.RequestCalls(), 1)
+			deleted := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+			assert.Equal(t, 789, deleted.MessageID)
+			require.Len(t, mockAPI.SendCalls(), 1)
+			assert.Contains(t, notification.Text, "\n\n"+tt.wantRendered+"\n\n")
+			if tt.username == "" {
+				assert.NotContains(t, notification.Text, "https://t.me/")
+			}
+			keyboard := notification.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+			require.Len(t, keyboard.InlineKeyboard, 1)
+			assert.Equal(t, "R+-100123:999", *keyboard.InlineKeyboard[0][0].CallbackData)
+		})
+	}
+}
+
+func TestUserReports_ChannelBan(t *testing.T) {
+	const channelID = int64(-100123)
+	tests := []struct {
+		name, wantText string
+		update, manual bool
+	}{
+		{name: "new auto-ban notification", wantText: "user banned after 1 reports"},
+		{name: "updated auto-ban notification", update: true, wantText: "user banned after reaching 1 reports"},
+		{name: "approve button", manual: true, wantText: "_banned by admin in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := storage.Report{MsgID: 42, ChatID: -100456, ReportedUserID: channelID, ReportedUserName: "@spam_channel",
+				ReporterUserID: 111, ReporterUserName: "reporter", MsgText: "spam text", NotificationSent: tt.update, AdminMsgID: 999}
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					assert.Equal(t, report.MsgID, msgID)
+					assert.Equal(t, report.ChatID, chatID)
+					return []storage.Report{report}, nil
+				},
+				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+			}
+			var notification string
+			mockAPI := &mocks.TbAPIMock{
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					switch msg := c.(type) {
+					case tbapi.MessageConfig:
+						notification = msg.Text
+					case tbapi.EditMessageTextConfig:
+						notification = msg.Text
+					}
+					return tbapi.Message{}, nil
+				},
+			}
+			mockBot := &mocks.BotMock{
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+				UpdateSpamFunc:         func(msg string) error { return nil },
+			}
+			rep := &userReports{ReportConfig: ReportConfig{Storage: mockReports, AutoBanThreshold: 1},
+				tbAPI: mockAPI, bot: mockBot, primChatID: report.ChatID, adminChatID: -100789, softBanMode: true}
+			if tt.manual {
+				query := &tbapi.CallbackQuery{Data: "R+-100123:42", From: &tbapi.User{UserName: "admin"},
+					Message: &tbapi.Message{MessageID: 999, Chat: tbapi.Chat{ID: rep.adminChatID}, Text: "reported channel"}}
+				require.NoError(t, rep.HandleReportCallback(context.Background(), query))
+			} else {
+				require.NoError(t, rep.checkReportThreshold(context.Background(), report.MsgID, report.ChatID))
+			}
+			var channelBans int
+			for _, call := range mockAPI.RequestCalls() {
+				switch req := call.C.(type) {
+				case tbapi.BanChatSenderChatConfig:
+					channelBans++
+					assert.Equal(t, channelID, req.SenderChatID)
+					assert.Equal(t, report.ChatID, req.ChatID)
+				case tbapi.DeleteMessageConfig:
+					assert.Equal(t, report.MsgID, req.MessageID)
+				default:
+					t.Errorf("unexpected Telegram request %T", req)
+				}
+			}
+			assert.Equal(t, 1, channelBans)
+			require.Len(t, mockBot.RemoveApprovedUserCalls(), 1)
+			assert.Equal(t, channelID, mockBot.RemoveApprovedUserCalls()[0].ID)
+			assert.Contains(t, notification, tt.wantText)
+			assert.NotContains(t, notification, "restricted")
+			if !tt.manual {
+				assert.Contains(t, notification, "https://t.me/spam_channel")
+			}
+			require.Len(t, mockReports.DeleteByMessageCalls(), 1)
 		})
 	}
 }

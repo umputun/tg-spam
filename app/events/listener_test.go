@@ -469,6 +469,67 @@ func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 	})
 }
 
+func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
+	const groupID, linkedID, otherID = int64(-100456), int64(-100789), int64(-100123)
+	tests := []struct {
+		name             string
+		senderID, linked int64
+		automaticForward bool
+		wantReport       bool
+	}{
+		{name: "group itself", senderID: groupID, linked: linkedID},
+		{name: "linked channel", senderID: linkedID, linked: linkedID},
+		{name: "other channel", senderID: otherID, linked: linkedID, wantReport: true},
+		{name: "automatic forward with unknown linked channel", senderID: otherID, automaticForward: true},
+		{name: "automatic forward after relink", senderID: otherID, linked: linkedID, automaticForward: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reports := &mocks.ReportsMock{
+				AddFunc: func(ctx context.Context, report storage.Report) error { return nil },
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return nil, nil
+				},
+			}
+			updates := make(chan tbapi.Update, 1)
+			updates <- tbapi.Update{Message: &tbapi.Message{
+				MessageID: 50, Chat: tbapi.Chat{ID: groupID}, Text: "/report", From: &tbapi.User{ID: 111, UserName: "reporter"},
+				ReplyToMessage: &tbapi.Message{MessageID: 40, Chat: tbapi.Chat{ID: groupID}, Text: "spam text",
+					From: &tbapi.User{ID: 136817688, UserName: "Channel_Bot"}, SenderChat: &tbapi.Chat{ID: tt.senderID},
+					IsAutomaticForward: tt.automaticForward},
+			}}
+			close(updates)
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: groupID}, LinkedChatID: tt.linked}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+				GetUpdatesChanFunc: func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updates },
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			l := &TelegramListener{
+				TbAPI: mockAPI, Group: fmt.Sprint(groupID),
+				Bot:          &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return id == 111 }},
+				ReportConfig: ReportConfig{Enabled: true, Storage: reports, Threshold: 2},
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+			if tt.wantReport {
+				require.Len(t, reports.AddCalls(), 1)
+				assert.Equal(t, otherID, reports.AddCalls()[0].Report.ReportedUserID)
+				return
+			}
+			assert.Empty(t, reports.AddCalls())
+			assert.Empty(t, mockAPI.RequestCalls())
+		})
+	}
+}
+
 func TestTelegramListener_DoWithBotBan(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{
