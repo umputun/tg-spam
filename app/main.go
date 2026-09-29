@@ -113,7 +113,7 @@ type options struct {
 		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"off" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none leaves the model default, off disables thinking"`
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
