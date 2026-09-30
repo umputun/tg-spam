@@ -143,6 +143,7 @@ type options struct {
 		RetryCount         int     `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"jev retry count"`
 		HistorySize        int     `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"jev history size"`
 		CheckShortMessages bool    `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with jev"`
+		GibberishThreshold float64 `long:"gibberish-threshold" env:"GIBBERISH_THRESHOLD" default:"0" description:"gibberish probability at or above this is spam, 0 disables"`
 	} `group:"jev" namespace:"jev" env-namespace:"JEV"`
 
 	LLM struct {
@@ -892,6 +893,7 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 			MaxSymbolsRequest:  settings.Jev.MaxSymbolsRequest,
 			RetryCount:         settings.Jev.RetryCount,
 			CheckShortMessages: settings.Jev.CheckShortMessages,
+			GibberishThreshold: settings.Jev.GibberishThreshold,
 		}
 		// jev gets its own client: Config.HTTPClient carries settings.CAS.Timeout, which would
 		// impose a CAS deadline on LLM calls. The per-request deadline comes from the detector's

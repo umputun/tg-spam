@@ -20,6 +20,16 @@ const (
 	defaultJevModel             = "jev-1.13.0"
 	defaultJevMaxSymbolsRequest = 6000
 	jevQuestionID               = "spam"
+	jevGibberishQuestionID      = "gibberish"
+
+	// the gibberish question and criteria are the wording the gibberish threshold was validated with,
+	// so they are not configurable
+	jevGibberishQuestion     = "Is `message` random keyboard mashing, made of letter groups that are not words in any language?"
+	jevGibberishCriteriaTrue = "The whole message is several random letter groups with no meaning in any language, " +
+		"such as sequences of adjacent keyboard keys, typed to fill space or test the chat."
+	jevGibberishCriteriaFalse = "It contains real words in any language, slang, laughter, sounds, interjections, memes, " +
+		"repeated letters, abbreviations, commands or code, transliteration, or words typed in the wrong keyboard " +
+		"layout (Russian typed on an English layout or the reverse), even if short, rude or odd."
 )
 
 // JevConfig contains parameters for jevChecker. Threshold and the question text are the
@@ -35,6 +45,7 @@ type JevConfig struct {
 	MaxSymbolsRequest  int     // max request length in runes, 0 uses the default
 	RetryCount         int     // total attempts, honored by the shared LLM runner
 	CheckShortMessages bool    // if true, check messages shorter than MinMsgLen with jev
+	GibberishThreshold float64 // gibberish noul at or above this is spam, 0 disables the gibberish question
 }
 
 // jevChecker is a wrapper for the typesafe.ai decision API to check if a text is spam.
@@ -84,6 +95,12 @@ func newJevChecker(client HTTPClient, params JevConfig) (*jevChecker, error) {
 	if params.Threshold <= 0 || params.Threshold > 1 {
 		return nil, fmt.Errorf("jev threshold must be in (0, 1], got %v", params.Threshold)
 	}
+	if math.IsNaN(params.GibberishThreshold) || math.IsInf(params.GibberishThreshold, 0) {
+		return nil, fmt.Errorf("jev gibberish threshold must be a finite number, got %v", params.GibberishThreshold)
+	}
+	if params.GibberishThreshold < 0 || params.GibberishThreshold > 1 {
+		return nil, fmt.Errorf("jev gibberish threshold must be in [0, 1], got %v", params.GibberishThreshold)
+	}
 	if params.MaxSymbolsRequest < 0 {
 		return nil, fmt.Errorf("jev max symbols request must not be negative, got %d", params.MaxSymbolsRequest)
 	}
@@ -124,17 +141,21 @@ func (j *jevChecker) buildRequest(msg string) jevRequest {
 	if runes := []rune(msg); len(runes) > j.params.MaxSymbolsRequest {
 		msg = string(runes[:j.params.MaxSymbolsRequest])
 	}
-	return jevRequest{
-		Model: j.params.Model,
-		State: map[string]string{"message": msg},
-		Questions: map[string]jevQuestion{
-			jevQuestionID: {
-				Type:         "noul",
-				Instructions: j.params.Question,
-				Criteria:     map[string]string{"true": j.params.CriteriaSpam, "false": j.params.CriteriaHam},
-			},
+	questions := map[string]jevQuestion{
+		jevQuestionID: {
+			Type:         "noul",
+			Instructions: j.params.Question,
+			Criteria:     map[string]string{"true": j.params.CriteriaSpam, "false": j.params.CriteriaHam},
 		},
 	}
+	if j.params.GibberishThreshold > 0 {
+		questions[jevGibberishQuestionID] = jevQuestion{
+			Type:         "noul",
+			Instructions: jevGibberishQuestion,
+			Criteria:     map[string]string{"true": jevGibberishCriteriaTrue, "false": jevGibberishCriteriaFalse},
+		}
+	}
+	return jevRequest{Model: j.params.Model, State: map[string]string{"message": msg}, Questions: questions}
 }
 
 // verdict maps a probability onto the shared llm contract. Confidence is direction-aware:
@@ -181,25 +202,47 @@ func (j *jevChecker) sendRequest(ctx context.Context, msg string) (response llmR
 	}
 
 	var parsed jevResponse
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
+	if err = json.Unmarshal(respBody, &parsed); err != nil {
 		return llmResponse{}, fmt.Errorf("can't unmarshal response: %s - %w", string(respBody), err)
 	}
 
-	answer, ok := parsed.Answers[jevQuestionID]
+	p, err := j.noul(parsed, jevQuestionID, respBody)
+	if err != nil {
+		return llmResponse{}, err
+	}
+	log.Printf("[DEBUG] jev model: %s", parsed.Model)
+
+	if j.params.GibberishThreshold > 0 {
+		gib, err := j.noul(parsed, jevGibberishQuestionID, respBody)
+		if err != nil {
+			return llmResponse{}, err
+		}
+		if gib >= j.params.GibberishThreshold {
+			return llmResponse{
+				IsSpam:     true,
+				Reason:     fmt.Sprintf("gibberish probability %.2f, threshold %.2f", gib, j.params.GibberishThreshold),
+				Confidence: int(math.Round(gib * 100)),
+			}, nil
+		}
+	}
+	return j.verdict(p), nil
+}
+
+// noul extracts a validated noul answer. A missing or malformed answer is an error, never 0.
+func (j *jevChecker) noul(parsed jevResponse, id string, respBody []byte) (float64, error) {
+	answer, ok := parsed.Answers[id]
 	if !ok {
-		return llmResponse{}, fmt.Errorf("no %q answer in response: %s", jevQuestionID, string(respBody))
+		return 0, fmt.Errorf("no %q answer in response: %s", id, string(respBody))
 	}
 	if answer.Type != "noul" {
-		return llmResponse{}, fmt.Errorf("unexpected answer type %q, want noul", answer.Type)
+		return 0, fmt.Errorf("unexpected answer type %q, want noul", answer.Type)
 	}
 	if answer.Noul == nil {
-		return llmResponse{}, fmt.Errorf("missing noul value in response: %s", string(respBody))
+		return 0, fmt.Errorf("missing noul value in response: %s", string(respBody))
 	}
 	p := *answer.Noul
 	if math.IsNaN(p) || p < 0 || p > 1 {
-		return llmResponse{}, fmt.Errorf("noul %v out of range", p)
+		return 0, fmt.Errorf("noul %v out of range", p)
 	}
-
-	log.Printf("[DEBUG] jev model: %s", parsed.Model)
-	return j.verdict(p), nil
+	return p, nil
 }

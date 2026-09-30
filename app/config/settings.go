@@ -176,6 +176,7 @@ type JevSettings struct {
 	RetryCount         int     `json:"retry_count" yaml:"retry_count" db:"jev_retry_count"`
 	HistorySize        int     `json:"history_size" yaml:"history_size" db:"jev_history_size"`
 	CheckShortMessages bool    `json:"check_short_messages" yaml:"check_short_messages" db:"jev_check_short_messages"`
+	GibberishThreshold float64 `json:"gibberish_threshold" yaml:"gibberish_threshold" db:"jev_gibberish_threshold"`
 }
 
 // LLMSettings contains shared LLM orchestration settings
@@ -370,6 +371,17 @@ func (s *Settings) validateJev() error {
 	if s.Jev.CriteriaHam == "" {
 		return fmt.Errorf("jev.criteria-ham must not be empty")
 	}
+	if math.IsNaN(s.Jev.GibberishThreshold) || math.IsInf(s.Jev.GibberishThreshold, 0) {
+		return fmt.Errorf("jev.gibberish-threshold (%v) must be a finite number", s.Jev.GibberishThreshold)
+	}
+	if s.Jev.GibberishThreshold < 0 || s.Jev.GibberishThreshold > 1 {
+		return fmt.Errorf("jev.gibberish-threshold (%v) must be in [0, 1] (0 disables)", s.Jev.GibberishThreshold)
+	}
+	// history is flattened into the judged message, so an uncaught gibberish post in the ham history would
+	// reach every later request; that combination was never evaluated
+	if s.Jev.GibberishThreshold > 0 && s.Jev.HistorySize > 0 {
+		return fmt.Errorf("jev.gibberish-threshold requires jev.history-size 0, got %d", s.Jev.HistorySize)
+	}
 	return nil
 }
 
@@ -437,6 +449,7 @@ var zeroAwarePaths = map[string]bool{
 	"OpenAI.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"Gemini.HistorySize":      true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
 	"Jev.HistorySize":         true, // lib/tgspam/detector.go:409 (> 0): 0 disables history
+	"Jev.GibberishThreshold":  true, // lib/tgspam/jev.go buildRequest (> 0): 0 disables the gibberish question
 	"FirstMessagesCount":      true, // app/main.go:703, lib/tgspam/detector.go:205,208 (> 0): 0 disables
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam

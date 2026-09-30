@@ -853,6 +853,11 @@ func TestSettings_ValidateJev(t *testing.T) {
 		{"empty question", func(s *Settings) { s.Jev.Question = "" }, "question"},
 		{"empty spam criteria", func(s *Settings) { s.Jev.CriteriaSpam = "" }, "criteria-spam"},
 		{"empty ham criteria", func(s *Settings) { s.Jev.CriteriaHam = "" }, "criteria-ham"},
+		{"NaN gibberish threshold", func(s *Settings) { s.Jev.GibberishThreshold = math.NaN() }, "jev.gibberish-threshold"},
+		{"inf gibberish threshold", func(s *Settings) { s.Jev.GibberishThreshold = math.Inf(1) }, "jev.gibberish-threshold"},
+		{"negative gibberish threshold", func(s *Settings) { s.Jev.GibberishThreshold = -0.1 }, "[0, 1]"},
+		{"gibberish threshold above one", func(s *Settings) { s.Jev.GibberishThreshold = 1.1 }, "[0, 1]"},
+		{"gibberish threshold with history", func(s *Settings) { s.Jev.GibberishThreshold, s.Jev.HistorySize = 0.5, 3 }, "history-size"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -863,6 +868,29 @@ func TestSettings_ValidateJev(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.errMsg)
 		})
 	}
+
+	t.Run("gibberish threshold without history passes", func(t *testing.T) {
+		s := valid()
+		s.Jev.GibberishThreshold = 0.5
+		require.NoError(t, s.Validate())
+	})
+
+	t.Run("history without gibberish threshold passes", func(t *testing.T) {
+		s := valid()
+		s.Jev.HistorySize = 3
+		require.NoError(t, s.Validate())
+	})
+}
+
+func TestSettings_JevGibberishThresholdZeroSurvivesMerge(t *testing.T) {
+	stored := &Settings{}
+	stored.Jev.Token = "t"
+
+	template := &Settings{}
+	template.Jev.GibberishThreshold = 0.5
+
+	stored.ApplyDefaults(template)
+	assert.Zero(t, stored.Jev.GibberishThreshold, "zero gibberish threshold means disabled and must survive the merge")
 }
 
 func TestSettings_IsJevEnabled(t *testing.T) {

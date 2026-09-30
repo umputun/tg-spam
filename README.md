@@ -128,13 +128,14 @@ Setting `--gemini.token [$GEMINI_TOKEN]` enables Google Gemini integration. Gemi
 
 **Jev integration**
 
-Setting `--jev.token [$JEV_TOKEN]` enables [jev](https://docs.typesafe.ai), a decision model rather than a text generator. Where OpenAI and Gemini are asked to write a JSON verdict, jev is asked one typed question and returns a bare probability, which TG-Spam thresholds itself. It can be used alongside or instead of the other providers and participates in `--llm.consensus` the same way.
+Setting `--jev.token [$JEV_TOKEN]` enables [jev](https://docs.typesafe.ai), a decision model rather than a text generator. Where OpenAI and Gemini are asked to write a JSON verdict, jev is asked a typed question and returns a bare probability, which TG-Spam thresholds itself. It can be used alongside or instead of the other providers and participates in `--llm.consensus` the same way.
 
 - By default the jev integration is disabled. To enable it, set `--jev.token` to a valid typesafe.ai API key. Setting `--jev.apibase` alone does NOT enable it, so pointing at a proxy without a credential cannot turn the provider on by accident.
-- One question is asked, not several. `--jev.question` carries it and `--jev.criteria-spam` / `--jev.criteria-ham` describe the two sides. All three ship with the text the threshold below was measured against; changing any of them invalidates that measurement.
+- One spam question is asked, plus the optional gibberish question below. `--jev.question` carries the spam question and `--jev.criteria-spam` / `--jev.criteria-ham` describe the two sides. All three ship with the text the threshold below was measured against; changing any of them invalidates that measurement.
 - `--jev.threshold` defaults to `0.30`. Start there. If legitimate messages are flagged, raise it, for example to `0.35`; if spam is missed, try lowering it toward `0.25`. A higher threshold flags fewer messages, which can also let more spam through; a lower one catches more potential spam but can flag more legitimate messages. Review the results in your chat after adjusting it. The default was chosen from a small replay of one chat rather than a separate validation set, and that replay preserved the newline between a post and its quote where production `cleanText` removes it, so its counts do not establish production error rates for this default.
 - `--jev.model` pins a version such as `jev-1.13.0` and should never be an alias: an alias moves and silently changes what a tuned threshold means. The model the API actually resolved is logged at debug level on every check.
 - `--jev.veto`, `--jev.history-size` and `--jev.check-short-messages` behave exactly as their OpenAI and Gemini counterparts.
+- `--jev.gibberish-threshold` (off by default, `0`) adds a second question to the same jev call: is the message random letter groups that are not words in any language, like `dsfg dfgh ewrt xczv dsfh`. A gibberish probability at or above the threshold marks the message as spam, whatever the spam question says; below it, the spam question decides as usual. `0.50` is a reasonable start: replayed on 1,061 distinct inputs rebuilt from six days of one chat's messages (15+ characters, deduplicated), it flagged only the one gibberish post; in a separate set of hand-written test messages, slang, laughter, repeated letters, code and text typed in the wrong keyboard layout all stayed below it. Gibberish made of Cyrillic letters (`фыва олдж`) scores lower and is mostly missed at `0.50`. The question wording is fixed, since the threshold was measured against it. It requires `--jev.history-size=0`, because history is sent as part of the judged message. In veto mode jev only runs on messages other checks already flagged, so the gibberish question cannot catch a first message there.
 - `--jev.retry-count` is total attempts, not retries after the first, and every error is retried regardless of its HTTP status. That is the behavior shared with the other providers, not something specific to jev.
 
 **LLM consensus**
@@ -729,6 +730,7 @@ jev:
       --jev.retry-count=                jev retry count (default: 1) [$JEV_RETRY_COUNT]
       --jev.history-size=               jev history size (default: 0) [$JEV_HISTORY_SIZE]
       --jev.check-short-messages        check messages shorter than min-msg-len with jev [$JEV_CHECK_SHORT_MESSAGES]
+      --jev.gibberish-threshold=        gibberish probability at or above this is spam, 0 disables (default: 0) [$JEV_GIBBERISH_THRESHOLD]
 
 llm:
       --llm.consensus=[any|all]         how eligible LLMs flip the base decision (default: any) [$LLM_CONSENSUS]

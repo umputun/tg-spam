@@ -472,6 +472,12 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		}
 	}
 
+	if val := r.FormValue("jevGibberishThreshold"); val != "" {
+		if th, err := strconv.ParseFloat(val, 64); err == nil {
+			settings.Jev.GibberishThreshold = th
+		}
+	}
+
 	if val := r.FormValue("jevMaxSymbolsRequest"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			settings.Jev.MaxSymbolsRequest = n

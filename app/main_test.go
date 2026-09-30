@@ -1393,6 +1393,16 @@ func Test_makeDetectorJev(t *testing.T) {
 		assert.Equal(t, 5, res.JevHistorySize)
 	})
 
+	t.Run("gibberish threshold accepted by the checker", func(t *testing.T) {
+		s := jevSettings()
+		s.Jev.HistorySize = 0
+		s.Jev.GibberishThreshold = 0.5
+		require.NoError(t, s.Validate())
+		res := makeDetector(s)
+		require.NotNil(t, res)
+		assert.True(t, res.JevVeto)
+	})
+
 	t.Run("apibase alone leaves jev disabled", func(t *testing.T) {
 		s := makeTestSettings()
 		s.Jev.APIBase = "https://proxy.example/v1"
@@ -1422,6 +1432,8 @@ func TestJevBadConfigRejectedBeforeStartup(t *testing.T) {
 		{"empty spam criteria", func(s *config.Settings) { s.Jev.CriteriaSpam = "" }},
 		{"empty ham criteria", func(s *config.Settings) { s.Jev.CriteriaHam = "" }},
 		{"negative max symbols", func(s *config.Settings) { s.Jev.MaxSymbolsRequest = -1 }},
+		{"gibberish threshold above one", func(s *config.Settings) { s.Jev.GibberishThreshold = 1.5 }},
+		{"NaN gibberish threshold", func(s *config.Settings) { s.Jev.GibberishThreshold = math.NaN() }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

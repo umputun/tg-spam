@@ -560,6 +560,14 @@
 
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
+                    <label for="jevGibberishThreshold" class="form-label">Jev Gibberish Threshold</label>
+                    <input type="number" step="any" min="0" max="1" class="form-control" id="jevGibberishThreshold" name="jevGibberishThreshold" value="{{.Jev.GibberishThreshold}}">
+                    <div class="form-text">Flags messages made of random letter groups, like "dsfg dfgh ewrt", when the gibberish probability is at or above this, in [0, 1]. 0 turns it off. Start at 0.50. Requires Jev History Size 0</div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
                     <label for="jevRetryCount" class="form-label">Jev Retry Count</label>
                     <input type="number" min="1" class="form-control" id="jevRetryCount" name="jevRetryCount" value="{{.Jev.RetryCount}}">
                     <div class="form-text">Total attempts, not retries after the first</div>
@@ -600,6 +608,7 @@
                         <tr><th>Jev History Size</th><td>{{.Jev.HistorySize}}</td></tr>
                         <tr><th>Jev Model</th><td>{{.Jev.Model}}</td></tr>
                         <tr><th>Jev Threshold</th><td>{{.Jev.Threshold}}</td></tr>
+                        <tr><th>Jev Gibberish Threshold</th><td>{{.Jev.GibberishThreshold}}</td></tr>
                         <tr><th>Jev Retry Count</th><td>{{.Jev.RetryCount}}</td></tr>
                         <tr><th>Jev Max Symbols Request</th><td>{{.Jev.MaxSymbolsRequest}}</td></tr>
                         <tr><th>Check Short Messages</th><td>{{.Jev.CheckShortMessages}}</td></tr>
