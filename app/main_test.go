@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"path/filepath"
@@ -1393,14 +1394,26 @@ func Test_makeDetectorJev(t *testing.T) {
 		assert.Equal(t, 5, res.JevHistorySize)
 	})
 
-	t.Run("gibberish threshold accepted by the checker", func(t *testing.T) {
+	t.Run("gibberish threshold reaches the jev request", func(t *testing.T) {
+		var body []byte
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"noul","noul":0.9}}}`))
+		}))
+		defer ts.Close()
+
 		s := jevSettings()
+		s.Jev.Veto = false // in veto mode a ham base verdict never reaches jev
 		s.Jev.HistorySize = 0
+		s.Jev.APIBase = ts.URL
 		s.Jev.GibberishThreshold = 0.5
 		require.NoError(t, s.Validate())
 		res := makeDetector(s)
 		require.NotNil(t, res)
-		assert.True(t, res.JevVeto)
+
+		spam, _ := res.Check(spamcheck.Request{Msg: "dsfg dfgh ewrt xczv dsfh", UserID: "123"})
+		assert.True(t, spam)
+		assert.Contains(t, string(body), `"gibberish":{"type":"noul"`, "the threshold must reach JevConfig")
 	})
 
 	t.Run("apibase alone leaves jev disabled", func(t *testing.T) {

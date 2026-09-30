@@ -49,8 +49,8 @@ type JevConfig struct {
 }
 
 // jevChecker is a wrapper for the typesafe.ai decision API to check if a text is spam.
-// Unlike the generative providers it asks one typed question and gets back a probability,
-// which is thresholded here so the shared llmResponse contract is unchanged.
+// Unlike the generative providers it asks a typed spam question, plus an optional gibberish
+// question, and gets back probabilities, thresholded here so the shared llmResponse contract is unchanged.
 type jevChecker struct {
 	client HTTPClient
 	params JevConfig
@@ -129,15 +129,20 @@ func newJevChecker(client HTTPClient, params JevConfig) (*jevChecker, error) {
 	return &jevChecker{client: client, params: params}, nil
 }
 
-// check checks if a text is spam using the jev API
-func (j *jevChecker) check(ctx context.Context, msg string, history []spamcheck.Request) (spam bool, cr spamcheck.Response) {
+// check checks if a text is spam using the jev API. askGibberish is false when msg carries text the
+// sender did not write (quoted or replied-to), since the gibberish answer overrides the spam verdict.
+func (j *jevChecker) check(ctx context.Context, msg string, history []spamcheck.Request,
+	askGibberish bool) (spam bool, cr spamcheck.Response) {
 	if j.client == nil {
 		return false, spamcheck.Response{}
 	}
-	return runLLMProviderCheck(ctx, "jev", "Jev", j.params.RetryCount, msg, history, j.sendRequest)
+	send := func(ctx context.Context, msg string) (llmResponse, error) {
+		return j.sendRequest(ctx, msg, askGibberish)
+	}
+	return runLLMProviderCheck(ctx, "jev", "Jev", j.params.RetryCount, msg, history, send)
 }
 
-func (j *jevChecker) buildRequest(msg string) jevRequest {
+func (j *jevChecker) buildRequest(msg string, askGibberish bool) jevRequest {
 	if runes := []rune(msg); len(runes) > j.params.MaxSymbolsRequest {
 		msg = string(runes[:j.params.MaxSymbolsRequest])
 	}
@@ -148,7 +153,7 @@ func (j *jevChecker) buildRequest(msg string) jevRequest {
 			Criteria:     map[string]string{"true": j.params.CriteriaSpam, "false": j.params.CriteriaHam},
 		},
 	}
-	if j.params.GibberishThreshold > 0 {
+	if askGibberish && j.params.GibberishThreshold > 0 {
 		questions[jevGibberishQuestionID] = jevQuestion{
 			Type:         "noul",
 			Instructions: jevGibberishQuestion,
@@ -173,8 +178,8 @@ func (j *jevChecker) verdict(p float64) llmResponse {
 	}
 }
 
-func (j *jevChecker) sendRequest(ctx context.Context, msg string) (response llmResponse, err error) {
-	body, err := json.Marshal(j.buildRequest(msg))
+func (j *jevChecker) sendRequest(ctx context.Context, msg string, askGibberish bool) (response llmResponse, err error) {
+	body, err := json.Marshal(j.buildRequest(msg, askGibberish))
 	if err != nil {
 		return llmResponse{}, fmt.Errorf("can't marshal request: %w", err)
 	}
@@ -212,7 +217,7 @@ func (j *jevChecker) sendRequest(ctx context.Context, msg string) (response llmR
 	}
 	log.Printf("[DEBUG] jev model: %s", parsed.Model)
 
-	if j.params.GibberishThreshold > 0 {
+	if askGibberish && j.params.GibberishThreshold > 0 {
 		gib, err := j.noul(parsed, jevGibberishQuestionID, respBody)
 		if err != nil {
 			return llmResponse{}, err
@@ -235,14 +240,14 @@ func (j *jevChecker) noul(parsed jevResponse, id string, respBody []byte) (float
 		return 0, fmt.Errorf("no %q answer in response: %s", id, string(respBody))
 	}
 	if answer.Type != "noul" {
-		return 0, fmt.Errorf("unexpected answer type %q, want noul", answer.Type)
+		return 0, fmt.Errorf("%q answer has type %q, want noul", id, answer.Type)
 	}
 	if answer.Noul == nil {
-		return 0, fmt.Errorf("missing noul value in response: %s", string(respBody))
+		return 0, fmt.Errorf("missing %q noul value in response: %s", id, string(respBody))
 	}
 	p := *answer.Noul
 	if math.IsNaN(p) || p < 0 || p > 1 {
-		return 0, fmt.Errorf("noul %v out of range", p)
+		return 0, fmt.Errorf("%q noul %v out of range", id, p)
 	}
 	return p, nil
 }

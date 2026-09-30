@@ -562,7 +562,7 @@
                 <div class="col-md-6 mb-3">
                     <label for="jevGibberishThreshold" class="form-label">Jev Gibberish Threshold</label>
                     <input type="number" step="any" min="0" max="1" class="form-control" id="jevGibberishThreshold" name="jevGibberishThreshold" value="{{.Jev.GibberishThreshold}}">
-                    <div class="form-text">Flags messages made of random letter groups, like "dsfg dfgh ewrt", when the gibberish probability is at or above this, in [0, 1]. 0 turns it off. Start at 0.50. Requires Jev History Size 0</div>
+                    <div class="form-text">Flags messages made of random letter groups, like "dsfg dfgh ewrt", when the gibberish probability is at or above this, in [0, 1]. 0 turns it off. Start at 0.50. Requires Jev History Size 0. Not applied to messages with quoted or replied-to text</div>
                 </div>
             </div>
 

@@ -105,7 +105,7 @@ func TestJevChecker_RequestShape(t *testing.T) {
 	checker, err := newJevChecker(clientMock, validJevConfig())
 	require.NoError(t, err)
 
-	spam, resp := checker.check(context.Background(), "buy now", nil)
+	spam, resp := checker.check(context.Background(), "buy now", nil, true)
 	assert.True(t, spam)
 	assert.Equal(t, "jev", resp.Name)
 
@@ -140,7 +140,7 @@ func TestJevChecker_GibberishRequestShape(t *testing.T) {
 	checker, err := newJevChecker(clientMock, cfg)
 	require.NoError(t, err)
 
-	_, resp := checker.check(context.Background(), "dsfg dfgh ewrt", nil)
+	_, resp := checker.check(context.Background(), "dsfg dfgh ewrt", nil, true)
 	require.NoError(t, resp.Error)
 
 	var sent jevRequest
@@ -152,6 +152,28 @@ func TestJevChecker_GibberishRequestShape(t *testing.T) {
 	assert.Equal(t, "noul", gib.Type)
 	assert.Equal(t, jevGibberishQuestion, gib.Instructions)
 	assert.Equal(t, map[string]string{"true": jevGibberishCriteriaTrue, "false": jevGibberishCriteriaFalse}, gib.Criteria)
+}
+
+func TestJevChecker_GibberishNotAskedWhenFlagOff(t *testing.T) {
+	var gotBody []byte
+	clientMock := &mocks.HTTPClientMock{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			gotBody, _ = io.ReadAll(req.Body)
+			return jevRespBody(t, `{"answers":{"spam":{"type":"noul","noul":0.1}}}`), nil
+		},
+	}
+	cfg := validJevConfig()
+	cfg.GibberishThreshold = 0.5
+	checker, err := newJevChecker(clientMock, cfg)
+	require.NoError(t, err)
+
+	spam, resp := checker.check(context.Background(), "dsfg dfgh ewrt", nil, false)
+	require.NoError(t, resp.Error, "a missing gibberish answer is expected when the question was not asked")
+	assert.False(t, spam)
+	var sent jevRequest
+	require.NoError(t, json.Unmarshal(gotBody, &sent))
+	assert.Len(t, sent.Questions, 1)
+	assert.Contains(t, sent.Questions, jevQuestionID)
 }
 
 func TestJevChecker_GibberishVerdict(t *testing.T) {
@@ -179,7 +201,7 @@ func TestJevChecker_GibberishVerdict(t *testing.T) {
 			cfg.GibberishThreshold = 0.5
 			checker, err := newJevChecker(clientMock, cfg)
 			require.NoError(t, err)
-			spam, resp := checker.check(context.Background(), "msg", nil)
+			spam, resp := checker.check(context.Background(), "msg", nil, true)
 			require.NoError(t, resp.Error)
 			assert.Equal(t, tt.wantSpam, spam)
 			assert.Contains(t, resp.Details, tt.wantDetails)
@@ -196,11 +218,11 @@ func TestJevChecker_GibberishAnswerErrors(t *testing.T) {
 	}{
 		{"absent gibberish answer", `{"answers":{"spam":{"type":"noul","noul":0.1}}}`, `no "gibberish" answer`},
 		{"wrong gibberish answer type", `{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"choice"}}}`,
-			"unexpected answer type"},
+			`"gibberish" answer has type "choice"`},
 		{"null gibberish noul", `{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"noul","noul":null}}}`,
-			"missing noul value"},
+			`missing "gibberish" noul value`},
 		{"gibberish noul out of range", `{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"noul","noul":1.2}}}`,
-			"out of range"},
+			`"gibberish" noul 1.2 out of range`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -211,7 +233,7 @@ func TestJevChecker_GibberishAnswerErrors(t *testing.T) {
 			cfg.GibberishThreshold = 0.5
 			checker, err := newJevChecker(clientMock, cfg)
 			require.NoError(t, err)
-			spam, resp := checker.check(context.Background(), "msg", nil)
+			spam, resp := checker.check(context.Background(), "msg", nil, true)
 			assert.False(t, spam)
 			require.Error(t, resp.Error)
 			assert.Contains(t, resp.Error.Error(), tt.errMsg)
@@ -238,7 +260,7 @@ func TestJevChecker_ThresholdBoundary(t *testing.T) {
 			}
 			checker, err := newJevChecker(clientMock, validJevConfig())
 			require.NoError(t, err)
-			spam, _ := checker.check(context.Background(), "msg", nil)
+			spam, _ := checker.check(context.Background(), "msg", nil, true)
 			assert.Equal(t, tt.spam, spam)
 		})
 	}
@@ -277,11 +299,11 @@ func TestJevChecker_ErrorPaths(t *testing.T) {
 			`{"detail":"bad question"}`, "422"},
 		{"absent spam answer", http.StatusOK, `{"answers":{}}`, `no "spam" answer`},
 		{"wrong answer type", http.StatusOK,
-			`{"answers":{"spam":{"type":"choice","noul":0.5}}}`, "unexpected answer type"},
+			`{"answers":{"spam":{"type":"choice","noul":0.5}}}`, `"spam" answer has type "choice"`},
 		{"noul above one", http.StatusOK,
-			`{"answers":{"spam":{"type":"noul","noul":1.4}}}`, "out of range"},
+			`{"answers":{"spam":{"type":"noul","noul":1.4}}}`, `"spam" noul 1.4 out of range`},
 		{"noul below zero", http.StatusOK,
-			`{"answers":{"spam":{"type":"noul","noul":-0.1}}}`, "out of range"},
+			`{"answers":{"spam":{"type":"noul","noul":-0.1}}}`, `"spam" noul -0.1 out of range`},
 		{"malformed json", http.StatusOK, `{not json`, "can't unmarshal"},
 	}
 	for _, tt := range tests {
@@ -293,7 +315,7 @@ func TestJevChecker_ErrorPaths(t *testing.T) {
 			}
 			checker, err := newJevChecker(clientMock, validJevConfig())
 			require.NoError(t, err)
-			_, resp := checker.check(context.Background(), "msg", nil)
+			_, resp := checker.check(context.Background(), "msg", nil, true)
 			require.Error(t, resp.Error)
 			assert.Contains(t, resp.Error.Error(), tt.errMsg)
 			assert.False(t, resp.Spam)
@@ -309,8 +331,8 @@ func TestJevChecker_MissingNullAndZeroNoulAreDistinct(t *testing.T) {
 		wantErr string
 		wantRun bool
 	}{
-		{"missing noul key", `{"answers":{"spam":{"type":"noul"}}}`, "missing noul value", false},
-		{"explicit null noul", `{"answers":{"spam":{"type":"noul","noul":null}}}`, "missing noul value", false},
+		{"missing noul key", `{"answers":{"spam":{"type":"noul"}}}`, `missing "spam" noul value`, false},
+		{"explicit null noul", `{"answers":{"spam":{"type":"noul","noul":null}}}`, `missing "spam" noul value`, false},
 		{"legitimate zero noul", `{"answers":{"spam":{"type":"noul","noul":0}}}`, "", true},
 	}
 	for _, tt := range tests {
@@ -320,7 +342,7 @@ func TestJevChecker_MissingNullAndZeroNoulAreDistinct(t *testing.T) {
 			}
 			checker, err := newJevChecker(clientMock, validJevConfig())
 			require.NoError(t, err)
-			spam, resp := checker.check(context.Background(), "msg", nil)
+			spam, resp := checker.check(context.Background(), "msg", nil, true)
 			assert.False(t, spam)
 			if !tt.wantRun {
 				require.Error(t, resp.Error)
@@ -355,7 +377,7 @@ func TestJevChecker_RetryConsumesAllAttempts(t *testing.T) {
 			cfg.RetryCount = 3
 			checker, err := newJevChecker(clientMock, cfg)
 			require.NoError(t, err)
-			_, resp := checker.check(context.Background(), "msg", nil)
+			_, resp := checker.check(context.Background(), "msg", nil, true)
 			require.Error(t, resp.Error)
 			assert.Equal(t, int32(3), calls.Load())
 		})
@@ -377,7 +399,7 @@ func TestJevChecker_CancelledContextStopsEarly(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, resp := checker.check(ctx, "msg", nil)
+	_, resp := checker.check(ctx, "msg", nil, true)
 	require.Error(t, resp.Error)
 	assert.Equal(t, int32(1), calls.Load(), "canceled context must not consume the remaining attempts")
 }
@@ -395,7 +417,7 @@ func TestJevChecker_RequestCarriesContext(t *testing.T) {
 	}
 	checker, err := newJevChecker(clientMock, validJevConfig())
 	require.NoError(t, err)
-	_, resp := checker.check(ctx, "msg", nil)
+	_, resp := checker.check(ctx, "msg", nil, true)
 	require.Error(t, resp.Error)
 	assert.ErrorIs(t, gotCtxErr, context.Canceled, "request must carry the caller's context")
 }
@@ -413,7 +435,7 @@ func TestJevChecker_TruncatesByRunes(t *testing.T) {
 	checker, err := newJevChecker(clientMock, cfg)
 	require.NoError(t, err)
 
-	_, resp := checker.check(context.Background(), "абвгдежзий", nil)
+	_, resp := checker.check(context.Background(), "абвгдежзий", nil, true)
 	require.NoError(t, resp.Error)
 
 	var sent jevRequest
@@ -423,7 +445,7 @@ func TestJevChecker_TruncatesByRunes(t *testing.T) {
 
 func TestJevChecker_NilClient(t *testing.T) {
 	checker := &jevChecker{params: validJevConfig()}
-	spam, resp := checker.check(context.Background(), "msg", nil)
+	spam, resp := checker.check(context.Background(), "msg", nil, true)
 	assert.False(t, spam)
 	assert.Equal(t, spamcheck.Response{}, resp)
 }
@@ -442,7 +464,7 @@ func TestJevChecker_MalformedAPIBase(t *testing.T) {
 	checker, err := newJevChecker(clientMock, cfg)
 	require.NoError(t, err)
 
-	spam, resp := checker.check(context.Background(), "msg", nil)
+	spam, resp := checker.check(context.Background(), "msg", nil, true)
 	assert.False(t, spam)
 	require.Error(t, resp.Error)
 	assert.Contains(t, resp.Error.Error(), "can't make request")
@@ -466,7 +488,7 @@ func TestJevChecker_ResponseBodyReadError(t *testing.T) {
 	checker, err := newJevChecker(clientMock, validJevConfig())
 	require.NoError(t, err)
 
-	spam, resp := checker.check(context.Background(), "msg", nil)
+	spam, resp := checker.check(context.Background(), "msg", nil, true)
 	assert.False(t, spam)
 	require.Error(t, resp.Error)
 	assert.Contains(t, resp.Error.Error(), "can't read response")
@@ -478,7 +500,7 @@ func TestJevChecker_TransportError(t *testing.T) {
 	}
 	checker, err := newJevChecker(clientMock, validJevConfig())
 	require.NoError(t, err)
-	_, resp := checker.check(context.Background(), "msg", nil)
+	_, resp := checker.check(context.Background(), "msg", nil, true)
 	require.Error(t, resp.Error)
 	assert.Contains(t, resp.Error.Error(), "dial failed")
 }
@@ -495,7 +517,7 @@ func TestJevChecker_HistoryReachesRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	hist := []spamcheck.Request{{UserName: "user1", Msg: "earlier message"}}
-	_, resp := checker.check(context.Background(), "current", hist)
+	_, resp := checker.check(context.Background(), "current", hist, true)
 	require.NoError(t, resp.Error)
 
 	var sent jevRequest
@@ -507,7 +529,7 @@ func TestJevChecker_HistoryReachesRequest(t *testing.T) {
 func TestJevChecker_BuildRequestNoTruncationWhenShort(t *testing.T) {
 	checker, err := newJevChecker(&mocks.HTTPClientMock{}, validJevConfig())
 	require.NoError(t, err)
-	got := checker.buildRequest("short")
+	got := checker.buildRequest("short", true)
 	assert.Equal(t, "short", got.State["message"])
 
 	body, err := json.Marshal(got)
