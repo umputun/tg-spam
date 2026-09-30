@@ -631,6 +631,26 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, got, "%s must persist after reload", tc.selector)
 	}
+
+	// the gibberish threshold is rejected together with jev history, so it round-trips in a second save
+	require.NoError(t, page.Locator("#jevHistorySize").Fill("0"))
+	require.NoError(t, page.Locator("#jevGibberishThreshold").Fill("0.55"))
+	require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+	assert.Eventually(t, func() bool {
+		text, e := page.Locator("#update-result").TextContent()
+		return e == nil && contains(text, "Configuration updated successfully")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	_, err = page.Goto(settingsURL + "/list_settings")
+	require.NoError(t, err)
+	require.NoError(t, page.Locator("#jev-tab").Click())
+	waitVisible(t, page.Locator("#jevGibberishThreshold"))
+	gotGibberish, err := page.Locator("#jevGibberishThreshold").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0.55", gotGibberish, "gibberish threshold must persist after reload")
+	gotHistory, err := page.Locator("#jevHistorySize").InputValue()
+	require.NoError(t, err)
+	assert.Equal(t, "0", gotHistory)
 }
 
 func TestSettings_ProhibitedLangsPersists(t *testing.T) {

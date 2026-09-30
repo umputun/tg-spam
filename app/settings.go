@@ -107,6 +107,7 @@ func optToSettings(opts options) *config.Settings {
 			RetryCount:         opts.Jev.RetryCount,
 			HistorySize:        opts.Jev.HistorySize,
 			CheckShortMessages: opts.Jev.CheckShortMessages,
+			GibberishThreshold: opts.Jev.GibberishThreshold,
 		},
 
 		LLM: config.LLMSettings{

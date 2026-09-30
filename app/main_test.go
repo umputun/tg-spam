@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"path/filepath"
@@ -1393,6 +1394,28 @@ func Test_makeDetectorJev(t *testing.T) {
 		assert.Equal(t, 5, res.JevHistorySize)
 	})
 
+	t.Run("gibberish threshold reaches the jev request", func(t *testing.T) {
+		var body []byte
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"noul","noul":0.9}}}`))
+		}))
+		defer ts.Close()
+
+		s := jevSettings()
+		s.Jev.Veto = false // in veto mode a ham base verdict never reaches jev
+		s.Jev.HistorySize = 0
+		s.Jev.APIBase = ts.URL
+		s.Jev.GibberishThreshold = 0.5
+		require.NoError(t, s.Validate())
+		res := makeDetector(s)
+		require.NotNil(t, res)
+
+		spam, _ := res.Check(spamcheck.Request{Msg: "dsfg dfgh ewrt xczv dsfh", UserID: "123"})
+		assert.True(t, spam)
+		assert.Contains(t, string(body), `"gibberish":{"type":"noul"`, "the threshold must reach JevConfig")
+	})
+
 	t.Run("apibase alone leaves jev disabled", func(t *testing.T) {
 		s := makeTestSettings()
 		s.Jev.APIBase = "https://proxy.example/v1"
@@ -1422,6 +1445,8 @@ func TestJevBadConfigRejectedBeforeStartup(t *testing.T) {
 		{"empty spam criteria", func(s *config.Settings) { s.Jev.CriteriaSpam = "" }},
 		{"empty ham criteria", func(s *config.Settings) { s.Jev.CriteriaHam = "" }},
 		{"negative max symbols", func(s *config.Settings) { s.Jev.MaxSymbolsRequest = -1 }},
+		{"gibberish threshold above one", func(s *config.Settings) { s.Jev.GibberishThreshold = 1.5 }},
+		{"NaN gibberish threshold", func(s *config.Settings) { s.Jev.GibberishThreshold = math.NaN() }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -424,7 +424,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				veto:               d.JevVeto,
 				historySize:        d.JevHistorySize,
 				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
-					return d.jevChecker.check(ctx, msg, history)
+					return d.jevChecker.check(ctx, msg, history, req.Quote == "")
 				},
 			},
 		}

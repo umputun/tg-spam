@@ -2343,6 +2343,7 @@ func TestUpdateSettingsFromForm_Jev(t *testing.T) {
 			"jevThreshold":          {"0.42"},
 			"jevMaxSymbolsRequest":  {"1234"},
 			"jevRetryCount":         {"3"},
+			"jevGibberishThreshold": {"0.55"},
 		}))
 
 		assert.True(t, settings.Jev.Veto)
@@ -2355,6 +2356,14 @@ func TestUpdateSettingsFromForm_Jev(t *testing.T) {
 		assert.InDelta(t, 0.42, settings.Jev.Threshold, 0.0001)
 		assert.Equal(t, 1234, settings.Jev.MaxSymbolsRequest)
 		assert.Equal(t, 3, settings.Jev.RetryCount)
+		assert.InDelta(t, 0.55, settings.Jev.GibberishThreshold, 0.0001)
+	})
+
+	t.Run("zero gibberish threshold turns the check off", func(t *testing.T) {
+		settings := &config.Settings{}
+		settings.Jev.GibberishThreshold = 0.5
+		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{"jevGibberishThreshold": {"0"}}))
+		assert.Zero(t, settings.Jev.GibberishThreshold)
 	})
 
 	t.Run("token is never read from the form", func(t *testing.T) {
@@ -2370,18 +2379,21 @@ func TestUpdateSettingsFromForm_Jev(t *testing.T) {
 		settings.Jev.MaxSymbolsRequest = 6000
 		settings.Jev.RetryCount = 2
 		settings.Jev.HistorySize = 5
+		settings.Jev.GibberishThreshold = 0.5
 
 		updateSettingsFromForm(settings, jevFormRequest(t, url.Values{
-			"jevThreshold":         {"not-a-number"},
-			"jevMaxSymbolsRequest": {"abc"},
-			"jevRetryCount":        {"x"},
-			"jevHistorySize":       {"y"},
+			"jevThreshold":          {"not-a-number"},
+			"jevMaxSymbolsRequest":  {"abc"},
+			"jevRetryCount":         {"x"},
+			"jevHistorySize":        {"y"},
+			"jevGibberishThreshold": {"z"},
 		}))
 
 		assert.InDelta(t, 0.3, settings.Jev.Threshold, 0.0001)
 		assert.Equal(t, 6000, settings.Jev.MaxSymbolsRequest)
 		assert.Equal(t, 2, settings.Jev.RetryCount)
 		assert.Equal(t, 5, settings.Jev.HistorySize)
+		assert.InDelta(t, 0.5, settings.Jev.GibberishThreshold, 0.0001)
 	})
 
 	t.Run("absent checkbox clears the flag", func(t *testing.T) {
@@ -2409,6 +2421,10 @@ func TestUpdateSettingsFromForm_JevInvalidValuesRejectedByValidate(t *testing.T)
 		{"emptied question", url.Values{"jevQuestion": {""}}, "question"},
 		{"emptied spam criteria", url.Values{"jevCriteriaSpam": {""}}, "criteria-spam"},
 		{"emptied ham criteria", url.Values{"jevCriteriaHam": {""}}, "criteria-ham"},
+		{"NaN gibberish threshold", url.Values{"jevGibberishThreshold": {"NaN"}}, "jev.gibberish-threshold"},
+		{"gibberish threshold above one", url.Values{"jevGibberishThreshold": {"1.5"}}, "[0, 1]"},
+		{"gibberish threshold with history", url.Values{"jevGibberishThreshold": {"0.5"}, "jevHistorySize": {"3"}},
+			"history-size"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
