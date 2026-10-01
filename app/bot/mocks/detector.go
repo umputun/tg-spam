@@ -26,8 +26,8 @@ import (
 //			CheckFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the Check method")
 //			},
-//			RecordReactionFunc: func(userID int64) spamcheck.Response {
-//				panic("mock out the RecordReaction method")
+//			CheckJoinFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
+//				panic("mock out the CheckJoin method")
 //			},
 //			GetLuaPluginNamesFunc: func() []string {
 //				panic("mock out the GetLuaPluginNames method")
@@ -40,6 +40,9 @@ import (
 //			},
 //			LoadStopWordsFunc: func(readers ...io.Reader) (tgspam.LoadResult, error) {
 //				panic("mock out the LoadStopWords method")
+//			},
+//			RecordReactionFunc: func(userID int64) spamcheck.Response {
+//				panic("mock out the RecordReaction method")
 //			},
 //			RemoveApprovedUserFunc: func(id string) error {
 //				panic("mock out the RemoveApprovedUser method")
@@ -72,8 +75,8 @@ type DetectorMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
-	// RecordReactionFunc mocks the RecordReaction method.
-	RecordReactionFunc func(userID int64) spamcheck.Response
+	// CheckJoinFunc mocks the CheckJoin method.
+	CheckJoinFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
 
 	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
 	GetLuaPluginNamesFunc func() []string
@@ -86,6 +89,9 @@ type DetectorMock struct {
 
 	// LoadStopWordsFunc mocks the LoadStopWords method.
 	LoadStopWordsFunc func(readers ...io.Reader) (tgspam.LoadResult, error)
+
+	// RecordReactionFunc mocks the RecordReaction method.
+	RecordReactionFunc func(userID int64) spamcheck.Response
 
 	// RemoveApprovedUserFunc mocks the RemoveApprovedUser method.
 	RemoveApprovedUserFunc func(id string) error
@@ -117,10 +123,10 @@ type DetectorMock struct {
 			// Request is the request argument value.
 			Request spamcheck.Request
 		}
-		// RecordReaction holds details about calls to the RecordReaction method.
-		RecordReaction []struct {
-			// UserID is the userID argument value.
-			UserID int64
+		// CheckJoin holds details about calls to the CheckJoin method.
+		CheckJoin []struct {
+			// Request is the request argument value.
+			Request spamcheck.Request
 		}
 		// GetLuaPluginNames holds details about calls to the GetLuaPluginNames method.
 		GetLuaPluginNames []struct {
@@ -143,6 +149,11 @@ type DetectorMock struct {
 		LoadStopWords []struct {
 			// Readers is the readers argument value.
 			Readers []io.Reader
+		}
+		// RecordReaction holds details about calls to the RecordReaction method.
+		RecordReaction []struct {
+			// UserID is the userID argument value.
+			UserID int64
 		}
 		// RemoveApprovedUser holds details about calls to the RemoveApprovedUser method.
 		RemoveApprovedUser []struct {
@@ -173,11 +184,12 @@ type DetectorMock struct {
 	lockAddApprovedUser    sync.RWMutex
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
-	lockRecordReaction     sync.RWMutex
+	lockCheckJoin          sync.RWMutex
 	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
 	lockLoadStopWords      sync.RWMutex
+	lockRecordReaction     sync.RWMutex
 	lockRemoveApprovedUser sync.RWMutex
 	lockRemoveHam          sync.RWMutex
 	lockRemoveSpam         sync.RWMutex
@@ -297,43 +309,43 @@ func (mock *DetectorMock) ResetCheckCalls() {
 	mock.lockCheck.Unlock()
 }
 
-// RecordReaction calls RecordReactionFunc.
-func (mock *DetectorMock) RecordReaction(userID int64) spamcheck.Response {
-	if mock.RecordReactionFunc == nil {
-		panic("DetectorMock.RecordReactionFunc: method is nil but Detector.RecordReaction was just called")
+// CheckJoin calls CheckJoinFunc.
+func (mock *DetectorMock) CheckJoin(request spamcheck.Request) (bool, []spamcheck.Response) {
+	if mock.CheckJoinFunc == nil {
+		panic("DetectorMock.CheckJoinFunc: method is nil but Detector.CheckJoin was just called")
 	}
 	callInfo := struct {
-		UserID int64
+		Request spamcheck.Request
 	}{
-		UserID: userID,
+		Request: request,
 	}
-	mock.lockRecordReaction.Lock()
-	mock.calls.RecordReaction = append(mock.calls.RecordReaction, callInfo)
-	mock.lockRecordReaction.Unlock()
-	return mock.RecordReactionFunc(userID)
+	mock.lockCheckJoin.Lock()
+	mock.calls.CheckJoin = append(mock.calls.CheckJoin, callInfo)
+	mock.lockCheckJoin.Unlock()
+	return mock.CheckJoinFunc(request)
 }
 
-// RecordReactionCalls gets all the calls that were made to RecordReaction.
+// CheckJoinCalls gets all the calls that were made to CheckJoin.
 // Check the length with:
 //
-//	len(mockedDetector.RecordReactionCalls())
-func (mock *DetectorMock) RecordReactionCalls() []struct {
-	UserID int64
+//	len(mockedDetector.CheckJoinCalls())
+func (mock *DetectorMock) CheckJoinCalls() []struct {
+	Request spamcheck.Request
 } {
 	var calls []struct {
-		UserID int64
+		Request spamcheck.Request
 	}
-	mock.lockRecordReaction.RLock()
-	calls = mock.calls.RecordReaction
-	mock.lockRecordReaction.RUnlock()
+	mock.lockCheckJoin.RLock()
+	calls = mock.calls.CheckJoin
+	mock.lockCheckJoin.RUnlock()
 	return calls
 }
 
-// ResetRecordReactionCalls reset all the calls that were made to RecordReaction.
-func (mock *DetectorMock) ResetRecordReactionCalls() {
-	mock.lockRecordReaction.Lock()
-	mock.calls.RecordReaction = nil
-	mock.lockRecordReaction.Unlock()
+// ResetCheckJoinCalls reset all the calls that were made to CheckJoin.
+func (mock *DetectorMock) ResetCheckJoinCalls() {
+	mock.lockCheckJoin.Lock()
+	mock.calls.CheckJoin = nil
+	mock.lockCheckJoin.Unlock()
 }
 
 // GetLuaPluginNames calls GetLuaPluginNamesFunc.
@@ -493,6 +505,45 @@ func (mock *DetectorMock) ResetLoadStopWordsCalls() {
 	mock.lockLoadStopWords.Lock()
 	mock.calls.LoadStopWords = nil
 	mock.lockLoadStopWords.Unlock()
+}
+
+// RecordReaction calls RecordReactionFunc.
+func (mock *DetectorMock) RecordReaction(userID int64) spamcheck.Response {
+	if mock.RecordReactionFunc == nil {
+		panic("DetectorMock.RecordReactionFunc: method is nil but Detector.RecordReaction was just called")
+	}
+	callInfo := struct {
+		UserID int64
+	}{
+		UserID: userID,
+	}
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = append(mock.calls.RecordReaction, callInfo)
+	mock.lockRecordReaction.Unlock()
+	return mock.RecordReactionFunc(userID)
+}
+
+// RecordReactionCalls gets all the calls that were made to RecordReaction.
+// Check the length with:
+//
+//	len(mockedDetector.RecordReactionCalls())
+func (mock *DetectorMock) RecordReactionCalls() []struct {
+	UserID int64
+} {
+	var calls []struct {
+		UserID int64
+	}
+	mock.lockRecordReaction.RLock()
+	calls = mock.calls.RecordReaction
+	mock.lockRecordReaction.RUnlock()
+	return calls
+}
+
+// ResetRecordReactionCalls reset all the calls that were made to RecordReaction.
+func (mock *DetectorMock) ResetRecordReactionCalls() {
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
 }
 
 // RemoveApprovedUser calls RemoveApprovedUserFunc.
@@ -704,9 +755,9 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.calls.Check = nil
 	mock.lockCheck.Unlock()
 
-	mock.lockRecordReaction.Lock()
-	mock.calls.RecordReaction = nil
-	mock.lockRecordReaction.Unlock()
+	mock.lockCheckJoin.Lock()
+	mock.calls.CheckJoin = nil
+	mock.lockCheckJoin.Unlock()
 
 	mock.lockGetLuaPluginNames.Lock()
 	mock.calls.GetLuaPluginNames = nil
@@ -723,6 +774,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockLoadStopWords.Lock()
 	mock.calls.LoadStopWords = nil
 	mock.lockLoadStopWords.Unlock()
+
+	mock.lockRecordReaction.Lock()
+	mock.calls.RecordReaction = nil
+	mock.lockRecordReaction.Unlock()
 
 	mock.lockRemoveApprovedUser.Lock()
 	mock.calls.RemoveApprovedUser = nil

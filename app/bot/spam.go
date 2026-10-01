@@ -41,6 +41,7 @@ type SpamConfig struct {
 // Detector is a spam detector interface
 type Detector interface {
 	Check(request spamcheck.Request) (spam bool, cr []spamcheck.Response)
+	CheckJoin(request spamcheck.Request) (spam bool, cr []spamcheck.Response)
 	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (tgspam.LoadResult, error)
 	LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error)
 	UpdateSpam(msg string) error
@@ -224,6 +225,21 @@ func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
 		}
 	}
 	return Response{}
+}
+
+// OnJoin checks a new chat member with the Lua join checks. Approved users are skipped, so a user
+// unbanned by an admin is not banned again on rejoin.
+func (s *SpamFilter) OnJoin(user User) Response {
+	if s.IsApprovedUser(user.ID) {
+		return Response{}
+	}
+	spam, results := s.CheckJoin(spamcheck.Request{UserID: strconv.FormatInt(user.ID, 10), UserName: user.Username,
+		FirstName: user.FirstName, LastName: user.LastName, IsPremium: user.IsPremium})
+	if !spam {
+		return Response{CheckResults: results}
+	}
+	log.Printf("[INFO] user %s detected as spammer on join", user)
+	return Response{BanInterval: PermanentBanDuration, User: user, CheckResults: results}
 }
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage

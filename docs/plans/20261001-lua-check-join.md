@@ -60,6 +60,8 @@ The join path follows the existing reaction-ban path layer by layer: `procReacti
 - **e2e tests**: none. The change has no settings and no web UI, so `e2e-ui` is not touched
 - commands: `go test -race ./...`, `golangci-lint run`. Regenerate mocks with `go generate ./app/bot/...
   ./app/events/...`; never edit mock files by hand
+- ⚠️ the `moq` in `~/go/bin` fails under Go 1.27 (`package "fmt" without types`, old `x/tools`). Build moq
+  with the latest `golang.org/x/tools` in a scratch module and run it with the `go:generate` arguments
 
 ## Progress Tracking
 
@@ -294,16 +296,16 @@ takes `d.lock.RLock()`.
 - Modify: `app/bot/mocks/detector.go` (regenerated)
 - Modify: `app/bot/spam_test.go`
 
-- [ ] add `CheckJoin` to the `Detector` interface and run `go generate ./app/bot/...`
-- [ ] write failing table test `TestSpamFilterOnJoin` (shaped like `TestSpamFilterOnReaction`):
+- [x] add `CheckJoin` to the `Detector` interface and run `go generate ./app/bot/...`
+- [x] write failing table test `TestSpamFilterOnJoin` (shaped like `TestSpamFilterOnReaction`):
   - approved user: empty response, `CheckJoinCalls()` empty
   - not spam: zero `BanInterval`
   - spam: `PermanentBanDuration`, `User` equals the input, check results passed through
   - the request built for `CheckJoin` carries `UserID` as a decimal string, `UserName`, `FirstName`,
     `LastName`, `IsPremium`, and an empty `Msg`
-- [ ] run `go test -race ./app/bot/...` - new test fails
-- [ ] implement `OnJoin`
-- [ ] run `go test -race ./app/bot/...` - must pass before task 4
+- [x] run `go test -race ./app/bot/...` - new test fails
+- [x] implement `OnJoin`
+- [x] run `go test -race ./app/bot/...` - must pass before task 4
 
 ### Task 4: Shared no-message ban notification with cause and soft-ban wording
 
