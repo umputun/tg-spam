@@ -242,7 +242,7 @@ takes `d.lock.RLock()`.
 - Modify: `lib/tgspam/plugin/checker.go`
 - Modify: `lib/tgspam/plugin/checker_test.go`
 
-- [ ] write failing tests in `checker_test.go`:
+- [x] write failing tests in `checker_test.go`:
   - a script with `check_join` gives a `JoinCheck` that returns `(Response{Name: "lua-x", Spam, Details}, true)`
   - the request has the five user fields; `req.msg` and `req.meta` are `nil` in Lua
   - a third return value is ignored (`return true, "d", true` gives spam with details `d`)
@@ -258,11 +258,11 @@ takes `d.lock.RLock()`.
   - a Lua runtime error gives `Error` set, `Spam` false, ok `true`
   - `GetJoinCheck("missing")` returns an error; `GetAllJoinChecks` has one entry per loaded script
   - `check` keeps working unchanged for a script that also defines `check_join`
-- [ ] run `go test -race ./lib/tgspam/plugin/...` - new tests fail
-- [ ] add `joinCheckers` map (init in `NewChecker`), `JoinCheck` type, the `check_join` reset and
+- [x] run `go test -race ./lib/tgspam/plugin/...` - new tests fail
+- [x] add `joinCheckers` map (init in `NewChecker`), `JoinCheck` type, the `check_join` reset and
   registration in `LoadScript`, `createJoinCheck`, `GetJoinCheck`, `GetAllJoinChecks`
-- [ ] update the package doc comment to describe the optional `check_join` function
-- [ ] run `go test -race ./lib/tgspam/plugin/...` - must pass before task 2
+- [x] update the package doc comment to describe the optional `check_join` function
+- [x] run `go test -race ./lib/tgspam/plugin/...` - must pass before task 2
 
 ### Task 2: Detector.CheckJoin
 
