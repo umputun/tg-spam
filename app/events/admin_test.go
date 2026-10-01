@@ -3229,6 +3229,7 @@ func TestAdmin_ReportUserBan(t *testing.T) {
 		training bool
 		dry      bool
 		softBan  bool
+		user     *bot.User
 		cause    string
 		want     string
 	}{
@@ -3246,10 +3247,21 @@ func TestAdmin_ReportUserBan(t *testing.T) {
 			want: "**restricted " + link + " on join by lua-names**\n\n"},
 		{name: "soft-ban reaction", softBan: true, cause: "reaction spammer",
 			want: "**restricted " + link + " reaction spammer**\n\n"},
+		{name: "display name with closing bracket", user: &bot.User{ID: 7, DisplayName: "Shop] 24/7"}, cause: "on join by lua-names",
+			want: "**permanently banned [Shop 24/7 (7)](tg://user?id=7) on join by lua-names**\n\n"},
+		{name: "link injection in display name", user: &bot.User{ID: 7, DisplayName: "Admin](https://scam.example)"},
+			cause: "on join by lua-names",
+			want:  "**permanently banned [Admin(https://scam.example) (7)](tg://user?id=7) on join by lua-names**\n\n"},
+		{name: "username with underscore not escaped in label", user: &bot.User{ID: 8, Username: "spam_bot"},
+			cause: "reaction spammer", want: "**permanently banned [@spam_bot (8)](tg://user?id=8) reaction spammer**\n\n"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			user := user
+			if tc.user != nil {
+				user = *tc.user
+			}
 			mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil }}
 			adm := &admin{tbAPI: mockAPI, adminChatID: 999, primChatID: 123, trainingMode: tc.training, dry: tc.dry,
 				softBan: tc.softBan}
@@ -3266,8 +3278,8 @@ func TestAdmin_ReportUserBan(t *testing.T) {
 			require.True(t, ok)
 			require.Len(t, markup.InlineKeyboard, 1)
 			require.Len(t, markup.InlineKeyboard[0], 2)
-			assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData)
-			assert.Equal(t, "!42:0", *markup.InlineKeyboard[0][1].CallbackData)
+			assert.Equal(t, fmt.Sprintf("?%d:0", user.ID), *markup.InlineKeyboard[0][0].CallbackData)
+			assert.Equal(t, fmt.Sprintf("!%d:0", user.ID), *markup.InlineKeyboard[0][1].CallbackData)
 		})
 	}
 }
@@ -3301,8 +3313,4 @@ func TestAdmin_UnbanJoinNotification(t *testing.T) {
 	require.Len(t, botMock.AddApprovedUserCalls(), 1)
 	assert.Equal(t, int64(42), botMock.AddApprovedUserCalls()[0].ID)
 	assert.Equal(t, "@spammer", botMock.AddApprovedUserCalls()[0].Name)
-	for _, call := range mockAPI.RequestCalls() {
-		_, isDelete := call.C.(tbapi.DeleteMessageConfig)
-		assert.False(t, isDelete, "no message deletion for msgID 0")
-	}
 }

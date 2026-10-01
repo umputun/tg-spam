@@ -94,7 +94,7 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 // there is no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
 // the body stays empty, so getCleanMessage finds no text and unban adds nothing to ham samples.
 func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
-	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
+	link := fmt.Sprintf("[%s](tg://user?id=%d)", markdownV1LinkLabel(banUserStr), user.ID)
 	cause = escapeMarkDownV1Text(cause)
 	// keep the user link immediately after "permanently banned" or "restricted" so extractUsername parses it
 	// cleanly on unban; telegram strips markdown from callback text, so any words placed between the two
