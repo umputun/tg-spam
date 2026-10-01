@@ -315,7 +315,7 @@ takes `d.lock.RLock()`.
 - Modify: `app/events/listener.go` (reaction call site)
 - Modify: `app/events/listener_test.go` (reaction notification test)
 
-- [ ] write failing tests in `admin_test.go`:
+- [x] write failing tests in `admin_test.go`:
   - `ReportUserBan` first line for normal, training, dry and soft-ban modes, for both causes
   - the cause is MarkdownV1-escaped (a plugin name with `_`)
   - the link sits right after `permanently banned` / `restricted`
@@ -326,13 +326,13 @@ takes `d.lock.RLock()`.
     returns the name from the first line
   - `callbackUnbanConfirmed` on a rendered join notification calls no `UpdateHam` and adds the approved
     user with the extracted name
-- [ ] run `go test -race ./app/events/...` - new tests fail
-- [ ] rename `ReportReactionBan` to `ReportUserBan(banUserStr string, user bot.User, cause string)`, add
+- [x] run `go test -race ./app/events/...` - new tests fail
+- [x] rename `ReportReactionBan` to `ReportUserBan(banUserStr string, user bot.User, cause string)`, add
   the soft-ban case after training and dry, escape the cause
-- [ ] extend the plain pattern in `extractUsername` to `(?:permanently banned|restricted) (.+?) \(-?\d+\)`
-- [ ] update `procReaction` to call `ReportUserBan(banUserStr, resp.User, "reaction spammer")`; keep the
+- [x] extend the plain pattern in `extractUsername` to `(?:permanently banned|restricted) (.+?) \(-?\d+\)`
+- [x] update `procReaction` to call `ReportUserBan(banUserStr, resp.User, "reaction spammer")`; keep the
   existing reaction notification test passing (text unchanged in normal mode)
-- [ ] run `go test -race ./app/events/...` - must pass before task 5
+- [x] run `go test -race ./app/events/...` - must pass before task 5
 
 ### Task 5: Join check in the listener
 

@@ -183,6 +183,10 @@ func TestAdmin_extractUsername(t *testing.T) {
 		{name: "reaction rendered", banMessage: "permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
 		{name: "reaction rendered dry", banMessage: "[dry run] would have permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
 		{name: "reaction rendered training", banMessage: "[training] would have permanently banned @spammer (42) reaction spammer", expectedResult: "@spammer"},
+		{name: "join rendered soft-ban", banMessage: "restricted @spammer (42) on join by lua-names", expectedResult: "@spammer"},
+		{name: "join rendered", banMessage: "permanently banned Green Shop (42) on join by lua-names", expectedResult: "Green Shop"},
+		{name: "ban with restricted in body", banMessage: "permanently banned @spammer (42)\n\nrestricted foo (123) text",
+			expectedResult: "@spammer"},
 		{name: "invalid format", banMessage: "permanently banned John_Doe some message text", expectError: true},
 	}
 
@@ -3214,5 +3218,91 @@ func TestAdmin_channelDisplayName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, adm.channelDisplayName(tt.chat))
 		})
+	}
+}
+
+func TestAdmin_ReportUserBan(t *testing.T) {
+	user := bot.User{ID: 42, Username: "spammer"}
+	link := "[@spammer (42)](tg://user?id=42)"
+	tests := []struct {
+		name     string
+		training bool
+		dry      bool
+		softBan  bool
+		cause    string
+		want     string
+	}{
+		{name: "reaction", cause: "reaction spammer",
+			want: "**permanently banned " + link + " reaction spammer**\n\n"},
+		{name: "join", cause: "on join by lua-names, lua-premium",
+			want: "**permanently banned " + link + " on join by lua-names, lua-premium**\n\n"},
+		{name: "join escapes cause", cause: "on join by lua-bad_names",
+			want: "**permanently banned " + link + " on join by lua-bad\\_names**\n\n"},
+		{name: "training", training: true, softBan: true, cause: "on join by lua-names",
+			want: "**[training] would have permanently banned " + link + " on join by lua-names**\n\n"},
+		{name: "dry", dry: true, softBan: true, cause: "reaction spammer",
+			want: "**[dry run] would have permanently banned " + link + " reaction spammer**\n\n"},
+		{name: "soft-ban join", softBan: true, cause: "on join by lua-names",
+			want: "**restricted " + link + " on join by lua-names**\n\n"},
+		{name: "soft-ban reaction", softBan: true, cause: "reaction spammer",
+			want: "**restricted " + link + " reaction spammer**\n\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil }}
+			adm := &admin{tbAPI: mockAPI, adminChatID: 999, primChatID: 123, trainingMode: tc.training, dry: tc.dry,
+				softBan: tc.softBan}
+
+			adm.ReportUserBan(user.String(), user, tc.cause)
+
+			require.Len(t, mockAPI.SendCalls(), 1)
+			sent, ok := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+			require.True(t, ok)
+			assert.Equal(t, int64(999), sent.ChatID)
+			assert.Equal(t, tc.want, sent.Text)
+
+			markup, ok := sent.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+			require.True(t, ok)
+			require.Len(t, markup.InlineKeyboard, 1)
+			require.Len(t, markup.InlineKeyboard[0], 2)
+			assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData)
+			assert.Equal(t, "!42:0", *markup.InlineKeyboard[0][1].CallbackData)
+		})
+	}
+}
+
+func TestAdmin_UnbanJoinNotification(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{
+		SendFunc:    func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+		RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) { return &tbapi.APIResponse{Ok: true}, nil },
+	}
+	botMock := &mocks.BotMock{
+		UpdateHamFunc:       func(msg string) error { return nil },
+		AddApprovedUserFunc: func(id int64, name string) error { return nil },
+	}
+	locatorMock := &mocks.LocatorMock{
+		SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) { return storage.SpamData{}, false },
+	}
+	adm := &admin{tbAPI: mockAPI, bot: botMock, locator: locatorMock, primChatID: 123, adminChatID: 456, softBan: true}
+
+	// rendered (markdown-stripped) soft-ban join notification as telegram returns it on callback
+	query := &tbapi.CallbackQuery{
+		ID:   "cb",
+		Data: "42:0",
+		Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 456},
+			Text: "restricted @spammer (42) on join by lua-names", From: &tbapi.User{UserName: "bot"}},
+		From: &tbapi.User{UserName: "admin", ID: 111},
+	}
+
+	require.NoError(t, adm.callbackUnbanConfirmed(query))
+
+	assert.Empty(t, botMock.UpdateHamCalls(), "join notification text must not become a ham sample")
+	require.Len(t, botMock.AddApprovedUserCalls(), 1)
+	assert.Equal(t, int64(42), botMock.AddApprovedUserCalls()[0].ID)
+	assert.Equal(t, "@spammer", botMock.AddApprovedUserCalls()[0].Name)
+	for _, call := range mockAPI.RequestCalls() {
+		_, isDelete := call.C.(tbapi.DeleteMessageConfig)
+		assert.False(t, isDelete, "no message deletion for msgID 0")
 	}
 }

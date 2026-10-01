@@ -89,21 +89,27 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
-// ReportReactionBan sends a reaction-spammer ban notification to admin chat with the same unban/info buttons as ReportBan.
-// reactions have no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
-func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
+// ReportUserBan sends a ban notification for a user banned without a message (reaction spam, join check),
+// with the same unban/info buttons as ReportBan. cause follows the user link on the first line.
+// there is no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
+// the body stays empty, so getCleanMessage finds no text and unban adds nothing to ham samples.
+func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
 	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
-	// keep the user link immediately after "permanently banned" so extractUsername parses it cleanly on unban;
-	// telegram strips markdown from callback text, so any words placed between the two get captured as the name
-	text := fmt.Sprintf("**permanently banned %s reaction spammer**\n\n", link)
+	cause = escapeMarkDownV1Text(cause)
+	// keep the user link immediately after "permanently banned" or "restricted" so extractUsername parses it
+	// cleanly on unban; telegram strips markdown from callback text, so any words placed between the two
+	// get captured as the name
+	text := fmt.Sprintf("**permanently banned %s %s**\n\n", link, cause)
 	switch {
 	case a.trainingMode:
-		text = fmt.Sprintf("**[training] would have permanently banned %s reaction spammer**\n\n", link)
+		text = fmt.Sprintf("**[training] would have permanently banned %s %s**\n\n", link, cause)
 	case a.dry:
-		text = fmt.Sprintf("**[dry run] would have permanently banned %s reaction spammer**\n\n", link)
+		text = fmt.Sprintf("**[dry run] would have permanently banned %s %s**\n\n", link, cause)
+	case a.softBan:
+		text = fmt.Sprintf("**restricted %s %s**\n\n", link, cause)
 	}
 	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
-		log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+		log.Printf("[WARN] failed to send user ban notification: %v", err)
 	}
 }
 
@@ -1216,9 +1222,10 @@ func (a *admin) extractUsername(text string) (string, error) {
 		return matches[1], nil
 	}
 
-	// regex for plain channel format: permanently banned channelname (-100999888)
+	// regex for plain format: permanently banned channelname (-100999888), also the rendered
+	// "restricted @user (123)" line of a soft-ban notification.
 	// uses (.+?) to handle multi-word channel titles like "Spam News Channel"
-	plainChannelRegex := regexp.MustCompile(`permanently banned (.+?) \(-?\d+\)`)
+	plainChannelRegex := regexp.MustCompile(`(?:permanently banned|restricted) (.+?) \(-?\d+\)`)
 	if matches := plainChannelRegex.FindStringSubmatch(text); len(matches) > 1 {
 		return matches[1], nil
 	}

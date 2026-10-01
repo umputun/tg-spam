@@ -870,7 +870,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
 	}
 	if l.adminChatID != 0 && resp.User.ID != 0 {
-		l.adminHandler.ReportReactionBan(banUserStr, resp.User)
+		l.adminHandler.ReportUserBan(banUserStr, resp.User, "reaction spammer")
 	}
 	return nil
 }
