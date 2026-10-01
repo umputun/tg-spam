@@ -41,6 +41,7 @@ type SpamConfig struct {
 // Detector is a spam detector interface
 type Detector interface {
 	Check(request spamcheck.Request) (spam bool, cr []spamcheck.Response)
+	CheckJoin(request spamcheck.Request) (spam bool, cr []spamcheck.Response)
 	LoadSamples(exclReader io.Reader, spamReaders, hamReaders []io.Reader) (tgspam.LoadResult, error)
 	LoadStopWords(readers ...io.Reader) (tgspam.LoadResult, error)
 	UpdateSpam(msg string) error
@@ -224,6 +225,32 @@ func (s *SpamFilter) OnReaction(userID int64, userName string) Response {
 		}
 	}
 	return Response{}
+}
+
+// OnJoin checks a new chat member with the Lua join checks. Approved users are skipped, so a user
+// unbanned by an admin is not banned again on rejoin.
+func (s *SpamFilter) OnJoin(user User) Response {
+	if s.IsApprovedUser(user.ID) {
+		return Response{}
+	}
+	spam, results := s.CheckJoin(spamcheck.Request{UserID: strconv.FormatInt(user.ID, 10), UserName: user.Username,
+		FirstName: user.FirstName, LastName: user.LastName, IsPremium: user.IsPremium})
+	crs := make([]string, 0, len(results))
+	for _, cr := range results {
+		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
+		if cr.Error != nil {
+			log.Printf("[WARN] join check %s failed for user %d: %v", cr.Name, user.ID, cr.Error)
+		}
+	}
+	checkResultStr := strings.Join(crs, ", ")
+	if !spam {
+		if len(results) > 0 {
+			log.Printf("[DEBUG] user %s is not a spammer on join, %s", user, checkResultStr)
+		}
+		return Response{CheckResults: results}
+	}
+	log.Printf("[INFO] user %s detected as spammer on join: %s", user, checkResultStr)
+	return Response{BanInterval: PermanentBanDuration, User: user, CheckResults: results}
 }
 
 // AddApprovedUser adds users to the list of approved users, to both the detector and the storage

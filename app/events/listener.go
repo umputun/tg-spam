@@ -255,6 +255,10 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			}
 
 			if update.Message.NewChatMembers != nil {
+				// the join check runs first, so it works whatever the join message cleanup does
+				if err := l.procJoin(ctx, update.Message); err != nil {
+					log.Printf("[WARN] %v", err)
+				}
 				// handle join messages with mutually exclusive logic to prevent double-deletion:
 				// - if DeleteJoinMessages=true: delete immediately, don't store in locator
 				// - if DeleteJoinMessages=false: store in locator for potential later deletion via SuppressJoinMessage
@@ -577,6 +581,68 @@ func (l *TelegramListener) procUserReply(ctx context.Context, update tbapi.Updat
 	return false
 }
 
+// procJoin runs the Lua join checks for every new member of the monitored group and bans the flagged ones.
+// it checks the members, not the sender of the service message, so a member added by someone else is
+// checked too. the bot itself and superusers are skipped; approved users are skipped by Bot.OnJoin.
+func (l *TelegramListener) procJoin(ctx context.Context, msg *tbapi.Message) error {
+	if msg.Chat.ID != l.chatID {
+		return nil
+	}
+
+	errs := new(multierror.Error)
+	for _, member := range msg.NewChatMembers {
+		if l.BotUsername != "" && strings.EqualFold(member.UserName, l.BotUsername) {
+			continue
+		}
+		if l.SuperUsers.IsSuper(member.UserName, member.ID) {
+			continue
+		}
+
+		user := bot.User{ID: member.ID, Username: member.UserName, FirstName: strings.TrimSpace(member.FirstName),
+			LastName: strings.TrimSpace(member.LastName), IsPremium: member.IsPremium}
+		user.DisplayName = strings.TrimSpace(user.FirstName + " " + user.LastName)
+
+		resp := l.Bot.OnJoin(user)
+		if resp.BanInterval <= 0 {
+			continue
+		}
+
+		if err := l.Locator.AddSpam(ctx, resp.User.ID, resp.CheckResults); err != nil {
+			log.Printf("[WARN] failed to add join spam to locator: %v", err)
+		}
+		l.SpamLogger.Save(&bot.Message{From: resp.User, Text: "[join spam]"}, &resp)
+
+		banUserStr := resp.User.String()
+		banReq := banRequest{
+			duration: resp.BanInterval, userID: resp.User.ID, userName: banUserStr,
+			chatID: l.chatID, dry: l.Dry, training: l.TrainingMode, tbAPI: l.TbAPI, restrict: l.SoftBanMode,
+		}
+		if err := banUserOrChannel(banReq); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban join spammer %s: %w", banUserStr, err))
+			continue
+		}
+		if l.adminChatID != 0 && resp.User.ID != 0 {
+			l.adminHandler.ReportUserBan(banUserStr, resp.User, l.joinBanCause(resp.CheckResults))
+		}
+	}
+	if err := errs.ErrorOrNil(); err != nil {
+		return fmt.Errorf("failed to process join check: %w", err)
+	}
+	return nil
+}
+
+// joinBanCause names the plugins that flagged a member on join, sorted for a stable notification text
+func (l *TelegramListener) joinBanCause(results []spamcheck.Response) string {
+	names := make([]string, 0, len(results))
+	for _, r := range results {
+		if r.Spam && r.Error == nil {
+			names = append(names, r.Name)
+		}
+	}
+	slices.Sort(names)
+	return "on join by " + strings.Join(names, ", ")
+}
+
 // procNewChatMemberMessage saves new chat member message to locator. It is used to delete the message if the user kicked out
 func (l *TelegramListener) procNewChatMemberMessage(update tbapi.Update) error {
 	fromChat := update.Message.Chat.ID
@@ -870,7 +936,7 @@ func (l *TelegramListener) procReaction(ctx context.Context, r *tbapi.MessageRea
 		return fmt.Errorf("failed to ban reaction spammer %s: %w", banUserStr, err)
 	}
 	if l.adminChatID != 0 && resp.User.ID != 0 {
-		l.adminHandler.ReportReactionBan(banUserStr, resp.User)
+		l.adminHandler.ReportUserBan(banUserStr, resp.User, "reaction spammer")
 	}
 	return nil
 }

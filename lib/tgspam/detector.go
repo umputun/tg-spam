@@ -45,6 +45,7 @@ type Detector struct {
 	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.ResultCheck // separate field for Lua plugin checks
+	luaJoinChecks     []plugin.JoinCheck   // optional Lua check_join functions, run by CheckJoin
 	tokenizedSpam     []map[string]int
 	approvedUsers     map[string]approved.UserInfo
 	stopWords         []string
@@ -202,6 +203,11 @@ type LuaPluginEngine interface {
 type luaResultEngine interface {
 	GetResultCheck(name string) (plugin.ResultCheck, error)
 	GetAllResultChecks() map[string]plugin.ResultCheck
+}
+
+type luaJoinEngine interface {
+	GetJoinCheck(name string) (plugin.JoinCheck, error)
+	GetAllJoinChecks() map[string]plugin.JoinCheck
 }
 
 // LoadResult is a result of loading samples.
@@ -601,6 +607,7 @@ func (d *Detector) Reset() {
 		d.luaEngine.Close()
 		d.luaEngine = nil
 		d.luaChecks = nil
+		d.luaJoinChecks = nil
 	}
 }
 
@@ -672,6 +679,23 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 				d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
 					return plugin.Result{Response: check(req)}
 				})
+			}
+		}
+	}
+
+	// register join checks from the same plugins, if the engine supports them
+	if joinEngine, ok := engine.(luaJoinEngine); ok {
+		if len(d.LuaPlugins.EnabledPlugins) > 0 {
+			for _, name := range d.LuaPlugins.EnabledPlugins {
+				joinCheck, err := joinEngine.GetJoinCheck(name)
+				if err != nil {
+					return fmt.Errorf("failed to get Lua join check %q: %w", name, err)
+				}
+				d.luaJoinChecks = append(d.luaJoinChecks, joinCheck)
+			}
+		} else {
+			for _, joinCheck := range joinEngine.GetAllJoinChecks() {
+				d.luaJoinChecks = append(d.luaJoinChecks, joinCheck)
 			}
 		}
 	}
@@ -848,6 +872,26 @@ func (d *Detector) GetLuaPluginNames() []string {
 	// sort the result for consistent output
 	sort.Strings(result)
 	return result
+}
+
+// CheckJoin runs the Lua check_join functions for a new chat member. It is spam when at least one
+// plugin reports spam without an error. Plugins without check_join give no response. It does not
+// touch approved users, history or the LLM checks.
+func (d *Detector) CheckJoin(req spamcheck.Request) (spam bool, cr []spamcheck.Response) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	for _, joinCheck := range d.luaJoinChecks {
+		resp, ok := joinCheck(req)
+		if !ok {
+			continue
+		}
+		cr = append(cr, resp)
+		if resp.Spam && resp.Error == nil {
+			spam = true
+		}
+	}
+	return spam, cr
 }
 
 // LoadSamples loads spam samples from a reader and updates the classifier.

@@ -818,3 +818,171 @@ end
 	assert.Equal(t, "original plugin", luaResult.Details)
 	assert.False(t, luaResult.Spam)
 }
+
+type joinLuaPluginEngine struct {
+	*legacyLuaPluginEngine
+	joinErr error
+}
+
+func (e *joinLuaPluginEngine) GetJoinCheck(string) (plugin.JoinCheck, error) { return nil, e.joinErr }
+func (e *joinLuaPluginEngine) GetAllJoinChecks() map[string]plugin.JoinCheck { return nil }
+
+var _ luaJoinEngine = (*joinLuaPluginEngine)(nil)
+
+func TestDetector_CheckJoin(t *testing.T) {
+	writePlugins := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		plugins := map[string]string{
+			"names": `
+function check(req)
+	return true, "message check must not run on join"
+end
+function check_join(req)
+	if req.first_name == "Green" then
+		return true, "bad name"
+	end
+	return false, "name ok"
+end
+`,
+			"premium": `
+function check(req)
+	return true, "message check must not run on join"
+end
+function check_join(req)
+	return req.is_premium, "premium " .. tostring(req.is_premium)
+end
+`,
+			"broken": `
+function check(req)
+	return false, ""
+end
+function check_join(req)
+	return true, req.missing.value
+end
+`,
+			"plain": `
+function check(req)
+	return true, "no check_join here"
+end
+`,
+		}
+		for name, body := range plugins {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name+".lua"), []byte(body), 0o600))
+		}
+		return dir
+	}
+	newDetector := func(t *testing.T, enabled ...string) *Detector {
+		t.Helper()
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = writePlugins(t)
+		config.LuaPlugins.EnabledPlugins = enabled
+		d := NewDetector(config)
+		checker := plugin.NewChecker()
+		t.Cleanup(checker.Close)
+		require.NoError(t, d.WithLuaEngine(checker))
+		return d
+	}
+	names := func(cr []spamcheck.Response) []string {
+		res := make([]string, 0, len(cr))
+		for _, r := range cr {
+			res = append(res, r.Name)
+		}
+		sort.Strings(res)
+		return res
+	}
+
+	t.Run("enabled list calls only enabled plugins with check_join", func(t *testing.T) {
+		d := newDetector(t, "names", "plain")
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Green"})
+		assert.True(t, spam)
+		assert.Equal(t, []spamcheck.Response{{Name: "lua-names", Spam: true, Details: "bad name"}}, cr)
+
+		spam, cr = d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Anna"})
+		assert.False(t, spam)
+		assert.Equal(t, []string{"lua-names"}, names(cr))
+	})
+
+	t.Run("empty enabled list calls all plugins with check_join", func(t *testing.T) {
+		d := newDetector(t)
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Anna", IsPremium: true})
+		assert.True(t, spam)
+		assert.Equal(t, []string{"lua-broken", "lua-names", "lua-premium"}, names(cr))
+	})
+
+	t.Run("lua error is not spam", func(t *testing.T) {
+		d := newDetector(t, "broken")
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1"})
+		assert.False(t, spam)
+		require.Len(t, cr, 1)
+		require.Error(t, cr[0].Error)
+		assert.False(t, cr[0].Spam)
+	})
+
+	t.Run("no plugin with check_join", func(t *testing.T) {
+		d := newDetector(t, "plain")
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Green"})
+		assert.False(t, spam)
+		assert.Empty(t, cr)
+	})
+
+	t.Run("approved users unchanged", func(t *testing.T) {
+		d := newDetector(t, "names")
+		spam, _ := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Anna"})
+		assert.False(t, spam)
+		assert.Empty(t, d.ApprovedUsers())
+	})
+
+	t.Run("reset clears join checks", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = writePlugins(t)
+		config.LuaPlugins.EnabledPlugins = []string{"names"}
+		d := NewDetector(config)
+		require.NoError(t, d.WithLuaEngine(plugin.NewChecker())) // Reset closes the engine
+		d.Reset()
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Green"})
+		assert.False(t, spam)
+		assert.Empty(t, cr)
+	})
+
+	t.Run("lua plugins disabled", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.PluginsDir = writePlugins(t)
+		d := NewDetector(config)
+		checker := plugin.NewChecker()
+		defer checker.Close()
+		require.NoError(t, d.WithLuaEngine(checker))
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1", FirstName: "Green"})
+		assert.False(t, spam)
+		assert.Empty(t, cr)
+	})
+
+	t.Run("legacy engine gives no join checks", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = "/plugins"
+		config.LuaPlugins.EnabledPlugins = []string{"legacy"}
+		d := NewDetector(config)
+		require.NoError(t, d.WithLuaEngine(&legacyLuaPluginEngine{check: oldStylePluginCheck}))
+		spam, cr := d.CheckJoin(spamcheck.Request{UserID: "1"})
+		assert.False(t, spam)
+		assert.Empty(t, cr)
+	})
+
+	t.Run("join check error fails WithLuaEngine", func(t *testing.T) {
+		config := Config{}
+		config.LuaPlugins.Enabled = true
+		config.LuaPlugins.PluginsDir = "/plugins"
+		config.LuaPlugins.EnabledPlugins = []string{"legacy"}
+		d := NewDetector(config)
+		engine := &joinLuaPluginEngine{
+			legacyLuaPluginEngine: &legacyLuaPluginEngine{check: oldStylePluginCheck},
+			joinErr:               errors.New("no such plugin"),
+		}
+		err := d.WithLuaEngine(engine)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `failed to get Lua join check "legacy"`)
+	})
+}

@@ -45,6 +45,7 @@ type Locator interface {
 type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
 	OnReaction(userID int64, userName string) bot.Response
+	OnJoin(user bot.User) bot.Response
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error
@@ -61,6 +62,14 @@ func escapeMarkDownV1Text(text string) string {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// markdownV1LinkLabel makes text safe as a legacy markdown link label. Telegram copies a label verbatim
+// up to the first "]" and applies no escapes inside it, so "\\]" cannot keep "]" in the label and other
+// escapes would show as text. "]" is removed instead: left in an arbitrary first+last display name it
+// would end the label early and let the name inject its own link.
+func markdownV1LinkLabel(text string) string {
+	return strings.ReplaceAll(text, "]", "")
 }
 
 // botTokenRe matches a Telegram bot token. the Bot API client puts the token in its request URLs, so

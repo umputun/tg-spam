@@ -1452,10 +1452,10 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 		{"with username", "@spammer", 666, "[@spammer (666)](tg://user?id=666)"},
 		{"with display name", "Елена Дроздова", 8788140656, "[Елена Дроздова (8788140656)](tg://user?id=8788140656)"},
 		{"empty name falls back to user<id>", "", 8250189078, "[user8250189078 (8250189078)](tg://user?id=8250189078)"},
-		{"markdown chars escaped", "spam_user*bot", 666, "[spam\\_user\\*bot (666)](tg://user?id=666)"},
-		{"link delimiter injection escaped", "bad](http://evil)", 666, "[bad\\](http://evil) (666)](tg://user?id=666)"},
-		{"backslash escaped", "a\\b", 666, "[a\\\\b (666)](tg://user?id=666)"},
-		{"channel username", "@spam_channel", -100123, "[@spam\\_channel (-100123)](https://t.me/spam_channel)"},
+		{"markdown chars kept in label", "spam_user*bot", 666, "[spam_user*bot (666)](tg://user?id=666)"},
+		{"link delimiter injection removed", "bad](http://evil)", 666, "[bad(http://evil) (666)](tg://user?id=666)"},
+		{"backslash kept in label", "a\\b", 666, "[a\\b (666)](tg://user?id=666)"},
+		{"channel username", "@spam_channel", -100123, "[@spam_channel (-100123)](https://t.me/spam_channel)"},
 		{"channel title", "Spam *Channel*", -100123, "Spam \\*Channel\\* (-100123)"},
 		{"channel fallback", "channel_-100123", -100123, "channel\\_-100123 (-100123)"},
 	}
@@ -1474,7 +1474,7 @@ func TestUserReports_ChannelReport(t *testing.T) {
 	}{
 		{name: "username", username: "spam_channel", title: "Spam Channel", wantName: "@spam_channel",
 			from:         &tbapi.User{ID: 136817688, UserName: "Channel_Bot"},
-			wantRendered: "[@spam\\_channel (-100123)](https://t.me/spam_channel)"},
+			wantRendered: "[@spam_channel (-100123)](https://t.me/spam_channel)"},
 		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel", wantRendered: "Spam Channel (-100123)"},
 		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
 		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
@@ -1931,9 +1931,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// verify escaped characters in reported user name
-		assert.Contains(t, sentMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
-		assert.NotContains(t, sentMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
+		assert.Contains(t, sentMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
 
 		// verify escaped characters in reporter names
 		assert.Contains(t, sentMsg.Text, "test\\_reporter", "first reporter name should be escaped")
@@ -2185,9 +2184,8 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// verify escaped characters in reported user name
-		assert.Contains(t, editedMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
-		assert.NotContains(t, editedMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
+		assert.Contains(t, editedMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
 
 		// verify escaped characters in reporter names
 		assert.Contains(t, editedMsg.Text, "test\\_reporter", "first reporter name should be escaped")

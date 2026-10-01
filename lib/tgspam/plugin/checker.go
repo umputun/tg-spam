@@ -6,6 +6,10 @@
 // results in Detector.Check, but not the short-message-flood or prohibited-language
 // blocks that return before plugins run. A normal-length cleared message follows the
 // ordinary ham path for user graduation and ham history.
+//
+// Scripts may also provide an optional "check_join" function. It is called for a new chat member
+// with the user fields only (no message, no meta) and returns a boolean (is spam) and a string
+// (details); a third return value is ignored.
 package plugin
 
 import (
@@ -21,11 +25,12 @@ import (
 
 // Checker implements a Lua plugin engine for spam detection
 type Checker struct {
-	vm       *lua.LState
-	checkers map[string]*lua.LFunction
-	warned   map[string]struct{}
-	lock     sync.RWMutex // protects the checkers map and serializes access to the shared vm
-	watcher  *Watcher     // optional file watcher for dynamic reloading
+	vm           *lua.LState
+	checkers     map[string]*lua.LFunction
+	joinCheckers map[string]*lua.LFunction // optional check_join functions, by script name
+	warned       map[string]struct{}
+	lock         sync.RWMutex // protects the checker maps and serializes access to the shared vm
+	watcher      *Watcher     // optional file watcher for dynamic reloading
 }
 
 // Check is a function that takes a request and returns a response indicating if message is spam
@@ -40,13 +45,18 @@ type Result struct {
 // ResultCheck is a function that returns the full result of a Lua plugin check.
 type ResultCheck func(req spamcheck.Request) Result
 
+// JoinCheck runs a plugin's check_join for a new chat member. The boolean is false when the plugin
+// has no check_join at call time.
+type JoinCheck func(req spamcheck.Request) (spamcheck.Response, bool)
+
 // NewChecker creates a new Checker
 func NewChecker() *Checker {
 	L := lua.NewState()
 	lc := &Checker{
-		vm:       L,
-		checkers: make(map[string]*lua.LFunction),
-		warned:   make(map[string]struct{}),
+		vm:           L,
+		checkers:     make(map[string]*lua.LFunction),
+		joinCheckers: make(map[string]*lua.LFunction),
+		warned:       make(map[string]struct{}),
 	}
 	lc.RegisterHelpers() // register helper functions
 	return lc
@@ -76,7 +86,9 @@ func (c *Checker) LoadScript(path string) error {
 	name := filepath.Base(path)
 	name = name[:len(name)-len(filepath.Ext(name))]
 
-	// now load the script in the real VM
+	// now load the script in the real VM. check_join is optional, so a script without it
+	// must not pick up the one left in the shared VM by the previously loaded script
+	c.vm.SetGlobal("check_join", lua.LNil)
 	if err := c.vm.DoFile(path); err != nil {
 		return fmt.Errorf("failed to load Lua script in main VM: %w", err)
 	}
@@ -89,6 +101,11 @@ func (c *Checker) LoadScript(path string) error {
 
 	// store the function from the main VM after both loads have succeeded
 	c.checkers[name] = realCheckFunc.(*lua.LFunction)
+	if joinFunc, ok := c.vm.GetGlobal("check_join").(*lua.LFunction); ok {
+		c.joinCheckers[name] = joinFunc
+	} else {
+		delete(c.joinCheckers, name)
+	}
 
 	return nil
 }
@@ -254,6 +271,70 @@ func (c *Checker) createResultCheck(name string) ResultCheck {
 			Spam:    isSpam,
 			Details: details,
 		}, Approved: approved}
+	}
+}
+
+// GetJoinCheck returns a JoinCheck for the specified Lua script. It fails only when no script with
+// that name is loaded; a script without check_join gives a JoinCheck that reports false.
+func (c *Checker) GetJoinCheck(name string) (JoinCheck, error) {
+	c.lock.RLock()
+	_, ok := c.checkers[name]
+	c.lock.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("lua checker %q not found", name)
+	}
+
+	return c.createJoinCheck(name), nil
+}
+
+// GetAllJoinChecks returns a JoinCheck for every loaded Lua script.
+func (c *Checker) GetAllJoinChecks() map[string]JoinCheck {
+	result := make(map[string]JoinCheck)
+
+	c.lock.RLock()
+	for name := range c.checkers {
+		result[name] = c.createJoinCheck(name)
+	}
+	c.lock.RUnlock()
+
+	return result
+}
+
+// createJoinCheck creates a JoinCheck function for the named Lua script. the function is resolved on
+// every call, so a check_join added, replaced or removed by reload takes effect for held checks
+func (c *Checker) createJoinCheck(name string) JoinCheck {
+	return func(req spamcheck.Request) (spamcheck.Response, bool) {
+		// write lock for the same reason as in createResultCheck: the call mutates the shared vm
+		c.lock.Lock()
+		defer c.lock.Unlock()
+
+		joinFunc, ok := c.joinCheckers[name]
+		if !ok {
+			return spamcheck.Response{}, false
+		}
+
+		reqTable := c.vm.NewTable()
+		reqTable.RawSetString("user_id", lua.LString(req.UserID))
+		reqTable.RawSetString("user_name", lua.LString(req.UserName))
+		reqTable.RawSetString("first_name", lua.LString(req.FirstName))
+		reqTable.RawSetString("last_name", lua.LString(req.LastName))
+		reqTable.RawSetString("is_premium", lua.LBool(req.IsPremium))
+
+		if err := c.vm.CallByParam(lua.P{Fn: joinFunc, NRet: 2, Protect: true}, reqTable); err != nil {
+			return spamcheck.Response{
+				Name:    "lua-" + name,
+				Spam:    false,
+				Details: "error executing lua join checker: " + err.Error(),
+				Error:   err,
+			}, true
+		}
+
+		isSpam := c.vm.ToBool(-2)
+		details := c.vm.ToString(-1)
+		c.vm.Pop(2)
+
+		return spamcheck.Response{Name: "lua-" + name, Spam: isSpam, Details: details}, true
 	}
 }
 

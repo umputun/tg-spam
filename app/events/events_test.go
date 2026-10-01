@@ -1224,3 +1224,23 @@ func TestRedactBotToken(t *testing.T) {
 		})
 	}
 }
+
+func TestEvents_markdownV1LinkLabel(t *testing.T) {
+	// legacy markdown copies a link label verbatim up to the first "]" and applies no escapes inside it
+	tests := []struct {
+		name, input, want string
+	}{
+		{name: "plain", input: "Green Shop (42)", want: "Green Shop (42)"},
+		{name: "markdown specials kept as is", input: "a_b*c`d[e", want: "a_b*c`d[e"},
+		{name: "closing bracket removed", input: "Shop] 24/7 (42)", want: "Shop 24/7 (42)"},
+		{name: "link injection removed", input: "Admin](https://scam.example)", want: "Admin(https://scam.example)"},
+		{name: "backslash kept", input: `a\b`, want: `a\b`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := markdownV1LinkLabel(tt.input)
+			assert.Equal(t, tt.want, got)
+			assert.NotContains(t, got, "]", "a label must not contain the character that ends it")
+		})
+	}
+}
