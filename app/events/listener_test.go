@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -2220,7 +2221,7 @@ func TestTelegramListener_DoWithProcNewChatMemberMessage(t *testing.T) {
 			return nil, nil
 		},
 	}
-	b := &mocks.BotMock{}
+	b := &mocks.BotMock{OnJoinFunc: func(bot.User) bot.Response { return bot.Response{} }}
 
 	locator, teardown := prepTestLocator(t)
 	defer teardown()
@@ -3117,7 +3118,7 @@ func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
 	}
-	b := &mocks.BotMock{}
+	b := &mocks.BotMock{OnJoinFunc: func(bot.User) bot.Response { return bot.Response{} }}
 
 	locator, teardown := prepTestLocator(t)
 	defer teardown()
@@ -3271,7 +3272,7 @@ func TestTelegramListener_NoDeleteWhenFlagsDisabled(t *testing.T) {
 			return &tbapi.APIResponse{Ok: true}, nil
 		},
 	}
-	b := &mocks.BotMock{}
+	b := &mocks.BotMock{OnJoinFunc: func(bot.User) bot.Response { return bot.Response{} }}
 
 	locator, teardown := prepTestLocator(t)
 	defer teardown()
@@ -5865,4 +5866,245 @@ func TestTelegramListener_PostErrorToAdmin(t *testing.T) {
 	assert.Equal(t, int64(456), sent[0].ChatID)
 	assert.Equal(t, `error: failed to ban user: Post "https://api.telegram.org/botxxxxx/banChatMember": dial tcp: i/o timeout`,
 		sent[0].Text)
+}
+
+func TestProcJoin(t *testing.T) {
+	type env struct {
+		api     *mocks.TbAPIMock
+		bot     *mocks.BotMock
+		locator *mocks.LocatorMock
+		logger  *mocks.SpamLoggerMock
+		l       *TelegramListener
+	}
+	spamFor := func(ids ...int64) func(user bot.User) bot.Response {
+		return func(user bot.User) bot.Response {
+			if !slices.Contains(ids, user.ID) {
+				return bot.Response{}
+			}
+			return bot.Response{BanInterval: bot.PermanentBanDuration, User: user, CheckResults: []spamcheck.Response{
+				{Name: "lua-premium", Spam: true, Details: "premium"},
+				{Name: "lua-broken", Error: errors.New("lua error"), Details: "error"},
+				{Name: "lua-names", Spam: true, Details: "bad name"},
+				{Name: "lua-clean", Details: "ok"},
+			}}
+		}
+	}
+	setup := func(t *testing.T, onJoin func(bot.User) bot.Response, mutate func(l *TelegramListener)) *env {
+		t.Helper()
+		e := &env{
+			api: &mocks.TbAPIMock{
+				SendFunc:    func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) { return &tbapi.APIResponse{Ok: true}, nil },
+			},
+			bot: &mocks.BotMock{OnJoinFunc: onJoin},
+			locator: &mocks.LocatorMock{
+				AddSpamFunc: func(ctx context.Context, userID int64, checks []spamcheck.Response) error { return nil },
+			},
+			logger: &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}},
+		}
+		e.l = &TelegramListener{TbAPI: e.api, Bot: e.bot, Locator: e.locator, SpamLogger: e.logger,
+			SuperUsers: SuperUsers{"admin"}, BotUsername: "TgSpamBot"}
+		e.l.chatID = 123
+		e.l.adminChatID = 999
+		if mutate != nil {
+			mutate(e.l)
+		}
+		e.l.adminHandler = &admin{tbAPI: e.api, bot: e.bot, locator: e.locator, adminChatID: e.l.adminChatID,
+			primChatID: 123, softBan: e.l.SoftBanMode, dry: e.l.Dry, trainingMode: e.l.TrainingMode}
+		return e
+	}
+	joinMsg := func(chatID int64, members ...tbapi.User) *tbapi.Message {
+		return &tbapi.Message{Chat: tbapi.Chat{ID: chatID}, From: &tbapi.User{ID: 100, UserName: "inviter"},
+			NewChatMembers: members, MessageID: 55}
+	}
+	sentTexts := func(api *mocks.TbAPIMock) []string {
+		var res []string
+		for _, c := range api.SendCalls() {
+			if m, ok := c.C.(tbapi.MessageConfig); ok {
+				res = append(res, m.Text)
+			}
+		}
+		return res
+	}
+
+	t.Run("every member is checked with mapped fields", func(t *testing.T) {
+		e := setup(t, spamFor(), nil)
+		err := e.l.procJoin(context.Background(), joinMsg(123,
+			tbapi.User{ID: 1, UserName: "first", FirstName: " Green ", LastName: " Shop ", IsPremium: true},
+			tbapi.User{ID: 2, FirstName: "Anna"},
+		))
+		require.NoError(t, err)
+		require.Len(t, e.bot.OnJoinCalls(), 2, "both members, not the inviter")
+		assert.Equal(t, bot.User{ID: 1, Username: "first", DisplayName: "Green Shop", FirstName: "Green", LastName: "Shop",
+			IsPremium: true}, e.bot.OnJoinCalls()[0].User)
+		assert.Equal(t, bot.User{ID: 2, DisplayName: "Anna", FirstName: "Anna"}, e.bot.OnJoinCalls()[1].User)
+		assert.Empty(t, e.api.RequestCalls(), "no ban for clean members")
+		assert.Empty(t, e.api.SendCalls(), "no notification for clean members")
+	})
+
+	t.Run("join in another chat is not checked", func(t *testing.T) {
+		e := setup(t, spamFor(1), nil)
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(777, tbapi.User{ID: 1})))
+		assert.Empty(t, e.bot.OnJoinCalls())
+		assert.Empty(t, e.api.RequestCalls())
+	})
+
+	t.Run("bot itself and superusers are skipped", func(t *testing.T) {
+		e := setup(t, spamFor(), nil)
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123,
+			tbapi.User{ID: 5, UserName: "tgspambot", IsBot: true},
+			tbapi.User{ID: 6, UserName: "admin"},
+			tbapi.User{ID: 7, FirstName: "NoUsername"},
+		)))
+		require.Len(t, e.bot.OnJoinCalls(), 1)
+		assert.Equal(t, int64(7), e.bot.OnJoinCalls()[0].User.ID)
+	})
+
+	t.Run("empty bot username does not skip members without username", func(t *testing.T) {
+		e := setup(t, spamFor(), func(l *TelegramListener) { l.BotUsername = "" })
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 7, FirstName: "NoUsername"})))
+		require.Len(t, e.bot.OnJoinCalls(), 1)
+	})
+
+	t.Run("spam member is banned and reported", func(t *testing.T) {
+		e := setup(t, spamFor(42), nil)
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 42, UserName: "spammer"})))
+
+		require.Len(t, e.api.RequestCalls(), 1)
+		ban, ok := e.api.RequestCalls()[0].C.(tbapi.BanChatMemberConfig)
+		require.True(t, ok)
+		assert.Equal(t, int64(123), ban.ChatID)
+		assert.Equal(t, int64(42), ban.UserID)
+
+		require.Len(t, e.locator.AddSpamCalls(), 1)
+		assert.Equal(t, int64(42), e.locator.AddSpamCalls()[0].UserID)
+		assert.Len(t, e.locator.AddSpamCalls()[0].Checks, 4)
+
+		require.Len(t, e.logger.SaveCalls(), 1)
+		assert.Equal(t, "[join spam]", e.logger.SaveCalls()[0].Msg.Text)
+		assert.Equal(t, int64(42), e.logger.SaveCalls()[0].Msg.From.ID)
+
+		require.Len(t, e.api.SendCalls(), 1)
+		sent := e.api.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, int64(999), sent.ChatID)
+		assert.Equal(t, "**permanently banned [@spammer (42)](tg://user?id=42) on join by lua-names, lua-premium**\n\n", sent.Text)
+		markup, ok := sent.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+		require.True(t, ok)
+		assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData)
+		assert.Equal(t, "!42:0", *markup.InlineKeyboard[0][1].CallbackData)
+	})
+
+	t.Run("soft-ban restricts and says so", func(t *testing.T) {
+		e := setup(t, spamFor(42), func(l *TelegramListener) { l.SoftBanMode = true })
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 42, UserName: "spammer"})))
+		require.Len(t, e.api.RequestCalls(), 1)
+		restrict, ok := e.api.RequestCalls()[0].C.(tbapi.RestrictChatMemberConfig)
+		require.True(t, ok)
+		assert.Equal(t, int64(42), restrict.UserID)
+		texts := sentTexts(e.api)
+		require.Len(t, texts, 1)
+		assert.True(t, strings.HasPrefix(texts[0], "**restricted [@spammer (42)]"), texts[0])
+	})
+
+	t.Run("dry and training do not ban", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			mutate func(l *TelegramListener)
+			prefix string
+		}{
+			{name: "dry", mutate: func(l *TelegramListener) { l.Dry = true }, prefix: "**[dry run] would have permanently banned"},
+			{name: "training", mutate: func(l *TelegramListener) { l.TrainingMode = true },
+				prefix: "**[training] would have permanently banned"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				e := setup(t, spamFor(42), tc.mutate)
+				require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 42, UserName: "spammer"})))
+				assert.Empty(t, e.api.RequestCalls())
+				texts := sentTexts(e.api)
+				require.Len(t, texts, 1)
+				assert.True(t, strings.HasPrefix(texts[0], tc.prefix), texts[0])
+			})
+		}
+	})
+
+	t.Run("no admin chat, no notification", func(t *testing.T) {
+		e := setup(t, spamFor(42), func(l *TelegramListener) { l.adminChatID = 0 })
+		require.NoError(t, e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 42, UserName: "spammer"})))
+		require.Len(t, e.api.RequestCalls(), 1, "still banned")
+		assert.Empty(t, e.api.SendCalls())
+	})
+
+	t.Run("ban error for one member does not stop the next", func(t *testing.T) {
+		e := setup(t, spamFor(1, 2), nil)
+		e.api.RequestFunc = func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			if ban, ok := c.(tbapi.BanChatMemberConfig); ok && ban.UserID == 1 {
+				return nil, errors.New("ban failed")
+			}
+			return &tbapi.APIResponse{Ok: true}, nil
+		}
+		err := e.l.procJoin(context.Background(), joinMsg(123, tbapi.User{ID: 1}, tbapi.User{ID: 2}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ban failed")
+		require.Len(t, e.bot.OnJoinCalls(), 2)
+		require.Len(t, e.api.RequestCalls(), 2)
+		assert.Equal(t, int64(2), e.api.RequestCalls()[1].C.(tbapi.BanChatMemberConfig).UserID)
+		assert.Len(t, sentTexts(e.api), 1, "only the banned member is reported")
+	})
+}
+
+func TestTelegramListener_DoJoinCheckWithCleanup(t *testing.T) {
+	for _, deleteJoin := range []bool{true, false} {
+		t.Run(fmt.Sprintf("delete join messages %v", deleteJoin), func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+						return nil, errors.New("ban failed")
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			b := &mocks.BotMock{OnJoinFunc: func(user bot.User) bot.Response {
+				return bot.Response{BanInterval: bot.PermanentBanDuration, User: user,
+					CheckResults: []spamcheck.Response{{Name: "lua-names", Spam: true}}}
+			}}
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := TelegramListener{TbAPI: mockAPI, Bot: b, Group: "gr", Locator: locator, DeleteJoinMessages: deleteJoin,
+				SpamLogger: &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}}
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- tbapi.Update{Message: &tbapi.Message{Chat: tbapi.Chat{ID: 123},
+				From: &tbapi.User{ID: 42, UserName: "spammer"}, NewChatMembers: []tbapi.User{{ID: 42, UserName: "spammer"}},
+				MessageID: 55}}
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			err := l.Do(context.Background())
+			require.EqualError(t, err, "telegram update chan closed")
+			require.Len(t, b.OnJoinCalls(), 1, "join check runs whatever the cleanup flags are")
+
+			deleted := false
+			for _, c := range mockAPI.RequestCalls() {
+				if del, ok := c.C.(tbapi.DeleteMessageConfig); ok && del.MessageID == 55 {
+					deleted = true
+				}
+			}
+			_, stored := locator.Message(context.Background(), "new_123_42")
+			if deleteJoin {
+				assert.True(t, deleted, "join message deleted after a failed ban")
+				assert.False(t, stored)
+			} else {
+				assert.False(t, deleted)
+				assert.True(t, stored, "join message stored after a failed ban")
+			}
+		})
+	}
 }

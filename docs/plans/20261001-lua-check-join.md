@@ -342,13 +342,13 @@ takes `d.lock.RLock()`.
 - Modify: `app/events/listener.go`
 - Modify: `app/events/listener_test.go`
 
-- [ ] add `OnJoin(user bot.User) bot.Response` to the `Bot` interface and run `go generate ./app/events/...`
-- [ ] existing `Do`-driven tests with `NewChatMembers` in the monitored chat use an empty `BotMock` and would
+- [x] add `OnJoin(user bot.User) bot.Response` to the `Bot` interface and run `go generate ./app/events/...`
+- [x] existing `Do`-driven tests with `NewChatMembers` in the monitored chat use an empty `BotMock` and would
   panic once `OnJoin` is called: `TestTelegramListener_DoWithProcNewChatMemberMessage`,
   `TestTelegramListener_DeleteJoinMessages`, `TestTelegramListener_NoDeleteWhenFlagsDisabled`. Add
   `OnJoinFunc: func(bot.User) bot.Response { return bot.Response{} }` to each `BotMock`; re-check with
   `grep -n NewChatMembers app/events/listener_test.go`
-- [ ] write failing `TestProcJoin` (shaped like `TestProcReaction`):
+- [x] write failing `TestProcJoin` (shaped like `TestProcReaction`):
   - every member of a two-member `NewChatMembers` is passed to `OnJoin`, with trimmed names,
     `DisplayName` and `IsPremium` mapped
   - a member added by another user (`From` differs) is still checked
@@ -367,9 +367,9 @@ takes `d.lock.RLock()`.
     cleanup still runs (deleted with `DeleteJoinMessages`, stored as `new_<chat>_<id>` with
     `SuppressJoinMessage`)
   - `DeleteJoinMessages` on and off: `OnJoin` is called and the join message is still deleted or stored
-- [ ] run `go test -race ./app/events/...` - new tests fail
-- [ ] implement `procJoin`, the cause helper, and the call at the top of the `NewChatMembers` branch in `Do`
-- [ ] run `go test -race ./app/events/...` - must pass before task 6
+- [x] run `go test -race ./app/events/...` - new tests fail
+- [x] implement `procJoin`, the cause helper, and the call at the top of the `NewChatMembers` branch in `Do`
+- [x] run `go test -race ./app/events/...` - must pass before task 6
 
 ### Task 6: Verify acceptance criteria
 
