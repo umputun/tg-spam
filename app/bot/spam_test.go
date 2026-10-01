@@ -1223,6 +1223,7 @@ func TestSpamFilterOnJoin(t *testing.T) {
 	user := User{ID: 42, Username: "spammer", DisplayName: "Green Shop", FirstName: "Green", LastName: "Shop", IsPremium: true}
 	spamResult := spamcheck.Response{Name: "lua-names", Spam: true, Details: "bad name"}
 	hamResult := spamcheck.Response{Name: "lua-names", Details: "name ok"}
+	errResult := spamcheck.Response{Name: "lua-names", Details: "lua error", Error: errors.New("attempt to index nil")}
 
 	tests := []struct {
 		name       string
@@ -1234,6 +1235,8 @@ func TestSpamFilterOnJoin(t *testing.T) {
 		{name: "approved user skipped", isApproved: true},
 		{name: "not spam, no ban", results: []spamcheck.Response{hamResult}},
 		{name: "spam, ban", spam: true, results: []spamcheck.Response{spamResult}, wantBan: true},
+		{name: "check error, no ban", results: []spamcheck.Response{errResult}},
+		{name: "no join checks, no ban"},
 	}
 
 	for _, tc := range tests {

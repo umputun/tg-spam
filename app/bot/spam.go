@@ -235,10 +235,21 @@ func (s *SpamFilter) OnJoin(user User) Response {
 	}
 	spam, results := s.CheckJoin(spamcheck.Request{UserID: strconv.FormatInt(user.ID, 10), UserName: user.Username,
 		FirstName: user.FirstName, LastName: user.LastName, IsPremium: user.IsPremium})
+	crs := make([]string, 0, len(results))
+	for _, cr := range results {
+		crs = append(crs, fmt.Sprintf("{name: %s, spam: %v, details: %s}", cr.Name, cr.Spam, cr.Details))
+		if cr.Error != nil {
+			log.Printf("[WARN] join check %s failed for user %d: %v", cr.Name, user.ID, cr.Error)
+		}
+	}
+	checkResultStr := strings.Join(crs, ", ")
 	if !spam {
+		if len(results) > 0 {
+			log.Printf("[DEBUG] user %s is not a spammer on join, %s", user, checkResultStr)
+		}
 		return Response{CheckResults: results}
 	}
-	log.Printf("[INFO] user %s detected as spammer on join", user)
+	log.Printf("[INFO] user %s detected as spammer on join: %s", user, checkResultStr)
 	return Response{BanInterval: PermanentBanDuration, User: user, CheckResults: results}
 }
 

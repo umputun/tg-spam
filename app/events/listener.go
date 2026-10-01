@@ -622,7 +622,7 @@ func (l *TelegramListener) procJoin(ctx context.Context, msg *tbapi.Message) err
 			continue
 		}
 		if l.adminChatID != 0 && resp.User.ID != 0 {
-			l.adminHandler.ReportUserBan(banUserStr, resp.User, joinBanCause(resp.CheckResults))
+			l.adminHandler.ReportUserBan(banUserStr, resp.User, l.joinBanCause(resp.CheckResults))
 		}
 	}
 	if err := errs.ErrorOrNil(); err != nil {
@@ -632,7 +632,7 @@ func (l *TelegramListener) procJoin(ctx context.Context, msg *tbapi.Message) err
 }
 
 // joinBanCause names the plugins that flagged a member on join, sorted for a stable notification text
-func joinBanCause(results []spamcheck.Response) string {
+func (l *TelegramListener) joinBanCause(results []spamcheck.Response) string {
 	names := make([]string, 0, len(results))
 	for _, r := range results {
 		if r.Spam && r.Error == nil {

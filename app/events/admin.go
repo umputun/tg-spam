@@ -1091,7 +1091,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 }
 
 // deleteAndBan bans the user and deletes the message; deletion is skipped when msgID is 0
-// (reaction bans have no underlying message).
+// (reaction and join bans have no underlying message).
 func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	errs := new(multierror.Error)
 	userName := a.locator.UserNameByID(context.TODO(), userID)
@@ -1114,7 +1114,7 @@ func (a *admin) deleteAndBan(userID int64, msgID int) error {
 		}
 	}
 
-	// reaction bans have no underlying message (msgID 0), so there is nothing to delete.
+	// reaction and join bans have no underlying message (msgID 0), so there is nothing to delete.
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
 	if msgID != 0 {
 		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
