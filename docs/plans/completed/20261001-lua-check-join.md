@@ -373,30 +373,30 @@ takes `d.lock.RLock()`.
 
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify every point of the Lua contract and "Who is checked" is covered by a test
-- [ ] verify a plugin set without `check_join` gives no change in behavior on join (existing join tests
+- [x] verify every point of the Lua contract and "Who is checked" is covered by a test
+- [x] verify a plugin set without `check_join` gives no change in behavior on join (existing join tests
   pass unchanged apart from the added `OnJoinFunc`)
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run linter: `golangci-lint run`
-- [ ] run `go build -o tg-spam ./app`
-- [ ] check coverage of the changed packages: `go test -race -coverprofile=coverage.out ./... && go tool
+- [x] run full test suite: `go test -race ./...`
+- [x] run linter: `golangci-lint run`
+- [x] run `go build -o tg-spam ./app`
+- [x] check coverage of the changed packages: `go test -race -coverprofile=coverage.out ./... && go tool
   cover -func=coverage.out | grep -E 'checker.go|detector.go|spam.go|listener.go|admin.go'`
 
 ### Task 7: [Final] Update documentation
 
-- [ ] README.md, section "Lua Plugins Support": the `check_join` contract, the request fields, that it runs
+- [x] README.md, section "Lua Plugins Support": the `check_join` contract, the request fields, that it runs
   only on the `new_chat_members` service message in the monitored group, who is skipped, that a missing
   function, a non-function `check_join` or a Lua error never bans, that reload works for scripts loaded at
   startup, and a short example that checks the display name
-- [ ] README.md reaction-ban paragraph (~line 266): the admin notification starts with `restricted` in
+- [x] README.md reaction-ban paragraph (~line 266): the admin notification starts with `restricted` in
   soft-ban mode
-- [ ] CLAUDE.md: add a "Lua Join Check" section under "Spam Detection Architecture" (shared-VM reset,
+- [x] CLAUDE.md: add a "Lua Join Check" section under "Spam Detection Architecture" (shared-VM reset,
   optional `luaJoinEngine`, skip rules, sorted cause, `ReportUserBan` and the empty body that keeps unban
   out of ham)
-- [ ] CLAUDE.md "Reaction Ban Notifications": rewrite to the current state, `ReportUserBan(…, cause)`, the
+- [x] CLAUDE.md "Reaction Ban Notifications": rewrite to the current state, `ReportUserBan(…, cause)`, the
   soft-ban `restricted` line, the `(?:permanently banned|restricted)` pattern, and `getCleanMessage`
   returning an error or an empty string
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

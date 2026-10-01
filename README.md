@@ -263,7 +263,7 @@ This option is disabled by default. When enabled, the bot tracks emoji reactions
 
 Only applies to unapproved users — approved users are exempt from reaction spam detection.
 
-Reaction bans are reported to the admin chat with the same `change ban` and `info` buttons as message-based bans, so a wrongly banned reaction spammer can be unbanned and approved straight from the notification (`change ban` opens an unban/keep-banned confirmation).
+Reaction bans are reported to the admin chat with the same `change ban` and `info` buttons as message-based bans, so a wrongly banned reaction spammer can be unbanned and approved straight from the notification (`change ban` opens an unban/keep-banned confirmation). In soft-ban mode the notification starts with `restricted` instead of `permanently banned`, because the user is restricted, not banned.
 
 Note: the bot always subscribes to `message_reaction` updates from Telegram on startup, regardless of whether `--reactions.max-reactions` is set. This is a change from previous versions where no reaction updates were requested.
 
@@ -509,6 +509,29 @@ The third return is backward compatible. Missing, `nil`, and boolean `false` mea
 Approval clears soft spam results from the current `Detector.Check` call. When at least one plugin approves and a soft check reports spam, the detector returns ham, skips LLM checks, and adds one `lua-approve` row naming the approving plugins. Soft checks include duplicate detection, stop words, emoji, meta checks, Lua checks, CAS, multi-language text, abnormal spacing, similarity, and the classifier. Short-message-flood and prohibited-language checks return before Lua plugins run and cannot be cleared this way.
 
 A cleared short message follows the existing short-message rule: it does not enter ham history or count toward user graduation. A cleared normal-length message follows the ordinary ham path and enters the bounded ham history. It also counts toward configured user graduation unless the request is check-only. With the default `--first-messages-count=1`, one cleared normal-length message graduates the sender, so later messages skip content analysis under the existing graduation rules. When LLM history is enabled, that message can be included as context in later LLM checks, including checks for other users.
+
+**Checking new members on join.** A plugin can also define an optional `check_join` function. It runs when a member joins the monitored group, before the member posts anything, so it can act on accounts whose only payload is the display name:
+
+```lua
+function check_join(request)
+    -- request contains: user_id, user_name, first_name, last_name, is_premium (no msg, no meta)
+    local name = to_lower(request.first_name .. " " .. request.last_name)
+    if contains_any(name, {"shop", "24/7"}) then
+        return true, "suspicious display name"
+    end
+    return false, "name looks clean"
+end
+```
+
+- `check_join` returns the same values as `check`: is spam and details. A third return value is ignored, because there is no message to approve on join.
+- Only `check_join` decides on a join. `check` and the other spam checks do not run. A plugin without `check_join` takes no part, and a missing function, a `check_join` that is not a function, or a Lua error never bans.
+- The same plugins are used as for `check`: those in `--lua-plugins.enabled-plugins`, or all loaded plugins when the list is empty. Each plugin's own `check_join` is called.
+- The check runs for every member listed in the join service message (`new_chat_members`), including members added by someone else, and only in the monitored group. The bot itself, superusers and approved users are skipped. Unban adds the user to the approved list, so a user banned by mistake is not banned again on rejoin.
+- A flagged member is banned like a reaction spammer: dry, training and soft-ban modes apply, and the admin chat gets a notification such as `permanently banned @user (123) on join by lua-names` with the `change ban` and `info` buttons. Unbanning from it does not add any text to ham samples.
+- Join message cleanup (`--delete.join-messages`, `--suppress-join-message`) works as before, and the check runs whether these are on or off.
+- With `--lua-plugins.dynamic-reload`, editing a plugin adds, replaces or removes its `check_join`. This applies to plugins loaded at startup; a new plugin file needs a restart, the same as for `check`.
+
+There are no extra settings: defining `check_join` in an enabled plugin turns the check on.
 
 Several helper functions are provided to Lua scripts:
 - `count_substring(text, substr)` - Counts occurrences of a substring
