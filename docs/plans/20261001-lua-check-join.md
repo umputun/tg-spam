@@ -270,7 +270,7 @@ takes `d.lock.RLock()`.
 - Modify: `lib/tgspam/detector.go`
 - Modify: `lib/tgspam/plugin_test.go`
 
-- [ ] write failing tests in `plugin_test.go`:
+- [x] write failing tests in `plugin_test.go`:
   - with a real `plugin.Checker` and an enabled list, `CheckJoin` calls only the enabled plugins that
     have `check_join`, and returns spam when one of them reports spam
   - with an empty enabled list, all loaded plugins with `check_join` are called (assert on the set of
@@ -282,10 +282,10 @@ takes `d.lock.RLock()`.
   - `GetJoinCheck` error fails `WithLuaEngine` (fake engine implementing `luaJoinEngine`)
   - `Reset` clears the join checks
   - Lua plugins disabled: `CheckJoin` returns `false` and no responses
-- [ ] run `go test -race ./lib/tgspam/...` - new tests fail
-- [ ] add `luaJoinEngine`, `luaJoinChecks`, its filling in `WithLuaEngine`, clearing in `Reset`, and
+- [x] run `go test -race ./lib/tgspam/...` - new tests fail
+- [x] add `luaJoinEngine`, `luaJoinChecks`, its filling in `WithLuaEngine`, clearing in `Reset`, and
   `CheckJoin`
-- [ ] run `go test -race ./lib/tgspam/...` - must pass before task 3
+- [x] run `go test -race ./lib/tgspam/...` - must pass before task 3
 
 ### Task 3: SpamFilter.OnJoin
 
