@@ -1325,6 +1325,108 @@ func TestLoadConfigFromDB_DoesNotOverrideExisting(t *testing.T) {
 	assert.Equal(t, 48*time.Hour, loaded.History.Duration, "DB value preserved, not replaced by template 24h")
 }
 
+func TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults(t *testing.T) {
+	setupLog(true)
+	type want struct {
+		links, mentions, emoji, first, rate, backups int
+		minProb, similarity                          float64
+	}
+	tests := []struct {
+		name string
+		blob string
+		want want
+	}{
+		{name: "omitted keys take defaults", blob: `{"telegram":{"token":"123:abc","group":"-100123"},"dry":false}`,
+			want: want{links: -1, mentions: -1, emoji: 2, first: 1, rate: 10, backups: 10, minProb: 50, similarity: 0.5}},
+		{name: "explicit zeros survive", blob: `{"meta":{"links_limit":0},"max_emoji":0,"report":{"rate_limit":0}}`,
+			want: want{links: 0, mentions: -1, emoji: 0, first: 1, rate: 0, backups: 10, minProb: 50, similarity: 0.5}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			dbFile := filepath.Join(t.TempDir(), "external-blob.db")
+			writeRawConfigBlob(t, dbFile, "test-instance", tt.blob)
+
+			defaults, err := defaultSettingsTemplate()
+			require.NoError(t, err)
+			loaded := &config.Settings{
+				InstanceID: "test-instance",
+				Transient:  config.TransientSettings{DataBaseURL: dbFile, ConfigDB: true},
+			}
+			require.NoError(t, loadConfigFromDB(ctx, loaded, defaults))
+
+			got := want{links: loaded.Meta.LinksLimit, mentions: loaded.Meta.MentionsLimit, emoji: loaded.MaxEmoji,
+				first: loaded.FirstMessagesCount, rate: loaded.Report.RateLimit, backups: loaded.MaxBackups,
+				minProb: loaded.MinSpamProbability, similarity: loaded.SimilarityThreshold}
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, "test-instance", loaded.InstanceID, "template instance id must not replace the CLI value")
+			assert.True(t, loaded.Transient.ConfigDB)
+		})
+	}
+}
+
+func TestMakeSettingsStore(t *testing.T) {
+	const key = "test-master-key-at-least-20-chars"
+	tests := []struct {
+		name, encryptKey string
+	}{
+		{name: "plain", encryptKey: ""},
+		{name: "encrypted", encryptKey: key},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			token := "123:abc"
+			if tt.encryptKey != "" {
+				crypter, err := config.NewCrypter(tt.encryptKey, "test-instance")
+				require.NoError(t, err)
+				token, err = crypter.Encrypt(token)
+				require.NoError(t, err)
+			}
+			dbFile := filepath.Join(t.TempDir(), "store.db")
+			writeRawConfigBlob(t, dbFile, "test-instance", `{"telegram":{"token":"`+token+`"},"meta":{"mentions_limit":0}}`)
+
+			db, err := engine.New(ctx, dbFile, "test-instance")
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			settings := &config.Settings{InstanceID: "test-instance",
+				Transient: config.TransientSettings{ConfigDBEncryptKey: tt.encryptKey}}
+			store, err := makeSettingsStore(ctx, db, settings)
+			require.NoError(t, err)
+
+			loaded, err := store.Load(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, -1, loaded.Meta.LinksLimit, "omitted zero-aware key takes its default")
+			assert.Equal(t, 0, loaded.Meta.MentionsLimit, "stored zero kept")
+			assert.Equal(t, "123:abc", loaded.Telegram.Token)
+			assert.Empty(t, loaded.InstanceID)
+		})
+	}
+
+	t.Run("bad encryption key", func(t *testing.T) {
+		db, err := engine.New(context.Background(), filepath.Join(t.TempDir(), "store.db"), "test-instance")
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		settings := &config.Settings{Transient: config.TransientSettings{ConfigDBEncryptKey: "short"}}
+		_, err = makeSettingsStore(context.Background(), db, settings)
+		require.ErrorContains(t, err, "invalid encryption key for settings store")
+	})
+}
+
+func writeRawConfigBlob(t *testing.T, dbFile, gid, data string) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := engine.New(ctx, dbFile, gid)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	_, err = config.NewStore(ctx, db)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "INSERT INTO config (gid, data) VALUES (?, ?)", gid, data)
+	require.NoError(t, err)
+}
+
 func TestDefaultSettingsTemplate_KeyFields(t *testing.T) {
 	tmpl, err := defaultSettingsTemplate()
 	require.NoError(t, err)

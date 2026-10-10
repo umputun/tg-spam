@@ -20,6 +20,7 @@ type Store struct {
 	engine.RWLocker
 	crypter         *Crypter
 	sensitiveFields []string
+	defaults        *Settings
 }
 
 // all config queries
@@ -120,6 +121,17 @@ func WithSensitiveFields(fields []string) StoreOption {
 	}
 }
 
+// WithDefaults makes Load start from tmpl instead of empty settings, so a key missing from the
+// stored blob takes its default while a key stored as zero stays zero. InstanceID is not seeded:
+// an empty instance_id must stay empty so the loader can keep the one given on the command line.
+func WithDefaults(tmpl *Settings) StoreOption {
+	return func(s *Store) {
+		seed := *tmpl
+		seed.InstanceID = ""
+		s.defaults = &seed
+	}
+}
+
 // defaultSensitiveFields returns the default list of sensitive fields derived
 // from sensitiveFieldAccessors so adding a new field is a single-place change.
 // Order is stable across calls to keep error and log output deterministic.
@@ -159,7 +171,18 @@ func (s *Store) load(ctx context.Context) (*Settings, error) {
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}
 
+	// defaults go through a JSON round trip, not a struct copy: decoding the blob into a copy
+	// would append into the template's slice backing arrays and corrupt it for the next load
 	result := New()
+	if s.defaults != nil {
+		seed, err := json.Marshal(s.defaults)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal defaults: %w", err)
+		}
+		if err := json.Unmarshal(seed, result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal defaults: %w", err)
+		}
+	}
 	if err := json.Unmarshal([]byte(record.Data), result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal settings: %w", err)
 	}

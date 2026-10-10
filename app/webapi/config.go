@@ -79,8 +79,8 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// reapply startup-equivalent normalization: fills any zero fields left by a
-	// partial/legacy DB blob from the defaults template and reasserts operator-
+	// reapply startup-equivalent normalization: refills stored zeros from the
+	// defaults template (except zero-aware fields) and reasserts operator-
 	// supplied operational CLI overrides (--files.dynamic, --files.samples,
 	// --server.listen, --dry) so reload doesn't silently revert them to DB values.
 	// run BEFORE transient/auth preservation so the closure can't accidentally
