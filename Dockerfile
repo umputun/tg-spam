@@ -1,4 +1,4 @@
-FROM ghcr.io/umputun/baseimage/buildgo:v1.17.0 AS build
+FROM ghcr.io/umputun/baseimage/buildgo:v1.21.1 AS build
 
 ARG GIT_BRANCH
 ARG GITHUB_SHA
