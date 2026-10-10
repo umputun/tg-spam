@@ -29,6 +29,9 @@ import (
 //			CheckJoinFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
 //				panic("mock out the CheckJoin method")
 //			},
+//			ForgetMessageFunc: func(userID string, msgID int)  {
+//				panic("mock out the ForgetMessage method")
+//			},
 //			GetLuaPluginNamesFunc: func() []string {
 //				panic("mock out the GetLuaPluginNames method")
 //			},
@@ -77,6 +80,9 @@ type DetectorMock struct {
 
 	// CheckJoinFunc mocks the CheckJoin method.
 	CheckJoinFunc func(request spamcheck.Request) (bool, []spamcheck.Response)
+
+	// ForgetMessageFunc mocks the ForgetMessage method.
+	ForgetMessageFunc func(userID string, msgID int)
 
 	// GetLuaPluginNamesFunc mocks the GetLuaPluginNames method.
 	GetLuaPluginNamesFunc func() []string
@@ -127,6 +133,13 @@ type DetectorMock struct {
 		CheckJoin []struct {
 			// Request is the request argument value.
 			Request spamcheck.Request
+		}
+		// ForgetMessage holds details about calls to the ForgetMessage method.
+		ForgetMessage []struct {
+			// UserID is the userID argument value.
+			UserID string
+			// MsgID is the msgID argument value.
+			MsgID int
 		}
 		// GetLuaPluginNames holds details about calls to the GetLuaPluginNames method.
 		GetLuaPluginNames []struct {
@@ -185,6 +198,7 @@ type DetectorMock struct {
 	lockApprovedUsers      sync.RWMutex
 	lockCheck              sync.RWMutex
 	lockCheckJoin          sync.RWMutex
+	lockForgetMessage      sync.RWMutex
 	lockGetLuaPluginNames  sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockLoadSamples        sync.RWMutex
@@ -346,6 +360,49 @@ func (mock *DetectorMock) ResetCheckJoinCalls() {
 	mock.lockCheckJoin.Lock()
 	mock.calls.CheckJoin = nil
 	mock.lockCheckJoin.Unlock()
+}
+
+// ForgetMessage calls ForgetMessageFunc.
+func (mock *DetectorMock) ForgetMessage(userID string, msgID int) {
+	if mock.ForgetMessageFunc == nil {
+		panic("DetectorMock.ForgetMessageFunc: method is nil but Detector.ForgetMessage was just called")
+	}
+	callInfo := struct {
+		UserID string
+		MsgID  int
+	}{
+		UserID: userID,
+		MsgID:  msgID,
+	}
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = append(mock.calls.ForgetMessage, callInfo)
+	mock.lockForgetMessage.Unlock()
+	mock.ForgetMessageFunc(userID, msgID)
+}
+
+// ForgetMessageCalls gets all the calls that were made to ForgetMessage.
+// Check the length with:
+//
+//	len(mockedDetector.ForgetMessageCalls())
+func (mock *DetectorMock) ForgetMessageCalls() []struct {
+	UserID string
+	MsgID  int
+} {
+	var calls []struct {
+		UserID string
+		MsgID  int
+	}
+	mock.lockForgetMessage.RLock()
+	calls = mock.calls.ForgetMessage
+	mock.lockForgetMessage.RUnlock()
+	return calls
+}
+
+// ResetForgetMessageCalls reset all the calls that were made to ForgetMessage.
+func (mock *DetectorMock) ResetForgetMessageCalls() {
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
 }
 
 // GetLuaPluginNames calls GetLuaPluginNamesFunc.
@@ -758,6 +815,10 @@ func (mock *DetectorMock) ResetCalls() {
 	mock.lockCheckJoin.Lock()
 	mock.calls.CheckJoin = nil
 	mock.lockCheckJoin.Unlock()
+
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
 
 	mock.lockGetLuaPluginNames.Lock()
 	mock.calls.GetLuaPluginNames = nil

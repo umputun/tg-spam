@@ -761,6 +761,46 @@ func TestTelegramListener_DoWithBotBan(t *testing.T) {
 		assert.Equal(t, "edited_user", botMock.OnMessageCalls()[0].Msg.From.Username)
 		assert.False(t, botMock.OnMessageCalls()[0].CheckOnly)
 	})
+
+	t.Run("text-less message dropped at intake is forgotten only when it is an edit", func(t *testing.T) {
+		// a caption edited away from audio never reached the detector, so its old text kept counting as a duplicate
+		botMock.ForgetMessageFunc = func(msg bot.Message) {}
+		tests := []struct {
+			name       string
+			upd        tbapi.Update
+			wantForget bool
+		}{
+			{name: "caption edited away from audio", wantForget: true, upd: tbapi.Update{EditedMessage: &tbapi.Message{
+				MessageID: 77, Chat: tbapi.Chat{ID: 123}, From: &tbapi.User{UserName: "user", ID: 456},
+				Audio: &tbapi.Audio{}, Date: time.Now().Unix(), EditDate: time.Now().Unix()}}},
+			{name: "new audio without caption", upd: tbapi.Update{Message: &tbapi.Message{
+				MessageID: 78, Chat: tbapi.Chat{ID: 123}, From: &tbapi.User{UserName: "user", ID: 456},
+				Audio: &tbapi.Audio{}, Date: time.Now().Unix()}}},
+			{name: "edit in a chat that is not monitored", upd: tbapi.Update{EditedMessage: &tbapi.Message{
+				MessageID: 79, Chat: tbapi.Chat{ID: 999}, From: &tbapi.User{UserName: "user", ID: 456},
+				Audio: &tbapi.Audio{}, Date: time.Now().Unix(), EditDate: time.Now().Unix()}}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				botMock.ResetCalls()
+				updChan := make(chan tbapi.Update, 1)
+				updChan <- tt.upd
+				close(updChan)
+				mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+				require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+				assert.Empty(t, botMock.OnMessageCalls())
+				if !tt.wantForget {
+					assert.Empty(t, botMock.ForgetMessageCalls())
+					return
+				}
+				require.Len(t, botMock.ForgetMessageCalls(), 1)
+				assert.Equal(t, 77, botMock.ForgetMessageCalls()[0].Msg.ID)
+				assert.Equal(t, int64(456), botMock.ForgetMessageCalls()[0].Msg.From.ID)
+			})
+		}
+	})
 }
 
 func TestTelegramListener_DoWithBotSoftBan(t *testing.T) {

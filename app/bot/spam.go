@@ -52,6 +52,7 @@ type Detector interface {
 	RemoveApprovedUser(id string) error
 	ApprovedUsers() (res []approved.UserInfo)
 	IsApprovedUser(userID string) bool
+	ForgetMessage(userID string, msgID int)
 	RecordReaction(userID int64) spamcheck.Response
 	GetLuaPluginNames() []string // Returns the list of available Lua plugin names
 }
@@ -179,6 +180,16 @@ func (s *SpamFilter) OnMessage(msg Message, checkOnly bool) (response Response) 
 	}
 	log.Printf("[DEBUG] user %s is not a spammer, %s", displayUsername, checkResultStr)
 	return Response{CheckResults: checkResults} // not a spam
+}
+
+// ForgetMessage removes a message from the duplicate history, under the same identity OnMessage
+// checked it with. For an edit that left the message without text and is not checked anymore.
+func (s *SpamFilter) ForgetMessage(msg Message) {
+	userID := msg.From.ID
+	if msg.SenderChat.ID != 0 {
+		userID = msg.SenderChat.ID
+	}
+	s.Detector.ForgetMessage(strconv.FormatInt(userID, 10), msg.ID)
 }
 
 // UpdateSpam appends a message to the spam samples file and updates the classifier
