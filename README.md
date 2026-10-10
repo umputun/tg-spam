@@ -240,6 +240,8 @@ This option is disabled by default. When enabled, the bot tracks messages from e
 
 **Important**: Duplicate detection is a behavioral check that runs for **all users**, including approved users. This differs from content-based checks (similarity, classifier, OpenAI, Gemini) which are skipped for approved users for performance reasons. The rationale is that approved users can still exhibit spam behavior by sending duplicate messages, and this pattern should be detected regardless of trust status.
 
+Messages with no text of their own are not counted: media without a caption, including media posted as a reply or with a quote. In a photo album with a caption on only one photo, that caption counts once, and an album without captions is not counted at all. An album with the same caption on every photo counts each photo.
+
 Configure with:
 - `--duplicates.threshold=, [$DUPLICATES_THRESHOLD]` (default: 0, disabled) - Number of identical messages to trigger spam detection
 - `--duplicates.window=, [$DUPLICATES_WINDOW]` (default: 1h) - Time window for tracking duplicate messages

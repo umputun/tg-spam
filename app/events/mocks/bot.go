@@ -17,6 +17,9 @@ import (
 //			AddApprovedUserFunc: func(id int64, name string) error {
 //				panic("mock out the AddApprovedUser method")
 //			},
+//			ForgetMessageFunc: func(msg bot.Message)  {
+//				panic("mock out the ForgetMessage method")
+//			},
 //			IsApprovedUserFunc: func(userID int64) bool {
 //				panic("mock out the IsApprovedUser method")
 //			},
@@ -48,6 +51,9 @@ type BotMock struct {
 	// AddApprovedUserFunc mocks the AddApprovedUser method.
 	AddApprovedUserFunc func(id int64, name string) error
 
+	// ForgetMessageFunc mocks the ForgetMessage method.
+	ForgetMessageFunc func(msg bot.Message)
+
 	// IsApprovedUserFunc mocks the IsApprovedUser method.
 	IsApprovedUserFunc func(userID int64) bool
 
@@ -77,6 +83,11 @@ type BotMock struct {
 			ID int64
 			// Name is the name argument value.
 			Name string
+		}
+		// ForgetMessage holds details about calls to the ForgetMessage method.
+		ForgetMessage []struct {
+			// Msg is the msg argument value.
+			Msg bot.Message
 		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
 		IsApprovedUser []struct {
@@ -119,6 +130,7 @@ type BotMock struct {
 		}
 	}
 	lockAddApprovedUser    sync.RWMutex
+	lockForgetMessage      sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
 	lockOnJoin             sync.RWMutex
 	lockOnMessage          sync.RWMutex
@@ -169,6 +181,45 @@ func (mock *BotMock) ResetAddApprovedUserCalls() {
 	mock.lockAddApprovedUser.Lock()
 	mock.calls.AddApprovedUser = nil
 	mock.lockAddApprovedUser.Unlock()
+}
+
+// ForgetMessage calls ForgetMessageFunc.
+func (mock *BotMock) ForgetMessage(msg bot.Message) {
+	if mock.ForgetMessageFunc == nil {
+		panic("BotMock.ForgetMessageFunc: method is nil but Bot.ForgetMessage was just called")
+	}
+	callInfo := struct {
+		Msg bot.Message
+	}{
+		Msg: msg,
+	}
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = append(mock.calls.ForgetMessage, callInfo)
+	mock.lockForgetMessage.Unlock()
+	mock.ForgetMessageFunc(msg)
+}
+
+// ForgetMessageCalls gets all the calls that were made to ForgetMessage.
+// Check the length with:
+//
+//	len(mockedBot.ForgetMessageCalls())
+func (mock *BotMock) ForgetMessageCalls() []struct {
+	Msg bot.Message
+} {
+	var calls []struct {
+		Msg bot.Message
+	}
+	mock.lockForgetMessage.RLock()
+	calls = mock.calls.ForgetMessage
+	mock.lockForgetMessage.RUnlock()
+	return calls
+}
+
+// ResetForgetMessageCalls reset all the calls that were made to ForgetMessage.
+func (mock *BotMock) ResetForgetMessageCalls() {
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
 }
 
 // IsApprovedUser calls IsApprovedUserFunc.
@@ -457,6 +508,10 @@ func (mock *BotMock) ResetCalls() {
 	mock.lockAddApprovedUser.Lock()
 	mock.calls.AddApprovedUser = nil
 	mock.lockAddApprovedUser.Unlock()
+
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
 
 	mock.lockIsApprovedUser.Lock()
 	mock.calls.IsApprovedUser = nil

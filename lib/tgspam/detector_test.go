@@ -762,6 +762,43 @@ func TestDetector_DuplicateDetectionForApprovedUsers(t *testing.T) {
 	assert.Contains(t, dupResp2.ExtraDeleteIDs, 658144, "should include first message ID for deletion")
 }
 
+func TestDetector_ForgetMessage(t *testing.T) {
+	newDetector := func(threshold int) *Detector {
+		cfg := Config{FirstMessageOnly: true}
+		cfg.DuplicateDetection.Threshold = threshold
+		cfg.DuplicateDetection.Window = time.Hour
+		return NewDetector(cfg)
+	}
+	send := func(d *Detector, id int) bool {
+		spam, _ := d.Check(spamcheck.Request{Msg: "hello", UserID: "123", Meta: spamcheck.MetaData{MessageID: id}})
+		return spam
+	}
+
+	t.Run("forgotten message stops counting", func(t *testing.T) {
+		d := newDetector(3)
+		require.False(t, send(d, 1))
+		d.ForgetMessage("123", 1)
+		assert.False(t, send(d, 2))
+		assert.False(t, send(d, 3), "only two occurrences are left")
+		assert.True(t, send(d, 4))
+	})
+
+	t.Run("other user, unknown message and bad user id change nothing", func(t *testing.T) {
+		d := newDetector(3)
+		require.False(t, send(d, 1))
+		d.ForgetMessage("456", 1)
+		d.ForgetMessage("123", 99)
+		d.ForgetMessage("not-a-number", 1)
+		assert.False(t, send(d, 2))
+		assert.True(t, send(d, 3))
+	})
+
+	t.Run("duplicates disabled", func(t *testing.T) {
+		d := newDetector(0)
+		assert.NotPanics(t, func() { d.ForgetMessage("123", 1) })
+	})
+}
+
 func TestDetector_DuplicateDetectionEdgeCases(t *testing.T) {
 	t.Run("approved user with different messages - no false positive", func(t *testing.T) {
 		// approved users should be able to send different messages without spam detection

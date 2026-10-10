@@ -46,6 +46,7 @@ type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
 	OnReaction(userID int64, userName string) bot.Response
 	OnJoin(user bot.User) bot.Response
+	ForgetMessage(msg bot.Message)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error

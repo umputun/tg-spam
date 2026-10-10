@@ -793,6 +793,22 @@ func (d *Detector) approvedCount(userID string) int {
 	return d.approvedUsers[userID].Count
 }
 
+// ForgetMessage removes a message from the duplicate history only, so it stops counting toward the
+// duplicates threshold. For a message whose text was edited away and that is not checked anymore.
+func (d *Detector) ForgetMessage(userID string, msgID int) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if d.duplicateDetector == nil {
+		return
+	}
+	id, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return
+	}
+	d.duplicateDetector.forgetMessage(id, msgID)
+}
+
 // IsApprovedUser checks if a given user ID is approved.
 // It uses memory cache for approved users and compares the count of messages sent by the user.
 func (d *Detector) IsApprovedUser(userID string) bool {

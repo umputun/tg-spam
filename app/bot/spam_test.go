@@ -970,6 +970,28 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 	}
 }
 
+func TestSpamFilter_ForgetMessage(t *testing.T) {
+	tests := []struct {
+		name       string
+		msg        Message
+		wantUserID string
+	}{
+		{name: "user message", msg: Message{ID: 10, From: User{ID: 123}}, wantUserID: "123"},
+		{name: "channel message uses the channel id", wantUserID: "-100500",
+			msg: Message{ID: 10, From: User{ID: 136817688}, SenderChat: SenderChat{ID: -100500}}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			det := &mocks.DetectorMock{ForgetMessageFunc: func(userID string, msgID int) {}}
+			NewSpamFilter(det, SpamConfig{}).ForgetMessage(tc.msg)
+			require.Len(t, det.ForgetMessageCalls(), 1)
+			assert.Equal(t, tc.wantUserID, det.ForgetMessageCalls()[0].UserID)
+			assert.Equal(t, 10, det.ForgetMessageCalls()[0].MsgID)
+		})
+	}
+}
+
 func TestSpamFilter_IsApprovedUser(t *testing.T) {
 	tests := []struct {
 		name         string

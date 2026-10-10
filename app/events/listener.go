@@ -405,6 +405,10 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	// no admitted document
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
 		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted {
+		// an edit that removed the text is not checked, so its earlier text would keep counting as a duplicate
+		if update.Message.EditDate != 0 {
+			l.Bot.ForgetMessage(*msg)
+		}
 		return nil
 	}
 	ctx := context.TODO()
