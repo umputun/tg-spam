@@ -3,6 +3,7 @@ package tgspam
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,13 +69,16 @@ func (d *duplicateDetector) check(req spamcheck.Request) spamcheck.Response {
 		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "check disabled"}
 	}
 
-	if strings.TrimSpace(req.Msg) == "" {
-		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "empty message skipped"}
-	}
-
 	userID, err := strconv.ParseInt(req.UserID, 10, 64)
 	if err != nil {
 		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "invalid user id"}
+	}
+
+	// a message with no text of its own carries only the quoted or replied-to text in Msg, so every
+	// caption-less item of an album posted as a reply would hash the same
+	if strings.TrimSpace(req.AuthoredText()) == "" {
+		d.forgetMessage(userID, req.Meta.MessageID)
+		return spamcheck.Response{Name: "duplicate", Spam: false, Details: "empty message skipped"}
 	}
 
 	count, extraIDs, isEdit := d.trackMessage(userID, req.Msg, req.Meta.MessageID)
@@ -217,6 +221,35 @@ func (d *duplicateDetector) trackMessage(userID int64, msg string, messageID int
 	d.cache.Set(userID, history, d.window*2)
 
 	return count, extraIDs, isEdit
+}
+
+// forgetMessage drops the tracked entry of a message whose text was edited away, so the old content
+// stops counting toward the threshold
+func (d *duplicateDetector) forgetMessage(userID int64, messageID int) {
+	if messageID <= 0 {
+		return
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	history, found := d.cache.Get(userID)
+	if !found {
+		return
+	}
+
+	idx := slices.IndexFunc(history.entries, func(e hashEntry) bool { return e.messageID == messageID })
+	if idx < 0 {
+		return
+	}
+
+	entries := slices.Delete(slices.Clone(history.entries), idx, idx+1)
+	history.entries, history.trackers = d.filterExpiredEntries(entries, time.Now())
+	if len(history.entries) == 0 {
+		d.cache.Invalidate(userID)
+		return
+	}
+	d.cache.Set(userID, history, d.window*2)
 }
 
 // filterExpiredEntries removes entries older than window and rebuilds trackers from entries
