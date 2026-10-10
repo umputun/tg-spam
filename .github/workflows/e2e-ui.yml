@@ -23,6 +23,11 @@ jobs:
   e2e-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.25 is the minimum go.mod declares, 1.27 is what the docker image is built with
+        go: ["1.25", "1.27"]
     env:
       PLAYWRIGHT_GO_VERSION: v0.6100.0 # keep in sync with mxschmitt/playwright-go in go.mod
 
@@ -35,7 +40,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: ${{ matrix.go }}
 
       - name: cache playwright browsers and driver
         uses: actions/cache@v6
