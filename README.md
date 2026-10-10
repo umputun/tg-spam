@@ -837,6 +837,14 @@ Available commands:
 - `--dbg` - if set to `true`, the bot will print debug information to the console.
 - `--tg-dbg` - if set to `true`, the bot will print debug information from the telegram library to the console.
 
+## English samples
+
+The preset samples are mostly in Russian. The `data/en` directory holds an English set instead: 592 ham and 448 spam samples, plus copies of the preset excluded tokens and stop words. To use it, set `--files.samples=` (`$FILES_SAMPLES`) to a copy of that directory. In Docker, use `/srv/data/en` in the mounted data directory: the entrypoint creates it on a fresh volume, and an existing installation needs it copied once with `cp -r /srv/preset/en /srv/data/` inside the container. Do not point it at `/srv/preset/en` in the image, since the import would then repeat every time the container is recreated.
+
+When the bot finds the files there, it imports them into the database. The English samples replace the preset samples, and samples added by admins stay, except one with the same text as an imported sample, which takes the imported type. The excluded tokens and stop words replace all existing ones, including any added by admins. The bot renames each file to `*.loaded` after the import, so the import runs once for each copy.
+
+Sources and licence of the set are in [data/en/README.md](data/en/README.md).
+
 ## Running the bot with an empty set of samples
 
 The provided preset set of samples is just an example collected by the bot author. It is not enough to detect all the spam, in all groups and all languages. However, the bot is designed to learn on the fly, so it is possible to start with an empty set of samples and let the bot learn from the spam detected by humans.
