@@ -408,6 +408,7 @@ func TestOptToSettings(t *testing.T) {
 		o.LuaPlugins.PluginsDir = "/custom/plugins"
 		o.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
 		o.LuaPlugins.DynamicReload = true
+		o.LuaPlugins.Unrestricted = true
 
 		o.AbnormalSpacing.Enabled = true
 		o.AbnormalSpacing.SpaceRatioThreshold = 0.4
@@ -594,6 +595,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "test-key", settings.Transient.ConfigDBEncryptKey)
 				assert.True(t, settings.Transient.Dbg)
 				assert.True(t, settings.Transient.TGDbg)
+				assert.True(t, settings.Transient.LuaUnrestricted)
 				assert.Equal(t, "secret", settings.Transient.WebAuthPasswd)
 			},
 		},

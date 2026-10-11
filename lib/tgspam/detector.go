@@ -633,7 +633,8 @@ func (d *Detector) WithJevChecker(client HTTPClient, config JevConfig) error {
 	return nil
 }
 
-// WithLuaEngine sets a Lua plugin engine and loads plugins
+// WithLuaEngine sets a Lua plugin engine and loads plugins. An enabled plugin that isn't loaded is skipped
+// with a warning, and the rest are registered.
 func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 	d.luaEngine = engine
 
@@ -653,7 +654,8 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 			if supportsResults {
 				pluginCheck, err := resultEngine.GetResultCheck(name)
 				if err != nil {
-					return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+					log.Printf("[WARN] skipped Lua plugin %q: %v", name, err)
+					continue
 				}
 				d.luaChecks = append(d.luaChecks, pluginCheck)
 				continue
@@ -661,7 +663,8 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 
 			pluginCheck, err := d.luaEngine.GetCheck(name)
 			if err != nil {
-				return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+				log.Printf("[WARN] skipped Lua plugin %q: %v", name, err)
+				continue
 			}
 			d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
 				return plugin.Result{Response: pluginCheck(req)}
@@ -689,7 +692,8 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 			for _, name := range d.LuaPlugins.EnabledPlugins {
 				joinCheck, err := joinEngine.GetJoinCheck(name)
 				if err != nil {
-					return fmt.Errorf("failed to get Lua join check %q: %w", name, err)
+					log.Printf("[WARN] skipped Lua join check %q: %v", name, err)
+					continue
 				}
 				d.luaJoinChecks = append(d.luaJoinChecks, joinCheck)
 			}

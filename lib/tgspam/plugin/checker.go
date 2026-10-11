@@ -10,6 +10,11 @@
 // Scripts may also provide an optional "check_join" function. It is called for a new chat member
 // with the user fields only (no message, no meta) and returns a boolean (is spam) and a string
 // (details); a third return value is ignored.
+//
+// Scripts run with the base, table, string, math and coroutine libraries, without dofile, loadfile,
+// module and require, and with an os table holding only clock, date, difftime and time, so they can't
+// read the environment, touch files or run commands. WithUnrestrictedLibs gives them every library.
+// The http_request helper stays available either way.
 package plugin
 
 import (
@@ -31,7 +36,36 @@ type Checker struct {
 	warned       map[string]struct{}
 	lock         sync.RWMutex // protects the checker maps and serializes access to the shared vm
 	watcher      *Watcher     // optional file watcher for dynamic reloading
+	unrestricted bool         // scripts get every library, os and io included
 }
+
+// Option configures a Checker
+type Option func(*Checker)
+
+// WithUnrestrictedLibs gives scripts every gopher-lua library, the full os and io included, and the
+// dofile, loadfile, module and require functions
+func WithUnrestrictedLibs() Option {
+	return func(c *Checker) { c.unrestricted = true }
+}
+
+// restrictedLibs are the libraries opened for scripts unless the checker is unrestricted
+var restrictedLibs = []struct {
+	name string
+	open lua.LGFunction
+}{
+	{lua.BaseLibName, lua.OpenBase},
+	{lua.TabLibName, lua.OpenTable},
+	{lua.StringLibName, lua.OpenString},
+	{lua.MathLibName, lua.OpenMath},
+	{lua.CoroutineLibName, lua.OpenCoroutine},
+	{lua.OsLibName, lua.OpenOs},
+}
+
+// removedBaseFuncs are the base library functions that read files or load modules
+var removedBaseFuncs = []string{"dofile", "loadfile", "module", "require"}
+
+// allowedOsFuncs are the os functions kept in a restricted state, the ones reading the clock and formatting dates
+var allowedOsFuncs = map[string]bool{"clock": true, "date": true, "difftime": true, "time": true}
 
 // Check is a function that takes a request and returns a response indicating if message is spam
 type Check func(req spamcheck.Request) spamcheck.Response
@@ -49,17 +83,49 @@ type ResultCheck func(req spamcheck.Request) Result
 // has no check_join at call time.
 type JoinCheck func(req spamcheck.Request) (spamcheck.Response, bool)
 
-// NewChecker creates a new Checker
-func NewChecker() *Checker {
-	L := lua.NewState()
+// NewChecker creates a new Checker. Scripts run with restricted libraries unless WithUnrestrictedLibs is passed.
+func NewChecker(opts ...Option) *Checker {
 	lc := &Checker{
-		vm:           L,
 		checkers:     make(map[string]*lua.LFunction),
 		joinCheckers: make(map[string]*lua.LFunction),
 		warned:       make(map[string]struct{}),
 	}
+	for _, opt := range opts {
+		opt(lc)
+	}
+	lc.vm = lc.newState()
 	lc.RegisterHelpers() // register helper functions
 	return lc
+}
+
+// newState creates a Lua state with the libraries the checker allows
+func (c *Checker) newState() *lua.LState {
+	if c.unrestricted {
+		return lua.NewState()
+	}
+	L := lua.NewState(lua.Options{SkipOpenLibs: true})
+	for _, lib := range restrictedLibs {
+		L.Push(L.NewFunction(lib.open))
+		L.Push(lua.LString(lib.name))
+		L.Call(1, 0)
+	}
+	for _, name := range removedBaseFuncs {
+		L.SetGlobal(name, lua.LNil)
+	}
+	// the entries are removed from the table OpenOs registered, not hidden behind a new one, so no
+	// reference to the full table is left in the state
+	if osTable, ok := L.GetGlobal(lua.OsLibName).(*lua.LTable); ok {
+		var removed []string
+		osTable.ForEach(func(key, _ lua.LValue) {
+			if !allowedOsFuncs[key.String()] {
+				removed = append(removed, key.String())
+			}
+		})
+		for _, name := range removed {
+			osTable.RawSetString(name, lua.LNil)
+		}
+	}
+	return L
 }
 
 // LoadScript loads a Lua script and registers it as a checker
@@ -68,7 +134,7 @@ func (c *Checker) LoadScript(path string) error {
 	defer c.lock.Unlock()
 
 	// create a new state for loading this script to avoid interference with other scripts
-	tempState := lua.NewState()
+	tempState := c.newState()
 	defer tempState.Close()
 
 	// load the script in the temporary state
@@ -118,7 +184,8 @@ func (c *Checker) ReloadScript(path string) error {
 	return c.LoadScript(path)
 }
 
-// LoadDirectory loads all Lua scripts from a directory
+// LoadDirectory loads all Lua scripts from a directory. A script that fails to load is skipped with a
+// warning and the rest are loaded; the error is returned only when the directory can't be listed.
 func (c *Checker) LoadDirectory(dir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.lua"))
 	if err != nil {
@@ -127,7 +194,7 @@ func (c *Checker) LoadDirectory(dir string) error {
 
 	for _, file := range files {
 		if err := c.LoadScript(file); err != nil {
-			return fmt.Errorf("failed to load script %s: %w", file, err)
+			log.Printf("[WARN] skipped Lua script %s: %v", file, err)
 		}
 	}
 
@@ -236,6 +303,7 @@ func (c *Checker) createResultCheck(name string) ResultCheck {
 			NRet:    3,
 			Protect: true,
 		}, reqTable); err != nil {
+			c.warnOnce(name, "check-error", "[WARN] lua checker %q failed: %v", name, err)
 			return Result{Response: spamcheck.Response{
 				Name:    "lua-" + name,
 				Spam:    false,
@@ -322,6 +390,7 @@ func (c *Checker) createJoinCheck(name string) JoinCheck {
 		reqTable.RawSetString("is_premium", lua.LBool(req.IsPremium))
 
 		if err := c.vm.CallByParam(lua.P{Fn: joinFunc, NRet: 2, Protect: true}, reqTable); err != nil {
+			c.warnOnce(name, "join-error", "[WARN] lua join checker %q failed: %v", name, err)
 			return spamcheck.Response{
 				Name:    "lua-" + name,
 				Spam:    false,

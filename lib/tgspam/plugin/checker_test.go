@@ -6,12 +6,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	lua "github.com/yuin/gopher-lua"
 
 	"github.com/umputun/tg-spam/lib/spamcheck"
 )
@@ -990,4 +992,177 @@ end
 		_, ok = all["without"](joinReq)
 		assert.False(t, ok)
 	})
+}
+
+func TestChecker_Libraries(t *testing.T) {
+	probe := `
+function check(req)
+	local value = loadstring("return " .. req.msg)()
+	return value ~= nil, type(value)
+end
+`
+	loadProbe := func(t *testing.T, opts ...Option) Check {
+		t.Helper()
+		checker := NewChecker(opts...)
+		t.Cleanup(checker.Close)
+		path := filepath.Join(t.TempDir(), "probe.lua")
+		require.NoError(t, os.WriteFile(path, []byte(probe), 0o600))
+		require.NoError(t, checker.LoadScript(path))
+		check, err := checker.GetCheck("probe")
+		require.NoError(t, err)
+		return check
+	}
+	available := []string{"os.time", "os.date", "os.clock", "os.difftime", "string.upper", "table.insert",
+		"math.floor", "coroutine.create", "pairs", "loadstring", "http_request", "to_lower"}
+	removed := []string{"os.execute", "os.getenv", "os.setenv", "os.exit", "os.remove", "os.rename", "os.tmpname",
+		"os.setlocale", "io", "package", "debug", "channel", "dofile", "loadfile", "module", "require"}
+
+	t.Run("restricted by default", func(t *testing.T) {
+		check := loadProbe(t)
+		for _, name := range available {
+			resp := check(spamcheck.Request{Msg: name})
+			require.NoError(t, resp.Error, name)
+			assert.True(t, resp.Spam, name)
+		}
+		for _, name := range removed {
+			resp := check(spamcheck.Request{Msg: name})
+			require.NoError(t, resp.Error, name)
+			assert.False(t, resp.Spam, name)
+		}
+	})
+
+	t.Run("registered os table holds only the allowed functions", func(t *testing.T) {
+		checker := NewChecker()
+		defer checker.Close()
+		loaded := checker.vm.GetField(checker.vm.Get(lua.RegistryIndex), "_LOADED")
+		osTable, ok := checker.vm.GetField(loaded, lua.OsLibName).(*lua.LTable)
+		require.True(t, ok)
+		var names []string
+		osTable.ForEach(func(key, _ lua.LValue) { names = append(names, key.String()) })
+		assert.ElementsMatch(t, []string{"clock", "date", "difftime", "time"}, names)
+	})
+
+	t.Run("unrestricted on request", func(t *testing.T) {
+		check := loadProbe(t, WithUnrestrictedLibs())
+		for _, name := range append(available, "os.execute", "os.getenv", "io", "package", "debug", "dofile",
+			"loadfile", "module", "require") {
+			resp := check(spamcheck.Request{Msg: name})
+			require.NoError(t, resp.Error, name)
+			assert.True(t, resp.Spam, name)
+		}
+	})
+
+	t.Run("script loading also runs restricted", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "env.lua")
+		require.NoError(t, os.WriteFile(path, []byte(`
+local home = os.getenv("HOME")
+function check(req)
+	return false, ""
+end
+`), 0o600))
+		guarded := filepath.Join(dir, "guarded.lua")
+		require.NoError(t, os.WriteFile(guarded, []byte(`
+local home = os.getenv and os.getenv("HOME") or ""
+function check(req)
+	return false, home
+end
+`), 0o600))
+
+		checker := NewChecker()
+		defer checker.Close()
+		require.ErrorContains(t, checker.LoadScript(path), "failed to load Lua script")
+		require.NoError(t, checker.LoadScript(guarded))
+
+		unrestricted := NewChecker(WithUnrestrictedLibs())
+		defer unrestricted.Close()
+		require.NoError(t, unrestricted.LoadScript(path))
+	})
+
+	t.Run("no state used for loading has io", func(t *testing.T) {
+		dir := t.TempDir()
+		marker := filepath.Join(dir, "marker")
+		path := filepath.Join(dir, "writer.lua")
+		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`
+if io then
+	local f = io.open(%q, "w")
+	f:write("x")
+	f:close()
+end
+function check(req)
+	return false, ""
+end
+`, marker)), 0o600))
+
+		checker := NewChecker()
+		defer checker.Close()
+		require.NoError(t, checker.LoadScript(path))
+		assert.NoFileExists(t, marker)
+	})
+}
+
+func TestChecker_LoadDirectorySkipsBrokenScripts(t *testing.T) {
+	logs := captureLog(t)
+	dir := t.TempDir()
+	scripts := map[string]string{
+		"good.lua":    "function check(req)\n\treturn true, \"good\"\nend\n",
+		"syntax.lua":  "function check(req\n",
+		"env.lua":     "os.getenv(\"HOME\")\nfunction check(req)\n\treturn false, \"\"\nend\n",
+		"nocheck.lua": "local x = 1\n",
+	}
+	for name, body := range scripts {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+	}
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadDirectory(dir))
+
+	assert.Equal(t, []string{"good"}, mapKeys(checker.GetAllChecks()))
+	for _, name := range []string{"syntax.lua", "env.lua", "nocheck.lua"} {
+		assert.Contains(t, logs.String(), "[WARN] skipped Lua script "+filepath.Join(dir, name), name)
+	}
+}
+
+func TestChecker_RuntimeErrorWarnsOnce(t *testing.T) {
+	logs := captureLog(t)
+	path := filepath.Join(t.TempDir(), "broken.lua")
+	require.NoError(t, os.WriteFile(path, []byte(`
+function check(req)
+	return os.getenv("HOME") ~= nil, ""
+end
+function check_join(req)
+	return io.open("/etc/passwd") ~= nil, ""
+end
+`), 0o600))
+
+	checker := NewChecker()
+	defer checker.Close()
+	require.NoError(t, checker.LoadScript(path))
+	check, err := checker.GetResultCheck("broken")
+	require.NoError(t, err)
+	joinCheck, err := checker.GetJoinCheck("broken")
+	require.NoError(t, err)
+
+	for range 3 {
+		res := check(spamcheck.Request{Msg: "hello"})
+		require.Error(t, res.Response.Error)
+		assert.False(t, res.Response.Spam)
+		resp, ok := joinCheck(spamcheck.Request{UserID: "1"})
+		assert.True(t, ok)
+		require.Error(t, resp.Error)
+		assert.False(t, resp.Spam)
+	}
+
+	assert.Equal(t, 1, strings.Count(logs.String(), `[WARN] lua checker "broken" failed`))
+	assert.Equal(t, 1, strings.Count(logs.String(), `[WARN] lua join checker "broken" failed`))
+}
+
+func mapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

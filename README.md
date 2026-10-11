@@ -536,6 +536,10 @@ end
 
 There are no extra settings: defining `check_join` in an enabled plugin turns the check on.
 
+**Available libraries.** Plugins get the base library without `dofile`, `loadfile`, `module` and `require`, the `string`, `table`, `math` and `coroutine` libraries, and an `os` table with only `clock`, `date`, `difftime` and `time`. Environment variables, files and commands are off: `io`, `package`, `debug` and the other `os` functions are `nil`, so a plugin can test for them, for example with `if os.getenv then`. The `http_request` helper is still available, so this limits what a plugin can reach on the host; it does not make an untrusted plugin safe to run. For plugins that need the full libraries, `--lua-plugins.unrestricted` (`$LUA_PLUGINS_UNRESTRICTED`) turns the restriction off. It is set only on the command line or in the environment, never in the web settings.
+
+A plugin that fails to load, for example because it calls a removed function at the top level, is skipped with a warning and the other plugins load. An enabled plugin that isn't loaded is skipped the same way. A skipped plugin needs a restart once it is fixed, also with `--lua-plugins.dynamic-reload`. A plugin that fails while checking a message or a join is logged once as a warning, and that check counts as not spam.
+
 Several helper functions are provided to Lua scripts:
 - `count_substring(text, substr)` - Counts occurrences of a substring
 - `match_regex(text, pattern)` - Checks if text matches a regex pattern
@@ -767,6 +771,7 @@ lua-plugins:
       --lua-plugins.plugins-dir=        directory with Lua plugins [$LUA_PLUGINS_PLUGINS_DIR]
       --lua-plugins.enabled-plugins=    list of enabled plugins (by name, without .lua extension) [$LUA_PLUGINS_ENABLED_PLUGINS]
       --lua-plugins.dynamic-reload      dynamically reload plugins when they change [$LUA_PLUGINS_DYNAMIC_RELOAD]
+      --lua-plugins.unrestricted        give plugins every Lua library, os and io included [$LUA_PLUGINS_UNRESTRICTED]
 
 space:
       --space.enabled                   enable abnormal words check [$SPACE_ENABLED]

@@ -1,9 +1,11 @@
 package tgspam
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -228,30 +230,46 @@ func TestDetector_WithLuaEngine_LoadError(t *testing.T) {
 }
 
 func TestDetector_WithLuaEngine_GetCheckError(t *testing.T) {
+	logs := captureLuaLog(t)
 	config := Config{}
 	config.LuaPlugins.Enabled = true
 	config.LuaPlugins.PluginsDir = "/path/to/plugins"
-	config.LuaPlugins.EnabledPlugins = []string{"plugin1"}
+	config.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
 
 	detector := NewDetector(config)
 
-	// create mock Lua engine with GetCheck error
 	mockLuaEngine := &mocks.LuaPluginEngineMock{
 		LoadDirectoryFunc: func(dir string) error {
 			return nil
 		},
 		GetCheckFunc: func(name string) (plugin.Check, error) {
-			return nil, errors.New("get check error")
+			if name == "plugin1" {
+				return nil, errors.New("get check error")
+			}
+			return func(spamcheck.Request) spamcheck.Response {
+				return spamcheck.Response{Name: "lua-plugin2", Spam: true, Details: "plugin2"}
+			}, nil
 		},
-		CloseFunc: func() {
-			// do nothing in the test
-		},
+		CloseFunc: func() {},
 	}
 
-	// apply the mock engine
-	err := detector.WithLuaEngine(mockLuaEngine)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to get Lua check")
+	require.NoError(t, detector.WithLuaEngine(mockLuaEngine))
+	require.Len(t, detector.luaChecks, 1)
+	assert.Equal(t, "lua-plugin2", detector.luaChecks[0](spamcheck.Request{}).Response.Name)
+	assert.Contains(t, logs.String(), `[WARN] skipped Lua plugin "plugin1": get check error`)
+}
+
+func captureLuaLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var logs bytes.Buffer
+	previousWriter, previousFlags := log.Writer(), log.Flags()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	})
+	return &logs
 }
 
 func TestDetector_WithLuaEngine_AllChecks(t *testing.T) {
@@ -971,7 +989,8 @@ end
 		assert.Empty(t, cr)
 	})
 
-	t.Run("join check error fails WithLuaEngine", func(t *testing.T) {
+	t.Run("join check error skips only the join check", func(t *testing.T) {
+		logs := captureLuaLog(t)
 		config := Config{}
 		config.LuaPlugins.Enabled = true
 		config.LuaPlugins.PluginsDir = "/plugins"
@@ -981,8 +1000,9 @@ end
 			legacyLuaPluginEngine: &legacyLuaPluginEngine{check: oldStylePluginCheck},
 			joinErr:               errors.New("no such plugin"),
 		}
-		err := d.WithLuaEngine(engine)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `failed to get Lua join check "legacy"`)
+		require.NoError(t, d.WithLuaEngine(engine))
+		assert.Len(t, d.luaChecks, 1)
+		assert.Empty(t, d.luaJoinChecks)
+		assert.Contains(t, logs.String(), `[WARN] skipped Lua join check "legacy": no such plugin`)
 	})
 }

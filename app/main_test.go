@@ -432,6 +432,33 @@ func Test_initLuaPlugins(t *testing.T) {
 		assert.Empty(t, detector.LuaPlugins.EnabledPlugins)
 		assert.False(t, detector.LuaPlugins.DynamicReload)
 	})
+
+	t.Run("unrestricted libraries only on request", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "env.lua"), []byte(`
+local home = os.getenv("HOME")
+function check(req)
+	return false, ""
+end
+`), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "plain.lua"), []byte(`
+function check(req)
+	return false, ""
+end
+`), 0o600))
+
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = dir
+		detector := makeDetector(makeTestSettings())
+		initLuaPlugins(detector, settings)
+		assert.Equal(t, []string{"plain"}, detector.GetLuaPluginNames())
+
+		settings.Transient.LuaUnrestricted = true
+		detector = makeDetector(makeTestSettings())
+		initLuaPlugins(detector, settings)
+		assert.Equal(t, []string{"env", "plain"}, detector.GetLuaPluginNames())
+	})
 }
 
 func Test_makeSpamBot(t *testing.T) {
