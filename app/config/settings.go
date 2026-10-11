@@ -272,6 +272,9 @@ type TransientSettings struct {
 	// encryption for database stored configuration
 	ConfigDBEncryptKey string `json:"-" yaml:"-"`
 
+	// LuaUnrestricted gives Lua plugins every library, os and io included
+	LuaUnrestricted bool `json:"-" yaml:"-"`
+
 	// temporary auth password (used only to generate hash)
 	WebAuthPasswd string `json:"-" yaml:"-"`
 

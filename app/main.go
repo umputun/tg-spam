@@ -156,6 +156,7 @@ type options struct {
 		PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
 		EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
 		DynamicReload  bool     `long:"dynamic-reload" env:"DYNAMIC_RELOAD" description:"dynamically reload plugins when they change"`
+		Unrestricted   bool     `long:"unrestricted" env:"UNRESTRICTED" description:"give plugins every Lua library, os and io included"`
 	} `group:"lua-plugins" namespace:"lua-plugins" env-namespace:"LUA_PLUGINS"`
 
 	AbnormalSpacing struct {
@@ -317,6 +318,7 @@ func main() {
 		appSettings.Transient.Dbg = opts.Dbg
 		appSettings.Transient.TGDbg = opts.TGDbg
 		appSettings.Transient.StorageTimeout = opts.StorageTimeout
+		appSettings.Transient.LuaUnrestricted = opts.LuaPlugins.Unrestricted
 
 		// apply explicit CLI overrides for non-transient values
 		applyCLIOverrides(appSettings, opts, defaults)
@@ -994,7 +996,12 @@ func initLuaPlugins(detector *tgspam.Detector, settings *config.Settings) {
 	detector.LuaPlugins.DynamicReload = settings.LuaPlugins.DynamicReload
 
 	// create and initialize the plugin engine
-	luaEngine := plugin.NewChecker()
+	var engineOpts []plugin.Option
+	if settings.Transient.LuaUnrestricted {
+		log.Print("[WARN] lua plugins run with every Lua library, os and io included")
+		engineOpts = append(engineOpts, plugin.WithUnrestrictedLibs())
+	}
+	luaEngine := plugin.NewChecker(engineOpts...)
 	if err := detector.WithLuaEngine(luaEngine); err != nil {
 		log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
 		return
