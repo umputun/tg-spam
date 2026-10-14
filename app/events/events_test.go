@@ -729,6 +729,96 @@ func TestTelegramListener_transformRichMessage(t *testing.T) {
 	}
 }
 
+func TestTelegramListener_transformChecklist(t *testing.T) {
+	tests := []struct {
+		name      string
+		checklist string
+		baseText  string
+		caption   string
+		expected  string
+	}{
+		{
+			name: "title and tasks in order",
+			checklist: `{"title":"一手假钞假币包过验钞机可找妹","tasks":[{"id":1,"text":"一手假钞假币包过验钞机"},` +
+				`{"id":2,"text":"可面交 可快递"},{"id":3,"text":"https://t.me/dfg321dfgdf",` +
+				`"text_entities":[{"type":"url","offset":0,"length":24}]}]}`,
+			expected: "一手假钞假币包过验钞机可找妹\n一手假钞假币包过验钞机\n可面交 可快递\nhttps://t.me/dfg321dfgdf",
+		},
+		{name: "title only", checklist: `{"title":"free vpn","tasks":[]}`, expected: "free vpn"},
+		{name: "tasks only", checklist: `{"title":"","tasks":[{"id":1,"text":"one"},{"id":2,"text":"two"}]}`, expected: "one\ntwo"},
+		{name: "empty task skipped", checklist: `{"title":"t","tasks":[{"id":1,"text":""},{"id":2,"text":"two"}]}`, expected: "t\ntwo"},
+		{name: "empty checklist leaves text unchanged", checklist: `{"title":"","tasks":[]}`, baseText: "keep", expected: "keep"},
+		{name: "no checklist leaves text unchanged", checklist: `null`, baseText: "plain text", expected: "plain text"},
+		{
+			name:      "appended after text and caption",
+			checklist: `{"title":"title","tasks":[{"id":1,"text":"task"}]}`,
+			baseText:  "hello",
+			caption:   "caption",
+			expected:  "hello\ncaption\ntitle\ntask",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := fmt.Sprintf(`{"message_id":1,"date":1578627415,"chat":{"id":1},"from":{"id":2},"text":%q,"caption":%q,`+
+				`"checklist":%s}`, tt.baseText, tt.caption, tt.checklist)
+			var msg tbapi.Message
+			require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+			assert.Equal(t, tt.expected, transform(&msg).Text)
+		})
+	}
+}
+
+func TestTelegramListener_transformPoll(t *testing.T) {
+	tests := []struct {
+		name     string
+		poll     string
+		baseText string
+		caption  string
+		expected string
+	}{
+		{
+			name: "question, description, options and explanation in order",
+			poll: `{"id":"1","question":"q","description":"d","options":[{"text":"o1"},{"text":"o2"}],` +
+				`"type":"quiz","explanation":"e"}`,
+			expected: "q\nd\no1\no2\ne",
+		},
+		{name: "question only", poll: `{"id":"1","question":"join t.me/spam","options":[]}`, expected: "join t.me/spam"},
+		{name: "options only", poll: `{"id":"1","question":"","options":[{"text":"a"},{"text":"b"}]}`, expected: "a\nb"},
+		{name: "description only", poll: `{"id":"1","question":"","description":"desc","options":[]}`, expected: "desc"},
+		{name: "explanation only", poll: `{"id":"1","question":"","options":[],"explanation":"expl"}`, expected: "expl"},
+		{name: "empty option skipped", poll: `{"id":"1","question":"q","options":[{"text":""},{"text":"b"}]}`, expected: "q\nb"},
+		{name: "empty poll leaves text unchanged", poll: `{"id":"1","question":"","options":[]}`, baseText: "keep", expected: "keep"},
+		{name: "no poll leaves text unchanged", poll: `null`, baseText: "plain text", expected: "plain text"},
+		{
+			name:     "appended after text and caption",
+			poll:     `{"id":"1","question":"q","options":[{"text":"o"}]}`,
+			baseText: "hello",
+			caption:  "caption",
+			expected: "hello\ncaption\nq\no",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := fmt.Sprintf(`{"message_id":1,"date":1578627415,"chat":{"id":1},"from":{"id":2},"text":%q,"caption":%q,`+
+				`"poll":%s}`, tt.baseText, tt.caption, tt.poll)
+			var msg tbapi.Message
+			require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+			assert.Equal(t, tt.expected, transform(&msg).Text)
+		})
+	}
+}
+
+func TestTelegramListener_transformStructuredContentOrder(t *testing.T) {
+	raw := `{"message_id":1,"date":1578627415,"chat":{"id":1},"from":{"id":2},"text":"text","caption":"caption",` +
+		`"rich_message":{"blocks":[{"type":"paragraph","text":"rich"}]},` +
+		`"checklist":{"title":"checklist","tasks":[]},"poll":{"id":"1","question":"poll","options":[]}}`
+	var msg tbapi.Message
+	require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+	assert.Equal(t, "text\ncaption\nrich\nchecklist\npoll", transform(&msg).Text)
+}
+
 func TestTelegramListener_transformReplyTo(t *testing.T) {
 	tbl := []struct {
 		name string

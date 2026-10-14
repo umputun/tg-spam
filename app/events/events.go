@@ -418,31 +418,63 @@ func transform(msg *tbapi.Message) *bot.Message {
 		message.Quote = msg.Quote.Text
 	}
 
-	// handle caption - either as main text if no text present, or append to existing text
-	if msg.Caption != "" {
-		if message.Text == "" {
-			log.Printf("[DEBUG] caption only message: %q", msg.Caption)
-			message.Text = msg.Caption
-		} else {
-			log.Printf("[DEBUG] caption appended to message: %q", msg.Caption)
-			message.Text += "\n" + msg.Caption
+	// caption and structured content carry text outside msg.Text; a message whose text stays
+	// empty is dropped by the listener before any spam check runs
+	addText := func(kind, s string) {
+		if s == "" {
+			return
 		}
-	}
-
-	// handle rich messages (the client "article" compose type, bot api 10.2): their text
-	// lives in structured blocks with an empty msg.Text, so flatten it into the message text
-	// to let content checks and the llm see the content
-	if rt := richMessageText(msg.RichMessage); rt != "" {
 		if message.Text == "" {
-			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
-			message.Text = rt
-		} else {
-			log.Printf("[DEBUG] rich message appended to text: %q", rt)
-			message.Text += "\n" + rt
+			log.Printf("[DEBUG] %s only message: %q", kind, s)
+			message.Text = s
+			return
 		}
+		log.Printf("[DEBUG] %s appended to message: %q", kind, s)
+		message.Text += "\n" + s
 	}
+	addText("caption", msg.Caption)
+	addText("rich message", richMessageText(msg.RichMessage))
+	addText("checklist", checklistText(msg.Checklist))
+	addText("poll", pollText(msg.Poll))
 
 	return &message
+}
+
+// checklistText flattens a checklist into its title followed by task texts, one per line.
+func checklistText(cl *tbapi.Checklist) string {
+	if cl == nil {
+		return ""
+	}
+	parts := []string{cl.Title}
+	for _, task := range cl.Tasks {
+		parts = append(parts, task.Text)
+	}
+	return joinNonEmpty(parts)
+}
+
+// pollText flattens a poll into its question, description, option texts and quiz explanation,
+// one per line.
+func pollText(p *tbapi.Poll) string {
+	if p == nil {
+		return ""
+	}
+	parts := []string{p.Question, p.Description}
+	for _, opt := range p.Options {
+		parts = append(parts, opt.Text)
+	}
+	parts = append(parts, p.Explanation)
+	return joinNonEmpty(parts)
+}
+
+// joinNonEmpty joins the non-empty strings with a newline.
+func joinNonEmpty(parts []string) string {
+	res := make([]string, 0, len(parts))
+	for _, s := range parts {
+		if s != "" {
+			res = append(res, s)
+		}
+	}
+	return strings.Join(res, "\n")
 }
 
 // richMessageText flattens a telegram rich message (the client "article" compose type,
