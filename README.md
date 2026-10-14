@@ -77,6 +77,8 @@ The analysis is active only if both ham and spam samples are present in the data
 
 When a message contains quoted or reply-to content (e.g., from external channels), that text is concatenated with the main message and included in the analysis.
 
+Text that Telegram delivers outside the message body is checked as part of the message too: an image or file caption, an article (rich message), a checklist (its title and tasks), and a poll (its question, description, options and quiz explanation). A checklist or poll with no message text is checked on that content alone.
+
 **Spam message similarity check**
 
 This check uses the provided samples and is active by default. The bot compares the message with the samples and if the similarity is greater than `--similarity-threshold=, [$SIMILARITY_THRESHOLD]` (default is 0.5), the message is marked as spam. Setting the similarity threshold to 1 will effectively disable this check.

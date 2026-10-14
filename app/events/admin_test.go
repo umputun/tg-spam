@@ -2711,6 +2711,68 @@ func TestAdmin_MsgHandlerFallback(t *testing.T) {
 	})
 }
 
+func TestAdmin_MsgHandlerChecksTransformedText(t *testing.T) {
+	tests := []struct {
+		name       string
+		locatorHit bool
+		msg        tbapi.Message
+		expected   string
+	}{
+		{
+			name: "checklist, locator hit", locatorHit: true,
+			msg:      tbapi.Message{Checklist: &tbapi.Checklist{Title: "title", Tasks: []tbapi.ChecklistTask{{Text: "task"}}}},
+			expected: "title\ntask",
+		},
+		{
+			name: "checklist, locator fallback", locatorHit: false,
+			msg:      tbapi.Message{Checklist: &tbapi.Checklist{Title: "title", Tasks: []tbapi.ChecklistTask{{Text: "task"}}}},
+			expected: "title\ntask",
+		},
+		{
+			name: "caption-only photo, locator hit", locatorHit: true,
+			msg:      tbapi.Message{Photo: []tbapi.PhotoSize{{FileID: "1"}}, Caption: "spam caption"},
+			expected: "spam caption",
+		},
+		{
+			name: "caption-only photo, locator fallback", locatorHit: false,
+			msg:      tbapi.Message{Photo: []tbapi.PhotoSize{{FileID: "1"}}, Caption: "spam caption"},
+			expected: "spam caption",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) { return &tbapi.APIResponse{Ok: true}, nil },
+				SendFunc:    func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{Text: "test"}, nil },
+			}
+			botMock := &mocks.BotMock{
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+				OnMessageFunc:          func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+				UpdateSpamFunc:         func(msg string) error { return nil },
+			}
+			locatorMock := &mocks.LocatorMock{
+				MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+					return storage.MsgMeta{UserID: 888, UserName: "spammer", MsgID: 999}, tt.locatorHit
+				},
+				SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) { return storage.SpamData{}, true },
+			}
+			adminHandler := admin{tbAPI: mockAPI, bot: botMock, locator: locatorMock, primChatID: 123, adminChatID: 456}
+
+			msg := tt.msg
+			msg.MessageID, msg.Chat, msg.From = 789, tbapi.Chat{ID: 456}, &tbapi.User{UserName: "admin", ID: 123}
+			msg.ForwardOrigin = &tbapi.MessageOrigin{Type: "user", SenderUser: &tbapi.User{ID: 555, UserName: "spammer"}}
+
+			require.NoError(t, adminHandler.MsgHandler(tbapi.Update{Message: &msg}))
+			require.Len(t, botMock.OnMessageCalls(), 1)
+			assert.Equal(t, tt.expected, botMock.OnMessageCalls()[0].Msg.Text)
+			assert.True(t, botMock.OnMessageCalls()[0].CheckOnly)
+			require.Len(t, botMock.UpdateSpamCalls(), 1)
+			assert.Equal(t, tt.expected, botMock.UpdateSpamCalls()[0].Msg)
+		})
+	}
+}
+
 func TestAdmin_DirectSpamReport_ImageOnly(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
 		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
