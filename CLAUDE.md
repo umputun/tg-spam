@@ -84,6 +84,7 @@
 - `transform` appends caption, rich message, checklist and poll text in that order through one local `addText` closure (set if `Text` empty, else append with `"\n"`). `checklistText` gives title then task texts; `pollText` gives question, description, option texts, then explanation; both skip empty strings
 - Only the text is copied, not `title_entities`/`text_entities`/`question_entities`, so entity-based meta data gains nothing; `LinksCheck` still counts `http(s)://` in the text when `Meta.Links` is 0
 - Not covered: `ExternalReplyInfo.Checklist`/`.Poll` (another author's content, must not become authored text for prohibited-langs), a reply's `ReplyTo.Text` when the parent is a checklist or poll, and checklist task-added/done service messages
+- Accepted limit: `ChecklistTask` has no author field, so tasks other members add to a checklist with `others_can_add_tasks` are judged as the sender's own text when a later edit is re-checked (edits run as new messages), including by the unvetoable prohibited-langs check. The approval gate still applies except in paranoid or check-all mode. Skipping collaborative tasks is not the fix: a spammer can set that flag to hide the pitch again
 - Admin-chat forwards (`admin.go` `MsgHandler` and `msgHandlerFallback`) run the diagnostic `OnMessage` on `msgTxt`, the transform fallback text, so a forwarded caption-only, checklist or poll message reports checks on its real content
 
 ### External Reply Detection
