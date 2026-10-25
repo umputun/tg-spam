@@ -304,6 +304,39 @@ func (s *SettingsTestSuite) TestStore_LoadError() {
 	}
 }
 
+func (s *SettingsTestSuite) TestStore_WithDefaults() {
+	tmpl := New()
+	tmpl.InstanceID = "tmpl-instance"
+	tmpl.Meta.LinksLimit = -1
+	tmpl.Meta.MentionsLimit = -1
+	tmpl.MaxEmoji = 2
+	tmpl.Admin.SuperUsers = make([]string, 1, 4)
+	tmpl.Admin.SuperUsers[0] = "tmpl-admin"
+
+	for _, db := range s.getTestDB() {
+		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
+			s.SetupTest()
+			store, err := NewStore(s.ctx, db, WithDefaults(tmpl))
+			s.Require().NoError(err)
+
+			query := db.Adopt("INSERT INTO config (gid, data) VALUES (?, ?)")
+			_, err = db.Exec(query, db.GID(), `{"meta":{"links_limit":0},"admin":{"super_users":["a","b"]}}`)
+			s.Require().NoError(err)
+
+			for range 2 {
+				loaded, err := store.Load(s.ctx)
+				s.Require().NoError(err)
+				s.Equal(0, loaded.Meta.LinksLimit, "explicit zero kept")
+				s.Equal(-1, loaded.Meta.MentionsLimit, "omitted key takes the default")
+				s.Equal(2, loaded.MaxEmoji, "omitted key takes the default")
+				s.Equal([]string{"a", "b"}, loaded.Admin.SuperUsers)
+				s.Empty(loaded.InstanceID, "instance id is never seeded")
+			}
+			s.Equal([]string{"tmpl-admin"}, tmpl.Admin.SuperUsers, "template untouched by loads")
+		})
+	}
+}
+
 func (s *SettingsTestSuite) TestStore_LastUpdatedError() {
 	for _, db := range s.getTestDB() {
 		s.Run(fmt.Sprintf("with %s", db.Type()), func() {
