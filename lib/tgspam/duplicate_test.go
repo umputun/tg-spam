@@ -684,3 +684,70 @@ func TestDuplicateDetector_SameContentEditDoesNotRetriggerSpam(t *testing.T) {
 	assert.Empty(t, resp.ExtraDeleteIDs, "same-content edit should not return deletion IDs")
 	assert.Equal(t, "message edit", resp.Details, "should indicate this is an edit")
 }
+
+func TestDuplicateDetector_NoAuthoredTextNotDuplicates(t *testing.T) {
+	// caption-less album posted as a reply: every item carried only the parent text and was banned as a duplicate
+	d := newDuplicateDetector(3, time.Hour)
+
+	for i := range 5 {
+		resp := d.check(spamcheck.Request{Msg: "\nshow us the photos", Quote: "show us the photos", UserID: "123",
+			Meta: spamcheck.MetaData{MessageID: 1001 + i}})
+		assert.False(t, resp.Spam, "item %d", i)
+		assert.Equal(t, "empty message skipped", resp.Details, "item %d", i)
+	}
+
+	for i := range 3 {
+		resp := d.check(spamcheck.Request{Msg: "thanks\nshow us the photos", Quote: "show us the photos", UserID: "123",
+			Meta: spamcheck.MetaData{MessageID: 2001 + i}})
+		assert.Equal(t, i == 2, resp.Spam, "authored reply %d", i)
+	}
+}
+
+func TestDuplicateDetector_EditToNoAuthoredTextDropsOldEntry(t *testing.T) {
+	tests := []struct {
+		name                string
+		msg, quote          string
+		edited, editedQuote string
+	}{
+		{name: "caption removed from a reply", msg: "caption\nparent", quote: "parent", edited: "\nparent", editedQuote: "parent"},
+		{name: "caption removed from a plain message", msg: "caption", edited: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := newDuplicateDetector(3, time.Hour)
+			send := func(id int) spamcheck.Response {
+				return d.check(spamcheck.Request{Msg: tt.msg, Quote: tt.quote, UserID: "123", Meta: spamcheck.MetaData{MessageID: id}})
+			}
+
+			require.False(t, send(1).Spam)
+			require.False(t, send(2).Spam)
+
+			resp := d.check(spamcheck.Request{Msg: tt.edited, Quote: tt.editedQuote, UserID: "123",
+				Meta: spamcheck.MetaData{MessageID: 1}})
+			require.False(t, resp.Spam)
+			assert.Equal(t, "empty message skipped", resp.Details)
+
+			resp = d.check(spamcheck.Request{Msg: tt.edited, Quote: tt.editedQuote, UserID: "123",
+				Meta: spamcheck.MetaData{MessageID: 99}})
+			require.False(t, resp.Spam, "untracked message without text")
+
+			assert.False(t, send(3).Spam, "edited message must not count")
+			resp = send(4)
+			assert.True(t, resp.Spam)
+			assert.Equal(t, []int{2, 3}, resp.ExtraDeleteIDs)
+		})
+	}
+}
+
+func TestDuplicateDetector_EditToNoAuthoredTextDropsLastEntry(t *testing.T) {
+	d := newDuplicateDetector(3, time.Hour)
+
+	require.False(t, d.check(spamcheck.Request{Msg: "caption", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1}}).Spam)
+	_, found := d.cache.Get(123)
+	require.True(t, found)
+
+	d.check(spamcheck.Request{Msg: "", UserID: "123", Meta: spamcheck.MetaData{MessageID: 1}})
+	_, found = d.cache.Get(123)
+	assert.False(t, found, "user with no entries left is removed from the cache")
+}

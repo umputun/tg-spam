@@ -108,6 +108,7 @@ func optToSettings(opts options) *config.Settings {
 			RetryCount:         opts.Jev.RetryCount,
 			HistorySize:        opts.Jev.HistorySize,
 			CheckShortMessages: opts.Jev.CheckShortMessages,
+			GibberishThreshold: opts.Jev.GibberishThreshold,
 		},
 
 		LLM: config.LLMSettings{
@@ -206,6 +207,7 @@ func optToSettings(opts options) *config.Settings {
 		TGDbg:              opts.TGDbg,
 		WebAuthPasswd:      opts.Server.AuthPasswd,
 		ConfigDBEncryptKey: opts.ConfigDBEncryptKey,
+		LuaUnrestricted:    opts.LuaPlugins.Unrestricted,
 	}
 
 	// set credentials in their respective domain structures

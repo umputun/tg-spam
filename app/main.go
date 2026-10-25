@@ -113,7 +113,7 @@ type options struct {
 		MaxSymbolsRequest  int      `long:"max-symbols-request" env:"MAX_SYMBOLS_REQUEST" default:"16000" description:"openai max symbols in request, failback if tokenizer failed"`
 		RetryCount         int      `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"openai retry count"`
 		HistorySize        int      `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"openai history size"`
-		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none disables thinking"`
+		ReasoningEffort    string   `long:"reasoning-effort" env:"REASONING_EFFORT" default:"none" choice:"none" choice:"off" choice:"low" choice:"medium" choice:"high" description:"reasoning effort for thinking models, none leaves the model default, off disables thinking"`
 		CheckShortMessages bool     `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with OpenAI"`
 	} `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 
@@ -143,6 +143,7 @@ type options struct {
 		RetryCount         int     `long:"retry-count" env:"RETRY_COUNT" default:"1" description:"jev retry count"`
 		HistorySize        int     `long:"history-size" env:"HISTORY_SIZE" default:"0" description:"jev history size"`
 		CheckShortMessages bool    `long:"check-short-messages" env:"CHECK_SHORT_MESSAGES" description:"check messages shorter than min-msg-len with jev"`
+		GibberishThreshold float64 `long:"gibberish-threshold" env:"GIBBERISH_THRESHOLD" default:"0" description:"gibberish probability at or above this is spam, 0 disables"`
 	} `group:"jev" namespace:"jev" env-namespace:"JEV"`
 
 	LLM struct {
@@ -155,6 +156,7 @@ type options struct {
 		PluginsDir     string   `long:"plugins-dir" env:"PLUGINS_DIR" description:"directory with Lua plugins"`
 		EnabledPlugins []string `long:"enabled-plugins" env:"ENABLED_PLUGINS" env-delim:"," description:"list of enabled plugins (by name, without .lua extension)"`
 		DynamicReload  bool     `long:"dynamic-reload" env:"DYNAMIC_RELOAD" description:"dynamically reload plugins when they change"`
+		Unrestricted   bool     `long:"unrestricted" env:"UNRESTRICTED" description:"give plugins every Lua library, os and io included"`
 	} `group:"lua-plugins" namespace:"lua-plugins" env-namespace:"LUA_PLUGINS"`
 
 	AbnormalSpacing struct {
@@ -316,6 +318,7 @@ func main() {
 		appSettings.Transient.Dbg = opts.Dbg
 		appSettings.Transient.TGDbg = opts.TGDbg
 		appSettings.Transient.StorageTimeout = opts.StorageTimeout
+		appSettings.Transient.LuaUnrestricted = opts.LuaPlugins.Unrestricted
 
 		// apply explicit CLI overrides for non-transient values
 		applyCLIOverrides(appSettings, opts, defaults)
@@ -884,6 +887,7 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 			MaxSymbolsRequest:  settings.Jev.MaxSymbolsRequest,
 			RetryCount:         settings.Jev.RetryCount,
 			CheckShortMessages: settings.Jev.CheckShortMessages,
+			GibberishThreshold: settings.Jev.GibberishThreshold,
 		}
 		// jev gets its own client: Config.HTTPClient carries settings.CAS.Timeout, which would
 		// impose a CAS deadline on LLM calls. The per-request deadline comes from the detector's
@@ -984,7 +988,12 @@ func initLuaPlugins(detector *tgspam.Detector, settings *config.Settings) {
 	detector.LuaPlugins.DynamicReload = settings.LuaPlugins.DynamicReload
 
 	// create and initialize the plugin engine
-	luaEngine := plugin.NewChecker()
+	var engineOpts []plugin.Option
+	if settings.Transient.LuaUnrestricted {
+		log.Print("[WARN] lua plugins run with every Lua library, os and io included")
+		engineOpts = append(engineOpts, plugin.WithUnrestrictedLibs())
+	}
+	luaEngine := plugin.NewChecker(engineOpts...)
 	if err := detector.WithLuaEngine(luaEngine); err != nil {
 		log.Printf("[WARN] failed to initialize Lua plugins: %v", err)
 		return

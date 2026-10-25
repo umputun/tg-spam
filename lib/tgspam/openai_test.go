@@ -1,6 +1,7 @@
 package tgspam
 
 import (
+	"cmp"
 	"context"
 	"testing"
 	"unicode/utf8"
@@ -257,6 +258,7 @@ func TestStripThoughtTags(t *testing.T) {
 func TestReasoningEffortInRequest(t *testing.T) {
 	tests := []struct {
 		name            string
+		model           string
 		reasoningEffort string
 		expectInRequest bool
 		expectedEffort  string
@@ -289,6 +291,25 @@ func TestReasoningEffortInRequest(t *testing.T) {
 			expectInRequest: true,
 			expectedEffort:  "high",
 		},
+		{
+			name:            "off sends none",
+			reasoningEffort: "off",
+			expectInRequest: true,
+			expectedEffort:  "none",
+		},
+		{
+			name:            "off sends none for openai-compatible gemini model",
+			model:           "gemini-2.5-flash",
+			reasoningEffort: "off",
+			expectInRequest: true,
+			expectedEffort:  "none",
+		},
+		{
+			name:            "none omitted for gpt-6 model",
+			model:           "gpt-6-luna",
+			reasoningEffort: "none",
+			expectInRequest: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -307,7 +328,7 @@ func TestReasoningEffortInRequest(t *testing.T) {
 			}
 
 			checker := newOpenAIChecker(clientMock, OpenAIConfig{
-				Model:           "gpt-4o-mini",
+				Model:           cmp.Or(tt.model, "gpt-4o-mini"),
 				ReasoningEffort: tt.reasoningEffort,
 			})
 
@@ -452,6 +473,10 @@ func TestIsReasoningModel(t *testing.T) {
 		{name: "gpt-5-mini", model: "gpt-5-mini", expected: true},
 		{name: "gpt-5-turbo", model: "gpt-5-turbo", expected: true},
 		{name: "GPT-5", model: "GPT-5", expected: true},
+		{name: "gpt-6-luna", model: "gpt-6-luna", expected: true},
+		{name: "gpt-6-sol", model: "gpt-6-sol", expected: true},
+		{name: "gpt-6.1-sol", model: "gpt-6.1-sol", expected: true},
+		{name: "GPT-6", model: "GPT-6", expected: true},
 		{name: "O1-MINI", model: "O1-MINI", expected: true},
 	}
 
@@ -477,6 +502,7 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 		{name: "o1-preview uses MaxCompletionTokens", model: "o1-preview", expectMaxTokens: false, expectMaxCompletionTokens: true},
 		{name: "gpt-5 uses MaxCompletionTokens", model: "gpt-5", expectMaxTokens: false, expectMaxCompletionTokens: true},
 		{name: "gpt-5-mini uses MaxCompletionTokens", model: "gpt-5-mini", expectMaxTokens: false, expectMaxCompletionTokens: true},
+		{name: "gpt-6-luna uses MaxCompletionTokens", model: "gpt-6-luna", expectMaxTokens: false, expectMaxCompletionTokens: true},
 	}
 
 	for _, tt := range tests {

@@ -25,7 +25,6 @@ function check(req)
   local request_data = {
     message = req.msg,
     user_id = req.user_id,
-    chat_id = req.chat_id,
     user_name = req.user_name
   }
   

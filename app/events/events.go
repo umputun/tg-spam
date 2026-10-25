@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +45,8 @@ type Locator interface {
 type Bot interface {
 	OnMessage(msg bot.Message, checkOnly bool) (response bot.Response)
 	OnReaction(userID int64, userName string) bot.Response
+	OnJoin(user bot.User) bot.Response
+	ForgetMessage(msg bot.Message)
 	UpdateSpam(msg string) error
 	UpdateHam(msg string) error
 	AddApprovedUser(id int64, name string) error
@@ -60,6 +63,24 @@ func escapeMarkDownV1Text(text string) string {
 		text = strings.ReplaceAll(text, esc, "\\"+esc)
 	}
 	return text
+}
+
+// markdownV1LinkLabel makes text safe as a legacy markdown link label. Telegram copies a label verbatim
+// up to the first "]" and applies no escapes inside it, so "\\]" cannot keep "]" in the label and other
+// escapes would show as text. "]" is removed instead: left in an arbitrary first+last display name it
+// would end the label early and let the name inject its own link.
+func markdownV1LinkLabel(text string) string {
+	return strings.ReplaceAll(text, "]", "")
+}
+
+// botTokenRe matches a Telegram bot token. the Bot API client puts the token in its request URLs, so
+// a network error from it carries the token
+var botTokenRe = regexp.MustCompile(`\d{5,}:[A-Za-z0-9_-]{30,}`)
+
+// redactBotToken masks any bot token in text the bot is about to post. the log setup masks secrets in
+// log output, but not in messages sent to a chat
+func redactBotToken(text string) string {
+	return botTokenRe.ReplaceAllString(text, "xxxxx")
 }
 
 // truncateString truncates a string to maxRunes runes (not bytes) and appends suffix if truncated.
@@ -397,31 +418,63 @@ func transform(msg *tbapi.Message) *bot.Message {
 		message.Quote = msg.Quote.Text
 	}
 
-	// handle caption - either as main text if no text present, or append to existing text
-	if msg.Caption != "" {
-		if message.Text == "" {
-			log.Printf("[DEBUG] caption only message: %q", msg.Caption)
-			message.Text = msg.Caption
-		} else {
-			log.Printf("[DEBUG] caption appended to message: %q", msg.Caption)
-			message.Text += "\n" + msg.Caption
+	// caption and structured content carry text outside msg.Text; a message whose text stays
+	// empty is dropped by the listener before any spam check runs
+	addText := func(kind, s string) {
+		if s == "" {
+			return
 		}
-	}
-
-	// handle rich messages (the client "article" compose type, bot api 10.2): their text
-	// lives in structured blocks with an empty msg.Text, so flatten it into the message text
-	// to let content checks and the llm see the content
-	if rt := richMessageText(msg.RichMessage); rt != "" {
 		if message.Text == "" {
-			log.Printf("[DEBUG] rich message flattened to text: %q", rt)
-			message.Text = rt
-		} else {
-			log.Printf("[DEBUG] rich message appended to text: %q", rt)
-			message.Text += "\n" + rt
+			log.Printf("[DEBUG] %s only message: %q", kind, s)
+			message.Text = s
+			return
 		}
+		log.Printf("[DEBUG] %s appended to message: %q", kind, s)
+		message.Text += "\n" + s
 	}
+	addText("caption", msg.Caption)
+	addText("rich message", richMessageText(msg.RichMessage))
+	addText("checklist", checklistText(msg.Checklist))
+	addText("poll", pollText(msg.Poll))
 
 	return &message
+}
+
+// checklistText flattens a checklist into its title followed by task texts, one per line.
+func checklistText(cl *tbapi.Checklist) string {
+	if cl == nil {
+		return ""
+	}
+	parts := []string{cl.Title}
+	for _, task := range cl.Tasks {
+		parts = append(parts, task.Text)
+	}
+	return joinNonEmpty(parts)
+}
+
+// pollText flattens a poll into its question, description, option texts and quiz explanation,
+// one per line.
+func pollText(p *tbapi.Poll) string {
+	if p == nil {
+		return ""
+	}
+	parts := []string{p.Question, p.Description}
+	for _, opt := range p.Options {
+		parts = append(parts, opt.Text)
+	}
+	parts = append(parts, p.Explanation)
+	return joinNonEmpty(parts)
+}
+
+// joinNonEmpty joins the non-empty strings with a newline.
+func joinNonEmpty(parts []string) string {
+	res := make([]string, 0, len(parts))
+	for _, s := range parts {
+		if s != "" {
+			res = append(res, s)
+		}
+	}
+	return strings.Join(res, "\n")
 }
 
 // richMessageText flattens a telegram rich message (the client "article" compose type,

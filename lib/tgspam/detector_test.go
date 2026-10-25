@@ -762,6 +762,43 @@ func TestDetector_DuplicateDetectionForApprovedUsers(t *testing.T) {
 	assert.Contains(t, dupResp2.ExtraDeleteIDs, 658144, "should include first message ID for deletion")
 }
 
+func TestDetector_ForgetMessage(t *testing.T) {
+	newDetector := func(threshold int) *Detector {
+		cfg := Config{FirstMessageOnly: true}
+		cfg.DuplicateDetection.Threshold = threshold
+		cfg.DuplicateDetection.Window = time.Hour
+		return NewDetector(cfg)
+	}
+	send := func(d *Detector, id int) bool {
+		spam, _ := d.Check(spamcheck.Request{Msg: "hello", UserID: "123", Meta: spamcheck.MetaData{MessageID: id}})
+		return spam
+	}
+
+	t.Run("forgotten message stops counting", func(t *testing.T) {
+		d := newDetector(3)
+		require.False(t, send(d, 1))
+		d.ForgetMessage("123", 1)
+		assert.False(t, send(d, 2))
+		assert.False(t, send(d, 3), "only two occurrences are left")
+		assert.True(t, send(d, 4))
+	})
+
+	t.Run("other user, unknown message and bad user id change nothing", func(t *testing.T) {
+		d := newDetector(3)
+		require.False(t, send(d, 1))
+		d.ForgetMessage("456", 1)
+		d.ForgetMessage("123", 99)
+		d.ForgetMessage("not-a-number", 1)
+		assert.False(t, send(d, 2))
+		assert.True(t, send(d, 3))
+	})
+
+	t.Run("duplicates disabled", func(t *testing.T) {
+		d := newDetector(0)
+		assert.NotPanics(t, func() { d.ForgetMessage("123", 1) })
+	})
+}
+
 func TestDetector_DuplicateDetectionEdgeCases(t *testing.T) {
 	t.Run("approved user with different messages - no false positive", func(t *testing.T) {
 		// approved users should be able to send different messages without spam detection
@@ -4233,6 +4270,54 @@ func TestDetector_WithJevChecker(t *testing.T) {
 		}
 		assert.NotContains(t, names, "jev")
 	})
+}
+
+// pins the quoted-text ban: bot.OnMessage appends quote/reply text to Msg, so the gibberish
+// question must not judge a reply by text the sender did not write
+func TestDetector_JevGibberishSkippedForQuotedMessages(t *testing.T) {
+	const mash = "dsfg dfgh ewrt xczv dsfh"
+	tests := []struct {
+		name          string
+		req           spamcheck.Request
+		wantQuestions []string
+		wantSpam      bool
+	}{
+		{"unquoted gibberish is judged", spamcheck.Request{Msg: mash}, []string{"gibberish", "spam"}, true},
+		{"caption-less reply quoting gibberish is not", spamcheck.Request{Msg: "\n" + mash, Quote: mash},
+			[]string{"spam"}, false},
+		{"text reply quoting gibberish is not", spamcheck.Request{Msg: "what is this\n" + mash, Quote: mash},
+			[]string{"spam"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sent jevRequest
+			client := &mocks.HTTPClientMock{
+				DoFunc: func(req *http.Request) (*http.Response, error) {
+					body, err := io.ReadAll(req.Body)
+					require.NoError(t, err)
+					require.NoError(t, json.Unmarshal(body, &sent))
+					answers := `"spam":{"type":"noul","noul":0.1}`
+					if _, ok := sent.Questions["gibberish"]; ok {
+						answers += `,"gibberish":{"type":"noul","noul":0.9}`
+					}
+					return &http.Response{StatusCode: http.StatusOK,
+						Body: io.NopCloser(strings.NewReader(`{"answers":{` + answers + `}}`))}, nil
+				},
+			}
+			cfg := jevTestConfig()
+			cfg.GibberishThreshold = 0.5
+			d := NewDetector(Config{MaxAllowedEmoji: -1, FirstMessageOnly: true})
+			require.NoError(t, d.WithJevChecker(client, cfg))
+
+			spam, _ := d.Check(tt.req)
+			assert.Equal(t, tt.wantSpam, spam)
+			got := make([]string, 0, len(sent.Questions))
+			for id := range sent.Questions {
+				got = append(got, id)
+			}
+			assert.ElementsMatch(t, tt.wantQuestions, got)
+		})
+	}
 }
 
 func TestDetector_CheckWithJevConsensus(t *testing.T) {

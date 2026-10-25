@@ -45,6 +45,7 @@ type Detector struct {
 	reactionDetector  *reactionDetector
 	metaChecks        []MetaCheck
 	luaChecks         []plugin.ResultCheck // separate field for Lua plugin checks
+	luaJoinChecks     []plugin.JoinCheck   // optional Lua check_join functions, run by CheckJoin
 	tokenizedSpam     []map[string]int
 	approvedUsers     map[string]approved.UserInfo
 	stopWords         []string
@@ -202,6 +203,11 @@ type LuaPluginEngine interface {
 type luaResultEngine interface {
 	GetResultCheck(name string) (plugin.ResultCheck, error)
 	GetAllResultChecks() map[string]plugin.ResultCheck
+}
+
+type luaJoinEngine interface {
+	GetJoinCheck(name string) (plugin.JoinCheck, error)
+	GetAllJoinChecks() map[string]plugin.JoinCheck
 }
 
 // LoadResult is a result of loading samples.
@@ -424,7 +430,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 				veto:               d.JevVeto,
 				historySize:        d.JevHistorySize,
 				check: func(ctx context.Context, msg string, history []spamcheck.Request) (bool, spamcheck.Response) {
-					return d.jevChecker.check(ctx, msg, history)
+					return d.jevChecker.check(ctx, msg, history, req.Quote == "")
 				},
 			},
 		}
@@ -601,6 +607,7 @@ func (d *Detector) Reset() {
 		d.luaEngine.Close()
 		d.luaEngine = nil
 		d.luaChecks = nil
+		d.luaJoinChecks = nil
 	}
 }
 
@@ -626,7 +633,8 @@ func (d *Detector) WithJevChecker(client HTTPClient, config JevConfig) error {
 	return nil
 }
 
-// WithLuaEngine sets a Lua plugin engine and loads plugins
+// WithLuaEngine sets a Lua plugin engine and loads plugins. An enabled plugin that isn't loaded is skipped
+// with a warning, and the rest are registered.
 func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 	d.luaEngine = engine
 
@@ -646,7 +654,8 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 			if supportsResults {
 				pluginCheck, err := resultEngine.GetResultCheck(name)
 				if err != nil {
-					return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+					log.Printf("[WARN] skipped Lua plugin %q: %v", name, err)
+					continue
 				}
 				d.luaChecks = append(d.luaChecks, pluginCheck)
 				continue
@@ -654,7 +663,8 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 
 			pluginCheck, err := d.luaEngine.GetCheck(name)
 			if err != nil {
-				return fmt.Errorf("failed to get Lua check %q: %w", name, err)
+				log.Printf("[WARN] skipped Lua plugin %q: %v", name, err)
+				continue
 			}
 			d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
 				return plugin.Result{Response: pluginCheck(req)}
@@ -672,6 +682,24 @@ func (d *Detector) WithLuaEngine(engine LuaPluginEngine) error {
 				d.luaChecks = append(d.luaChecks, func(req spamcheck.Request) plugin.Result {
 					return plugin.Result{Response: check(req)}
 				})
+			}
+		}
+	}
+
+	// register join checks from the same plugins, if the engine supports them
+	if joinEngine, ok := engine.(luaJoinEngine); ok {
+		if len(d.LuaPlugins.EnabledPlugins) > 0 {
+			for _, name := range d.LuaPlugins.EnabledPlugins {
+				joinCheck, err := joinEngine.GetJoinCheck(name)
+				if err != nil {
+					log.Printf("[WARN] skipped Lua join check %q: %v", name, err)
+					continue
+				}
+				d.luaJoinChecks = append(d.luaJoinChecks, joinCheck)
+			}
+		} else {
+			for _, joinCheck := range joinEngine.GetAllJoinChecks() {
+				d.luaJoinChecks = append(d.luaJoinChecks, joinCheck)
 			}
 		}
 	}
@@ -769,6 +797,22 @@ func (d *Detector) approvedCount(userID string) int {
 	return d.approvedUsers[userID].Count
 }
 
+// ForgetMessage removes a message from the duplicate history only, so it stops counting toward the
+// duplicates threshold. For a message whose text was edited away and that is not checked anymore.
+func (d *Detector) ForgetMessage(userID string, msgID int) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if d.duplicateDetector == nil {
+		return
+	}
+	id, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return
+	}
+	d.duplicateDetector.forgetMessage(id, msgID)
+}
+
 // IsApprovedUser checks if a given user ID is approved.
 // It uses memory cache for approved users and compares the count of messages sent by the user.
 func (d *Detector) IsApprovedUser(userID string) bool {
@@ -848,6 +892,26 @@ func (d *Detector) GetLuaPluginNames() []string {
 	// sort the result for consistent output
 	sort.Strings(result)
 	return result
+}
+
+// CheckJoin runs the Lua check_join functions for a new chat member. It is spam when at least one
+// plugin reports spam without an error. Plugins without check_join give no response. It does not
+// touch approved users, history or the LLM checks.
+func (d *Detector) CheckJoin(req spamcheck.Request) (spam bool, cr []spamcheck.Response) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	for _, joinCheck := range d.luaJoinChecks {
+		resp, ok := joinCheck(req)
+		if !ok {
+			continue
+		}
+		cr = append(cr, resp)
+		if resp.Spam && resp.Error == nil {
+			spam = true
+		}
+	}
+	return spam, cr
 }
 
 // LoadSamples loads spam samples from a reader and updates the classifier.

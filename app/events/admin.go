@@ -89,21 +89,27 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	}
 }
 
-// ReportReactionBan sends a reaction-spammer ban notification to admin chat with the same unban/info buttons as ReportBan.
-// reactions have no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
-func (a *admin) ReportReactionBan(banUserStr string, user bot.User) {
-	link := fmt.Sprintf("[%s](tg://user?id=%d)", escapeMarkDownV1Text(banUserStr), user.ID)
-	// keep the user link immediately after "permanently banned" so extractUsername parses it cleanly on unban;
-	// telegram strips markdown from callback text, so any words placed between the two get captured as the name
-	text := fmt.Sprintf("**permanently banned %s reaction spammer**\n\n", link)
+// ReportUserBan sends a ban notification for a user banned without a message (reaction spam, join check),
+// with the same unban/info buttons as ReportBan. cause follows the user link on the first line.
+// there is no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
+// the body stays empty, so getCleanMessage finds no text and unban adds nothing to ham samples.
+func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
+	link := fmt.Sprintf("[%s](tg://user?id=%d)", markdownV1LinkLabel(banUserStr), user.ID)
+	cause = escapeMarkDownV1Text(cause)
+	// keep the user link immediately after "permanently banned" or "restricted" so extractUsername parses it
+	// cleanly on unban; telegram strips markdown from callback text, so any words placed between the two
+	// get captured as the name
+	text := fmt.Sprintf("**permanently banned %s %s**\n\n", link, cause)
 	switch {
 	case a.trainingMode:
-		text = fmt.Sprintf("**[training] would have permanently banned %s reaction spammer**\n\n", link)
+		text = fmt.Sprintf("**[training] would have permanently banned %s %s**\n\n", link, cause)
 	case a.dry:
-		text = fmt.Sprintf("**[dry run] would have permanently banned %s reaction spammer**\n\n", link)
+		text = fmt.Sprintf("**[dry run] would have permanently banned %s %s**\n\n", link, cause)
+	case a.softBan:
+		text = fmt.Sprintf("**restricted %s %s**\n\n", link, cause)
 	}
 	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
-		log.Printf("[WARN] failed to send reaction ban notification: %v", err)
+		log.Printf("[WARN] failed to send user ban notification: %v", err)
 	}
 }
 
@@ -154,7 +160,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	if !ok {
 		// locator lookup failed; if ForwardOrigin provides a user ID, use degraded fallback path
 		if fwdID != 0 {
-			return a.msgHandlerFallback(update, fwdID, username, msgTxt)
+			return a.msgHandlerFallback(fwdID, username, msgTxt)
 		}
 		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
 	}
@@ -176,7 +182,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	spamInfo := []string{}
 	// check only, don't update the storage, as all we care here is to get checks results.
 	// without checkOnly flag, it may add approved user to the storage after we removed it above.
-	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: info.UserID}}, true)
+	resp := a.bot.OnMessage(bot.Message{Text: msgTxt, From: bot.User{ID: info.UserID}}, true)
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
@@ -244,7 +250,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 // but ForwardOrigin provides the original sender's user ID. performs all possible actions
 // (ban, spam update, remove from approved) and warns the admin that the original message
 // must be deleted manually since we don't have the message ID from the primary chat.
-func (a *admin) msgHandlerFallback(update tbapi.Update, fwdID int64, username, msgTxt string) error {
+func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 	log.Printf("[INFO] locator fallback: forwarded user %q (%d), processing without locator data", username, fwdID)
 	errs := new(multierror.Error)
 
@@ -260,7 +266,7 @@ func (a *admin) msgHandlerFallback(update tbapi.Update, fwdID int64, username, m
 
 	// get detection results (check only, don't update storage)
 	spamInfo := []string{}
-	resp := a.bot.OnMessage(bot.Message{Text: update.Message.Text, From: bot.User{ID: fwdID}}, true)
+	resp := a.bot.OnMessage(bot.Message{Text: msgTxt, From: bot.User{ID: fwdID}}, true)
 	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
 		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
@@ -1085,7 +1091,7 @@ func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
 }
 
 // deleteAndBan bans the user and deletes the message; deletion is skipped when msgID is 0
-// (reaction bans have no underlying message).
+// (reaction and join bans have no underlying message).
 func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	errs := new(multierror.Error)
 	userName := a.locator.UserNameByID(context.TODO(), userID)
@@ -1108,7 +1114,7 @@ func (a *admin) deleteAndBan(userID int64, msgID int) error {
 		}
 	}
 
-	// reaction bans have no underlying message (msgID 0), so there is nothing to delete.
+	// reaction and join bans have no underlying message (msgID 0), so there is nothing to delete.
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
 	if msgID != 0 {
 		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
@@ -1216,9 +1222,10 @@ func (a *admin) extractUsername(text string) (string, error) {
 		return matches[1], nil
 	}
 
-	// regex for plain channel format: permanently banned channelname (-100999888)
+	// regex for plain format: permanently banned channelname (-100999888), also the rendered
+	// "restricted @user (123)" line of a soft-ban notification.
 	// uses (.+?) to handle multi-word channel titles like "Spam News Channel"
-	plainChannelRegex := regexp.MustCompile(`permanently banned (.+?) \(-?\d+\)`)
+	plainChannelRegex := regexp.MustCompile(`(?:permanently banned|restricted) (.+?) \(-?\d+\)`)
 	if matches := plainChannelRegex.FindStringSubmatch(text); len(matches) > 1 {
 		return matches[1], nil
 	}

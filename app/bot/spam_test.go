@@ -970,6 +970,28 @@ func TestSpamFilter_RemoveDynamicSample(t *testing.T) {
 	}
 }
 
+func TestSpamFilter_ForgetMessage(t *testing.T) {
+	tests := []struct {
+		name       string
+		msg        Message
+		wantUserID string
+	}{
+		{name: "user message", msg: Message{ID: 10, From: User{ID: 123}}, wantUserID: "123"},
+		{name: "channel message uses the channel id", wantUserID: "-100500",
+			msg: Message{ID: 10, From: User{ID: 136817688}, SenderChat: SenderChat{ID: -100500}}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			det := &mocks.DetectorMock{ForgetMessageFunc: func(userID string, msgID int) {}}
+			NewSpamFilter(det, SpamConfig{}).ForgetMessage(tc.msg)
+			require.Len(t, det.ForgetMessageCalls(), 1)
+			assert.Equal(t, tc.wantUserID, det.ForgetMessageCalls()[0].UserID)
+			assert.Equal(t, 10, det.ForgetMessageCalls()[0].MsgID)
+		})
+	}
+}
+
 func TestSpamFilter_IsApprovedUser(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -1214,6 +1236,57 @@ func TestSpamFilterOnReaction(t *testing.T) {
 			} else {
 				assert.Len(t, det.RecordReactionCalls(), 1)
 				assert.Equal(t, tc.userID, det.RecordReactionCalls()[0].UserID)
+			}
+		})
+	}
+}
+
+func TestSpamFilterOnJoin(t *testing.T) {
+	user := User{ID: 42, Username: "spammer", DisplayName: "Green Shop", FirstName: "Green", LastName: "Shop", IsPremium: true}
+	spamResult := spamcheck.Response{Name: "lua-names", Spam: true, Details: "bad name"}
+	hamResult := spamcheck.Response{Name: "lua-names", Details: "name ok"}
+	errResult := spamcheck.Response{Name: "lua-names", Details: "lua error", Error: errors.New("attempt to index nil")}
+
+	tests := []struct {
+		name       string
+		isApproved bool
+		spam       bool
+		results    []spamcheck.Response
+		wantBan    bool
+	}{
+		{name: "approved user skipped", isApproved: true},
+		{name: "not spam, no ban", results: []spamcheck.Response{hamResult}},
+		{name: "spam, ban", spam: true, results: []spamcheck.Response{spamResult}, wantBan: true},
+		{name: "check error, no ban", results: []spamcheck.Response{errResult}},
+		{name: "no join checks, no ban"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			det := &mocks.DetectorMock{
+				IsApprovedUserFunc: func(userID string) bool { return tc.isApproved },
+				CheckJoinFunc: func(request spamcheck.Request) (bool, []spamcheck.Response) {
+					return tc.spam, tc.results
+				},
+			}
+			sf := NewSpamFilter(det, SpamConfig{})
+			resp := sf.OnJoin(user)
+
+			if tc.isApproved {
+				assert.Equal(t, Response{}, resp)
+				assert.Empty(t, det.CheckJoinCalls(), "approved user must not be checked")
+				return
+			}
+
+			require.Len(t, det.CheckJoinCalls(), 1)
+			assert.Equal(t, spamcheck.Request{UserID: "42", UserName: "spammer", FirstName: "Green", LastName: "Shop",
+				IsPremium: true}, det.CheckJoinCalls()[0].Request)
+			assert.Equal(t, tc.results, resp.CheckResults)
+			if tc.wantBan {
+				assert.Equal(t, PermanentBanDuration, resp.BanInterval)
+				assert.Equal(t, user, resp.User)
+			} else {
+				assert.Zero(t, resp.BanInterval)
 			}
 		})
 	}

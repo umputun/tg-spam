@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
+	"github.com/hashicorp/go-multierror"
 
 	"github.com/umputun/tg-spam/app/bot"
 	"github.com/umputun/tg-spam/app/storage"
@@ -39,15 +40,16 @@ type ReportConfig struct {
 // userReports handles user spam reporting functionality
 type userReports struct {
 	ReportConfig
-	tbAPI        TbAPI
-	bot          Bot
-	locator      Locator
-	superUsers   SuperUsers
-	primChatID   int64
-	adminChatID  int64
-	trainingMode bool
-	softBanMode  bool
-	dry          bool
+	tbAPI           TbAPI
+	bot             Bot
+	locator         Locator
+	superUsers      SuperUsers
+	primChatID      int64
+	linkedChannelID int64
+	adminChatID     int64
+	trainingMode    bool
+	softBanMode     bool
+	dry             bool
 }
 
 // DirectUserReport handles a regular user's report of the message he replied to. the listener decides
@@ -58,12 +60,32 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("must reply to a message to report it")
 	}
 
-	// validate reported message has a user (not from channel or anonymous admin). in groups the Bot API
-	// fills From for such messages with a shared placeholder (Channel_Bot, GroupAnonymousBot), and a ban
-	// of that placeholder would hit every channel or anonymous admin post, so SenderChat decides
-	if origMsg.From == nil || origMsg.SenderChat != nil {
-		log.Printf("[DEBUG] user report ignored: reported message from channel or anonymous admin")
-		return fmt.Errorf("cannot report messages from channels or anonymous admins")
+	var reportedID int64
+	var reportedName string
+	switch {
+	case origMsg.SenderChat != nil:
+		ch := origMsg.SenderChat
+		if origMsg.IsAutomaticForward || ch.ID == r.primChatID || ch.ID == r.linkedChannelID {
+			return fmt.Errorf("cannot report messages from the group or its linked channel")
+		}
+		reportedID = ch.ID
+		if ch.UserName != "" {
+			reportedName = "@" + ch.UserName
+		} else {
+			// reserve the @ prefix for actual usernames, never channel titles
+			reportedName = strings.TrimLeft(ch.Title, "@")
+			if reportedName == "" {
+				reportedName = fmt.Sprintf("channel_%d", ch.ID)
+			}
+		}
+	case origMsg.From != nil:
+		reportedID = origMsg.From.ID
+		reportedName = strings.TrimSpace(origMsg.From.FirstName + " " + origMsg.From.LastName)
+		if origMsg.From.UserName != "" {
+			reportedName = "@" + origMsg.From.UserName
+		}
+	default:
+		return fmt.Errorf("cannot report messages without a sender")
 	}
 
 	// reject reports targeting forum topic creation messages to prevent accidental topic deletion or bans
@@ -75,7 +97,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	log.Printf("[DEBUG] user report: msg id: %d, reporter: %q (%d), reported: %q (%d)",
 		origMsg.MessageID,
 		update.Message.From.UserName, update.Message.From.ID,
-		origMsg.From.UserName, origMsg.From.ID)
+		reportedName, reportedID)
 
 	// validate reporter is not super user (super users should use /spam instead)
 	if r.superUsers.IsSuper(update.Message.From.UserName, update.Message.From.ID) {
@@ -83,7 +105,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	}
 
 	// validate reported user is not super user (check both username and ID)
-	if r.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+	if origMsg.SenderChat == nil && r.superUsers.IsSuper(origMsg.From.UserName, reportedID) {
 		// still delete the /report command to keep chat clean
 		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  update.Message.MessageID,
@@ -145,21 +167,13 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		return fmt.Errorf("reports storage not initialized")
 	}
 
-	// resolve reported user name to match the ban report format: @username, then first+last name
-	reportedName := ""
-	if origMsg.From.UserName != "" {
-		reportedName = "@" + origMsg.From.UserName
-	} else {
-		reportedName = strings.TrimSpace(origMsg.From.FirstName + " " + origMsg.From.LastName)
-	}
-
 	// create report
 	report := storage.Report{
 		MsgID:            origMsg.MessageID,
 		ChatID:           r.primChatID,
 		ReporterUserID:   update.Message.From.ID,
 		ReporterUserName: update.Message.From.UserName,
-		ReportedUserID:   origMsg.From.ID,
+		ReportedUserID:   reportedID,
 		ReportedUserName: reportedName,
 		MsgText:          msgTxt,
 	}
@@ -275,8 +289,9 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 		}
 	}
 
-	// delete reported message from primary chat
-	if !r.dry {
+	// delete reported message from primary chat. training suppresses the delete as well as the ban,
+	// so the check is on the mode rather than on the ban outcome
+	if !r.dry && !r.trainingMode {
 		_, err := r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  msgID,
 			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
@@ -288,19 +303,20 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 		}
 	}
 
-	// ban reported user - CRITICAL: respect soft-ban mode
 	banReq := banRequest{
-		duration: bot.PermanentBanDuration,
-		userID:   reportedUserID,
-		chatID:   chatID,
-		tbAPI:    r.tbAPI,
-		dry:      r.dry,
-		training: r.trainingMode,
-		userName: reportedUserName,
-		restrict: r.softBanMode, // IMPORTANT: use soft-ban if enabled
+		duration:  bot.PermanentBanDuration,
+		userID:    reportedUserID,
+		channelID: channelIDFromCallback(reportedUserID),
+		chatID:    chatID,
+		tbAPI:     r.tbAPI,
+		dry:       r.dry,
+		training:  r.trainingMode,
+		userName:  reportedUserName,
+		restrict:  r.softBanMode,
 	}
-	if err := banUserOrChannel(banReq); err != nil {
-		log.Printf("[WARN] failed to auto-ban user %d: %v", reportedUserID, err)
+	banErr := banUserOrChannel(banReq)
+	if banErr != nil {
+		log.Printf("[WARN] failed to auto-ban user %d: %v", reportedUserID, banErr)
 	}
 
 	// handle admin notification - update existing or send new
@@ -309,10 +325,10 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 	if r.adminChatID != 0 {
 		if len(reports) > 0 && reports[0].NotificationSent {
 			// notification already sent (manual threshold reached earlier), update it
-			notificationErr = r.updateNotificationForAutoBan(reports)
+			notificationErr = r.updateNotificationForAutoBan(reports, banErr)
 		} else {
 			// no previous notification, send new one
-			notificationErr = r.sendAutoBanNotification(reports)
+			notificationErr = r.sendAutoBanNotification(reports, banErr)
 		}
 
 		if notificationErr != nil {
@@ -332,18 +348,60 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 	return nil
 }
 
-// reportedUserMD formats the reported user as a markdown link "name (id)", matching the ban report format.
-// falls back to "user<id>" when the name is empty so the link label is never blank.
+// banOutcome describes what actually happened to the reported user. dry and training make
+// banUserOrChannel return nil without ever calling Telegram, so the mode is checked before the
+// error: a nil error in those modes means the ban was suppressed, not that anyone was banned.
+func (r *userReports) banOutcome(banErr error, restricted bool) string {
+	switch {
+	case r.dry:
+		return "would have been banned (dry)"
+	case r.trainingMode:
+		return "would have been banned (training)"
+	case banErr != nil:
+		return "not banned"
+	case restricted:
+		return "restricted"
+	}
+	return "banned"
+}
+
+// banFailurePrefix starts the note a failed ban adds to an admin notification
+const banFailurePrefix = "ban failed: "
+
+// banFailureNote renders the reason a ban failed, empty when the ban succeeded or was never
+// attempted because the mode suppressed it. the reason stays outside any italic span: legacy
+// markdown doesn't honor an escaped underscore inside one, so an underscore in the reason would
+// make Telegram reject the whole message. its line breaks are flattened, so the note stays the one
+// last paragraph hasBanFailureNote looks for.
+func (r *userReports) banFailureNote(banErr error) string {
+	if banErr == nil || r.dry || r.trainingMode {
+		return ""
+	}
+	reason := strings.ReplaceAll(redactBotToken(banErr.Error()), "\n", " ")
+	return "\n\n" + banFailurePrefix + escapeMarkDownV1Text(reason)
+}
+
+// hasBanFailureNote reports whether a notification's last paragraph is a ban failure note
+func (r *userReports) hasBanFailureNote(text string) bool {
+	i := strings.LastIndex(text, "\n\n")
+	if i < 0 {
+		return false
+	}
+	return strings.HasPrefix(text[i+2:], banFailurePrefix)
+}
+
+// reportedUserMD links users and public channels; channel names without @ are plain text.
 func (r *userReports) reportedUserMD(name string, id int64) string {
 	if name == "" {
 		name = fmt.Sprintf("user%d", id)
 	}
-	// escape for a markdown-v1 link label: backslash first, then the markdown specials, then "]" which
-	// escapeMarkDownV1Text does not handle and which would otherwise close the label early (link injection
-	// via an arbitrary first+last display name)
-	label := strings.ReplaceAll(name, "\\", "\\\\")
-	label = escapeMarkDownV1Text(label)
-	label = strings.ReplaceAll(label, "]", "\\]")
+	label := markdownV1LinkLabel(name)
+	if id < 0 {
+		if username, ok := strings.CutPrefix(name, "@"); ok {
+			return fmt.Sprintf("[%s (%d)](https://t.me/%s)", label, id, username)
+		}
+		return fmt.Sprintf("%s (%d)", escapeMarkDownV1Text(name), id)
+	}
 	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", label, id, id)
 }
 
@@ -372,7 +430,7 @@ func (r *userReports) superUserAttention() string {
 }
 
 // sendAutoBanNotification sends notification to admin chat about automatic ban
-func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
+func (r *userReports) sendAutoBanNotification(reports []storage.Report, banErr error) error {
 	if len(reports) == 0 {
 		return fmt.Errorf("no reports provided")
 	}
@@ -396,17 +454,15 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
 	}
 
-	actionType := "banned"
-	if r.softBanMode {
-		actionType = "restricted"
-	}
+	actionType := r.banOutcome(banErr, r.softBanMode && reportedUserID > 0)
 
-	notificationText := fmt.Sprintf("**Auto-%s user after %d reports**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
+	notificationText := fmt.Sprintf("**Auto-moderation: user %s after %d reports**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
 		actionType,
 		len(reports),
 		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"))
+	notificationText += r.banFailureNote(banErr)
 	if attention := r.superUserAttention(); attention != "" {
 		notificationText += "\n\n" + attention
 	}
@@ -426,7 +482,7 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report) error {
 
 // updateNotificationForAutoBan updates existing admin notification when auto-ban is executed
 // this prevents leaving orphaned notifications with live buttons that would fail on click
-func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) error {
+func (r *userReports) updateNotificationForAutoBan(reports []storage.Report, banErr error) error {
 	if len(reports) == 0 {
 		return fmt.Errorf("reports list is empty")
 	}
@@ -455,20 +511,18 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report) err
 			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
 	}
 
-	actionType := "banned"
-	if r.softBanMode {
-		actionType = "restricted"
-	}
+	actionType := r.banOutcome(banErr, r.softBanMode && reportedUserID > 0)
 
 	// create updated notification text with auto-ban confirmation
 	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n"+
-		"**Reporters:**\n%s\n\n_auto-%s after reaching %d reports_",
+		"**Reporters:**\n%s\n\n_auto-moderation: user %s after reaching %d reports_",
 		len(reports),
 		r.reportedUserMD(reportedUserName, reportedUserID),
 		msgText,
 		strings.Join(reporterList, "\n"),
 		actionType,
 		len(reports))
+	updatedText += r.banFailureNote(banErr)
 	if attention := r.superUserAttention(); attention != "" {
 		updatedText += "\n\n" + attention
 	}
@@ -673,8 +727,31 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 		}
 	}
 
-	// delete reported message from primary chat
-	if !r.dry {
+	// ban before deleting the message or resolving reports so a rejected ban leaves the case actionable
+	banReq := banRequest{
+		duration:  bot.PermanentBanDuration,
+		userID:    reportedUserID,
+		channelID: channelIDFromCallback(reportedUserID),
+		chatID:    chatID,
+		tbAPI:     r.tbAPI,
+		dry:       r.dry,
+		training:  r.trainingMode,
+		userName:  reportedUserName,
+		restrict:  r.softBanMode,
+	}
+	if banErr := banUserOrChannel(banReq); banErr != nil {
+		log.Printf("[WARN] failed to ban user %d: %v", reportedUserID, banErr)
+		banFailed := fmt.Errorf("failed to ban user %d: %w", reportedUserID, banErr)
+		// keep the reports and the inline keyboard so the admin can retry
+		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
+			return fmt.Errorf("ban failure not reported: %w", multierror.Append(banFailed, notifyErr))
+		}
+		return banFailed
+	}
+
+	// delete reported message from primary chat. training suppresses the delete as well as the ban,
+	// so the check is on the mode rather than on the nil error banUserOrChannel returns in that mode
+	if !r.dry && !r.trainingMode {
 		_, err = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 			MessageID:  msgID,
 			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
@@ -686,28 +763,14 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 		}
 	}
 
-	// ban reported user permanently (or restrict if soft-ban enabled)
-	banReq := banRequest{
-		duration: bot.PermanentBanDuration,
-		userID:   reportedUserID,
-		chatID:   chatID,
-		tbAPI:    r.tbAPI,
-		dry:      r.dry,
-		training: r.trainingMode,
-		userName: reportedUserName,
-		restrict: r.softBanMode, // respect soft-ban mode
-	}
-	if err := banUserOrChannel(banReq); err != nil {
-		log.Printf("[WARN] failed to ban user %d: %v", reportedUserID, err)
-	}
-
 	// delete all reports for this message
 	if err := r.Storage.DeleteByMessage(ctx, msgID, chatID); err != nil {
 		log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, err)
 	}
 
 	// update admin notification text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_banned by %s in %v_", query.From.UserName, sinceQuery(query))
+	updText := query.Message.Text + fmt.Sprintf("\n\n_%s by %s in %v_",
+		r.banOutcome(nil, r.softBanMode && reportedUserID > 0), query.From.UserName, sinceQuery(query))
 	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 	if err := send(editMsg, r.tbAPI); err != nil {
@@ -716,6 +779,24 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 	}
 
 	log.Printf("[INFO] report ban approved for user %d by admin %s", reportedUserID, query.From.UserName)
+	return nil
+}
+
+// reportBanFailure annotates the admin notification with the reason a ban failed, keeping the
+// inline keyboard so the admin can retry. the note is added once however many times the button is
+// pressed.
+func (r *userReports) reportBanFailure(query *tbapi.CallbackQuery, banErr error) error {
+	if r.hasBanFailureNote(query.Message.Text) {
+		return nil
+	}
+	updText := query.Message.Text + r.banFailureNote(banErr)
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	// an edit without reply_markup removes the keyboard, so the current one is sent back
+	editMsg.ReplyMarkup = query.Message.ReplyMarkup
+	if err := send(editMsg, r.tbAPI); err != nil {
+		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
+			query.Message.Chat.ID, query.Message.MessageID, err)
+	}
 	return nil
 }
 
@@ -855,6 +936,12 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 	}
 	if banErr := banUserOrChannel(banReq); banErr != nil {
 		log.Printf("[WARN] failed to ban reporter %d: %v", reporterID, banErr)
+		banFailed := fmt.Errorf("failed to ban reporter %d: %w", reporterID, banErr)
+		// keep the reporter row and the inline keyboard so the admin can retry
+		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
+			return fmt.Errorf("ban failure not reported: %w", multierror.Append(banFailed, notifyErr))
+		}
+		return banFailed
 	}
 
 	// delete reporter from database
@@ -874,7 +961,8 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, delErr)
 		}
 
-		updText := query.Message.Text + fmt.Sprintf("\n\n_all reporters banned by %s in %v_", query.From.UserName, sinceQuery(query))
+		updText := query.Message.Text + fmt.Sprintf("\n\n_all reporters %s by %s in %v_",
+			r.banOutcome(nil, false), query.From.UserName, sinceQuery(query))
 		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
 		if err := send(editMsg, r.tbAPI); err != nil {
@@ -907,7 +995,8 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			r.reportedUserMD(reportedUserName, reportedUserID),
 			msgText,
 			strings.Join(reporterList, "\n"))
-		updText += fmt.Sprintf("\n\n_reporter %s banned by %s_", escapeMarkDownV1Text(reporterName), query.From.UserName)
+		updText += fmt.Sprintf("\n\n_reporter %s %s by %s_",
+			escapeMarkDownV1Text(reporterName), r.banOutcome(nil, false), query.From.UserName)
 		if attention := r.superUserAttention(); attention != "" {
 			updText += "\n\n" + attention
 		}

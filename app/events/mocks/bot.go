@@ -17,8 +17,14 @@ import (
 //			AddApprovedUserFunc: func(id int64, name string) error {
 //				panic("mock out the AddApprovedUser method")
 //			},
+//			ForgetMessageFunc: func(msg bot.Message)  {
+//				panic("mock out the ForgetMessage method")
+//			},
 //			IsApprovedUserFunc: func(userID int64) bool {
 //				panic("mock out the IsApprovedUser method")
+//			},
+//			OnJoinFunc: func(user bot.User) bot.Response {
+//				panic("mock out the OnJoin method")
 //			},
 //			OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response {
 //				panic("mock out the OnMessage method")
@@ -45,8 +51,14 @@ type BotMock struct {
 	// AddApprovedUserFunc mocks the AddApprovedUser method.
 	AddApprovedUserFunc func(id int64, name string) error
 
+	// ForgetMessageFunc mocks the ForgetMessage method.
+	ForgetMessageFunc func(msg bot.Message)
+
 	// IsApprovedUserFunc mocks the IsApprovedUser method.
 	IsApprovedUserFunc func(userID int64) bool
+
+	// OnJoinFunc mocks the OnJoin method.
+	OnJoinFunc func(user bot.User) bot.Response
 
 	// OnMessageFunc mocks the OnMessage method.
 	OnMessageFunc func(msg bot.Message, checkOnly bool) bot.Response
@@ -72,10 +84,20 @@ type BotMock struct {
 			// Name is the name argument value.
 			Name string
 		}
+		// ForgetMessage holds details about calls to the ForgetMessage method.
+		ForgetMessage []struct {
+			// Msg is the msg argument value.
+			Msg bot.Message
+		}
 		// IsApprovedUser holds details about calls to the IsApprovedUser method.
 		IsApprovedUser []struct {
 			// UserID is the userID argument value.
 			UserID int64
+		}
+		// OnJoin holds details about calls to the OnJoin method.
+		OnJoin []struct {
+			// User is the user argument value.
+			User bot.User
 		}
 		// OnMessage holds details about calls to the OnMessage method.
 		OnMessage []struct {
@@ -108,7 +130,9 @@ type BotMock struct {
 		}
 	}
 	lockAddApprovedUser    sync.RWMutex
+	lockForgetMessage      sync.RWMutex
 	lockIsApprovedUser     sync.RWMutex
+	lockOnJoin             sync.RWMutex
 	lockOnMessage          sync.RWMutex
 	lockOnReaction         sync.RWMutex
 	lockRemoveApprovedUser sync.RWMutex
@@ -159,6 +183,45 @@ func (mock *BotMock) ResetAddApprovedUserCalls() {
 	mock.lockAddApprovedUser.Unlock()
 }
 
+// ForgetMessage calls ForgetMessageFunc.
+func (mock *BotMock) ForgetMessage(msg bot.Message) {
+	if mock.ForgetMessageFunc == nil {
+		panic("BotMock.ForgetMessageFunc: method is nil but Bot.ForgetMessage was just called")
+	}
+	callInfo := struct {
+		Msg bot.Message
+	}{
+		Msg: msg,
+	}
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = append(mock.calls.ForgetMessage, callInfo)
+	mock.lockForgetMessage.Unlock()
+	mock.ForgetMessageFunc(msg)
+}
+
+// ForgetMessageCalls gets all the calls that were made to ForgetMessage.
+// Check the length with:
+//
+//	len(mockedBot.ForgetMessageCalls())
+func (mock *BotMock) ForgetMessageCalls() []struct {
+	Msg bot.Message
+} {
+	var calls []struct {
+		Msg bot.Message
+	}
+	mock.lockForgetMessage.RLock()
+	calls = mock.calls.ForgetMessage
+	mock.lockForgetMessage.RUnlock()
+	return calls
+}
+
+// ResetForgetMessageCalls reset all the calls that were made to ForgetMessage.
+func (mock *BotMock) ResetForgetMessageCalls() {
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
+}
+
 // IsApprovedUser calls IsApprovedUserFunc.
 func (mock *BotMock) IsApprovedUser(userID int64) bool {
 	if mock.IsApprovedUserFunc == nil {
@@ -196,6 +259,45 @@ func (mock *BotMock) ResetIsApprovedUserCalls() {
 	mock.lockIsApprovedUser.Lock()
 	mock.calls.IsApprovedUser = nil
 	mock.lockIsApprovedUser.Unlock()
+}
+
+// OnJoin calls OnJoinFunc.
+func (mock *BotMock) OnJoin(user bot.User) bot.Response {
+	if mock.OnJoinFunc == nil {
+		panic("BotMock.OnJoinFunc: method is nil but Bot.OnJoin was just called")
+	}
+	callInfo := struct {
+		User bot.User
+	}{
+		User: user,
+	}
+	mock.lockOnJoin.Lock()
+	mock.calls.OnJoin = append(mock.calls.OnJoin, callInfo)
+	mock.lockOnJoin.Unlock()
+	return mock.OnJoinFunc(user)
+}
+
+// OnJoinCalls gets all the calls that were made to OnJoin.
+// Check the length with:
+//
+//	len(mockedBot.OnJoinCalls())
+func (mock *BotMock) OnJoinCalls() []struct {
+	User bot.User
+} {
+	var calls []struct {
+		User bot.User
+	}
+	mock.lockOnJoin.RLock()
+	calls = mock.calls.OnJoin
+	mock.lockOnJoin.RUnlock()
+	return calls
+}
+
+// ResetOnJoinCalls reset all the calls that were made to OnJoin.
+func (mock *BotMock) ResetOnJoinCalls() {
+	mock.lockOnJoin.Lock()
+	mock.calls.OnJoin = nil
+	mock.lockOnJoin.Unlock()
 }
 
 // OnMessage calls OnMessageFunc.
@@ -407,9 +509,17 @@ func (mock *BotMock) ResetCalls() {
 	mock.calls.AddApprovedUser = nil
 	mock.lockAddApprovedUser.Unlock()
 
+	mock.lockForgetMessage.Lock()
+	mock.calls.ForgetMessage = nil
+	mock.lockForgetMessage.Unlock()
+
 	mock.lockIsApprovedUser.Lock()
 	mock.calls.IsApprovedUser = nil
 	mock.lockIsApprovedUser.Unlock()
+
+	mock.lockOnJoin.Lock()
+	mock.calls.OnJoin = nil
+	mock.lockOnJoin.Unlock()
 
 	mock.lockOnMessage.Lock()
 	mock.calls.OnMessage = nil

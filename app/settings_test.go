@@ -408,6 +408,7 @@ func TestOptToSettings(t *testing.T) {
 		o.LuaPlugins.PluginsDir = "/custom/plugins"
 		o.LuaPlugins.EnabledPlugins = []string{"plugin1", "plugin2"}
 		o.LuaPlugins.DynamicReload = true
+		o.LuaPlugins.Unrestricted = true
 
 		o.AbnormalSpacing.Enabled = true
 		o.AbnormalSpacing.SpaceRatioThreshold = 0.4
@@ -594,6 +595,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "test-key", settings.Transient.ConfigDBEncryptKey)
 				assert.True(t, settings.Transient.Dbg)
 				assert.True(t, settings.Transient.TGDbg)
+				assert.True(t, settings.Transient.LuaUnrestricted)
 				assert.Equal(t, "secret", settings.Transient.WebAuthPasswd)
 			},
 		},
@@ -1711,6 +1713,7 @@ func TestOptToSettings_Jev(t *testing.T) {
 	opts.Jev.RetryCount = 3
 	opts.Jev.HistorySize = 7
 	opts.Jev.CheckShortMessages = true
+	opts.Jev.GibberishThreshold = 0.55
 
 	got := optToSettings(opts)
 	assert.Equal(t, "jev-token", got.Jev.Token)
@@ -1725,6 +1728,7 @@ func TestOptToSettings_Jev(t *testing.T) {
 	assert.Equal(t, 3, got.Jev.RetryCount)
 	assert.Equal(t, 7, got.Jev.HistorySize)
 	assert.True(t, got.Jev.CheckShortMessages)
+	assert.InDelta(t, 0.55, got.Jev.GibberishThreshold, 0.0001)
 }
 
 // the question and criteria defaults must arrive from the struct tags, because
@@ -1737,6 +1741,7 @@ func TestJevTokenOnlyStartupPassesValidate(t *testing.T) {
 	require.NotEmpty(t, template.Jev.CriteriaSpam)
 	require.NotEmpty(t, template.Jev.CriteriaHam)
 	assert.InDelta(t, 0.30, template.Jev.Threshold, 0.0001)
+	assert.Zero(t, template.Jev.GibberishThreshold, "the gibberish check is opt-in")
 	assert.Equal(t, 6000, template.Jev.MaxSymbolsRequest)
 	assert.Equal(t, "jev-1.13.0", template.Jev.Model)
 	assert.Empty(t, template.Jev.APIBase, "apibase must carry no default, or token-only gating breaks")

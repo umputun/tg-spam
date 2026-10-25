@@ -2,7 +2,9 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -509,16 +511,23 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Len(t, mockReports.AddCalls(), 1, "should add report with transformed text")
 	})
 
-	t.Run("reported message from channel - should return error", func(t *testing.T) {
+	t.Run("message without sender is rejected", func(t *testing.T) {
+		rep := &userReports{}
+		update := tbapi.Update{Message: &tbapi.Message{ReplyToMessage: &tbapi.Message{}}}
+		require.EqualError(t, rep.DirectUserReport(context.Background(), update), "cannot report messages without a sender")
+	})
+
+	t.Run("linked channel without From is rejected", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{}
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
-			tbAPI:        mockAPI,
-			primChatID:   123,
-			adminChatID:  456,
-			superUsers:   SuperUsers{},
-			ReportConfig: ReportConfig{Storage: mockReports},
+			tbAPI:           mockAPI,
+			primChatID:      123,
+			linkedChannelID: -100123456789,
+			adminChatID:     456,
+			superUsers:      SuperUsers{},
+			ReportConfig:    ReportConfig{Storage: mockReports},
 		}
 
 		update := tbapi.Update{
@@ -529,7 +538,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				From:      &tbapi.User{UserName: "reporter", ID: 111},
 				ReplyToMessage: &tbapi.Message{
 					MessageID: 999,
-					From:      nil, // channel or anonymous admin message
+					From:      nil,
 					SenderChat: &tbapi.Chat{
 						ID:   -100123456789,
 						Type: "channel",
@@ -541,13 +550,12 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+		assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
 		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
-	t.Run("reported message sent on behalf of a chat - should return error", func(t *testing.T) {
-		// in groups the Bot API sets From to a shared placeholder user for posts made on behalf of a chat
+	t.Run("group and linked channel with placeholder From are rejected", func(t *testing.T) {
 		senders := []struct {
 			name       string
 			from       *tbapi.User
@@ -557,8 +565,6 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				senderChat: &tbapi.Chat{ID: -1001234567890, Type: "channel", UserName: "linked_channel"}},
 			{name: "anonymous admin", from: &tbapi.User{ID: 1087968824, UserName: "GroupAnonymousBot", IsBot: true},
 				senderChat: &tbapi.Chat{ID: 123, Type: "supergroup"}},
-			{name: "other channel", from: &tbapi.User{ID: 136817688, UserName: "Channel_Bot", IsBot: true},
-				senderChat: &tbapi.Chat{ID: -1009999999999, Type: "channel", UserName: "some_channel"}},
 		}
 		for _, s := range senders {
 			t.Run(s.name, func(t *testing.T) {
@@ -567,12 +573,13 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				mockBot := &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return true }}
 
 				rep := &userReports{
-					tbAPI:        mockAPI,
-					bot:          mockBot,
-					primChatID:   123,
-					adminChatID:  456,
-					superUsers:   SuperUsers{},
-					ReportConfig: ReportConfig{Storage: mockReports},
+					tbAPI:           mockAPI,
+					bot:             mockBot,
+					primChatID:      123,
+					linkedChannelID: -1001234567890,
+					adminChatID:     456,
+					superUsers:      SuperUsers{},
+					ReportConfig:    ReportConfig{Storage: mockReports},
 				}
 
 				update := tbapi.Update{
@@ -592,7 +599,7 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 
 				err := rep.DirectUserReport(context.Background(), update)
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "cannot report messages from channels or anonymous admins")
+				assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
 				assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
 				assert.Empty(t, mockReports.AddCalls(), "should not store a report against the placeholder user")
 			})
@@ -1248,7 +1255,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 					if editMsg.ReplyMarkup != nil && len(editMsg.ReplyMarkup.InlineKeyboard) == 0 {
 						buttonsRemoved = true
 					}
-					assert.Contains(t, editMsg.Text, "auto-banned", "should mention auto-ban in updated text")
+					assert.Contains(t, editMsg.Text, "auto-moderation: user banned", "should name the real outcome in updated text")
 					assert.Contains(t, editMsg.Text, "5 reports", "should show report count")
 					assert.Contains(t, editMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
 					assert.Contains(t, editMsg.Text, "attention @super1 @super2", "should mention superusers")
@@ -1445,13 +1452,166 @@ func TestUserReports_reportedUserMD(t *testing.T) {
 		{"with username", "@spammer", 666, "[@spammer (666)](tg://user?id=666)"},
 		{"with display name", "Елена Дроздова", 8788140656, "[Елена Дроздова (8788140656)](tg://user?id=8788140656)"},
 		{"empty name falls back to user<id>", "", 8250189078, "[user8250189078 (8250189078)](tg://user?id=8250189078)"},
-		{"markdown chars escaped", "spam_user*bot", 666, "[spam\\_user\\*bot (666)](tg://user?id=666)"},
-		{"link delimiter injection escaped", "bad](http://evil)", 666, "[bad\\](http://evil) (666)](tg://user?id=666)"},
-		{"backslash escaped", "a\\b", 666, "[a\\\\b (666)](tg://user?id=666)"},
+		{"markdown chars kept in label", "spam_user*bot", 666, "[spam_user*bot (666)](tg://user?id=666)"},
+		{"link delimiter injection removed", "bad](http://evil)", 666, "[bad(http://evil) (666)](tg://user?id=666)"},
+		{"backslash kept in label", "a\\b", 666, "[a\\b (666)](tg://user?id=666)"},
+		{"channel username", "@spam_channel", -100123, "[@spam_channel (-100123)](https://t.me/spam_channel)"},
+		{"channel title", "Spam *Channel*", -100123, "Spam \\*Channel\\* (-100123)"},
+		{"channel fallback", "channel_-100123", -100123, "channel\\_-100123 (-100123)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, rep.reportedUserMD(tc.userName, tc.id))
+		})
+	}
+}
+
+func TestUserReports_ChannelReport(t *testing.T) {
+	const channelID = int64(-100123)
+	tests := []struct {
+		name, username, title, wantName, wantRendered string
+		from                                          *tbapi.User
+	}{
+		{name: "username", username: "spam_channel", title: "Spam Channel", wantName: "@spam_channel",
+			from:         &tbapi.User{ID: 136817688, UserName: "Channel_Bot"},
+			wantRendered: "[@spam_channel (-100123)](https://t.me/spam_channel)"},
+		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel", wantRendered: "Spam Channel (-100123)"},
+		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title impersonating a username", title: "@legit_admin", wantName: "legit_admin", wantRendered: "legit\\_admin (-100123)"},
+		{name: "title with repeated markers", title: "@@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "title with link injection", title: "@a) [click](http://phish", wantName: "a) [click](http://phish",
+			wantRendered: "a) \\[click](http://phish (-100123)"},
+		{name: "title with only markers", title: "@@", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stored storage.Report
+			mockReports := &mocks.ReportsMock{
+				AddFunc: func(ctx context.Context, report storage.Report) error {
+					stored = report
+					return nil
+				},
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{stored}, nil
+				},
+				UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
+			}
+			var notification tbapi.MessageConfig
+			mockAPI := &mocks.TbAPIMock{
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					notification = c.(tbapi.MessageConfig)
+					return tbapi.Message{MessageID: 123}, nil
+				},
+			}
+			rep := &userReports{
+				ReportConfig: ReportConfig{Storage: mockReports, Threshold: 1},
+				tbAPI:        mockAPI, primChatID: -100456, adminChatID: -100789, superUsers: SuperUsers{"Channel_Bot"},
+				bot: &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return id == 111 }},
+			}
+			update := tbapi.Update{Message: &tbapi.Message{
+				MessageID: 789, From: &tbapi.User{ID: 111, UserName: "reporter"},
+				ReplyToMessage: &tbapi.Message{
+					MessageID: 999, From: tt.from, Caption: "spam caption",
+					SenderChat: &tbapi.Chat{ID: channelID, Type: "channel", UserName: tt.username, Title: tt.title},
+				},
+			}}
+			require.NoError(t, rep.DirectUserReport(context.Background(), update))
+			require.Len(t, mockReports.AddCalls(), 1)
+			assert.Equal(t, channelID, stored.ReportedUserID)
+			assert.Equal(t, tt.wantName, stored.ReportedUserName)
+			assert.EqualValues(t, 111, stored.ReporterUserID)
+			assert.Equal(t, "spam caption", stored.MsgText)
+			require.Len(t, mockAPI.RequestCalls(), 1)
+			deleted := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+			assert.Equal(t, 789, deleted.MessageID)
+			require.Len(t, mockAPI.SendCalls(), 1)
+			assert.Contains(t, notification.Text, "\n\n"+tt.wantRendered+"\n\n")
+			if tt.username == "" {
+				assert.NotContains(t, notification.Text, "https://t.me/")
+			}
+			keyboard := notification.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
+			require.Len(t, keyboard.InlineKeyboard, 1)
+			assert.Equal(t, "R+-100123:999", *keyboard.InlineKeyboard[0][0].CallbackData)
+		})
+	}
+}
+
+func TestUserReports_ChannelBan(t *testing.T) {
+	const channelID = int64(-100123)
+	tests := []struct {
+		name, wantText string
+		update, manual bool
+	}{
+		{name: "new auto-ban notification", wantText: "user banned after 1 reports"},
+		{name: "updated auto-ban notification", update: true, wantText: "user banned after reaching 1 reports"},
+		{name: "approve button", manual: true, wantText: "_banned by admin in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := storage.Report{MsgID: 42, ChatID: -100456, ReportedUserID: channelID, ReportedUserName: "@spam_channel",
+				ReporterUserID: 111, ReporterUserName: "reporter", MsgText: "spam text", NotificationSent: tt.update, AdminMsgID: 999}
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					assert.Equal(t, report.MsgID, msgID)
+					assert.Equal(t, report.ChatID, chatID)
+					return []storage.Report{report}, nil
+				},
+				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+			}
+			var notification string
+			mockAPI := &mocks.TbAPIMock{
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					switch msg := c.(type) {
+					case tbapi.MessageConfig:
+						notification = msg.Text
+					case tbapi.EditMessageTextConfig:
+						notification = msg.Text
+					}
+					return tbapi.Message{}, nil
+				},
+			}
+			mockBot := &mocks.BotMock{
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+				UpdateSpamFunc:         func(msg string) error { return nil },
+			}
+			rep := &userReports{ReportConfig: ReportConfig{Storage: mockReports, AutoBanThreshold: 1},
+				tbAPI: mockAPI, bot: mockBot, primChatID: report.ChatID, adminChatID: -100789, softBanMode: true}
+			if tt.manual {
+				query := &tbapi.CallbackQuery{Data: "R+-100123:42", From: &tbapi.User{UserName: "admin"},
+					Message: &tbapi.Message{MessageID: 999, Chat: tbapi.Chat{ID: rep.adminChatID}, Text: "reported channel"}}
+				require.NoError(t, rep.HandleReportCallback(context.Background(), query))
+			} else {
+				require.NoError(t, rep.checkReportThreshold(context.Background(), report.MsgID, report.ChatID))
+			}
+			var channelBans int
+			for _, call := range mockAPI.RequestCalls() {
+				switch req := call.C.(type) {
+				case tbapi.BanChatSenderChatConfig:
+					channelBans++
+					assert.Equal(t, channelID, req.SenderChatID)
+					assert.Equal(t, report.ChatID, req.ChatID)
+				case tbapi.DeleteMessageConfig:
+					assert.Equal(t, report.MsgID, req.MessageID)
+				default:
+					t.Errorf("unexpected Telegram request %T", req)
+				}
+			}
+			assert.Equal(t, 1, channelBans)
+			require.Len(t, mockBot.RemoveApprovedUserCalls(), 1)
+			assert.Equal(t, channelID, mockBot.RemoveApprovedUserCalls()[0].ID)
+			assert.Contains(t, notification, tt.wantText)
+			assert.NotContains(t, notification, "restricted")
+			if !tt.manual {
+				assert.Contains(t, notification, "https://t.me/spam_channel")
+			}
+			require.Len(t, mockReports.DeleteByMessageCalls(), 1)
 		})
 	}
 }
@@ -1771,9 +1931,8 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// verify escaped characters in reported user name
-		assert.Contains(t, sentMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
-		assert.NotContains(t, sentMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
+		assert.Contains(t, sentMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
 
 		// verify escaped characters in reporter names
 		assert.Contains(t, sentMsg.Text, "test\\_reporter", "first reporter name should be escaped")
@@ -2025,9 +2184,8 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// verify escaped characters in reported user name
-		assert.Contains(t, editedMsg.Text, "spam\\_user\\*bot", "reported user name should be escaped")
-		assert.NotContains(t, editedMsg.Text, "spam_user*bot", "reported user name should not contain unescaped characters")
+		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
+		assert.Contains(t, editedMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
 
 		// verify escaped characters in reporter names
 		assert.Contains(t, editedMsg.Text, "test\\_reporter", "first reporter name should be escaped")
@@ -2730,4 +2888,620 @@ func TestUserReports_HandleReportCallback_SecurityValidation(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unknown report callback")
 	})
+}
+
+func TestUserReports_BanOutcomeReporting(t *testing.T) {
+	type banResult int
+	const (
+		banOK banResult = iota
+		banErrored
+		banNotOK
+	)
+
+	tests := []struct {
+		name              string
+		dry               bool
+		training          bool
+		softBan           bool
+		ban               banResult
+		wantBanReq        bool
+		wantRestrictReq   bool
+		wantDeleteMsgReq  bool
+		wantReportsPurged bool
+		wantButtonsGone   bool
+		wantErr           bool
+		wantText          string
+	}{
+		{
+			name: "normal mode bans, deletes and resolves", ban: banOK,
+			wantBanReq: true, wantDeleteMsgReq: true, wantReportsPurged: true, wantButtonsGone: true,
+			wantText: "_banned by admin in",
+		},
+		{
+			name: "soft-ban restricts and says so", softBan: true, ban: banOK,
+			wantRestrictReq: true, wantDeleteMsgReq: true, wantReportsPurged: true, wantButtonsGone: true,
+			wantText: "_restricted by admin in",
+		},
+		{
+			name: "telegram rejects the ban, nothing else happens", ban: banErrored,
+			wantBanReq: true, wantErr: true,
+			wantText: "\n\nban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID",
+		},
+		{
+			name: "telegram answers not ok, nothing else happens", ban: banNotOK,
+			wantBanReq: true, wantErr: true,
+			wantText: "\n\nban failed: response is not Ok: ",
+		},
+		{
+			name: "dry never calls telegram but resolves the report", dry: true, ban: banOK,
+			wantReportsPurged: true, wantButtonsGone: true,
+			wantText: "would have been banned (dry) by admin in",
+		},
+		{
+			name: "training never calls telegram and never deletes", training: true, ban: banOK,
+			wantReportsPurged: true, wantButtonsGone: true,
+			wantText: "would have been banned (training) by admin in",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var banReq, restrictReq, deleteMsgReq bool
+			var editText string
+			var editMarkup *tbapi.InlineKeyboardMarkup
+
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					if e, ok := c.(tbapi.EditMessageTextConfig); ok {
+						editText, editMarkup = e.Text, e.ReplyMarkup
+					}
+					return tbapi.Message{}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					switch c.(type) {
+					case tbapi.BanChatMemberConfig:
+						banReq = true
+						if tt.ban == banErrored {
+							return nil, errors.New("Bad Request: USER_ID_INVALID")
+						}
+						if tt.ban == banNotOK {
+							return &tbapi.APIResponse{Ok: false}, nil
+						}
+					case tbapi.RestrictChatMemberConfig:
+						restrictReq = true
+						if tt.ban == banErrored {
+							return nil, fmt.Errorf("telegram rejected the ban")
+						}
+						if tt.ban == banNotOK {
+							return &tbapi.APIResponse{Ok: false}, nil
+						}
+					case tbapi.DeleteMessageConfig:
+						deleteMsgReq = true
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{
+						{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam msg"},
+					}, nil
+				},
+				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+			}
+
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				dry: tt.dry, trainingMode: tt.training, softBanMode: tt.softBan,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot: &mocks.BotMock{
+					RemoveApprovedUserFunc: func(userID int64) error { return nil },
+					UpdateSpamFunc:         func(msg string) error { return nil },
+				},
+			}
+
+			keyboard := reportKeyboard(666, 100)
+			query := &tbapi.CallbackQuery{
+				Data: "R+666:100",
+				From: &tbapi.User{UserName: "admin"},
+				Message: &tbapi.Message{
+					Chat: tbapi.Chat{ID: 456}, MessageID: 999,
+					Text: "**User spam reported (1 reports)**", Date: time.Now().Unix(),
+					ReplyMarkup: &keyboard,
+				},
+			}
+
+			err := rep.callbackReportBan(context.Background(), query)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.wantBanReq, banReq, "ban request reaching telegram")
+			assert.Equal(t, tt.wantRestrictReq, restrictReq, "restrict request reaching telegram")
+			assert.Equal(t, tt.wantDeleteMsgReq, deleteMsgReq, "message delete reaching telegram")
+			assert.Equal(t, tt.wantReportsPurged, len(mockReports.DeleteByMessageCalls()) > 0, "report rows purged")
+			require.NotNil(t, editMarkup, "the edit must carry a keyboard, since Telegram drops one it isn't sent")
+			if tt.wantButtonsGone {
+				assert.Empty(t, editMarkup.InlineKeyboard, "inline keyboard removed")
+			} else {
+				assert.Equal(t, keyboard, *editMarkup, "inline keyboard kept as it was")
+			}
+			if tt.wantErr {
+				// the note is the last paragraph and not in italics, where an escaped underscore breaks markdown
+				assert.True(t, strings.HasSuffix(editText, tt.wantText), "failure note, got %q", editText)
+			} else {
+				assert.Contains(t, editText, tt.wantText)
+			}
+		})
+	}
+}
+
+func reportKeyboard(reportedUserID int64, msgID int) tbapi.InlineKeyboardMarkup {
+	return tbapi.NewInlineKeyboardMarkup(tbapi.NewInlineKeyboardRow(
+		tbapi.NewInlineKeyboardButtonData("✅ Approve Ban", fmt.Sprintf("R+%d:%d", reportedUserID, msgID)),
+		tbapi.NewInlineKeyboardButtonData("❌ Reject", fmt.Sprintf("R-%d:%d", reportedUserID, msgID)),
+		tbapi.NewInlineKeyboardButtonData("⛔️ Ban Reporters", fmt.Sprintf("R?%d:%d", reportedUserID, msgID)),
+	))
+}
+
+func TestUserReports_ReporterBanOutcome(t *testing.T) {
+	type banResult int
+	const (
+		banOK banResult = iota
+		banErrored
+		banNotOK
+	)
+	tests := []struct {
+		name            string
+		dry, training   bool
+		ban             banResult
+		othersRemain    bool
+		wantBanReq      bool
+		wantErr         bool
+		wantText        string
+		wantRowsDeleted bool
+	}{
+		{name: "last reporter banned", wantBanReq: true, wantRowsDeleted: true,
+			wantText: "_all reporters banned by admin in"},
+		{name: "reporter banned, others remain", othersRemain: true, wantBanReq: true, wantRowsDeleted: true,
+			wantText: "_reporter reporter1 banned by admin_"},
+		{name: "dry, last reporter", dry: true, wantRowsDeleted: true,
+			wantText: "_all reporters would have been banned (dry) by admin in"},
+		{name: "dry, others remain", dry: true, othersRemain: true, wantRowsDeleted: true,
+			wantText: "_reporter reporter1 would have been banned (dry) by admin_"},
+		{name: "training, last reporter", training: true, wantRowsDeleted: true,
+			wantText: "_all reporters would have been banned (training) by admin in"},
+		{name: "training, others remain", training: true, othersRemain: true, wantRowsDeleted: true,
+			wantText: "_reporter reporter1 would have been banned (training) by admin_"},
+		{name: "telegram rejects the ban", ban: banErrored, wantBanReq: true, wantErr: true,
+			wantText: "\n\nban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
+		{name: "telegram answers not ok", ban: banNotOK, wantBanReq: true, wantErr: true,
+			wantText: "\n\nban failed: response is not Ok: "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var banReq bool
+			var editText string
+			var editMarkup *tbapi.InlineKeyboardMarkup
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					if e, ok := c.(tbapi.EditMessageTextConfig); ok {
+						editText, editMarkup = e.Text, e.ReplyMarkup
+					}
+					return tbapi.Message{}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+						banReq = true
+						switch tt.ban {
+						case banErrored:
+							return nil, errors.New("Bad Request: USER_ID_INVALID")
+						case banNotOK:
+							return &tbapi.APIResponse{Ok: false}, nil
+						}
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			reporter1 := storage.Report{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer",
+				ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam msg"}
+			reporter2 := reporter1
+			reporter2.ReporterUserID, reporter2.ReporterUserName = 222, "reporter2"
+			getCalls := 0
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					getCalls++
+					if getCalls == 1 {
+						return []storage.Report{reporter1, reporter2}, nil
+					}
+					if tt.othersRemain {
+						return []storage.Report{reporter2}, nil
+					}
+					return nil, nil
+				},
+				DeleteReporterFunc:  func(ctx context.Context, reporterID int64, msgID int, chatID int64) error { return nil },
+				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+			}
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				dry: tt.dry, trainingMode: tt.training,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot:          &mocks.BotMock{RemoveApprovedUserFunc: func(userID int64) error { return nil }},
+			}
+			keyboard := tbapi.NewInlineKeyboardMarkup(
+				tbapi.NewInlineKeyboardRow(tbapi.NewInlineKeyboardButtonData("Ban reporter1", "R!111:100")),
+				tbapi.NewInlineKeyboardRow(tbapi.NewInlineKeyboardButtonData("Ban reporter2", "R!222:100")),
+				tbapi.NewInlineKeyboardRow(tbapi.NewInlineKeyboardButtonData("Cancel", "RX666:100")),
+			)
+			query := &tbapi.CallbackQuery{
+				Data: "R!111:100",
+				From: &tbapi.User{UserName: "admin"},
+				Message: &tbapi.Message{
+					Chat: tbapi.Chat{ID: 456}, MessageID: 999,
+					Text: "**User spam reported (2 reports)**", Date: time.Now().Unix(),
+					ReplyMarkup: &keyboard,
+				},
+			}
+
+			err := rep.callbackReportBanReporterConfirm(context.Background(), query)
+			assert.Equal(t, tt.wantBanReq, banReq, "ban request reaching telegram")
+			require.NotNil(t, editMarkup, "the edit must carry a keyboard, since Telegram drops one it isn't sent")
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, mockReports.DeleteReporterCalls(), "reporter row must survive a failed ban")
+				assert.Empty(t, mockReports.DeleteByMessageCalls(), "reports must survive a failed ban")
+				assert.Equal(t, keyboard, *editMarkup, "confirmation keyboard must survive a failed ban")
+				assert.True(t, strings.HasSuffix(editText, tt.wantText), "failure note, got %q", editText)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantRowsDeleted, len(mockReports.DeleteReporterCalls()) == 1, "reporter row deleted")
+			assert.Contains(t, editText, tt.wantText)
+			if tt.othersRemain {
+				assert.Equal(t, reportKeyboard(666, 100), *editMarkup, "report keyboard restored for the rest")
+				return
+			}
+			assert.Empty(t, editMarkup.InlineKeyboard, "keyboard removed once no reporter remains")
+		})
+	}
+}
+
+func TestUserReports_BanAndNoteFailureBothReported(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		call    func(r *userReports, q *tbapi.CallbackQuery) error
+		wantBan string
+	}{
+		{name: "report ban", data: "R+666:100", wantBan: "failed to ban user 666",
+			call: func(r *userReports, q *tbapi.CallbackQuery) error {
+				return r.callbackReportBan(context.Background(), q)
+			}},
+		{name: "reporter ban", data: "R!111:100", wantBan: "failed to ban reporter 111",
+			call: func(r *userReports, q *tbapi.CallbackQuery) error {
+				return r.callbackReportBanReporterConfirm(context.Background(), q)
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					return tbapi.Message{}, errors.New("edit refused")
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+						return nil, errors.New("Bad Request: USER_ID_INVALID")
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer",
+						ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam msg"}}, nil
+				},
+			}
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot: &mocks.BotMock{
+					RemoveApprovedUserFunc: func(userID int64) error { return nil },
+					UpdateSpamFunc:         func(msg string) error { return nil },
+				},
+			}
+			keyboard := reportKeyboard(666, 100)
+			query := &tbapi.CallbackQuery{
+				Data: tt.data,
+				From: &tbapi.User{UserName: "admin"},
+				Message: &tbapi.Message{Chat: tbapi.Chat{ID: 456}, MessageID: 999, Date: time.Now().Unix(),
+					Text: "User spam reported (1 reports)", ReplyMarkup: &keyboard},
+			}
+
+			err := tt.call(rep, query)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantBan)
+			assert.Contains(t, err.Error(), "USER_ID_INVALID")
+			assert.Contains(t, err.Error(), "failed to update notification")
+		})
+	}
+}
+
+func TestUserReports_BanFailureNoteAddedOnce(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		entities []tbapi.MessageEntity
+		wantEdit bool
+	}{
+		{name: "first failure adds the note",
+			text: "User spam reported (1 reports)\n\nspam msg", wantEdit: true},
+		{name: "note as telegram renders it",
+			text:     "User spam reported (1 reports)\n\nspam msg\n\nban failed: failed to ban user: denied",
+			entities: []tbapi.MessageEntity{{Type: "italic", Offset: 42, Length: 40}}},
+		{name: "note as written in markdown, with an escaped reason",
+			text: "**User spam reported (1 reports)**\n\nspam msg\n\nban failed: failed to ban user: USER\\_ID\\_INVALID"},
+		{name: "reported message quoting the note text is not a note",
+			text: "User spam reported (1 reports)\n\nban failed: nothing\n\nReporters:\nreporter1", wantEdit: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			edits := 0
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					if _, ok := c.(tbapi.EditMessageTextConfig); ok {
+						edits++
+					}
+					return tbapi.Message{}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					if _, ok := c.(tbapi.BanChatMemberConfig); ok {
+						return nil, fmt.Errorf("denied")
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			mockReports := &mocks.ReportsMock{
+				GetByMessageFunc: func(ctx context.Context, msgID int, chatID int64) ([]storage.Report, error) {
+					return []storage.Report{
+						{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer", MsgText: "spam msg"},
+					}, nil
+				},
+			}
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot: &mocks.BotMock{
+					RemoveApprovedUserFunc: func(userID int64) error { return nil },
+					UpdateSpamFunc:         func(msg string) error { return nil },
+				},
+			}
+			keyboard := reportKeyboard(666, 100)
+			query := &tbapi.CallbackQuery{
+				Data: "R+666:100",
+				From: &tbapi.User{UserName: "admin"},
+				Message: &tbapi.Message{
+					Chat: tbapi.Chat{ID: 456}, MessageID: 999, Date: time.Now().Unix(),
+					Text: tt.text, Entities: tt.entities, ReplyMarkup: &keyboard,
+				},
+			}
+
+			require.Error(t, rep.callbackReportBan(context.Background(), query))
+			wantEdits := 0
+			if tt.wantEdit {
+				wantEdits = 1
+			}
+			assert.Equal(t, wantEdits, edits, "failure note edits")
+			assert.Empty(t, mockReports.DeleteByMessageCalls(), "reports must survive a failed ban")
+		})
+	}
+}
+
+func TestUserReports_AutoBanSuppressedModes(t *testing.T) {
+	tests := []struct {
+		name             string
+		dry              bool
+		training         bool
+		wantDeleteMsgReq bool
+		wantText         string
+	}{
+		{name: "dry neither bans nor deletes", dry: true, wantText: "would have been banned (dry)"},
+		{name: "training neither bans nor deletes", training: true, wantText: "would have been banned (training)"},
+		{name: "normal mode bans and deletes", wantDeleteMsgReq: true, wantText: "user banned"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var banReq, deleteMsgReq bool
+			var sentText string
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					if m, ok := c.(tbapi.MessageConfig); ok {
+						sentText = m.Text
+					}
+					return tbapi.Message{}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					switch c.(type) {
+					case tbapi.BanChatMemberConfig, tbapi.RestrictChatMemberConfig:
+						banReq = true
+					case tbapi.DeleteMessageConfig:
+						deleteMsgReq = true
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			mockReports := &mocks.ReportsMock{
+				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
+			}
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				dry: tt.dry, trainingMode: tt.training,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot: &mocks.BotMock{
+					RemoveApprovedUserFunc: func(userID int64) error { return nil },
+					UpdateSpamFunc:         func(msg string) error { return nil },
+				},
+			}
+			reports := []storage.Report{
+				{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer",
+					ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam msg"},
+			}
+
+			require.NoError(t, rep.executeAutoBan(context.Background(), reports))
+			assert.Equal(t, !tt.dry && !tt.training, banReq, "ban request reaching telegram")
+			assert.Equal(t, tt.wantDeleteMsgReq, deleteMsgReq, "message delete reaching telegram")
+			assert.Contains(t, sentText, tt.wantText)
+		})
+	}
+}
+
+func TestUserReports_AutoBanFailureNotification(t *testing.T) {
+	type banResult int
+	const (
+		banOK banResult = iota
+		banErrored
+		banNotOK
+		banNetwork
+	)
+	const token = "1234567890:AAH_fake-token-abcdefghijklmnopqrstu"
+	tests := []struct {
+		name          string
+		update        bool
+		dry, training bool
+		softBan       bool
+		ban           banResult
+		wantText      []string
+		wantNote      string
+		noFailureNote bool
+	}{
+		{name: "new notification, telegram rejects the ban", ban: banErrored,
+			wantText: []string{"user not banned"},
+			wantNote: "ban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
+		{name: "new notification, telegram answers not ok", ban: banNotOK,
+			wantText: []string{"user not banned"}, wantNote: "ban failed: response is not Ok: "},
+		{name: "new notification, network error carrying the bot token", ban: banNetwork,
+			wantText: []string{"user not banned"},
+			wantNote: "ban failed: failed to ban user: Post \"https://api.telegram.org/botxxxxx/banChatMember\": dial tcp: i/o timeout"},
+		{name: "updated notification, telegram rejects the ban", update: true, ban: banErrored,
+			wantText: []string{"user not banned"},
+			wantNote: "ban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
+		{name: "updated notification, telegram answers not ok", update: true, ban: banNotOK,
+			wantText: []string{"user not banned"}, wantNote: "ban failed: response is not Ok: "},
+		{name: "updated notification, dry", update: true, dry: true,
+			wantText: []string{"user would have been banned (dry)"}, noFailureNote: true},
+		{name: "updated notification, training", update: true, training: true,
+			wantText: []string{"user would have been banned (training)"}, noFailureNote: true},
+		{name: "updated notification, banned", update: true,
+			wantText: []string{"auto-moderation: user banned"}, noFailureNote: true},
+		{name: "new notification, soft-ban restricts", softBan: true,
+			wantText: []string{"Auto-moderation: user restricted after 1 reports"}, noFailureNote: true},
+		{name: "new notification, soft-ban restrict rejected", softBan: true, ban: banErrored,
+			wantText: []string{"Auto-moderation: user not banned after 1 reports"},
+			wantNote: "ban failed: failed to restrict user: Bad Request: USER\\_ID\\_INVALID"},
+		{name: "updated notification, soft-ban restricts", update: true, softBan: true,
+			wantText: []string{"auto-moderation: user restricted after reaching 1 reports"}, noFailureNote: true},
+		{name: "updated notification, soft-ban restrict rejected", update: true, softBan: true, ban: banErrored,
+			wantText: []string{"auto-moderation: user not banned after reaching 1 reports"},
+			wantNote: "ban failed: failed to restrict user: Bad Request: USER\\_ID\\_INVALID"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var text string
+			var newMsg *tbapi.MessageConfig
+			var edit *tbapi.EditMessageTextConfig
+			var banned, restricted bool
+			mockAPI := &mocks.TbAPIMock{
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+					switch m := c.(type) {
+					case tbapi.MessageConfig:
+						newMsg, text = &m, m.Text
+					case tbapi.EditMessageTextConfig:
+						edit, text = &m, m.Text
+					}
+					return tbapi.Message{MessageID: 1}, nil
+				},
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					_, isBan := c.(tbapi.BanChatMemberConfig)
+					_, isRestrict := c.(tbapi.RestrictChatMemberConfig)
+					banned, restricted = banned || isBan, restricted || isRestrict
+					if isBan || isRestrict {
+						switch tt.ban {
+						case banErrored:
+							return nil, errors.New("Bad Request: USER_ID_INVALID")
+						case banNotOK:
+							return &tbapi.APIResponse{Ok: false}, nil
+						case banNetwork:
+							return nil, &url.Error{Op: "Post", URL: "https://api.telegram.org/bot" + token + "/banChatMember",
+								Err: errors.New("dial tcp: i/o timeout")}
+						}
+					}
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+			}
+			mockReports := &mocks.ReportsMock{
+				DeleteByMessageFunc:  func(ctx context.Context, msgID int, chatID int64) error { return nil },
+				UpdateAdminMsgIDFunc: func(ctx context.Context, msgID int, chatID int64, adminMsgID int) error { return nil },
+			}
+			rep := &userReports{
+				tbAPI: mockAPI, adminChatID: 456, primChatID: 200,
+				dry: tt.dry, trainingMode: tt.training, softBanMode: tt.softBan,
+				ReportConfig: ReportConfig{Storage: mockReports},
+				bot: &mocks.BotMock{
+					RemoveApprovedUserFunc: func(userID int64) error { return nil },
+					UpdateSpamFunc:         func(msg string) error { return nil },
+				},
+			}
+			report := storage.Report{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "spammer",
+				ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam msg"}
+			if tt.update {
+				report.NotificationSent, report.AdminMsgID = true, 999
+			}
+			reports := []storage.Report{report}
+
+			require.NoError(t, rep.executeAutoBan(context.Background(), reports))
+			if tt.softBan {
+				assert.True(t, restricted, "soft-ban must request a restrict")
+				assert.False(t, banned, "soft-ban must not request a ban")
+			}
+			for _, want := range tt.wantText {
+				assert.Contains(t, text, want)
+			}
+			assert.NotContains(t, text, token)
+			if tt.noFailureNote {
+				assert.NotContains(t, text, "ban failed")
+			} else {
+				// the note is the last paragraph and not in italics, where an escaped underscore breaks markdown
+				assert.Equal(t, tt.wantNote, text[strings.LastIndex(text, "\n\n")+2:])
+			}
+			if tt.update {
+				require.NotNil(t, edit, "existing notification must be edited")
+				require.NotNil(t, edit.ReplyMarkup)
+				assert.Empty(t, edit.ReplyMarkup.InlineKeyboard, "updated notification offers no buttons")
+				return
+			}
+			require.NotNil(t, newMsg, "a new notification must be sent")
+			assert.Nil(t, newMsg.ReplyMarkup, "new notification offers no buttons")
+		})
+	}
+}
+
+func TestUserReports_BanFailureNoteRecognized(t *testing.T) {
+	tests := []struct{ name, reason string }{
+		{name: "one line", reason: "Bad Request: USER_ID_INVALID"},
+		{name: "blank line inside", reason: "denied\n\nretry after 60s"},
+		{name: "line break inside", reason: "line one\nline two"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &userReports{}
+			text := "User spam reported (1 reports)\n\nspam msg" + r.banFailureNote(errors.New(tt.reason))
+			assert.True(t, r.hasBanFailureNote(text), "note not recognized in %q", text)
+		})
+	}
 }

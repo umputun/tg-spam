@@ -63,7 +63,7 @@ type OpenAIConfig struct {
 	SystemPrompt                 string
 	CustomPrompts                []string // additional prompts for specific spam patterns
 	RetryCount                   int
-	ReasoningEffort              string // effort on reasoning for reasoning models: "low", "medium", "high", or "none"
+	ReasoningEffort              string // "low", "medium", "high"; "none" omits it, "off" sends the API's "none"
 	CheckShortMessagesWithOpenAI bool   // if true, check messages shorter than MinMsgLen with OpenAI
 }
 
@@ -128,13 +128,14 @@ func (o *openAIChecker) buildSystemPrompt() string {
 }
 
 // isReasoningModel checks if the model requires MaxCompletionTokens instead of MaxTokens
-// this includes o1-series models and gpt-5 models
+// this includes o-series, gpt-5 and gpt-6 models
 func (o *openAIChecker) isReasoningModel() bool {
 	modelLower := strings.ToLower(o.params.Model)
 	return strings.HasPrefix(modelLower, "o1") ||
 		strings.HasPrefix(modelLower, "o3") ||
 		strings.HasPrefix(modelLower, "o4") ||
-		strings.Contains(modelLower, "gpt-5")
+		strings.Contains(modelLower, "gpt-5") ||
+		strings.Contains(modelLower, "gpt-6")
 }
 
 func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response llmResponse, err error) {
@@ -188,15 +189,20 @@ func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response l
 		ResponseFormat: &openai.ChatCompletionResponseFormat{Type: "json_object"},
 	}
 
-	// use MaxCompletionTokens for reasoning models (o1, o3, o4) and gpt-5, MaxTokens for others
+	// use MaxCompletionTokens for reasoning models (o-series, gpt-5, gpt-6), MaxTokens for others
 	if o.isReasoningModel() {
 		request.MaxCompletionTokens = o.params.MaxTokensResponse
 	} else {
 		request.MaxTokens = o.params.MaxTokensResponse
 	}
 
-	// add reasoning_effort parameter if set and not "none"
-	if o.params.ReasoningEffort != "" && o.params.ReasoningEffort != "none" {
+	// "none" is the default and is persisted in saved configs, so it keeps meaning "omit the parameter":
+	// models without reasoning support (gpt-4o-mini) reject reasoning_effort altogether.
+	switch o.params.ReasoningEffort {
+	case "", "none":
+	case "off":
+		request.ReasoningEffort = "none"
+	default:
 		request.ReasoningEffort = o.params.ReasoningEffort
 	}
 

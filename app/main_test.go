@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"path/filepath"
@@ -430,6 +431,33 @@ func Test_initLuaPlugins(t *testing.T) {
 		assert.Equal(t, "/path/to/plugins", detector.LuaPlugins.PluginsDir)
 		assert.Empty(t, detector.LuaPlugins.EnabledPlugins)
 		assert.False(t, detector.LuaPlugins.DynamicReload)
+	})
+
+	t.Run("unrestricted libraries only on request", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "env.lua"), []byte(`
+local home = os.getenv("HOME")
+function check(req)
+	return false, ""
+end
+`), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "plain.lua"), []byte(`
+function check(req)
+	return false, ""
+end
+`), 0o600))
+
+		settings := makeTestSettings()
+		settings.LuaPlugins.Enabled = true
+		settings.LuaPlugins.PluginsDir = dir
+		detector := makeDetector(makeTestSettings())
+		initLuaPlugins(detector, settings)
+		assert.Equal(t, []string{"plain"}, detector.GetLuaPluginNames())
+
+		settings.Transient.LuaUnrestricted = true
+		detector = makeDetector(makeTestSettings())
+		initLuaPlugins(detector, settings)
+		assert.Equal(t, []string{"env", "plain"}, detector.GetLuaPluginNames())
 	})
 }
 
@@ -1393,6 +1421,28 @@ func Test_makeDetectorJev(t *testing.T) {
 		assert.Equal(t, 5, res.JevHistorySize)
 	})
 
+	t.Run("gibberish threshold reaches the jev request", func(t *testing.T) {
+		var body []byte
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"answers":{"spam":{"type":"noul","noul":0.1},"gibberish":{"type":"noul","noul":0.9}}}`))
+		}))
+		defer ts.Close()
+
+		s := jevSettings()
+		s.Jev.Veto = false // in veto mode a ham base verdict never reaches jev
+		s.Jev.HistorySize = 0
+		s.Jev.APIBase = ts.URL
+		s.Jev.GibberishThreshold = 0.5
+		require.NoError(t, s.Validate())
+		res := makeDetector(s)
+		require.NotNil(t, res)
+
+		spam, _ := res.Check(spamcheck.Request{Msg: "dsfg dfgh ewrt xczv dsfh", UserID: "123"})
+		assert.True(t, spam)
+		assert.Contains(t, string(body), `"gibberish":{"type":"noul"`, "the threshold must reach JevConfig")
+	})
+
 	t.Run("apibase alone leaves jev disabled", func(t *testing.T) {
 		s := makeTestSettings()
 		s.Jev.APIBase = "https://proxy.example/v1"
@@ -1422,6 +1472,8 @@ func TestJevBadConfigRejectedBeforeStartup(t *testing.T) {
 		{"empty spam criteria", func(s *config.Settings) { s.Jev.CriteriaSpam = "" }},
 		{"empty ham criteria", func(s *config.Settings) { s.Jev.CriteriaHam = "" }},
 		{"negative max symbols", func(s *config.Settings) { s.Jev.MaxSymbolsRequest = -1 }},
+		{"gibberish threshold above one", func(s *config.Settings) { s.Jev.GibberishThreshold = 1.5 }},
+		{"NaN gibberish threshold", func(s *config.Settings) { s.Jev.GibberishThreshold = math.NaN() }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

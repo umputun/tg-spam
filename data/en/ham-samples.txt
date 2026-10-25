@@ -1,0 +1,592 @@
+Does anyone know if the bakery on the corner is open on Sundays now? It was closed last week.
+The bin collection moved to Tuesday this month because of the bank holiday, just so everyone knows.
+Lost a grey cat near the park this morning, answers to Milo. Please let me know if you see him.
+Is the swimming pool still closed for repairs or did they reopen it after the summer?
+Thanks to whoever returned my bike lock to the reception, really kind of you.
+There is a street party on Saturday from 2pm, bring a chair and something to share if you can.
+Can anyone recommend a plumber who is not too expensive? Our kitchen tap has been dripping for days.
+The road by the school will be closed between 9 and 12 tomorrow for resurfacing.
+We have a spare cot and a high chair to give away, both in good condition, just collect them.
+Has anyone else had problems with the internet in the building since yesterday evening?
+Reminder that the school trip forms need to be signed and returned by Friday.
+Does anyone have the maths homework sheet? My son left his at school again.
+The parents evening has been moved to Wednesday, the teacher sent an email this morning.
+Our kids are doing a bake sale for the library next week, any help with cakes is welcome.
+Which after school clubs are your children doing this term? We are trying to choose.
+Thanks for organising the class gift, I have sent my part by bank transfer just now.
+My daughter had a temperature last night so she will stay home today, can someone tell the teacher?
+Is the uniform shop open during the half term or only on school days?
+Finished my first sourdough loaf this weekend, the crust was great but the inside was a bit dense.
+Anyone going to the board game night on Thursday? We need one more player for Twilight Struggle.
+The light was perfect at the lake this morning, I will post a few photos later today.
+Which brushes do you use for watercolour? Mine keep losing their shape after a few weeks.
+We did the coastal walk on Sunday, about 14 km, muddy in places but the views were worth it.
+Has anyone tried growing tomatoes on a balcony? Mine get plenty of sun but the leaves turn yellow.
+Our running group meets at 7 tomorrow at the usual spot, easy pace, everyone welcome.
+I'm selling my old road bike, size 56, if anyone from the group is interested send me a message.
+The new season of the podcast is out, the first episode about the history of maps is excellent.
+Does anyone know a good repair shop for film cameras? The shutter on my Pentax got stuck.
+Book club is reading The Remains of the Day next, we meet on the 14th at the cafe.
+Tried the recipe from last week, I used less sugar and it was still very good.
+What a match last night, I can't believe they equalised in the last minute.
+Training is cancelled this Saturday because the pitch is waterlogged, see you next week.
+Who is coming to watch the final at the pub? I will book a table for about eight people.
+Our team needs a goalkeeper for Sunday league, two games a month, nothing too serious.
+The referee was terrible in the second half but we should have scored more chances anyway.
+Anyone want to share a ride to the away game next weekend? I have two free seats.
+Could someone explain when to use the present perfect instead of the past simple?
+I practise Spanish every evening with the app but speaking is still the hardest part for me.
+Is anyone free for a call this weekend to practise conversation? Half English, half German.
+Today I learned that the word quarantine comes from the Italian for forty days.
+Thanks for the correction, I always mix up affect and effect when I write quickly.
+Does the exam include a listening part this year or only reading and writing?
+We are hiring a junior designer in our Berlin office, the job description is on our company site.
+Has anyone worked with invoicing software for freelancers that handles VAT for the EU?
+The client changed the deadline again, so I will be working this weekend unfortunately.
+Does anyone have experience negotiating a remote contract with a US company from Europe?
+Our team switched to four day weeks in summer, it was a trial but it went better than expected.
+I am looking for advice on how to price a logo design for a small local business.
+Interview went well I think, they said they will let me know by the end of next week.
+The latest update broke my bluetooth headphones, had to roll back the driver to get them working.
+Has anyone migrated a project from Webpack to Vite? Wondering how painful the config was.
+I keep getting a timeout when the tests run in CI but locally everything passes.
+Which database would you choose for a small side project, Postgres or SQLite?
+Just released version 2.3 of the library, it fixes the memory leak reported last month.
+Does anyone know why my laptop fan runs at full speed even when it is idle?
+We moved our servers to a cheaper provider and the bill went down by about a third.
+Please add your talk proposals for the meetup to the shared document before Friday.
+Pair programming session on Tuesday went great, we finally fixed the flaky test.
+Is it worth upgrading to the new phone or should I wait for the next model?
+Can someone review my pull request when they have time? It only touches the config loader.
+The conference videos are online now, the talk about observability is worth watching.
+I accidentally deleted the branch but managed to recover it from the reflog.
+The network fees were very high yesterday, I waited until the evening to move my coins.
+Does anyone use a hardware wallet with the new firmware? Mine asks for the PIN twice now.
+Bitcoin dropped again this morning, I am not selling anything, just watching for now.
+Remember that nobody from the admin team will ever message you first, ignore anyone who does.
+Is anyone filing taxes on staking rewards this year? The rules changed in our country.
+I read the whitepaper for that project and the token distribution looks very centralised.
+The exchange had a maintenance window last night, withdrawals are working again now.
+Long term I still think index funds are the boring but sensible option for most people.
+What do you think about the interest rate decision? Mortgages are getting expensive again.
+I moved some savings to a high interest account, nothing fancy but better than before.
+Be careful with links to airdrops in DMs, my friend lost his wallet to one last month.
+The governance vote ends on Friday, please read the proposal before you vote.
+We arrive in Lisbon on Monday, any tips for a good place to eat near the old town?
+How long did your residence permit take? We applied in June and still have no answer.
+Does anyone know if the train strike is still going ahead on Thursday?
+Our flight was delayed four hours, at least the airline gave us vouchers for food.
+Moving to Amsterdam next month, is it hard to find a flat without a local bank account?
+The visa office asks for a translated birth certificate, does anyone know a sworn translator?
+We are planning a road trip through Scotland in May, which route would you suggest?
+Does anyone have a spare adapter for UK plugs? I forgot mine at home.
+My dog is scared of fireworks, does anyone have tips for New Year's Eve?
+Which vet do you use in the area? Ours retired and the new one is very expensive.
+Started going to the gym three times a week, my back pain is much better already.
+Does anyone have a good recipe for vegetarian lasagne? Cooking for twelve people on Saturday.
+We tried the new Thai place on the high street, the green curry was excellent.
+My cat refuses to eat the new food, I think I will go back to the old brand.
+Welcome to the group! Please read the pinned message with the rules before posting.
+Let's keep this thread on topic, there is a separate chat for selling and buying.
+Sorry for the late reply, I was travelling and only saw the messages now.
+Good morning everyone, hope you all had a nice weekend.
+Thank you all for the birthday wishes, it was a lovely day.
+I'm new here, joined because a friend recommended the group. Looking forward to learning.
+Hi all, I moved to the city recently and I'm looking for people to go hiking with.
+Could the admins pin the schedule for next month? It is hard to find in the chat.
+Happy new year to everyone in the group, thanks for all the help this year.
+I agree with the previous message, the meeting time on Monday does not work for many of us.
+Can someone share the notes from yesterday's call? I had to leave early.
+Just to confirm, the deadline for the submissions is midnight on Sunday, right?
+Congratulations on the new job! Well deserved after all the interviews.
+Sorry, wrong chat, please ignore my previous message.
+Has the event been confirmed? I want to book my train tickets today.
+That is a fair point, I had not thought about it from the user's side.
+I'll bring the projector and the cables, can someone bring a laptop with HDMI?
+Does anyone have the phone number of the building manager? Mine is out of date.
+We raised enough money for the new benches in the park, thanks to everyone who donated.
+My English is not perfect so please correct me if I write something strange.
+I watched the documentary you recommended, it was really interesting, thanks.
+Quick question: is parking free in the town centre on Sundays?
+The photos from the picnic are in the shared album, feel free to add yours.
+I can help with translation from Russian to English if anyone needs it for documents.
+We need two volunteers for the registration desk on Saturday morning, any takers?
+Somebody left a blue umbrella at the meetup yesterday, I have it with me.
+Let me know when you are free next week and we can go through the plan together.
+I had the same question last month, the answer is in the pinned message at the top.
+haha I saw that too, the video from yesterday is still going around in every chat I'm in
+ok so who is actually coming on Saturday, I need a rough number to order enough pizza
+running about 15 minutes late, the bus broke down halfway, start without me please
+does anyone remember the name of that cafe we went to after the conference last year?
+just got back from holiday and there are 400 unread messages here, what did I miss?
+I think the link in the pinned message is broken, it gives me a 404 when I open it
+thanks everyone for the advice, I ended up buying the cheaper one and it works fine
+lol same, my cat also sits on the keyboard every time I join a video call
+can we move the call to tomorrow? half the team is off today because of the strike
+not sure I agree, the old version was slower but at least the settings made sense
+fair enough, I didn't think about the battery side of it, that changes things a bit
+sorry for the spam, I sent the photo three times because the upload kept failing
+good luck with the exam tomorrow, you prepared a lot, it will be fine
+it rained the whole weekend here so we stayed in and finally finished the puzzle
+who borrowed my blue folder at the meeting? it has all the receipts for the trip
+anyone know why docker compose keeps recreating the database container on every restart?
+my build passes locally but fails in the pipeline with a permission error on the cache dir
+is there a way to export the whole chat history to a file, or only message by message?
+which keyboard are you all using for programming? mine started double typing letters
+after the update my phone keeps disconnecting from wifi every few minutes, any ideas?
+how do you deal with timezones in the database, store everything in UTC and convert later?
+the docs say version 3 supports it but I still get an unknown option error when I run it
+we tried both libraries, the second one is slower but the error messages are much clearer
+can someone explain what the difference is between a soft ban and a mute in this bot?
+I wrote a small script that renames the photos by date, happy to share if it helps
+the server ran out of disk space overnight, turned out the logs were never rotated
+has anyone used the new api for payments? wondering how long the approval takes
+my laptop gets very hot when I run the tests, is that normal for a project this size?
+found the bug, it was a missing comma in the config file, three hours of my life gone
+is the meetup recording available somewhere? I missed the second half of the talk
+the market is quiet today, I'm just holding and not touching anything until next week
+which exchange do you use in Europe? mine started asking for a lot of extra documents
+gas fees are much lower in the evening, I moved my tokens after nine and paid almost nothing
+be careful, someone is impersonating the admin and sending private messages to members
+I lost a bit on that trade but it was my own fault for not setting a stop loss
+does anyone know if staking rewards count as income for tax purposes in Germany?
+the project roadmap looks ambitious, I'll wait for the audit report before buying anything
+interesting article about stablecoins in the pinned links, worth reading if you have time
+the kindergarten is closed on Friday for staff training, the note came home today
+does anyone have a spare charger for an older kindle? ours broke and the kids are upset
+the pharmacy on the main street now opens at eight, good to know for early mornings
+we are organising a clean-up of the playground on Sunday morning, gloves and bags provided
+has anyone else's water been brown this morning? I called the company but no answer yet
+lost keys found near the bus stop, black keyring with a small red torch, message me
+our neighbour's dog keeps barking at night, has anyone tried talking to them already?
+which swimming lessons do your kids go to? looking for something on weekday evenings
+the new bakery opened today, the croissants are good but the queue was very long
+there will be roadworks on the bridge all next week, expect delays in the morning
+finished the half marathon in just under two hours, legs are dead but very happy
+the new board game arrived, anyone free on Thursday evening to try it out with us?
+does anyone have experience with the night train to Vienna? is the sleeper worth it?
+my tomato plants finally have fruit, very late this year because of the cold spring
+we are planning a cycling trip along the river in June, about 60 km a day, who's in?
+great photos from the hike, the view from the top looked better than I remember
+the match was cancelled because of the storm, they will announce a new date later
+any tips for learning to swim as an adult? I always panic when I can't touch the bottom
+my first attempt at baking bread was a disaster, the dough never rose at all
+we booked the cabin for the long weekend, there are still two beds free if anyone wants
+the client finally paid the invoice from March, so I can stop sending reminders
+anyone else using a standing desk? I'm thinking of buying one but not sure it helps
+my manager wants daily reports now, which feels like a lot for a team of three
+I start the new job on Monday, a bit nervous but the team seemed friendly at the interview
+does anyone know a good accountant for freelancers who understands foreign clients?
+we're looking for someone to translate a short manual into Spanish, paid, details in the doc
+the office will be closed between Christmas and New Year, plan your deliveries accordingly
+please keep job ads in the separate channel, this chat is only for questions and answers
+welcome to all the new members, introduce yourself if you like and read the rules first
+reminder that the voice chat starts at seven, the topic is the summer schedule
+I've muted the thread for a while, too many notifications, ping me if you need me
+thanks for organising everything, the event went really well and people loved it
+if anyone gets a private message asking for money in the name of the admins, report it
+can we stop the political discussion here please, there are other groups for that
+I updated the shared spreadsheet with the new dates, check your names are still right
+happy birthday Maria, hope you have a lovely day and a long weekend to celebrate
+the poll is closed, most people voted for the second weekend so let's go with that
+apologies for the confusion yesterday, the meeting was moved and I forgot to post it here
+If you're not in my car in an hour and a half I'm going apeshit
+Hi Shanil,Rakhesh here.thanks,i have exchanged the uncut diamond stuff.leaving back. Excellent service by Dino and Prem.
+Aslamalaikkum....insha allah tohar beeen muht albi mufti mahfuuz...meaning same here....
+Enjoy the showers of possessiveness poured on u by ur loved ones, bcoz in this world of lies, it is a golden gift to be loved truly..
+How many times i told in the stage all use to laugh. You not listen aha.
+You are always putting your business out there. You put pictures of your ass on facebook. You are one of the most open people i've ever met. Why would i think a picture of your room would hurt you, make you feel violated.
+Ffffffffff. Alright no way I can meet up with you sooner?
+Pls ask macho how much is budget for bb bold 2 is cos i saw a new one for 10 dollars.
+No I'm good for the movie, is it ok if I leave in an hourish?
+Hey... Why dont we just go watch x men and have lunch... Haha
+Are we doing the norm tomorrow? I finish just a 4.15 cos of st tests. Need to sort library stuff out at some point tomo - got letter from today - access til end march so i better get move on!
+Your gonna have to pick up a $1 burger for yourself on your way home. I can't even move. Pain is killing me.
+Fyi I'm gonna call you sporadically starting at like 10 bc we are not not doin this shit
+'An Amazing Quote'' - "Sometimes in life its difficult to decide whats wrong!! a lie that brings a smile or the truth that brings a tear...."
+He is impossible to argue with and he always treats me like his sub, like he never released me ... Which he did and I will remind him of that if necessary
+The 10 g that i saw a few days ago, the guy wants sell wifi only for 10 and with 3g for 10 . That's why i blanked him.
+V skint too but fancied few bevies.waz gona go meet &othrs in spoon but jst bin watchng planet earth&sofa is v comfey; If i dont make it hav gd night
+CERI U REBEL! SWEET DREAMZ ME LITTLE BUDDY!! C YA 2MORO! WHO NEEDS BLOKES
+Hey no I ad a crap nite was borin without ya 2 boggy with me u boring biatch! Thanx but u wait til nxt time il ave ya
+She said,'' do u mind if I go into the bedroom for a minute ? '' ''OK'', I sed in a sexy mood. She came out 5 minuts latr wid a cake...n My Wife,
+I.ll give her once i have it. Plus she said grinule greet you whenever we speak
+You have come into my life and brought the sun ..Shiny down on me, warming my heart. Putting a constant smile on my face ... Making me feel loved and cared for
+Good afternoon sexy buns! How goes the job search ? I wake and you are my first thought as always, my love. I wish your fine and happy and know I adore you!
+Aight, you close by or still down around alex's place?
+Oh thats late! Well have a good night and i will give u a call tomorrow. Iam now going to go to sleep night night
+Eh ur laptop got no stock lei... He say mon muz come again to take a look c got a not...
+All these nice new shirts and the only thing I can wear them to is nudist themed ;_; you in mu?
+Me too. Mark is taking forever to pick up my prescription and the pain is coming back.
+Got but got 2 colours lor. One colour is quite light n e other is darker lor. Actually i'm done she's styling my hair now.
+Today am going to college so am not able to atten the class.
+"Happy valentines day" I know its early but i have hundreds of handsomes and beauties to wish. So i thought to finish off aunties and uncles 1st...
+I'll text now! All creepy like so he won't think that we forgot
+Mmm thats better now i got a roast down me! id b better if i had a few drinks down me 2! Good indian?
+K, my roommate also wants a dubsack and another friend may also want some so plan on bringing extra, I'll tell you when they know for sure
+I got to video tape pple type in message lor. U so free wan 2 help me? Hee... Cos i noe u wan 2 watch infernal affairs so ask u along. Asking shuhui oso.
+So how's scotland. Hope you are not over showing your JJC tendencies. Take care. Live the dream
+Nutter. Cutter. Ctter. Cttergg. Cttargg. Ctargg. Ctagg. ie you
+Superb Thought- "Be grateful that u dont have everything u want. That means u still have an opportunity to be happier tomorrow than u are today.":-)
+Bull. Your plan was to go floating off to IKEA with me without a care in the world. So i have to live with your mess another day.
+Solve d Case : A Man Was Found Murdered On <DECIMAL> . 10 AfterNoon. 1,His wife called Police. 2,Police questioned everyone. 3,Wife: Sir,I was sleeping, when the murder took place. 4.Cook: I was cooking. 5.Gardener: I was picking vegetables. 6.House-Maid: I went 2 d post office. 7.Children: We went 2 play. 8.Neighbour: We went 2 a marriage. Police arrested d murderer Immediately. Who's It? Reply With Reason, If U r Brilliant.
+Then u better go sleep.. Dun disturb u liao.. U wake up then msg me lor..
+Dis is yijue. I jus saw ur mail. In case huiming havent sent u my num. Dis is my num.
+Babe! How goes that day ? What are you up to ? I miss you already, my Love ... * loving kiss* ... I hope everything goes well.
+Lol yes. Our friendship is hanging on a thread cause u won't buy stuff.
+Hey you still want to go for yogasana? Coz if we end at cine then can go bathe and hav the steam bath
+I don't think I can get away for a trek that long with family in town, sorry
+I don know account details..i will ask my mom and send you.my mom is out of reach now.
+I walked an hour 2 c u! doesnt that show I care y wont u believe im serious?
+Ujhhhhhhh computer shipped out with address to sandiago and parantella lane. Wtf. Poop.
+Total disappointment, when I texted you was the craziest shit got :(
+Night has ended for another day, morning has come in a special way. May you smile like the sunny rays and leaves your worries at the blue blue bay. Gud mrng
+Hmmm.. Thk sure got time to hop ard... Ya, can go 4 free abt... Muz call u to discuss liao...
+Pls accept me for one day. Or am begging you change the number.
+Company is very good.environment is terrific and food is really nice:)
+Hi the way I was with u 2day, is the normal way&this is the real me. UR unique&I hope I know u 4 the rest of mylife. Hope u find wot was lost.
+Well am officially in a philosophical hole, so if u wanna call am at home ready to be saved!
+How long has it been since you screamed, princess?
+Ha ha - had popped down to the loo when you hello-ed me. Hello!
+Lol grr my mom is taking forever with my prescription. Pharmacy is like 2 minutes away. Ugh.
+Weightloss! No more girl friends. Make loads of money on ebay or something. And give thanks to God.
+If you hear a loud scream in about 10 minutes its cause my Gyno will be shoving things up me that don't belong :/
+I am great princess! What are you thinking about me? :)
+If you don't respond imma assume you're still asleep and imma start calling n shit
+Ok... The theory test? when are ü going to book? I think it's on 21 may. Coz thought wanna go out with jiayin. But she isnt free
+K, wen ur free come to my home and also tel vikky i hav sent mail to him also.. Better come evening il be free today aftr 6pm..:-)
+Today my system sh get ready.all is well and i am also in the deep well
+Hello, yeah i've just got out of the bath and need to do my hair so i'll come up when i'm done, yeah?
+Nah, Wednesday. When should I bring the mini cheetos bag over?
+Hey...Great deal...Farm tour 9am to 5pm $95/pax, $50 deposit by 16 May
+That's cool he'll be here all night, lemme know when you're around
+Well good morning mr . Hows london treatin' ya treacle?
+I get out of class in bsn in like 10 minutes, you know where advising is?
+Squeeeeeze!! This is christmas hug.. If u lik my frndshp den hug me back.. If u get 3 u r cute:) 6 u r luvd:* 9 u r so lucky;) None? People hate u:
+You intrepid duo you! Have a great time and see you both soon.
+Please protect yourself from e-threats. SIB never asks for sensitive information like Passwords,ATM/SMS PIN thru email. Never share your password with anybody.
+Go until jurong point, crazy.. Available only in bugis n great world la e buffet... Cine there got amore wat...
+* Will have two more cartons off u and is very pleased with shelves
+Actually nvm, got hella cash, we still on for 10 ish?
+No:-)i got rumour that you going to buy apartment in chennai:-)
+Den only weekdays got special price... Haiz... Cant eat liao... Cut nails oso muz wait until i finish drivin wat, lunch still muz eat wat...
+Ok lor... Sony ericsson salesman... I ask shuhui then she say quite gd 2 use so i considering...
+I'm watching lotr w my sis dis aft. So u wan 2 meet me 4 dinner at nite a not?
+Forgot you were working today! Wanna chat, but things are ok so drop me a text when you're free / bored etc and i'll ring. Hope all is well, nose essay and all xx
+K.:)you are the only girl waiting in reception ah?
+Am on the uworld site. Am i buying the qbank only or am i buying it with the self assessment also?
+10 %of pple marry with their lovers... becz they hav gud undrstndng dat avoids problems. i sent dis 2 u, u wil get gud news on friday by d person you like. And tomorrow will be the best day of your life. Dont break this chain. If you break you will suffer. send this to 10 frnds in 10 mins whn u read...
+I don't want you to leave. But i'm barely doing what i can to stay sane. fighting with you constantly isn't helping.
+"ALRITE HUNNY!WOT U UP 2 2NITE? DIDNT END UP GOIN DOWN TOWN JUS DA PUB INSTEAD! JUS CHILLIN AT DA MO IN ME BEDROOM!LOVE JEN XXX."
+I will reach office around <DECIMAL> . & my mobile have problem. You cann't get my voice. So call you asa i'll free
+MY NO. IN LUTON 0125698789 RING ME IF UR AROUND! H*
+Oh ho. Is this the first time u use these type of words
+I don wake since. I checked that stuff and saw that its true no available spaces. Pls call the embassy or send a mail to them.
+I like you peoples very much:) but am very shy pa.
+Tell you what, if you make a little spreadsheet and track whose idea it was to smoke to determine who "smokes too much" for the entire month of february, I'll come up
+I know! Grumpy old people. My mom was like you better not be lying. Then again I am always the one to play jokes...
+Sounds gd... Haha... Can... Wah, u yan jiu so fast liao...
+In the end she might still vomit but its okay. Not everything will come out.
+I'm going for bath will msg you next 10 min..
+Must come later.. I normally bathe him in da afternoon mah..
+Wylie update: my weed dealer carlos went to freedom and had a class with lunsford
+Good words.... But words may leave u in dismay many times.
+:-) yeah! Lol. Luckily i didn't have a starring role like you!
+"Aww you must be nearly dead!Well Jez isComing over toDo some workAnd that whillTake forever!"
+And that's fine, I got enough bud to last most of the night at least
+You know there is. I shall speak to you in 10 minutes then
+I calls you later. Afternoon onwords mtnl service get problem in south mumbai. I can hear you but you cann't listen me.
+Not yet. Just i'd like to keep in touch and it will be the easiest way to do that from barcelona. By the way how ru and how is the house?
+Dear all, as we know 10 th is the 10 th birthday of our loving Gopalettan. We are planning to give a small gift on that day. Those who like to participate in that you are welcome. Please contact our admin team for more details
+Sorry light turned green, I meant another friend wanted 10 worth but he may not be around
+I'm stuck in da middle of da row on da right hand side of da lt...
+I wish things were different. I wonder when i will be able to show you how much i value you. Pls continue the brisk walks no drugs without askin me please and find things to laugh about. I love you dearly.
+I wake up long ago already... Dunno, what other thing?
+Yetunde, i'm sorry but moji and i seem too busy to be able to go shopping. Can you just please find some other way to get what you wanted us to get. Please forgive me. You can reply free via yahoo messenger.
+Good morning pookie pie! Lol hope I didn't wake u up
+Oh really? perform, write a paper, go to a movie AND be home by midnight, huh?
+Ask g or iouri, I've told the story like ten times already
+Hi its me you are probably having too much fun to get this message but i thought id txt u cos im bored! and james has been farting at me all night
+Not thought bout it... || Drink in tap & spile at seven. || Is that pub on gas st off broad st by canal. || Ok?
+Howz pain.it will come down today.do as i said ystrday.ice and medicine.
+"EY! CALM DOWNON THEACUSATIONS.. ITXT U COS IWANA KNOW WOTU R DOIN AT THEW/END... HAVENTCN U IN AGES..RING ME IF UR UP4 NETHING SAT.LOVE J XXX."
+Wot u up 2? Thout u were gonna call me!! Txt bak luv K
+Miles and smiles r made frm same letters but do u know d difference..? smile on ur face keeps me happy even though I am miles away from u.. :-)keep smiling.. Good nyt
+Come to me, slave. Your doing it again ... Going into your shell and unconsciously avoiding me ... You are making me unhappy :-(
+Tick, tick, tick .... Where are you ? I could die of loneliness you know ! *pouts* *stomps feet* I need you ...
+Science tells that chocolate will melt under the sunlight. Please don't walk under the sunlight. BCoz,I don't want to loss a sweet friend.
+Sorry me going home first... Daddy come fetch ü later...
+Is there any movie theatre i can go to and watch unlimited movies and just pay once?
+Love it! The girls at the office may wonder why you are smiling but sore...
+Hiya do u like the hlday pics looked horrible in them so took mo out! Hows the camp Amrca thing? Speak soon Serena:)
+Great. I'm in church now, will holla when i get out
+Reason is if the team budget is available at last they buy the unsold players for at base rate..
+And very importantly, all we discuss is between u and i only.
+Can meh? Thgt some will clash... Really ah, i dun mind... I dun seen to have lost any weight... Gee...
+Sorry i missed your call. Can you please call back.
+Can i meet ü at 5.. As 4 where depends on where ü wan 2 in lor..
+Yes i have. So that's why u texted. Pshew...missing you so much
+Don't Think About "What u Have Got" Think About "How to Use It That You Have Got" gooD ni8
+The guy (kadeem) hasn't been selling since the break, I know one other guy but he's paranoid as fuck and doesn't like selling without me there and I can't be up there til late tonight
+Its going good...no problem..but still need little experience to understand american customer voice...
+True dear..i sat to pray evening and felt so.so i sms'd you in some time...
+Storming msg: Wen u lift d phne, u say "HELLO" Do u knw wt is d real meaning of HELLO?? . . . It's d name of a girl..! . . . Yes.. And u knw who is dat girl?? "Margaret Hello" She is d girlfrnd f Grahmbell who invnted telphone... . . . . Moral:One can 4get d name of a person, bt not his girlfrnd... G o o d n i g h t . . .@
+Where wuld I be without my baby? The thought alone mite break me and I dont wanna go crazy but everyboy needs his lady xxxxxxxx
+About 10 bucks. The banks fees are fixed. Better to call the bank and find out.
+Japanese Proverb: If one Can do it, U too Can do it, If none Can do it,U must do it Indian version: If one Can do it, LET HIM DO it.. If none Can do it,LEAVE it!! And finally Kerala version: If one can do it, Stop him doing it.. If none can do it, Make a strike against it ...
+Oh ! A half hour is much longer in Syria than Canada, eh ? Wow you must get SO much more work done in a day than us with all that extra time ! *grins*
+Hello, my love ! How went your day ? Are you alright ? I think of you, my sweet and send a jolt to your heart to remind you ... I LOVE YOU! Can you hear it ? I screamed it across the sea for all the world to hear. Ahmad al Hallaq is loved ! and owned ! *possessive passionate kiss*
+Or maybe my fat fingers just press all these buttons and it doesn't know what to do.
+I'm tired of arguing with you about this week after week. Do what you want and from now on, i'll do the same.
+Ugh. Gotta drive back to sd from la. My butt is sore.
+Beautiful truth : Expression of the face could Be seen by everyone... But the depression of heart Could be understood only By the Loved ones.. Gud Ni8;-)
+House-Maid is the murderer, coz the man was murdered on 10 th January.. As public holiday all govt.instituitions are closed,including post office..understand?
+Hey, a guy I know is breathing down my neck to get him some bud, anyway you'd be able to get a half track to usf tonight?
+"NOT ENUFCREDEIT TOCALL.SHALL ILEAVE UNI AT 6 +GET A BUS TO YOR HOUSE?"
+Nope watching tv at home... Not going out. V bored...
+<DECIMAL> m but its not a common car here so its better to buy from china or asia. Or if i find it less expensive. I.ll holla
+No no:)this is kallis home ground.amla home town is durban:)
+Shall I bring us a bottle of wine to keep us amused? Only joking! I‘ll bring one anyway
+I'm not driving... Raining! Then i'll get caught at e mrt station lor.
+Haha get used to driving to usf man, I know a lot of stoners
+What i mean was i left too early to check, cos i'm working a 9-6.
+Hi, wkend ok but journey terrible. Wk not good as have huge back log of marking to do
+Darren was saying dat if u meeting da ge den we dun meet 4 dinner. Cos later u leave xy will feel awkward. Den u meet him 4 lunch lor.
+2 laptop... I noe infra but too slow lar... I wan fast one
+Oh oh... Wasted... Den muz chiong on sat n sun liao...
+U ned to convince him tht its not possible witot hurting his feeling its the main
+That means from february to april i'll be getting a place to stay down there so i don't have to hustle back and forth during audition season as i have since my sister moved away from harlem.
+Sounds great! Im going to sleep now. Have a good night!
+Sary just need Tim in the bollox &it hurt him a lot so he tol me!
+I have a rather prominent bite mark on my right cheek
+Even my brother is not like to speak with me. They treat me like aids patent.
+Hey, can you tell me blake's address? Carlos wanted me to meet him there but I got lost and he's not answering his phone
+Or better still can you catch her and let ask her if she can sell 10 for me.
+Then ü ask dad to pick ü up lar... Ü wan 2 stay until 6 meh...
+"Hello-/@drivby-:0quit edrunk sorry iff pthis makes no senrd-dnot no how ^ dancce 2 drum n basq!ihave fun 2nhite x ros xxxxxxx"
+"BOO BABE! U ENJOYIN YOURJOB? U SEEMED 2 B GETTIN ON WELL HUNNY!HOPE URE OK?TAKE CARE & ILLSPEAK 2U SOONLOTS OF LOVEME XXXX."
+Ok i found dis pierre cardin one which looks normal costs 20 its on sale.
+I hope you arnt pissed off but id would really like to see you tomorrow. Love me xxxxxxxxxxxxxX
+Just hopeing that wasn‘t too pissed up to remember and has gone off to his sisters or something!
+HI DARLIN IM MISSIN U HOPE YOU ARE HAVING A GOOD TIME. WHEN ARE U BACK AND WHAT TIME IF U CAN GIVE ME A CALL AT HOME. JESS XX
+As in missionary hook up, doggy hook up, standing...|
+How dare you stupid. I wont tell anything to you. Hear after i wont talk to you:-.
+Yes i think so. I am in office but my lap is in room i think thats on for the last few days. I didnt shut that down
+I called and said all to him:)then he have to choose this future.
+I'm not smoking while people use "wylie smokes too much" to justify ruining my shit
+Do well :)all will for little time. Thing of good times ahead:
+Okay name ur price as long as its legal! Wen can I pick them up? Y u ave x ams xx
+Cos i was out shopping wif darren jus now n i called him 2 ask wat present he wan lor. Then he started guessing who i was wif n he finally guessed darren lor.
+Hello, my love! How goes that day ? I wish your well and fine babe and hope that you find some job prospects. I miss you, boytoy ... *a teasing kiss*
+Yes! I am a one woman man! Please tell me your likes and dislikes in bed...
+Its ok my arm is feeling weak cuz i got a shot so we can go another time
+I tot it's my group mate... Lucky i havent reply... Wat time do ü need to leave...
+I like dis sweater fr mango but no more my size already so irritating.
+Yeah, in fact he just asked if we needed anything like an hour ago. When and how much?
+A guy who gets used but is too dumb to realize it.
+Thank you baby! I cant wait to taste the real thing...
+My love ! How come it took you so long to leave for Zaher's? I got your words on ym and was happy to see them but was sad you had left. I miss you
+Tunji, how's the queen? how are you doing. This is just wishing you a great day. Abiola.
+It will stop on itself. I however suggest she stays with someone that will be able to give ors for every stool.
+Good afternoon, babe. How goes that day ? Any job prospects yet ? I miss you, my love ... *sighs* ... :-(
+Love it! Daddy will make you scream with pleasure! I am going to slap your ass with my dick!
+Good afternoon my boytoy. How goes that walking here and there day ? Did you get that police abstract? Are you still out and about? I wake and miss you babe
+Dear friends, sorry for the late information. Today is the birthday of our loving Ar.Praveesh. for more details log on to face book and see. Its his number + 10 . Dont miss a delicious treat.
+She left it very vague. She just said she would inform the person in accounting about the delayed rent and that i should discuss with the housing agency about my renting another place. But checking online now and all places around usc are 10 and up
+TODAY is Sorry day.! If ever i was angry with you, if ever i misbehaved or hurt you? plz plz JUST SLAP URSELF Bcoz, Its ur fault, I'm basically GOOD
+Hey... Thk we juz go accordin to wat we discussed yest lor, except no kb on sun... Cos there's nt much lesson to go if we attend kb on sat...
+Well there's not a lot of things happening in Lindsay on New years *sighs* Some bars in Ptbo and the blue heron has something going
+Haha awesome, I've been to 4u a couple times. Who all's coming?
+God created gap btwn ur fingers so dat sum1 vry special will fill those gaps by holding ur hands.. Now plz dont ask y he created so much gap between legs !!!
+I'm doing da intro covers energy trends n pros n cons... Brief description of nuclear fusion n oso brief history of iter n jet got abt 7 n half pages..
+Yup... Ok i go home look at the timings then i msg ü again... Xuhui going to learn on 2nd may too but her lesson is at 8am
+Bill, as in: Are there any letters for me. i’m expecting one from orange that isn’t a bill but may still say orange on it.
+THING R GOOD THANX GOT EXAMS IN MARCH IVE DONE NO REVISION? IS FRAN STILL WITH BOYF? IVE GOTTA INTERVIW 4 EXETER BIT WORRIED!x
+So how are you really. What are you up to. How's the masters. And so on.
+Dont show yourself. How far. Put new pictures up on facebook.
+Just so that you know,yetunde hasn't sent money yet. I just sent her a text not to bother sending. So its over, you dont have to involve yourself in anything. I shouldn't have imposed anything on you in the first place so for that, i apologise.
+Horrible u eat macs eat until u forgot abt me already rite... U take so long 2 reply. I thk it's more toot than b4 so b prepared. Now wat shall i eat?
+I like cheap! But i‘m happy to splash out on the wine if it makes you feel better..
+Then its most likely called Mittelschmertz. Google it. If you dont have paracetamol dont worry it will go.
+I hav almost reached. Call, i m unable to connect u.
+Thats cool. i am a gentleman and will treat you with dignity and respect.
+idc get over here, you are not weaseling your way out of this shit twice in a row
+Actually I decided I was too hungry so I haven't left yet :V
+Yes..he is really great..bhaji told kallis best cricketer after sachin in world:).very tough to get out.
+Just wait till end of march when el nino gets himself. Oh.
+Awesome, I remember the last time we got somebody high for the first time with diesel :V
+Dude just saw a parked car with its sunroof popped up. Sux
+Babe? You said 2 hours and it's been almost 4 ... Is your internet down ?
+Think I could stop by in like an hour or so? My roommate's looking to stock up for a trip
+Ard 530 like dat lor. We juz meet in mrt station then ü dun haf to come out.
+Remember all those whom i hurt during days of satanic imposter in me.need to pay a price,so be it.may destiny keep me going and as u said pray that i get the mind to get over the same.
+Well, I was about to give up cos they all said no they didn‘t do one nighters. I persevered and found one but it is very cheap so i apologise in advance. It is just somewhere to sleep isnt it?
+Oops - am at my mum's in somerset... Bit far! Back tomo, see you soon x
+I miss you so much I'm so desparate I have recorded the message you left for me the other day and listen to it just to hear the sound of your voice. I love you
+Yay! You better not have told that to 5 other girls either.
+There'll be a minor shindig at my place later tonight, you interested?
+FRAN I DECIDED 2 GO N E WAY IM COMPLETELY BROKE AN KNACKERED I GOT UP BOUT 3 C U 2MRW LOVE JANX P.S THIS IS MY DADS FONE, -NO CREDIT
+Pete,is this your phone still? Its Jenny from college and Leanne.what are you up to now?:)
+Finally the match heading towards draw as your prediction.
+Thanx u darlin!im cool thanx. A few bday drinks 2 nite. 2morrow off! Take care c u soon.xxx
+We are supposed to meet to discuss abt our trip... Thought xuhui told you? In the afternoon. Thought we can go for lesson after that
+But I'm on a diet. And I ate 1 too many slices of pizza yesterday. Ugh I'm ALWAYS on a diet.
+Its not the same here. Still looking for a job. How much do Ta's earn there.
+Oh unintentionally not bad timing. Great. Fingers the trains play along! Will give fifteen min warning.
+HI DARLIN ITS KATE ARE U UP FOR DOIN SOMETHIN TONIGHT? IM GOING TO A PUB CALLED THE SWAN OR SOMETHING WITH MY PARENTS FOR ONE DRINK SO PHONE ME IF U CAN
+Hey you gave them your photo when you registered for driving ah? Tmr wanna meet at yck?
+Lol please do. Actually send a pic of yourself right now. I wanna see. Pose with a comb and hair dryer or something.
+Ok darlin i supose it was ok i just worry too much.i have to do some film stuff my mate and then have to babysit again! But you can call me there.xx
+Do 1 thing! Change that sentence into: "Because i want 2 concentrate in my educational career im leaving here.."
+He says hi and to get your ass back to south tampa (preferably at a kegger)
+I dun thk i'll quit yet... Hmmm, can go jazz ? Yogasana oso can... We can go meet em after our lessons den...
+Ü eatin later but i'm eatin wif my frens now lei... Ü going home first?
+Carlos says we can pick up from him later so yeah we're set
+Okay lor... Will they still let us go a not ah? Coz they will not know until later. We drop our cards into the box right?
+K.k:)i'm going to tirunelvali this week to see my uncle ..i already spend the amount by taking dress .so only i want money.i will give it on feb 1
+Some are lasting as much as 2 hours. You might get lucky.
+Hiya. How was last night? I've been naughty and bought myself clothes and very little ... Ready for more shopping tho! What kind of time do you wanna meet?
+1Apple/Day=No Doctor. 1Tulsi Leaf/Day=No Cancer. 1Lemon/Day=No Fat. 1Cup Milk/day=No Bone Problms 3 Litres Watr/Day=No Diseases Snd ths 2 Whom U Care..:-)
+Haha... Really oh no... How? Then will they deduct your lesson tmr?
+Hmmm ... And imagine after you've come home from that having to rub my feet, make me dinner and help me get ready for my date ! Are you sure your ready for that kind of life ?
+God picked up a flower and dippeditinaDEW, lovingly touched itwhichturnedinto u, and the he gifted tomeandsaid,THIS FRIEND IS 4U
+i see. When we finish we have loads of loans to pay
+Yup he msg me: is tat yijue? Then i tot it's my group mate cos we meeting today mah... I'm askin if ü leaving earlier or wat mah cos mayb ü haf to walk v far...
+Only saturday and sunday holiday so its very difficult:)
+Da my birthdate in certificate is in april but real date is today. But dont publish it. I shall give you a special treat if you keep the secret. Any way thanks for the wishes
+Jesus armand really is trying to tell everybody he can find
+Beautiful Truth against Gravity.. Read carefully: "Our heart feels light when someone is in it.. But it feels very heavy when someone leaves it.." GOOD NIGHT
+Hi, can i please get a 10 dollar loan from you. I.ll pay you back by mid february. Pls.
+Yar... I tot u knew dis would happen long ago already.
+Edison has rightly said, "A fool can ask more questions than a wise man can answer" Now you know why all of us are speechless during ViVa.. GM,GN,GE,GNT:-)
+Hi hope u r both ok, he said he would text and he hasn't, have u seen him, let me down gently please
+Yes I started to send requests to make it but pain came back so I'm back in bed. Double coins at the factory too. I gotta cash in all my nitros.
+see, i knew giving you a break a few times woul lead to you always wanting to miss curfew. I was gonna gibe you 'til one, but a MIDNIGHT movie is not gonna get out til after 2. You need to come home. You need to getsleep and, if anything, you need to b studdying ear training.
+The sign of maturity is not when we start saying big things.. But actually it is, when we start understanding small things... *HAVE A NICE EVENING* BSLVYL
+Nothing lor... A bit bored too... Then y dun u go home early 2 sleep today...
+You are gorgeous! keep those pix cumming :) thank you!
+Sure but since my parents will be working on Tuesday I don't really need a cover story
+Jus finish blowing my hair. U finish dinner already?
+I'm sick !! I'm needy !! I want you !! *pouts* *stomps feet* Where are you ?! *pouts* *stomps feet* I want my slave !! I want him now !!
+Will purchase d stuff today and mail to you. Do you have a po box number?
+Dear Sir,Salam Alaikkum.Pride and Pleasure meeting you today at the Tea Shop.We are pleased to send you our contact number at Qatar.Rakhesh an Indian.Pls save our Number.Respectful Regards.
+Ok but tell me half an hr b4 u come i need 2 prepare.
+Tell me they're female :V how're you throwing in? We're deciding what all to get now
+Then u ask darren go n pick u lor... But i oso sian tmr haf 2 meet lect...
+Idk. You keep saying that you're not, but since he moved, we keep butting heads over freedom vs. responsibility. And i'm tired. I have so much other shit to deal with that i'm barely keeping myself together once this gets added to it.
+Hi juan. Im coming home on fri hey. Of course i expect a welcome party and lots of presents. Ill phone u when i get back. Loads of love nicky x x x x x x x x x
+Sir, I need AXIS BANK account no and bank address.
+My tuition is at 330. Hm we go for the 1120 to 1205 one? Do you mind?
+K, I might come by tonight then if my class lets out early
+Hey hun-onbus goin 2 meet him. He wants 2go out 4a meal but I donyt feel like it cuz have 2 get last bus home!But hes sweet latelyxxx
+Hello. They are going to the village pub at 8 so either come here or there accordingly. Ok?
+Abeg, make profit. But its a start. Are you using it to get sponsors for the next event?
+Just buy a pizza. Meat lovers or supreme. U get to pick.
+My stomach has been thru so much trauma I swear I just can't eat. I better lose weight.
+"CAN I PLEASE COME UP NOW IMIN TOWN.DONTMATTER IF URGOIN OUTL8R,JUST REALLYNEED 2DOCD.PLEASE DONTPLEASE DONTIGNORE MYCALLS,U NO THECD ISV.IMPORTANT TOME 4 2MORO"
+I'd say that's a good sign but, well, you know my track record at reading women
+Really do hope the work doesnt get stressful. Have a gr8 day.
+Try to do something dear. You read something for exams
+Yeah he got in at 2 and was v apologetic. n had fallen out and she was actin like spoilt child and he got caught up in that. Till 2! But we won't go there! Not doing too badly cheers. You?
+I have 2 docs appointments next week.:/ I'm tired of them shoving stuff up me. Ugh why couldn't I have had a normal body?
+Thought praps you meant another one. Goodo! I'll look tomorrow
+Lol. Well quality aint bad at all so i aint complaining
+All boys made fun of me today. Ok i have no problem. I just sent one message just for fun
+I taught that Ranjith sir called me. So only i sms like that. Becaus hes verifying about project. Prabu told today so only pa dont mistake me..
+cThen i thk shd b enuff.. Still got conclusion n contents pg n references.. I'll b doing da contents pg n cover pg..
+Just trying to figure out when I'm suppose to see a couple different people this week. We said we'd get together but I didn't set dates
+Mmmmmmm *snuggles into you* ...*deep contented sigh* ... *whispers* ... I fucking love you so much I can barely stand it ...
+Men always needs a beautiful, intelligent, caring, loving, adjustable, cooperative wife. But the law allows only one wife....
+I might come to kerala for 2 days.so you can be prepared to take a leave once i finalise .dont plan any travel during my visit.need to finish urgent works.
+Hi Petey!noim ok just wanted 2 chat coz avent spoken 2 u 4 a long time-hope ur doin alrite.have good nit at js love ya am.x
+Princess, i like to make love 10 times per night. Hope thats not a problem!
+To the wonderful Okors, have a great month. We cherish you guys and wish you well each day. MojiBiola
+How would my ip address test that considering my computer isn't a minecraft server
+I love you !!! You know? Can you feel it? Does it make your belly warm? I wish it does, my love ... I shall meet you in your dreams, Ahmad ... *adoring kiss*
+Infact happy new year. How are you where are you when are we seeing
+Just sing HU. I think its also important to find someone female that know the place well preferably a citizen that is also smart to help you navigate through. Even things like choosing a phone plan require guidance. When in doubt ask especially girls.
+Hi mate its RV did u hav a nice hol just a message 3 say hello coz havent sent u 1 in ages started driving so stay off roads!RVx
+You stayin out of trouble stranger!!saw Dave the other day hes sorted now!still with me bloke when u gona get a girl MR!ur mum still Thinks we will get 2GETHA!
+R U &SAM P IN EACHOTHER. IF WE MEET WE CAN GO 2 MY HOUSE
+Congrats. That's great. I wanted to tell you not to tell me your score cos it might make me relax. But its motivating me so thanks for sharing
+I was at bugis juz now wat... But now i'm walking home oredi... Ü so late then reply... I oso saw a top dat i like but din buy... Where r ü now?
+This weekend is fine (an excuse not to do too much decorating)
+Tessy..pls do me a favor. Pls convey my birthday wishes to Nimya..pls dnt forget it. Today is her birthday Shijas
+Ok then no need to tell me anything i am going to sleep good night
+I'm putting it on now. It should be ready for <TIME>
+Single line with a big meaning::::: "Miss anything 4 ur "Best Life" but, don't miss ur best life for anything... Gud nyt...
+My sis is catching e show in e afternoon so i'm not watching w her. So c u wan 2 watch today or tmr lor.
+I noe la... U wana pei bf oso rite... K lor, other days den...
+"Pete can you please ring meive hardly gotany credit"
+Hi babe its me thanks for coming even though it didnt go that well!i just wanted my bed! Hope to see you soon love and kisses xxx
+Yup but not studying surfing lor. I'm in e lazy mode today.
+Hmm...my uncle just informed me that he's paying the school directly. So pls buy food.
+I just really need shit before tomorrow and I know you won't be awake before like 6
+I love you. You set my soul on fire. It is not just a spark. But it is a flame. A big rawring flame. XoXo
+Haha figures, well I found the piece and priscilla's bowl
+Do whatever you want. You know what the rules are. We had a talk earlier this week about what had to start happening, you showing responsibility. Yet, every week it's can i bend the rule this way? What about that way? Do whatever. I'm tired of having thia same argument with you every week. And a 10 movie DOESNT inlude the previews. You're still getting in after 1.
+Nope... Think i will go for it on monday... Sorry i replied so late
+Wish u many many returns of the day.. Happy birthday vikky..
+En chikku nange bakra msg kalstiya..then had tea/coffee?
+Same, I'm at my great aunts anniversary party in tarpon springs
+Lol I was gonna last month. I cashed some in but I left 10 just in case. I was collecting more during the week cause they announced it on the blog.
+Aiya we discuss later lar... Pick ü up at 4 is it?
+Merry Christmas to you too babe, i love ya *kisses*
+Idk. I'm sitting here in a stop and shop parking lot right now bawling my eyes out because i feel like i'm a failure in everything. Nobody wants me and now i feel like i'm failing you.
+Yo, the game almost over? Want to go to walmart soon
+Cbe is really good nowadays:)lot of shop and showrooms:)city is shaping good.
+I promise to take good care of you, princess. I have to run now. Please send pics when you get a chance. Ttyl!
+Yes we were outside for like 2 hours. And I called my whole family to wake them up cause it started at 1 am
+A cute thought for friendship: "Its not necessary to share every secret with ur close Frnd, but watever u shared should be true"....
+Eh u remember how 2 spell his name... Yes i did. He v naughty make until i v wet.
+Hai priya are you right. What doctor said pa. Where are you.
+Tyler (getting an 8th) has to leave not long after 9, can you get here in like an hour?
+Good afternoon, my love. How goes your day ? What are you up to ? I woke early and am online waiting for you ... Hmmm ... Italian boy is online I see . *grins*
+No problem. We will be spending a lot of quality time together...
+Realy sorry-i don't recognise this number and am now confused :) who r u please?!
+That's what I love to hear :V see you sundayish, then
+Ü mean it's confirmed... I tot they juz say oni... Ok then...
+How are you doing? Hope you've settled in for the new school year. Just wishin you a gr8 day
+Maybe?! Say hi to and find out if got his card. Great escape or wetherspoons?
+Oic... Then better quickly go bathe n settle down...
+Hey sexy buns! What of that day? No word from you this morning on YM ... :-( ... I think of you
+Hi ....My engagement has been fixd on 10 th of next month. I know its really shocking bt....hmm njan vilikkam....t ws al of a sudn;-(.
+I had askd u a question some hours before. Its answer
+He didn't see his shadow. We get an early spring yay
+Total video converter free download type this in google search:)
+Good morning. At the repair shop--the ONLY reason i'm up at this hour.
+Cant think of anyone with * spare room off * top of my head
+Hey chief, can you give me a bell when you get this. Need to talk to you about this royal visit on the 1st june.
+There are some nice pubs near here or there is Frankie n Bennys near the warner cinema?
+But my family not responding for anything. Now am in room not went to home for diwali but no one called me and why not coming. It makes me feel like died.
+"Getting tickets 4 walsall tue 6 th march. My mate is getting me them on sat. ill pay my treat. Want 2 go. Txt bak .Terry"
+You call him and tell now infront of them. Call him now.
+Of cos can lar i'm not so ba dao ok... 1 pm lor... Y u never ask where we go ah... I said u would ask on fri but he said u will ask today...
+HI ITS JESS I DONT KNOW IF YOU ARE AT WORK BUT CALL ME WHEN U CAN IM AT HOME ALL EVE. XXX
+Babe, have you got enough money to pick up bread and milk ? And I'll give you it back when you get home ?
+wiskey Brandy Rum Gin Beer Vodka Scotch Shampain Wine "KUDI"yarasu dhina vaazhthukkal. ..
+Not getting anywhere with this damn job hunting over here!
+Not a lot has happened here. Feels very quiet. Beth is at her aunts and charlie is working lots. Just me and helen in at the mo. How have you been?
+Text me when you get off, don't call, my phones having problems
+X course it 2yrs. Just so her messages on messenger lik you r sending me
+Can you just come in for a sec? There's somebody here I want you to see
+I guess it is useless calling u 4 something important.
+I know where the 10 is, I'll be there around 5
+I'm coming back on Thursday. Yay. Is it gonna be ok to get the money. Cheers. Oh yeah and how are you. Everything alright. Hows school. Or do you call it work now
+Machan you go to gym tomorrow, i wil come late goodnight.
+Hi here. have birth at on the to at 8lb 7oz. Mother and baby doing brilliantly.
+, , and picking them up from various points | going 2 yeovil | and they will do the motor project 4 3 hours | and then u take them home. || 12 2 5.30 max. || Very easy
+Nope wif my sis lor... Aft bathing my dog then i can bathe... Looks like it's going 2 rain soon.
+We're all getting worried over here, derek and taylor have already assumed the worst
+Sometimes Heart Remembrs someone Very much... Forgets someone soon... Bcoz Heart will not like everyone. But liked ones will be Remembered Everytime... BSLVYL
+Good evening Sir, hope you are having a nice day. I wanted to bring it to your notice that I have been late in paying rent for the past few months and have had to pay a $ 10 charge. I felt it would be inconsiderate of me to nag about something you give at great cost to yourself and that's why i didnt speak up. I however am in a recession and wont be able to pay the charge this month hence my askin well ahead of month's end. Can you please help. Thank you for everything.
+Aight, I'm chillin in a friend's room so text me when you're on the way
+Sure, if I get an acknowledgement from you that it's astoundingly tactless and generally faggy to demand a blood oath fo
+Pls go ahead with watts. I just wanted to be sure. Do have a great weekend. Abiola
+Shopping lor. Them raining mah hard 2 leave orchard.
+Lol or I could just starve and lose a pound by the end of the day.
+I thank you so much for all you do with selflessness. I love you plenty.
+Its posible dnt live in 10 century cm frwd n thnk different
+I'm there and I can see you, but you can't see me ? Maybe you should reboot ym ? I seen the buzz
+I'm nt goin, got somethin on, unless they meetin 4 dinner lor... Haha, i wonder who will go tis time...
+Of course. I guess god's just got me on hold right now.
