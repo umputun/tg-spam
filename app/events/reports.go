@@ -744,7 +744,7 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 		banFailed := fmt.Errorf("failed to ban user %d: %w", reportedUserID, banErr)
 		// keep the reports and the inline keyboard so the admin can retry
 		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
-			return multierror.Append(banFailed, notifyErr)
+			return fmt.Errorf("ban failure not reported: %w", multierror.Append(banFailed, notifyErr))
 		}
 		return banFailed
 	}
@@ -939,7 +939,7 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 		banFailed := fmt.Errorf("failed to ban reporter %d: %w", reporterID, banErr)
 		// keep the reporter row and the inline keyboard so the admin can retry
 		if notifyErr := r.reportBanFailure(query, banErr); notifyErr != nil {
-			return multierror.Append(banFailed, notifyErr)
+			return fmt.Errorf("ban failure not reported: %w", multierror.Append(banFailed, notifyErr))
 		}
 		return banFailed
 	}
