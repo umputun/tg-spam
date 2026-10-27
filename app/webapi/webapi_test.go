@@ -1343,6 +1343,29 @@ func TestServer_htmlSettingsHandler(t *testing.T) {
 		assert.Contains(t, body, "Connected", "Should show database is connected")
 		assert.Len(t, detectorMock.GetLuaPluginNamesCalls(), 1, "GetLuaPluginNames should be called")
 	})
+	t.Run("cas row", func(t *testing.T) {
+		tests := []struct {
+			name, api, token, row string
+		}{
+			{name: "url without token", api: "https://api.cas.chat", row: "<th>CAS Enabled</th><td>true (inactive, no token)</td>"},
+			{name: "url with token", api: "https://api.cas.chat", token: "cas-secret", row: "<th>CAS Enabled</th><td>true</td>"},
+			{name: "no url", row: "<th>CAS Enabled</th><td>false</td>"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				detectorMock := &mocks.DetectorMock{GetLuaPluginNamesFunc: func() []string { return nil }}
+				server := NewServer(Config{Version: "1.0", Detector: detectorMock,
+					AppSettings: &config.Settings{CAS: config.CASSettings{API: tt.api, Token: tt.token}}})
+				rr := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/settings", http.NoBody)
+				require.NoError(t, err)
+				http.HandlerFunc(server.htmlSettingsHandler).ServeHTTP(rr, req)
+				require.Equal(t, http.StatusOK, rr.Code)
+				assert.Contains(t, rr.Body.String(), tt.row)
+				assert.NotContains(t, rr.Body.String(), "cas-secret")
+			})
+		}
+	})
 	// test with non-SQL StorageEngine
 	t.Run("with non-SQL storage engine", func(t *testing.T) {
 		mockEngine := &mocks.StorageEngineMock{}
@@ -3270,6 +3293,22 @@ func TestServer_getSettingsHandler_RedactsJevToken(t *testing.T) {
 	assert.Contains(t, body, "jev-1.13.0", "non-credential jev fields must still be visible")
 
 	assert.Equal(t, "jev-secret", live.Jev.Token, "redaction must not mutate the live settings")
+}
+
+func TestServer_getSettingsHandler_RedactsCASToken(t *testing.T) {
+	detectorMock := &mocks.DetectorMock{GetLuaPluginNamesFunc: func() []string { return nil }}
+	live := &config.Settings{CAS: config.CASSettings{API: "https://api.cas.chat", Token: "cas-secret"}}
+	server := NewServer(Config{Version: "1.0", Detector: detectorMock, AppSettings: live})
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/settings", http.NoBody)
+	require.NoError(t, err)
+	http.HandlerFunc(server.getSettingsHandler).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	assert.NotContains(t, rr.Body.String(), "cas-secret")
+	assert.Contains(t, rr.Body.String(), "https://api.cas.chat")
+	assert.Equal(t, "cas-secret", live.CAS.Token, "redaction must not mutate the live settings")
 }
 
 func TestServer_htmlDetectedSpamHandler_JevFilter(t *testing.T) {

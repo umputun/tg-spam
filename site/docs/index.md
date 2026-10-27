@@ -84,7 +84,15 @@ The bot will check the message for the presence of phrases in the stop words lis
 
 **Combot Anti-Spam System (CAS) integration**
 
-Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
+CAS requires an API token for every request. Set `--cas.token=, [$CAS_TOKEN]` to enable the CAS check; without it the check is skipped and the bot logs a warning at startup. To disable CAS entirely, set `--cas.api=, [$CAS_API]` to empty string.
+
+CAS uses the Combot API key, which belongs to a Telegram account (see [CAS API](https://cas.chat/api)):
+
+1. Sign in to [combot.org](https://combot.org) with Telegram.
+2. Open Settings and find the API key block.
+3. If it says "No API key generated", press "Reset API key" to create one, then copy the key.
+
+The token is a credential: it is masked in logs, never shown in the web UI, and stored encrypted in the database when `--confdb-encrypt-key` is set. It is not editable in the web UI, and a new token takes effect after a restart.
 
 The default user agent is sometimes blocked by CDNs like CloudFlare. To use a custom User-Agent when querying CAS API, set `--cas.user-agent=, [$CAS_USER_AGENT]` to the desired value.
 
@@ -455,6 +463,7 @@ logger:
 
 cas:
       --cas.api=                        CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.token=                      CAS API token (Combot API key), disabled if not set [$CAS_TOKEN]
       --cas.timeout=                    CAS timeout (default: 5s) [$CAS_TIMEOUT]
       --cas.user-agent=                 User-Agent header for CAS API requests [$CAS_USER_AGENT]
 
@@ -774,6 +783,7 @@ func main() {
     MinMsgLen:        10,
     FirstMessageOnly: true,
     CasAPI:           "https://cas.example.com",
+    CasToken:         "your-combot-api-key",
     HTTPClient:       &http.Client{},
   })
 

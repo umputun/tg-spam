@@ -18,6 +18,7 @@ func ExampleNewDetector() {
 		MinMsgLen:        10,
 		FirstMessageOnly: true,
 		CasAPI:           "https://cas.example.com",
+		CasToken:         "your-combot-api-key",
 		HTTPClient:       &http.Client{},
 	})
 

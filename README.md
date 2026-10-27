@@ -96,7 +96,15 @@ Both matching modes are case-insensitive and normalize multiple spaces to single
 
 **Combot Anti-Spam System (CAS) integration**
 
-Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
+CAS requires an API token for every request. Set `--cas.token=, [$CAS_TOKEN]` to enable the CAS check; without it the check is skipped and the bot logs a warning at startup. To disable CAS entirely, set `--cas.api=, [$CAS_API]` to empty string.
+
+CAS uses the Combot API key, which belongs to a Telegram account (see [CAS API](https://cas.chat/api)):
+
+1. Sign in to [combot.org](https://combot.org) with Telegram.
+2. Open Settings and find the API key block.
+3. If it says "No API key generated", press "Reset API key" to create one, then copy the key.
+
+The token is a credential: it is masked in logs, never shown in the web UI, and stored encrypted in the database when `--confdb-encrypt-key` is set. It is not editable in the web UI, and a new token takes effect after a restart.
 
 The default user agent is sometimes blocked by CDNs like CloudFlare. To use a custom User-Agent when querying CAS API, set `--cas.user-agent=, [$CAS_USER_AGENT]` to the desired value.
 
@@ -190,7 +198,7 @@ This option is disabled by default. If `--meta.video-only` set or `env:META_VIDE
 
 This option is disabled by default. If `--meta.document-only` set or `env:META_DOCUMENT_ONLY` is `true`, the bot will check the message for the presence of any document (file attachment). If the message contains a document with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam. A forwarded document is checked the same way, since Telegram delivers the original caption as message text. Note: Telegram also sets the document field for GIFs, so a GIF without a long enough caption is flagged too. Only text the sender wrote counts toward the threshold: quoted and reply-to text is excluded, so replying to a long message does not exempt a caption-less file.
 
-Enabling this check also changes what reaches the rest of the pipeline. A file or GIF posted without a caption used to be dropped on intake; with the check on it is passed through, so it is stored in the message locator and counts toward `--max-short-msg-count` if that is configured. Checks that do not need message text also run against it: stopword matching (which also matches the username and user ID), the username-symbols check, Lua plugins, and CAS. CAS is the only one enabled on a stock installation; the others require configuration. Any of these checks can produce a spam verdict and, in normal mode, a permanent ban. For a caption-less file shorter than `--min-msg-len`, the document check flags it and the detector returns before the LLM path. Neither OpenAI nor Gemini runs, and their veto settings cannot override the verdict, regardless of either provider's `check-short-messages` setting. With the check off, a directly posted caption-less file is still dropped on intake, exactly as before. A forwarded one, or one attached to a reply to a message from another chat, is admitted on its own regardless of this option. That behavior predates this option, which neither adds nor removes it.
+Enabling this check also changes what reaches the rest of the pipeline. A file or GIF posted without a caption used to be dropped on intake; with the check on it is passed through, so it is stored in the message locator and counts toward `--max-short-msg-count` if that is configured. Checks that do not need message text also run against it: stopword matching (which also matches the username and user ID), the username-symbols check, Lua plugins, and CAS. None of them is enabled on a stock installation; each requires configuration, CAS a `--cas.token`. Any of these checks can produce a spam verdict and, in normal mode, a permanent ban. For a caption-less file shorter than `--min-msg-len`, the document check flags it and the detector returns before the LLM path. Neither OpenAI nor Gemini runs, and their veto settings cannot override the verdict, regardless of either provider's `check-short-messages` setting. With the check off, a directly posted caption-less file is still dropped on intake, exactly as before. A forwarded one, or one attached to a reply to a message from another chat, is admitted on its own regardless of this option. That behavior predates this option, which neither adds nor removes it.
 
 **Audio only check**
 
@@ -702,6 +710,7 @@ logger:
 
 cas:
       --cas.api=                        CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.token=                      CAS API token (Combot API key), disabled if not set [$CAS_TOKEN]
       --cas.timeout=                    CAS timeout (default: 5s) [$CAS_TIMEOUT]
       --cas.user-agent=                 User-Agent header for CAS API requests [$CAS_USER_AGENT]
 
@@ -1085,6 +1094,7 @@ func main() {
     MinMsgLen:        10,
     FirstMessageOnly: true,
     CasAPI:           "https://cas.example.com",
+    CasToken:         "your-combot-api-key",
     HTTPClient:       &http.Client{},
   })
 

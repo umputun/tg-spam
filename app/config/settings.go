@@ -108,6 +108,7 @@ type LoggerSettings struct {
 // CASSettings contains Combot Anti-Spam System settings
 type CASSettings struct {
 	API       string        `json:"api" yaml:"api" db:"cas_api"`
+	Token     string        `json:"token" yaml:"token" db:"cas_token"`
 	Timeout   time.Duration `json:"timeout" yaml:"timeout" db:"cas_timeout"`
 	UserAgent string        `json:"user_agent" yaml:"user_agent" db:"cas_user_agent"`
 }
@@ -418,7 +419,8 @@ func (s *Settings) IsMetaEnabled() bool {
 		s.Meta.ExternalReply
 }
 
-// IsCASEnabled returns true if CAS integration is enabled
+// IsCASEnabled returns true if the CAS API URL is set. The check also needs CAS.Token and is
+// skipped without it; this reports the configured intent the web form's toggle edits.
 func (s *Settings) IsCASEnabled() bool {
 	return s.CAS.API != ""
 }

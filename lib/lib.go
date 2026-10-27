@@ -38,6 +38,9 @@
 //   - Config.CasAPI specifies the URL of the CAS API to use for spam detection. If this is empty, the
 //     detector will not use the CAS API checks.
 //
+//   - Config.CasToken is the CAS API token (the Combot API key), sent as a bearer token. CAS rejects
+//     requests without it, so the detector skips the CAS check when it is empty.
+//
 //   - Config.HTTPClient specifies the HTTP client to use for CAS API checks. This interface is satisfied
 //     by the standard library's http.Client type.
 //

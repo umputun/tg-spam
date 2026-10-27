@@ -290,7 +290,7 @@
                         <tr><th>History Size</th><td>{{.History.Size}}</td></tr>
                         <tr><th>Paranoid Mode</th><td>{{.ParanoidMode}}</td></tr>
                         <tr><th>Forward Prohibited</th><td>{{.Meta.Forward}}</td></tr>
-                        <tr><th>CAS Enabled</th><td>{{.IsCASEnabled}}</td></tr>
+                        <tr><th>CAS Enabled</th><td>{{.IsCASEnabled}}{{if and .IsCASEnabled (not .CAS.Token)}} (inactive, no token){{end}}</td></tr>
                         <tr><th>Duplicates Threshold</th><td>{{if eq .Duplicates.Threshold 0}}disabled{{else}}{{.Duplicates.Threshold}}{{end}}</td></tr>
                         <tr><th>Duplicates Window</th><td>{{.Duplicates.Window}}</td></tr>
                         <tr><th>Reactions Max Count</th><td>{{if eq .Reactions.MaxReactions 0}}disabled{{else}}{{.Reactions.MaxReactions}}{{end}}</td></tr>

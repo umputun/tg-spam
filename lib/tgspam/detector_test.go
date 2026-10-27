@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -953,6 +954,7 @@ func TestSpam_CheckIsCasSpam(t *testing.T) {
 
 			d := NewDetector(Config{
 				CasAPI:           "http://localhost",
+				CasToken:         "test-token",
 				HTTPClient:       mockedHTTPClient,
 				MaxAllowedEmoji:  -1,
 				FirstMessageOnly: true,
@@ -996,6 +998,7 @@ func TestSpam_CheckIsCasSpamEmptyUserID(t *testing.T) {
 
 	d := NewDetector(Config{
 		CasAPI:           "http://localhost",
+		CasToken:         "test-token",
 		HTTPClient:       mockedHTTPClient,
 		MaxAllowedEmoji:  -1,
 		FirstMessageOnly: true,
@@ -1061,6 +1064,7 @@ func TestSpam_CheckIsCasSpamUserAgent(t *testing.T) {
 
 			d := NewDetector(Config{
 				CasAPI:           "http://localhost",
+				CasToken:         "test-token",
 				CasUserAgent:     tt.userAgent,
 				HTTPClient:       mockedHTTPClient,
 				MaxAllowedEmoji:  -1,
@@ -1094,6 +1098,7 @@ func TestSpam_CheckIsCasSpamRetry(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1133,6 +1138,7 @@ func TestSpam_CheckIsCasSpamRetry(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1162,6 +1168,7 @@ func TestSpam_CheckIsCasSpamRetry(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1206,6 +1213,7 @@ func TestSpam_CheckIsCasSpamHTMLResponse(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1239,6 +1247,7 @@ func TestSpam_CheckIsCasSpamHTMLResponse(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1281,6 +1290,7 @@ func TestSpam_CheckIsCasSpamNon200Status(t *testing.T) {
 
 		d := NewDetector(Config{
 			CasAPI:           "http://localhost",
+			CasToken:         "test-token",
 			HTTPClient:       mockedHTTPClient,
 			MaxAllowedEmoji:  -1,
 			FirstMessageOnly: true,
@@ -1324,6 +1334,7 @@ func TestSpam_CheckIsCasSpamNon200Status(t *testing.T) {
 
 				d := NewDetector(Config{
 					CasAPI:           "http://localhost",
+					CasToken:         "test-token",
 					HTTPClient:       mockedHTTPClient,
 					MaxAllowedEmoji:  -1,
 					FirstMessageOnly: true,
@@ -1343,6 +1354,68 @@ func TestSpam_CheckIsCasSpamNon200Status(t *testing.T) {
 				assert.Contains(t, casCheck.Details, "unexpected status")
 			})
 		}
+	})
+
+	t.Run("no retry on auth errors", func(t *testing.T) {
+		for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+			t.Run(strconv.Itoa(code), func(t *testing.T) {
+				mockedHTTPClient := &mocks.HTTPClientMock{
+					DoFunc: func(req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: code,
+							Body:       io.NopCloser(bytes.NewBufferString(`{"ok":false,"error_code":401,"description":"API key required"}`)),
+						}, nil
+					},
+				}
+				d := NewDetector(Config{CasAPI: "http://localhost", CasToken: "bad-token", HTTPClient: mockedHTTPClient,
+					MaxAllowedEmoji: -1, FirstMessageOnly: true})
+				spam, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+				assert.False(t, spam)
+				assert.Len(t, mockedHTTPClient.DoCalls(), 1)
+				casCheck := findResponseByName(cr, "cas")
+				require.NotNil(t, casCheck)
+				assert.False(t, casCheck.Spam)
+				assert.Contains(t, casCheck.Details, fmt.Sprintf("unexpected status: %d", code))
+			})
+		}
+	})
+}
+
+func TestSpam_CheckIsCasSpamToken(t *testing.T) {
+	t.Run("no token skips the check", func(t *testing.T) {
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				assert.Fail(t, "HTTP client should not be called without a CAS token")
+				return nil, nil
+			},
+		}
+		d := NewDetector(Config{CasAPI: "http://localhost", HTTPClient: mockedHTTPClient, MaxAllowedEmoji: -1,
+			FirstMessageOnly: true})
+		_, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		assert.Nil(t, findResponseByName(cr, "cas"))
+		assert.Empty(t, mockedHTTPClient.DoCalls())
+	})
+
+	t.Run("token sent as bearer header, not in url", func(t *testing.T) {
+		mockedHTTPClient := &mocks.HTTPClientMock{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok": false, "description": "not found"}`)),
+				}, nil
+			},
+		}
+		d := NewDetector(Config{CasAPI: "http://localhost", CasToken: "secret-token", HTTPClient: mockedHTTPClient,
+			MaxAllowedEmoji: -1, FirstMessageOnly: true})
+		_, cr := d.Check(spamcheck.Request{UserID: "123", Msg: "test"})
+		require.Len(t, mockedHTTPClient.DoCalls(), 1)
+		req := mockedHTTPClient.DoCalls()[0].Req
+		assert.Equal(t, "Bearer secret-token", req.Header.Get("Authorization"))
+		assert.Equal(t, "http://localhost/check?user_id=123", req.URL.String())
+		casCheck := findResponseByName(cr, "cas")
+		require.NotNil(t, casCheck)
+		assert.NotContains(t, casCheck.Details, "secret-token")
 	})
 }
 
@@ -3181,7 +3254,7 @@ func TestDetector_CheckLuaApproval(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader(`{"ok":true,"description":"spam detected"}`)),
 			}, nil
 		}}
-		d := NewDetector(Config{CasAPI: "http://localhost", HTTPClient: httpMock, MaxAllowedEmoji: -1})
+		d := NewDetector(Config{CasAPI: "http://localhost", CasToken: "test-token", HTTPClient: httpMock, MaxAllowedEmoji: -1})
 		d.luaChecks = []plugin.ResultCheck{func(spamcheck.Request) plugin.Result {
 			return plugin.Result{Response: spamcheck.Response{Name: "lua-trusted"}, Approved: true}
 		}}

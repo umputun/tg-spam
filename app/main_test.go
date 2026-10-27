@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -272,6 +273,41 @@ func Test_makeDetector(t *testing.T) {
 		assert.NotNil(t, res)
 		assert.Equal(t, 0, res.FirstMessagesCount)
 		assert.False(t, res.FirstMessageOnly)
+	})
+
+	t.Run("cas token is passed to the detector", func(t *testing.T) {
+		settings := makeTestSettings()
+		settings.CAS.API = "https://cas.example.com"
+		settings.CAS.Token = "cas-token"
+
+		res := makeDetector(settings)
+		assert.Equal(t, "https://cas.example.com", res.CasAPI)
+		assert.Equal(t, "cas-token", res.CasToken)
+	})
+
+	t.Run("cas warning depends on url and token", func(t *testing.T) {
+		tests := []struct {
+			name, api, token string
+			warn             bool
+		}{
+			{name: "url without token", api: "https://api.cas.chat", warn: true},
+			{name: "url with token", api: "https://api.cas.chat", token: "cas-token"},
+			{name: "no url", token: "cas-token"},
+			{name: "nothing set"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				buf := &bytes.Buffer{}
+				prev := log.Writer()
+				log.SetOutput(buf)
+				defer log.SetOutput(prev)
+
+				settings := makeTestSettings()
+				settings.CAS.API, settings.CAS.Token = tt.api, tt.token
+				makeDetector(settings)
+				assert.Equal(t, tt.warn, strings.Contains(buf.String(), "CAS check disabled"), buf.String())
+			})
+		}
 	})
 
 	t.Run("with max short msg count", func(t *testing.T) {
@@ -1496,9 +1532,11 @@ func TestCollectMaskedSecrets(t *testing.T) {
 		s.OpenAI.Token = "openai-secret"
 		s.Gemini.Token = "gemini-secret"
 		s.Jev.Token = "jev-secret"
+		s.CAS.Token = "cas-secret"
 		s.Server.AuthHash = "hash-secret"
 
 		masked := collectMaskedSecrets(s)
+		assert.Contains(t, masked, "cas-secret")
 		assert.Contains(t, masked, "tg-secret")
 		assert.Contains(t, masked, "openai-secret")
 		assert.Contains(t, masked, "gemini-secret")
