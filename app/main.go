@@ -79,6 +79,7 @@ type options struct {
 
 	CAS struct {
 		API       string        `long:"api" env:"API" default:"https://api.cas.chat" description:"CAS API"`
+		Token     string        `long:"token" env:"TOKEN" description:"CAS API token (Combot API key), disabled if not set"`
 		Timeout   time.Duration `long:"timeout" env:"TIMEOUT" default:"5s" description:"CAS timeout"`
 		UserAgent string        `long:"user-agent" env:"USER_AGENT" description:"User-Agent header for CAS API requests"`
 	} `group:"cas" namespace:"cas" env-namespace:"CAS"`
@@ -748,6 +749,7 @@ func collectMaskedSecrets(appSettings *config.Settings) []string {
 	add(appSettings.OpenAI.Token)
 	add(appSettings.Gemini.Token)
 	add(appSettings.Jev.Token)
+	add(appSettings.CAS.Token)
 	// the auto-generated password is printed for the operator, so it is not masked
 	if appSettings.Transient.WebAuthPasswd != "auto" {
 		add(appSettings.Transient.WebAuthPasswd)
@@ -760,6 +762,9 @@ func collectMaskedSecrets(appSettings *config.Settings) []string {
 // makeDetector creates spam detector with all checkers and updaters
 // it loads samples and dynamic files
 func makeDetector(settings *config.Settings) *tgspam.Detector {
+	if settings.IsCASEnabled() && settings.CAS.Token == "" {
+		log.Printf("[WARN] CAS check disabled: CAS API requires a token, set --cas.token or CAS_TOKEN to your Combot API key")
+	}
 	detectorConfig := tgspam.Config{
 		MaxAllowedEmoji:     settings.MaxEmoji,
 		MinMsgLen:           settings.MinMsgLen,
@@ -767,6 +772,7 @@ func makeDetector(settings *config.Settings) *tgspam.Detector {
 		SimilarityThreshold: settings.SimilarityThreshold,
 		MinSpamProbability:  settings.MinSpamProbability,
 		CasAPI:              settings.CAS.API,
+		CasToken:            settings.CAS.Token,
 		CasUserAgent:        settings.CAS.UserAgent,
 		HTTPClient:          &http.Client{Timeout: settings.CAS.Timeout},
 		FirstMessageOnly:    !settings.ParanoidMode,

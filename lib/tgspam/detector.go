@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -113,6 +114,7 @@ type Config struct {
 	MaxShortMsgCount    int              // ban unapproved user after N short messages without graduation (0 disables)
 	MaxAllowedEmoji     int              // maximum number of emojis allowed in a message
 	CasAPI              string           // CAS API URL
+	CasToken            string           // CAS API token (Combot API key), CAS check is skipped if empty
 	CasUserAgent        string           // CAS API User-Agent header value, set only if non-empty
 	FirstMessageOnly    bool             // if true, only the first message from a user is checked
 	FirstMessagesCount  int              // number of first messages to check for spam
@@ -328,8 +330,7 @@ func (d *Detector) Check(req spamcheck.Request) (spam bool, cr []spamcheck.Respo
 		}
 	}
 
-	// check for spam with CAS API if CAS API URL is set
-	if d.CasAPI != "" {
+	if d.CasAPI != "" && d.CasToken != "" {
 		cr = append(cr, d.isCasSpam(req.UserID))
 	}
 
@@ -1150,6 +1151,9 @@ func (d *Detector) cosineSimilarity(a, b map[string]int) float64 {
 	return float64(dotProduct) / (math.Sqrt(float64(normA)) * math.Sqrt(float64(normB)))
 }
 
+// errCasAuth marks a CAS response rejecting the token, which ends retries.
+var errCasAuth = errors.New("cas token rejected")
+
 // isCasSpam checks if a given user ID is a spammer with CAS API.
 func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 	if msgID == "" {
@@ -1164,6 +1168,8 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to make request %s: %v", reqURL, err)}
 	}
 
+	// header, not the api_key query parameter: reqURL goes into Details and log lines
+	req.Header.Set("Authorization", "Bearer "+d.CasToken)
 	if d.CasUserAgent != "" {
 		req.Header.Set("User-Agent", d.CasUserAgent)
 	}
@@ -1190,6 +1196,12 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 			return fmt.Errorf("server error: %d", resp.StatusCode)
 		}
 
+		// a rejected token is rejected again on every retry
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			_ = resp.Body.Close()
+			return fmt.Errorf("unexpected status: %d: %w", resp.StatusCode, errCasAuth)
+		}
+
 		// retry on non-200 status
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
@@ -1204,10 +1216,10 @@ func (d *Detector) isCasSpam(msgID string) spamcheck.Response {
 		}
 
 		return nil // success - exit retry loop
-	})
+	}, errCasAuth)
 
 	if err != nil {
-		log.Printf("[WARN] CAS API request failed for user %s after retries: %v", msgID, err)
+		log.Printf("[WARN] CAS API request failed for user %s: %v", msgID, err)
 		return spamcheck.Response{Spam: false, Name: "cas", Details: fmt.Sprintf("failed to send request %s: %v", reqURL, err)}
 	}
 	defer resp.Body.Close()

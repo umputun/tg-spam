@@ -84,7 +84,15 @@ The bot will check the message for the presence of phrases in the stop words lis
 
 **Combot Anti-Spam System (CAS) integration**
 
-Nothing needed to enable CAS integration, it is enabled by default. To disable it, set `--cas.api=, [$CAS_API]` to empty string.
+CAS requires an API token for every request. Set `--cas.token=, [$CAS_TOKEN]` to enable the CAS check; without it the check is skipped and the bot logs a warning at startup. To disable CAS entirely, set `--cas.api=, [$CAS_API]` to empty string.
+
+CAS uses the Combot API key, which belongs to a Telegram account (see [CAS API](https://cas.chat/api)):
+
+1. Sign in to [combot.org](https://combot.org) with Telegram.
+2. Open Settings and find the API key block.
+3. If it says "No API key generated", press "Reset API key" to create one, then copy the key.
+
+The token is a credential: it is masked in logs, never shown in the web UI, and stored encrypted in the database when `--confdb-encrypt-key` is set. It is not editable in the web UI, and a new token takes effect after a restart.
 
 The default user agent is sometimes blocked by CDNs like CloudFlare. To use a custom User-Agent when querying CAS API, set `--cas.user-agent=, [$CAS_USER_AGENT]` to the desired value.
 
@@ -455,6 +463,7 @@ logger:
 
 cas:
       --cas.api=                        CAS API (default: https://api.cas.chat) [$CAS_API]
+      --cas.token=                      CAS API token (Combot API key), disabled if not set [$CAS_TOKEN]
       --cas.timeout=                    CAS timeout (default: 5s) [$CAS_TIMEOUT]
       --cas.user-agent=                 User-Agent header for CAS API requests [$CAS_USER_AGENT]
 
@@ -722,18 +731,6 @@ services:
     command: --super=name1 --super=name2 --super=name3
 ```
 
-## Getting spam samples from CAS
-
-CAS provide an API to get spam samples, which can be used to create a set of spam samples for the bot. Provided [`cas-export.sh`](https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh) script automate the process and result (`messages.txt`) can be used as a base for `spam-samples.txt` file. The script requires `jq` and `curl` to be installed and running it will take a long time.
-
-```bash
-curl -s https://raw.githubusercontent.com/umputun/tg-spam/master/cas-export.sh > cas-export.sh
-chmod +x cas-export.sh
-./cas-export.sh
-```
-
-Pls note: using results of this script directly as-is may not be such a good idea, because a particular chat group may have a different spam pattern. It is better to use it as a base by picking samples what seems appropriate for a given chat, and add more spam samples from the group itself.
-
 ## Updating spam and ham samples from remote git repository
 
 A small utility and docker container provided to update spam and ham samples from a remote git repository. The utility is designed to be run either as a docker container or as a standalone script or as a part of a cron job. For more details see [updater/README.md](https://github.com/umputun/tg-spam/tree/master/updater/README.md).
@@ -774,6 +771,7 @@ func main() {
     MinMsgLen:        10,
     FirstMessageOnly: true,
     CasAPI:           "https://cas.example.com",
+    CasToken:         "your-combot-api-key",
     HTTPClient:       &http.Client{},
   })
 

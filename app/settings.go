@@ -215,6 +215,7 @@ func optToSettings(opts options) *config.Settings {
 	settings.OpenAI.Token = opts.OpenAI.Token
 	settings.Gemini.Token = opts.Gemini.Token
 	settings.Jev.Token = opts.Jev.Token
+	settings.CAS.Token = opts.CAS.Token
 	settings.Server.AuthHash = opts.Server.AuthHash
 
 	return settings
@@ -366,6 +367,7 @@ func applyCLIOverrides(settings *config.Settings, opts options, defaults *config
 		{config.FieldOpenAIToken, opts.OpenAI.Token, &settings.OpenAI.Token},
 		{config.FieldGeminiToken, opts.Gemini.Token, &settings.Gemini.Token},
 		{config.FieldJevToken, opts.Jev.Token, &settings.Jev.Token},
+		{config.FieldCASToken, opts.CAS.Token, &settings.CAS.Token},
 	}
 	for _, c := range cliCredentials {
 		if c.value == "" {

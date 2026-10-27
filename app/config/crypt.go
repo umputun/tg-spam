@@ -22,6 +22,7 @@ const (
 	FieldOpenAIToken    = "openai.token"
 	FieldGeminiToken    = "gemini.token"
 	FieldJevToken       = "jev.token"
+	FieldCASToken       = "cas.token"
 	FieldServerAuthHash = "server.auth_hash"
 )
 
@@ -161,6 +162,7 @@ var sensitiveFieldAccessors = map[string]struct {
 	FieldOpenAIToken:    {"OpenAI token", func(s *Settings) *string { return &s.OpenAI.Token }},
 	FieldGeminiToken:    {"Gemini token", func(s *Settings) *string { return &s.Gemini.Token }},
 	FieldJevToken:       {"Jev token", func(s *Settings) *string { return &s.Jev.Token }},
+	FieldCASToken:       {"CAS token", func(s *Settings) *string { return &s.CAS.Token }},
 	FieldServerAuthHash: {"Server auth hash", func(s *Settings) *string { return &s.Server.AuthHash }},
 }
 

@@ -274,6 +274,25 @@ func TestCrypter_JevTokenRoundTrip(t *testing.T) {
 	assert.Equal(t, "jev-token-secret", settings.Jev.Token)
 }
 
+func TestCrypter_CASTokenRoundTrip(t *testing.T) {
+	crypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+
+	settings := &Settings{CAS: CASSettings{API: "https://api.cas.chat", Token: "cas-token-secret"}}
+	require.NoError(t, crypter.EncryptSensitiveFields(settings))
+	assert.True(t, IsEncrypted(settings.CAS.Token))
+	assert.Equal(t, "https://api.cas.chat", settings.CAS.API, "url is not sensitive")
+
+	decrypter, err := NewCrypter("test-master-key-20-chars", "test-instance")
+	require.NoError(t, err)
+	require.NoError(t, decrypter.DecryptSensitiveFields(settings))
+	assert.Equal(t, "cas-token-secret", settings.CAS.Token)
+
+	entry, ok := sensitiveFieldAccessors[FieldCASToken]
+	require.True(t, ok)
+	assert.Equal(t, "CAS token", entry.label)
+}
+
 func TestSensitiveFieldAccessors_CoversJev(t *testing.T) {
 	entry, ok := sensitiveFieldAccessors[FieldJevToken]
 	require.True(t, ok, "jev token must be registered or it is stored in clear under --confdb")

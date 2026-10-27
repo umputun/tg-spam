@@ -1196,6 +1196,22 @@ func TestUpdateSettingsFromForm(t *testing.T) {
 
 			assert.Empty(t, settings.CAS.API)
 		})
+
+		t.Run("token is never read from the form", func(t *testing.T) {
+			settings := &config.Settings{CAS: config.CASSettings{API: "https://api.cas.chat", Token: "from-cli"}}
+
+			form := url.Values{}
+			form.Add("casEnabled", "on")
+			form.Add("casToken", "from-browser")
+			req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			require.NoError(t, req.ParseForm())
+
+			updateSettingsFromForm(settings, req)
+
+			assert.Equal(t, "from-cli", settings.CAS.Token)
+			assert.Equal(t, "https://api.cas.chat", settings.CAS.API)
+		})
 	})
 
 	t.Run("meta settings", func(t *testing.T) {

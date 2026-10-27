@@ -154,6 +154,22 @@ func TestApplyCLIOverrides(t *testing.T) {
 		assert.Equal(t, "cli-gemini", settings.Gemini.Token, "CLI gemini token must override DB value")
 	})
 
+	t.Run("cas token CLI overrides DB value and is recorded", func(t *testing.T) {
+		settings := config.Settings{CAS: config.CASSettings{Token: "db-cas"}}
+		opts := newDefaultOpts(t)
+		opts.CAS.Token = "cli-cas"
+		applyCLIOverrides(&settings, opts, defaults)
+		assert.Equal(t, "cli-cas", settings.CAS.Token)
+		assert.Equal(t, []string{config.FieldCASToken}, settings.Transient.CredentialsFromCLI)
+	})
+
+	t.Run("empty cas token CLI keeps DB value", func(t *testing.T) {
+		settings := config.Settings{CAS: config.CASSettings{Token: "db-cas"}}
+		applyCLIOverrides(&settings, newDefaultOpts(t), defaults)
+		assert.Equal(t, "db-cas", settings.CAS.Token)
+		assert.Empty(t, settings.Transient.CredentialsFromCLI)
+	})
+
 	t.Run("cli credentials are recorded, empty ones are not", func(t *testing.T) {
 		settings := config.Settings{OpenAI: config.OpenAISettings{Token: "db-openai"}}
 		opts := newDefaultOpts(t)
@@ -344,6 +360,7 @@ func TestOptToSettings(t *testing.T) {
 		o.CAS.API = "https://cas.example.com"
 		o.CAS.Timeout = 10 * time.Second
 		o.CAS.UserAgent = "test-agent"
+		o.CAS.Token = "test-cas-token"
 
 		o.Meta.LinksLimit = 2
 		o.Meta.MentionsLimit = 3
@@ -491,6 +508,7 @@ func TestOptToSettings(t *testing.T) {
 				assert.Equal(t, "https://cas.example.com", settings.CAS.API)
 				assert.Equal(t, 10*time.Second, settings.CAS.Timeout)
 				assert.Equal(t, "test-agent", settings.CAS.UserAgent)
+				assert.Equal(t, "test-cas-token", settings.CAS.Token)
 
 				// meta settings
 				assert.Equal(t, 2, settings.Meta.LinksLimit)

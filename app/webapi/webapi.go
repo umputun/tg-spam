@@ -617,6 +617,7 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
 	safe.OpenAI.Token = ""
 	safe.Gemini.Token = ""
 	safe.Jev.Token = ""
+	safe.CAS.Token = ""
 	safe.Server.AuthHash = ""
 
 	resp := struct {
