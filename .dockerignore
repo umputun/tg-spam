@@ -53,4 +53,3 @@ INSTALL.md
 .golangci.yml
 Makefile
 webapp.rest
-cas-export.sh
