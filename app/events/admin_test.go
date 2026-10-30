@@ -3425,3 +3425,14 @@ func TestAdmin_UnbanJoinNotification(t *testing.T) {
 	assert.Equal(t, int64(42), botMock.AddApprovedUserCalls()[0].ID)
 	assert.Equal(t, "@spammer", botMock.AddApprovedUserCalls()[0].Name)
 }
+
+func TestAdmin_sendWithUnbanMarkupMigrationHint(t *testing.T) {
+	mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+		return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+			ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+	}}
+	adm := admin{tbAPI: mockAPI, adminChatID: -403767890}
+	err := adm.sendWithUnbanMarkup("banned", "change ban", bot.User{ID: 42, Username: "spammer"}, 1, adm.adminChatID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "group chat was upgraded to a supergroup chat, new chat id is -1001432162429")
+}
