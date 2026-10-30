@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -137,7 +138,7 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 				log.Printf("[WARN] failed to send message as HTML, %v", err)
 				plainMsg := withParseMode(tbMsg, "") // plain text
 				if _, err := tbAPI.Send(plainMsg); err != nil {
-					return fmt.Errorf("can't send message to telegram: %w", err)
+					return fmt.Errorf("can't send message to telegram: %w", withMigrationHint(err))
 				}
 			}
 			return nil
@@ -146,10 +147,21 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 		// for regular messages, just fall back to plain text
 		msg = withParseMode(tbMsg, "")
 		if _, err := tbAPI.Send(msg); err != nil {
-			return fmt.Errorf("can't send message to telegram: %w", err)
+			return fmt.Errorf("can't send message to telegram: %w", withMigrationHint(err))
 		}
 	}
 	return nil
+}
+
+// withMigrationHint adds the new chat id to a telegram error reporting that the target group was
+// upgraded to a supergroup. Telegram changes the chat id on upgrade, so the configured id stays dead
+// until the operator replaces it. Other errors are returned unchanged.
+func withMigrationHint(err error) error {
+	var tgErr *tbapi.Error
+	if !errors.As(err, &tgErr) || tgErr.MigrateToChatID == 0 {
+		return err
+	}
+	return fmt.Errorf("%w, new chat id is %d, update the configured group id", err, tgErr.MigrateToChatID)
 }
 
 type banRequest struct {

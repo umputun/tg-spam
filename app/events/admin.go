@@ -1202,7 +1202,7 @@ func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID in
 	)
 
 	if _, err := a.tbAPI.Send(tbMsg); err != nil {
-		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
+		return fmt.Errorf("can't send message to telegram %q: %w", text, withMigrationHint(err))
 	}
 	return nil
 }

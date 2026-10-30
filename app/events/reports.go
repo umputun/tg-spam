@@ -473,7 +473,7 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report, banErr e
 	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
 
 	if _, err := r.tbAPI.Send(tbMsg); err != nil {
-		return fmt.Errorf("failed to send auto-ban notification: %w", err)
+		return fmt.Errorf("failed to send auto-ban notification: %w", withMigrationHint(err))
 	}
 
 	log.Printf("[INFO] auto-ban notification sent to admin chat for user %d", reportedUserID)
@@ -535,7 +535,7 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report, ban
 
 	if _, err := r.tbAPI.Send(editMsg); err != nil {
 		return fmt.Errorf("failed to update notification for auto-ban (msgID:%d, adminMsgID:%d): %w",
-			firstReport.MsgID, adminMsgID, err)
+			firstReport.MsgID, adminMsgID, withMigrationHint(err))
 	}
 
 	log.Printf("[INFO] updated admin notification %d for auto-ban of user %d", adminMsgID, reportedUserID)
@@ -606,7 +606,7 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 
 	resp, err := r.tbAPI.Send(tbMsg)
 	if err != nil {
-		return fmt.Errorf("failed to send notification to admin chat: %w", err)
+		return fmt.Errorf("failed to send notification to admin chat: %w", withMigrationHint(err))
 	}
 
 	// update all reports with admin message ID
@@ -685,7 +685,7 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 	editMsg.ReplyMarkup = &keyboard
 
 	if _, err := r.tbAPI.Send(editMsg); err != nil {
-		return fmt.Errorf("failed to edit admin notification for msgID:%d, chatID:%d: %w", msgID, chatID, err)
+		return fmt.Errorf("failed to edit admin notification for msgID:%d, chatID:%d: %w", msgID, chatID, withMigrationHint(err))
 	}
 
 	log.Printf("[INFO] updated report notification for msgID:%d (reported user:%d, %d reports total, admin_msg_id:%d)",

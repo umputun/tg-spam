@@ -3505,3 +3505,32 @@ func TestUserReports_BanFailureNoteRecognized(t *testing.T) {
 		})
 	}
 }
+
+func TestUserReports_NotificationMigrationHint(t *testing.T) {
+	migrated := &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+		ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+	reports := []storage.Report{{MsgID: 100, ChatID: 200, AdminMsgID: 300, ReportedUserID: 666, ReportedUserName: "spammer",
+		ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam message"}}
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		call func(r *userReports) error
+	}{
+		{name: "auto-ban notification", call: func(r *userReports) error { return r.sendAutoBanNotification(reports, nil) }},
+		{name: "auto-ban notification update", call: func(r *userReports) error { return r.updateNotificationForAutoBan(reports, nil) }},
+		{name: "report notification", call: func(r *userReports) error { return r.sendReportNotification(ctx, reports) }},
+		{name: "report notification update", call: func(r *userReports) error { return r.updateReportNotification(ctx, reports) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, migrated }}
+			r := &userReports{tbAPI: mockAPI, adminChatID: -403767890}
+			err := tt.call(r)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "group chat was upgraded to a supergroup chat, new chat id is -1001432162429")
+			var tgErr *tbapi.Error
+			require.ErrorAs(t, err, &tgErr)
+			assert.Equal(t, int64(-1001432162429), tgErr.MigrateToChatID)
+		})
+	}
+}

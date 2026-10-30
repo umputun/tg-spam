@@ -208,6 +208,53 @@ func TestEvents_send(t *testing.T) {
 		assert.Empty(t, mockAPI.SendCalls()[1].C.(tbapi.MessageConfig).ParseMode)
 	})
 
+	t.Run("send to migrated group names the new chat id", func(t *testing.T) {
+		migratedAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+				ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+		}}
+		for _, msg := range []tbapi.Chattable{tbapi.NewMessage(-403767890, "test"),
+			tbapi.NewEditMessageText(-403767890, 1, "banned [user](tg://user?id=42)")} {
+			err := send(msg, migratedAPI)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "group chat was upgraded to a supergroup chat, new chat id is -1001432162429")
+		}
+		assert.Len(t, migratedAPI.SendCalls(), 5)
+	})
+}
+
+func TestEvents_withMigrationHint(t *testing.T) {
+	migrated := &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+		ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+	other := &tbapi.Error{Code: 400, Message: "Bad Request: chat not found"}
+	plain := errors.New("dial tcp: i/o timeout")
+	tests := []struct {
+		name    string
+		err     error
+		want    string
+		newChat int64
+	}{
+		{name: "migrated group", err: migrated, newChat: -1001432162429,
+			want: "Bad Request: group chat was upgraded to a supergroup chat, new chat id is -1001432162429, update the configured group id"},
+		{name: "already wrapped migrated group", err: fmt.Errorf("send: %w", migrated), newChat: -1001432162429,
+			want: "send: Bad Request: group chat was upgraded to a supergroup chat, new chat id is -1001432162429, update the configured group id"},
+		{name: "other telegram error", err: other, want: "Bad Request: chat not found"},
+		{name: "non-telegram error", err: plain, want: "dial tcp: i/o timeout"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := withMigrationHint(tt.err)
+			require.EqualError(t, got, tt.want)
+			require.ErrorIs(t, got, tt.err)
+			if tt.newChat == 0 {
+				assert.Same(t, tt.err, got)
+				return
+			}
+			var tgErr *tbapi.Error
+			require.ErrorAs(t, got, &tgErr)
+			assert.Equal(t, tt.newChat, tgErr.MigrateToChatID)
+		})
+	}
 }
 
 func TestTelegramListener_transformTextMessage(t *testing.T) {
