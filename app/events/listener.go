@@ -959,6 +959,10 @@ func (s SuperUsers) IsSuper(userName string, userID int64) bool {
 			}
 			continue
 		}
+		// an empty username would match an empty entry left by a trailing comma in SUPER_USER
+		if userName == "" {
+			continue
+		}
 		// super is username
 		if strings.EqualFold(userName, super) || strings.EqualFold("/"+userName, super) {
 			return true

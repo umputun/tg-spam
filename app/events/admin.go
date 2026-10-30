@@ -358,7 +358,7 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	log.Printf("[DEBUG] reported warn message from superuser %q (%d): %q",
 		update.Message.From.UserName, update.Message.From.ID, msgTxt)
 	// check if the reply message will ban a super-user and ignore it
-	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+	if a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("warn message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 	errs := new(multierror.Error)
@@ -644,7 +644,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		update.Message.From.UserName, update.Message.From.ID, msgTxt)
 
 	// check if the reply message will ban a super-user and ignore it
-	if origMsg.From.UserName != "" && a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
+	if a.superUsers.IsSuper(origMsg.From.UserName, origMsg.From.ID) {
 		return fmt.Errorf("banned message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
@@ -1107,7 +1107,7 @@ func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	}
 
 	// check if user is super and don't ban if so
-	msgFromSuper := userName != "" && a.superUsers.IsSuper(userName, userID)
+	msgFromSuper := a.superUsers.IsSuper(userName, userID)
 	if !msgFromSuper {
 		if err := banUserOrChannel(banReq); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", userID, err))
