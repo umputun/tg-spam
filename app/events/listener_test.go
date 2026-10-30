@@ -2618,6 +2618,10 @@ func TestSuperUser_IsSuper(t *testing.T) {
 			userName: "Charlie",
 			want:     false,
 		},
+		{name: "User without username is a super user by ID", super: SuperUsers{"Alice", "123"}, userID: 123, want: true},
+		// SUPER_USER="Alice," leaves an empty entry after the env split
+		{name: "User without username does not match an empty entry", super: SuperUsers{"Alice", ""}, userID: 789, want: false},
+		{name: "User without username does not match a bare slash entry", super: SuperUsers{"/"}, userID: 789, want: false},
 	}
 
 	for _, tt := range tests {

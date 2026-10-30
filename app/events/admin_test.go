@@ -726,6 +726,32 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Empty(t, mockAPI.RequestCalls())
 		assert.Empty(t, mockAPI.SendCalls())
 	})
+
+	t.Run("DirectWarnReport_SuperUserByIDWithoutUsername", func(t *testing.T) {
+		mockAPI, _, adm, teardown := setupTest()
+		defer teardown()
+		adm.superUsers = SuperUsers{"222"}
+
+		err := adm.DirectWarnReport(createReplyUpdate("admin", 111, "", 222, "inappropriate message"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "warn message is from super-user")
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, mockAPI.SendCalls())
+	})
+
+	t.Run("DirectSpamReport_SuperUserByIDWithoutUsername", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+		adm.superUsers = SuperUsers{"222"}
+
+		err := adm.DirectSpamReport(createReplyUpdate("admin", 111, "", 222, "spam message text"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "banned message is from super-user")
+		assert.Empty(t, mockAPI.RequestCalls())
+		assert.Empty(t, mockAPI.SendCalls())
+		assert.Empty(t, botMock.RemoveApprovedUserCalls())
+		assert.Empty(t, botMock.UpdateSpamCalls())
+	})
 }
 
 func TestAdmin_DirectWarnReport_AutoBan(t *testing.T) {
@@ -1361,6 +1387,29 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 		assert.True(t, banned, "user still banned for real on training-mode confirm")
 
 		// admin message is edited to confirm the ban
+		require.GreaterOrEqual(t, len(mockAPI.SendCalls()), 1)
+		editMsg, ok := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
+		require.True(t, ok)
+		assert.Contains(t, editMsg.Text, "ban confirmed by admin")
+	})
+
+	t.Run("callbackBanConfirmed_TrainingMode_superUserByIDWithoutUsername", func(t *testing.T) {
+		mockAPI, _, adm, query := setupCallback(true, false)
+		adm.superUsers = SuperUsers{"12345"}
+		adm.locator.(*mocks.LocatorMock).UserNameByIDFunc = func(ctx context.Context, userID int64) string { return "" }
+
+		err := adm.callbackBanConfirmed(query)
+		require.NoError(t, err)
+
+		deleted := false
+		for _, c := range mockAPI.RequestCalls() {
+			_, isBan := c.C.(tbapi.BanChatMemberConfig)
+			assert.False(t, isBan, "super-user must not be banned")
+			if _, ok := c.C.(tbapi.DeleteMessageConfig); ok {
+				deleted = true
+			}
+		}
+		assert.True(t, deleted, "message from super-user is still deleted")
 		require.GreaterOrEqual(t, len(mockAPI.SendCalls()), 1)
 		editMsg, ok := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
 		require.True(t, ok)
