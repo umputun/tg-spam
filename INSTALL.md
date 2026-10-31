@@ -174,5 +174,5 @@ docker-compose up -d
 2. Verify your bot token is correct
 3. Confirm the bot has admin rights in your group
 4. Check that your group name is entered correctly in the configuration
-5. On Linux, if the logs show `Permission denied` or `unable to open database file`, the `data` folder belongs to the wrong user: run the `chown` command from Step 4 and start the bot again
+5. On Linux, if the logs show `Permission denied` or `unable to open database file`, the `data` folder or the files in it belong to the wrong user: run `sudo chown -R 1000:1000 data` in your tg-spam folder and start the bot again
 
