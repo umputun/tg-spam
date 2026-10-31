@@ -127,7 +127,12 @@ services:
 1. Open Terminal (Mac and Linux) or Command Prompt (Windows)
 2. Type `cd ` (with a space after cd) and drag your tg-spam folder into the window
 3. Press Enter
-4. Type this command and press Enter:
+4. **Linux only** (skip this on Windows and Mac): create the data folder and give it to the user the bot runs as, otherwise the bot can't save its database and keeps restarting:
+```
+mkdir -p data
+sudo chown 1000:1000 data
+```
+5. Type this command and press Enter:
 ```
 docker-compose up -d
 ```
@@ -169,4 +174,5 @@ docker-compose up -d
 2. Verify your bot token is correct
 3. Confirm the bot has admin rights in your group
 4. Check that your group name is entered correctly in the configuration
+5. On Linux, if the logs show `Permission denied` or `unable to open database file`, the `data` folder or the files in it belong to the wrong user: run `sudo chown -R 1000:1000 data` in your tg-spam folder and start the bot again
 
