@@ -18,7 +18,7 @@ the flag on watches the spam it targets pass unflagged, with nothing in the logs
 giveaway message carries text.
 
 The fix is to widen the same guard condition, which sends a new class of previously-dropped messages to
-`Bot.OnMessage`, the locator, and (with CAS on by default) one CAS lookup each. That is the same trade
+`Bot.OnMessage`, the locator, and (with a CAS token set) one CAS lookup each. That is the same trade
 PR #447 made for documents and the contact change made for `--meta.contact-only`: gate the admission on
 the check's own setting rather than widening the guard unconditionally.
 

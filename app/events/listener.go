@@ -399,7 +399,7 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	// a text-less document or shared contact is admitted only when its own check is on. once admitted it is
 	// stored by the locator, inflating the per-user count --max-short-msg-count bans on, and it reaches the
 	// checks that need no message text: stop-words (matched against username and user ID too),
-	// username-symbols, lua plugins and CAS, which is on by default and bans permanently
+	// username-symbols, lua plugins and CAS, which runs when --cas.token is set and bans permanently
 	documentAdmitted := msg.WithDocument && l.AdmitDocuments
 	contactAdmitted := msg.WithContact && l.AdmitContacts
 

@@ -208,7 +208,7 @@ This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDI
 
 This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text of its own, it will be marked as spam.
 
-Enabling this check also admits text-less contact messages for evaluation; with the check off they are dropped on intake, as before. Text written by someone else and quoted by the sender does not count as text for this check.
+Enabling this check also admits text-less contact messages for evaluation. An admitted contact is stored in the message locator, counts toward `--max-short-msg-count` if that is configured, and goes through the checks that do not need message text: stopword matching, the username-symbols check, Lua plugins, and CAS when `--cas.token` is set. With the check off, a directly posted contact is dropped on intake. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of this option. Text written by someone else and quoted by the sender does not count as text for this check.
 
 **Forward check**
 
@@ -262,7 +262,7 @@ Configure with:
 
 This option is disabled by default. When enabled, the bot bans an unapproved user who has accumulated too many short messages without graduating to "approved" status. This catches spammers who probe a channel with innocuous one-word messages ("hi", "hello", "yo") that individually evade content-based checks and the duplicate detector.
 
-Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold. A caption-less file or GIF posted directly counts only when `--meta.document-only` is enabled; without it, it is dropped before the counter sees it. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of that option and counts either way.
+Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold. A caption-less file or GIF posted directly counts only when `--meta.document-only` is enabled; without it, it is dropped before the counter sees it. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of that option and counts either way. A contact card follows the same rule with `--meta.contact-only`.
 
 **Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. When it is enabled, the configuration also requires `--min-msg-len` of 2 or more, so that non-empty text can count as short; 0 and 1 are rejected at startup, which also rejects the media-only counting that 1 allowed. With `--confdb`, CLI flags do not override these two settings: if short-message flood detection is enabled with a stored `min_msg_len` of 1, change and save it through the web settings before upgrading, or startup will fail. A stored 0 is replaced by the default of 50 on load. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
