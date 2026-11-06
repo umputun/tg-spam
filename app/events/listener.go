@@ -69,6 +69,7 @@ type TelegramListener struct {
 	WarnWindow              time.Duration // sliding window for counting warns
 	Warnings                Warnings      // storage for admin /warn records
 	AdmitDocuments          bool          // admit text-less documents for detector checks and locator-backed counters
+	AdmitContacts           bool          // admit text-less shared contacts for detector checks and locator-backed counters
 
 	adminHandler    *admin
 	reportsHandler  *userReports
@@ -395,16 +396,17 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
-	// a text-less document is admitted only when the documents check is on. once admitted it is stored by
-	// the locator, inflating the per-user count --max-short-msg-count bans on, and it reaches the checks
-	// that need no message text: stop-words (matched against username and user ID too), username-symbols,
-	// lua plugins and CAS, which is on by default and bans permanently
+	// a text-less document or shared contact is admitted only when its own check is on. once admitted it is
+	// stored by the locator, inflating the per-user count --max-short-msg-count bans on, and it reaches the
+	// checks that need no message text: stop-words (matched against username and user ID too),
+	// username-symbols, lua plugins and CAS, which is on by default and bans permanently
 	documentAdmitted := msg.WithDocument && l.AdmitDocuments
+	contactAdmitted := msg.WithContact && l.AdmitContacts
 
 	// ignore messages with empty text, no media, no video, no video note, no forward, no external reply,
-	// no admitted document
+	// no admitted document, no admitted contact
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
-		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted {
+		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted && !contactAdmitted {
 		// an edit that removed the text is not checked, so its earlier text would keep counting as a duplicate
 		if update.Message.EditDate != 0 {
 			l.Bot.ForgetMessage(*msg)

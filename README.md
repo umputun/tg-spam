@@ -206,7 +206,9 @@ This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDI
 
 **Contact only check**
 
-This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text, it will be marked as spam.
+This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text of its own, it will be marked as spam.
+
+Enabling this check also admits text-less contact messages for evaluation; with the check off they are dropped on intake, as before. Text written by someone else and quoted by the sender does not count as text for this check.
 
 **Forward check**
 

@@ -3150,6 +3150,76 @@ func TestTelegramListener_CaptionlessDocumentIntake(t *testing.T) {
 	}
 }
 
+func TestTelegramListener_ContactOnlyIntake(t *testing.T) {
+	tests := []struct {
+		name          string
+		admitContacts bool
+		wantChecked   bool
+	}{
+		{name: "contact check on, message reaches the detector", admitContacts: true, wantChecked: true},
+		{name: "contact check off, message dropped on intake", admitContacts: false, wantChecked: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc: func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+			}
+
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			l := TelegramListener{
+				SpamLogger:    mockLogger,
+				TbAPI:         mockAPI,
+				Bot:           botMock,
+				Group:         "gr",
+				Locator:       locator,
+				SuperUsers:    SuperUsers{"super"},
+				chatID:        123,
+				AdmitContacts: tt.admitContacts,
+			}
+
+			update := tbapi.Update{
+				Message: &tbapi.Message{
+					Chat:      tbapi.Chat{ID: 123},
+					From:      &tbapi.User{ID: 456, UserName: "user"},
+					Date:      time.Now().Unix(),
+					Text:      "", // contacts carry no text and no caption
+					Contact:   &tbapi.Contact{PhoneNumber: "+15550001111", FirstName: "Scam", UserID: 777},
+					MessageID: 789,
+				},
+			}
+
+			err := l.procEvents(update)
+			require.NoError(t, err)
+
+			if !tt.wantChecked {
+				// with the check off the message must be dropped before the locator, otherwise it would
+				// inflate the per-user count --max-short-msg-count bans on
+				assert.Empty(t, botMock.OnMessageCalls())
+				count, cErr := locator.CountUserMessages(context.Background(), "456")
+				require.NoError(t, cErr)
+				assert.Equal(t, 0, count, "text-less contact must not be stored in the locator")
+				return
+			}
+
+			require.Len(t, botMock.OnMessageCalls(), 1)
+			assert.True(t, botMock.OnMessageCalls()[0].Msg.WithContact)
+			assert.Empty(t, botMock.OnMessageCalls()[0].Msg.Text)
+		})
+	}
+}
+
 func TestTelegramListener_DeleteJoinMessages(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{
 		GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
