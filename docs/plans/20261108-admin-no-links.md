@@ -192,13 +192,13 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - Modify: `app/events/reports.go`
 - Modify: `app/events/reports_test.go`
 
-- [ ] write tests for `reportNotification`: title, reported user (user, `@` channel, plain channel), spam text truncated to 200 runes and plain or `pre` per `noLinks`, reporter links, note, ban failure note with an underscore in the reason shown literally, attention line, padding
-- [ ] write a test that `sendReportNotification` still stores the sent message's ID through `UpdateAdminMsgID`
-- [ ] add `noLinks bool` to `userReports`; implement `reportNotice`, `reportNotification` and `addReportedUser` per the Task 3 contract
-- [ ] switch `sendAutoBanNotification`, `sendReportNotification`, `updateNotificationForAutoBan`, `updateReportNotification` and the remaining-reporters branch of `callbackReportBanReporterConfirm` to `reportNotification` plus `sendEntities`, removing the four copies of the reporter-list code
-- [ ] drop Markdown escaping from `superUserAttention` and `banFailureNote`, remove `reportedUserMD`, then remove `markdownV1LinkLabel` once no caller remains; check `docs/backlog/markdown-link-labels-escaped.md` and delete it if this task makes it moot
-- [ ] update existing assertions in `reports_test.go` that check Markdown strings or `ParseMode`
-- [ ] run tests - must pass before task 4
+- [x] write tests for `reportNotification`: title, reported user (user, `@` channel, plain channel), spam text truncated to 200 runes and plain or `pre` per `noLinks`, reporter links, note, ban failure note with an underscore in the reason shown literally, attention line, padding
+- [x] write a test that `sendReportNotification` still stores the sent message's ID through `UpdateAdminMsgID`
+- [x] add `noLinks bool` to `userReports`; implement `reportNotice`, `reportNotification` and `addReportedUser` per the Task 3 contract
+- [x] switch `sendAutoBanNotification`, `sendReportNotification`, `updateNotificationForAutoBan`, `updateReportNotification` and the remaining-reporters branch of `callbackReportBanReporterConfirm` to `reportNotification` plus `sendEntities`, removing the four copies of the reporter-list code
+- [x] drop Markdown escaping from `superUserAttention` and `banFailureNote`, remove `reportedUserMD`, then remove `markdownV1LinkLabel` once no caller remains; check `docs/backlog/markdown-link-labels-escaped.md` and delete it if this task makes it moot
+- [x] update existing assertions in `reports_test.go` that check Markdown strings or `ParseMode`
+- [x] run tests - must pass before task 4
 
 ### Task 4: Callback edits keep the message's entities
 

@@ -1181,7 +1181,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 		assert.Len(t, mockReports.DeleteByMessageCalls(), 1, "should delete reports")
 		assert.GreaterOrEqual(t, len(mockAPI.RequestCalls()), 1, "should delete message")
 		assert.Len(t, mockAPI.SendCalls(), 1, "should send auto-ban notification")
-		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "spammer (666)", "tg://user?id=666"))
 		assert.Contains(t, sentMsg.Text, "attention @super1 @super2", "should mention superusers")
 	})
 
@@ -1257,7 +1257,7 @@ func TestUserReports_AutoBan(t *testing.T) {
 					}
 					assert.Contains(t, editMsg.Text, "auto-moderation: user banned", "should name the real outcome in updated text")
 					assert.Contains(t, editMsg.Text, "5 reports", "should show report count")
-					assert.Contains(t, editMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+					assert.Contains(t, editMsg.Entities, textLink(editMsg.Text, "spammer (666)", "tg://user?id=666"))
 					assert.Contains(t, editMsg.Text, "attention @super1 @super2", "should mention superusers")
 				}
 				return tbapi.Message{MessageID: 123}, nil
@@ -1441,29 +1441,91 @@ func TestUserReports_AutoBan(t *testing.T) {
 	})
 }
 
-func TestUserReports_reportedUserMD(t *testing.T) {
+func TestUserReports_addReportedUser(t *testing.T) {
 	rep := &userReports{}
 	tests := []struct {
 		name     string
 		userName string
 		id       int64
 		want     string
+		url      string
 	}{
-		{"with username", "@spammer", 666, "[@spammer (666)](tg://user?id=666)"},
-		{"with display name", "Елена Дроздова", 8788140656, "[Елена Дроздова (8788140656)](tg://user?id=8788140656)"},
-		{"empty name falls back to user<id>", "", 8250189078, "[user8250189078 (8250189078)](tg://user?id=8250189078)"},
-		{"markdown chars kept in label", "spam_user*bot", 666, "[spam_user*bot (666)](tg://user?id=666)"},
-		{"link delimiter injection removed", "bad](http://evil)", 666, "[bad(http://evil) (666)](tg://user?id=666)"},
-		{"backslash kept in label", "a\\b", 666, "[a\\b (666)](tg://user?id=666)"},
-		{"channel username", "@spam_channel", -100123, "[@spam_channel (-100123)](https://t.me/spam_channel)"},
-		{"channel title", "Spam *Channel*", -100123, "Spam \\*Channel\\* (-100123)"},
-		{"channel fallback", "channel_-100123", -100123, "channel\\_-100123 (-100123)"},
+		{"with username", "@spammer", 666, "@spammer (666)", "tg://user?id=666"},
+		{"with display name", "Елена Дроздова", 8788140656, "Елена Дроздова (8788140656)", "tg://user?id=8788140656"},
+		{"empty name falls back to user<id>", "", 8250189078, "user8250189078 (8250189078)", "tg://user?id=8250189078"},
+		{"markdown chars kept literal", "spam_user*bot", 666, "spam_user*bot (666)", "tg://user?id=666"},
+		{"markdown link kept literal", "bad](http://evil)", 666, "bad](http://evil) (666)", "tg://user?id=666"},
+		{"channel username", "@spam_channel", -100123, "@spam_channel (-100123)", "https://t.me/spam_channel"},
+		{"channel title", "Spam *Channel*", -100123, "Spam *Channel* (-100123)", ""},
+		{"channel fallback", "channel_-100123", -100123, "channel_-100123 (-100123)", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, rep.reportedUserMD(tc.userName, tc.id))
+			e := &entityText{}
+			rep.addReportedUser(e, tc.userName, tc.id)
+			assert.Equal(t, tc.want, e.text())
+			if tc.url == "" {
+				assert.Empty(t, e.entities())
+				return
+			}
+			assert.Equal(t, []tbapi.MessageEntity{{Type: "text_link", Offset: 0, Length: e.units(tc.want), URL: tc.url}},
+				e.entities())
 		})
 	}
+}
+
+func TestUserReports_reportNotification(t *testing.T) {
+	reports := []storage.Report{
+		{ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111, ReporterUserName: "rep_one",
+			MsgText: "buy now\nhttps://phish.example"},
+		{ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 222},
+	}
+	head := "Title (2 reports)\n\nspammer (666)\n\n"
+	body := "buy now https://phish.example"
+	reporters := "\n\nReporters:\n- rep_one\n- user222"
+	link := func(offset int, label, url string) tbapi.MessageEntity {
+		return tbapi.MessageEntity{Type: "text_link", Offset: offset, Length: len(label), URL: url}
+	}
+	base := len(head) + len(body)
+	baseEnts := []tbapi.MessageEntity{
+		{Type: "bold", Offset: 0, Length: 17},
+		link(19, "spammer (666)", "tg://user?id=666"),
+		{Type: "bold", Offset: base + 2, Length: 10},
+		link(base+15, "rep_one", "tg://user?id=111"),
+		link(base+25, "user222", "tg://user?id=222"),
+	}
+
+	t.Run("plain body", func(t *testing.T) {
+		rep := &userReports{}
+		e := rep.reportNotification(reportNotice{title: "Title (2 reports)", reports: reports})
+		assert.Equal(t, head+body+reporters, e.text())
+		assert.Equal(t, baseEnts, e.entities())
+	})
+
+	t.Run("no links puts the body in pre", func(t *testing.T) {
+		rep := &userReports{noLinks: true}
+		e := rep.reportNotification(reportNotice{title: "Title (2 reports)", reports: reports})
+		assert.Equal(t, head+body+reporters, e.text())
+		assert.Contains(t, e.entities(), tbapi.MessageEntity{Type: "pre", Offset: len(head), Length: len(body)})
+	})
+
+	t.Run("note, ban failure, attention and padding in order", func(t *testing.T) {
+		rep := &userReports{superUsers: SuperUsers{"super_one"}}
+		e := rep.reportNotification(reportNotice{title: "Title (2 reports)", reports: reports, note: "auto-moderation: done",
+			banErr: errors.New("USER_ID_INVALID"), padded: true})
+		tail := "\n\nauto-moderation: done\n\nban failed: USER_ID_INVALID\n\nattention @super_one\n\n" + strings.Repeat("⠀", 30)
+		assert.Equal(t, head+body+reporters+tail, e.text())
+		assert.Contains(t, e.entities(), tbapi.MessageEntity{Type: "italic", Offset: len(head + body + reporters + "\n\n"),
+			Length: len("auto-moderation: done")})
+	})
+
+	t.Run("long body truncated to 200 runes", func(t *testing.T) {
+		rep := &userReports{}
+		long := []storage.Report{{ReportedUserID: 666, ReportedUserName: "spammer", ReporterUserID: 111,
+			MsgText: strings.Repeat("спам ", 100)}}
+		e := rep.reportNotification(reportNotice{title: "T", reports: long})
+		assert.Contains(t, e.text(), "\n\n"+string([]rune(strings.Repeat("спам ", 100))[:200])+"...\n\n")
+	})
 }
 
 func TestUserReports_ChannelReport(t *testing.T) {
@@ -1474,15 +1536,15 @@ func TestUserReports_ChannelReport(t *testing.T) {
 	}{
 		{name: "username", username: "spam_channel", title: "Spam Channel", wantName: "@spam_channel",
 			from:         &tbapi.User{ID: 136817688, UserName: "Channel_Bot"},
-			wantRendered: "[@spam_channel (-100123)](https://t.me/spam_channel)"},
+			wantRendered: "@spam_channel (-100123)"},
 		{name: "title without From", title: "Spam Channel", wantName: "Spam Channel", wantRendered: "Spam Channel (-100123)"},
-		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
-		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
-		{name: "title impersonating a username", title: "@legit_admin", wantName: "legit_admin", wantRendered: "legit\\_admin (-100123)"},
-		{name: "title with repeated markers", title: "@@x)_", wantName: "x)_", wantRendered: "x)\\_ (-100123)"},
+		{name: "fallback without From", wantName: "channel_-100123", wantRendered: "channel_-100123 (-100123)"},
+		{name: "title with markdown", title: "@x)_", wantName: "x)_", wantRendered: "x)_ (-100123)"},
+		{name: "title impersonating a username", title: "@legit_admin", wantName: "legit_admin", wantRendered: "legit_admin (-100123)"},
+		{name: "title with repeated markers", title: "@@x)_", wantName: "x)_", wantRendered: "x)_ (-100123)"},
 		{name: "title with link injection", title: "@a) [click](http://phish", wantName: "a) [click](http://phish",
-			wantRendered: "a) \\[click](http://phish (-100123)"},
-		{name: "title with only markers", title: "@@", wantName: "channel_-100123", wantRendered: "channel\\_-100123 (-100123)"},
+			wantRendered: "a) [click](http://phish (-100123)"},
+		{name: "title with only markers", title: "@@", wantName: "channel_-100123", wantRendered: "channel_-100123 (-100123)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1530,8 +1592,13 @@ func TestUserReports_ChannelReport(t *testing.T) {
 			assert.Equal(t, 789, deleted.MessageID)
 			require.Len(t, mockAPI.SendCalls(), 1)
 			assert.Contains(t, notification.Text, "\n\n"+tt.wantRendered+"\n\n")
+			if tt.username != "" {
+				assert.Contains(t, notification.Entities, textLink(notification.Text, tt.wantRendered, "https://t.me/"+tt.username))
+			}
 			if tt.username == "" {
-				assert.NotContains(t, notification.Text, "https://t.me/")
+				for _, ent := range notification.Entities {
+					assert.NotContains(t, ent.URL, "https://t.me/")
+				}
 			}
 			keyboard := notification.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 			require.Len(t, keyboard.InlineKeyboard, 1)
@@ -1563,6 +1630,7 @@ func TestUserReports_ChannelBan(t *testing.T) {
 				DeleteByMessageFunc: func(ctx context.Context, msgID int, chatID int64) error { return nil },
 			}
 			var notification string
+			var entities []tbapi.MessageEntity
 			mockAPI := &mocks.TbAPIMock{
 				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
 					return &tbapi.APIResponse{Ok: true}, nil
@@ -1570,9 +1638,9 @@ func TestUserReports_ChannelBan(t *testing.T) {
 				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 					switch msg := c.(type) {
 					case tbapi.MessageConfig:
-						notification = msg.Text
+						notification, entities = msg.Text, msg.Entities
 					case tbapi.EditMessageTextConfig:
-						notification = msg.Text
+						notification, entities = msg.Text, msg.Entities
 					}
 					return tbapi.Message{}, nil
 				},
@@ -1609,7 +1677,7 @@ func TestUserReports_ChannelBan(t *testing.T) {
 			assert.Contains(t, notification, tt.wantText)
 			assert.NotContains(t, notification, "restricted")
 			if !tt.manual {
-				assert.Contains(t, notification, "https://t.me/spam_channel")
+				assert.Contains(t, entities, textLink(notification, "@spam_channel (-100123)", "https://t.me/spam_channel"))
 			}
 			require.Len(t, mockReports.DeleteByMessageCalls(), 1)
 		})
@@ -1672,9 +1740,9 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Len(t, mockAPI.SendCalls(), 1, "should send message")
 		assert.Len(t, mockReports.UpdateAdminMsgIDCalls(), 1, "should update admin msg ID")
 		assert.Equal(t, int64(456), sentMsg.ChatID, "should send to admin chat")
-		assert.Equal(t, tbapi.ModeMarkdown, sentMsg.ParseMode, "should use markdown")
+		assert.Empty(t, sentMsg.ParseMode, "formatting is carried by entities")
 		assert.Contains(t, sentMsg.Text, "User spam reported (1 reports)", "should contain report count")
-		assert.Contains(t, sentMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "spammer (666)", "tg://user?id=666"))
 		assert.Contains(t, sentMsg.Text, "spam message", "should contain message text")
 		assert.Contains(t, sentMsg.Text, "reporter1", "should contain reporter name")
 		assert.Contains(t, sentMsg.Text, "attention @super1 @super2", "should mention superusers")
@@ -1709,7 +1777,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 			{MsgID: 100, ChatID: 200, ReportedUserID: 666, ReportedUserName: "", ReporterUserID: 111, ReporterUserName: "reporter1", MsgText: "spam"},
 		}
 		require.NoError(t, rep.sendReportNotification(context.Background(), reports))
-		assert.Contains(t, sentMsg.Text, "[user666 (666)](tg://user?id=666)", "blank name should fall back to user<id> link")
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "user666 (666)", "tg://user?id=666"))
 	})
 
 	t.Run("successful notification with multiple reports", func(t *testing.T) {
@@ -1900,7 +1968,7 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		assert.Len(t, mockReports.UpdateAdminMsgIDCalls(), 1, "should attempt to update admin msg ID")
 	})
 
-	t.Run("names with markdown special characters should be escaped", func(t *testing.T) {
+	t.Run("names with markdown special characters stay literal", func(t *testing.T) {
 		var sentMsg tbapi.MessageConfig
 		mockAPI := &mocks.TbAPIMock{
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
@@ -1931,14 +1999,9 @@ func TestUserReports_SendReportNotification(t *testing.T) {
 		err := rep.sendReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
-		assert.Contains(t, sentMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
-
-		// verify escaped characters in reporter names
-		assert.Contains(t, sentMsg.Text, "test\\_reporter", "first reporter name should be escaped")
-		assert.Contains(t, sentMsg.Text, "admin\\[test]", "second reporter name should have escaped bracket")
-		assert.NotContains(t, sentMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
-		assert.NotContains(t, sentMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "spam_user*bot (666)", "tg://user?id=666"))
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "test_reporter", "tg://user?id=111"))
+		assert.Contains(t, sentMsg.Entities, textLink(sentMsg.Text, "admin[test]", "tg://user?id=222"))
 	})
 
 	t.Run("notification should include padding for full-width buttons", func(t *testing.T) {
@@ -2005,9 +2068,9 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		assert.Len(t, mockAPI.SendCalls(), 1, "should edit message")
 		assert.Equal(t, int64(456), editedMsg.ChatID, "should edit in admin chat")
 		assert.Equal(t, 888, editedMsg.MessageID, "should edit correct message")
-		assert.Equal(t, tbapi.ModeMarkdown, editedMsg.ParseMode, "should use markdown")
+		assert.Empty(t, editedMsg.ParseMode, "formatting is carried by entities")
 		assert.Contains(t, editedMsg.Text, "User spam reported (3 reports)", "should contain updated report count")
-		assert.Contains(t, editedMsg.Text, "[spammer (666)](tg://user?id=666)", "reported user should render as name (id) link")
+		assert.Contains(t, editedMsg.Entities, textLink(editedMsg.Text, "spammer (666)", "tg://user?id=666"))
 		assert.Contains(t, editedMsg.Text, "spam message", "should contain message text")
 		assert.Contains(t, editedMsg.Text, "reporter1", "should contain first reporter")
 		assert.Contains(t, editedMsg.Text, "reporter2", "should contain second reporter")
@@ -2078,7 +2141,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, editedMsg.Text, "...", "should truncate long message")
 		msgStart := strings.Index(editedMsg.Text, "spam")
-		msgEnd := strings.Index(editedMsg.Text[msgStart:], "**Reporters:**")
+		msgEnd := strings.Index(editedMsg.Text[msgStart:], "Reporters:")
 		msgTextInNotif := editedMsg.Text[msgStart : msgStart+msgEnd]
 		assert.Less(t, len(msgTextInNotif), len(longMsg), "message should be shorter than original")
 	})
@@ -2160,7 +2223,7 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to edit admin notification")
 	})
 
-	t.Run("names with markdown special characters should be escaped", func(t *testing.T) {
+	t.Run("names with markdown special characters stay literal", func(t *testing.T) {
 		var editedMsg tbapi.EditMessageTextConfig
 		mockAPI := &mocks.TbAPIMock{
 			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
@@ -2184,14 +2247,9 @@ func TestUserReports_UpdateReportNotification(t *testing.T) {
 		err := rep.updateReportNotification(context.Background(), reports)
 		require.NoError(t, err)
 
-		// the reported user name is a link label, which telegram copies verbatim, so it is not escaped
-		assert.Contains(t, editedMsg.Text, "[spam_user*bot (666)](tg://user?id=666)")
-
-		// verify escaped characters in reporter names
-		assert.Contains(t, editedMsg.Text, "test\\_reporter", "first reporter name should be escaped")
-		assert.Contains(t, editedMsg.Text, "admin\\[test]", "second reporter name should have escaped bracket")
-		assert.NotContains(t, editedMsg.Text, "test_reporter](tg://", "first reporter name should not contain unescaped underscore in link")
-		assert.NotContains(t, editedMsg.Text, "admin[test]](tg://", "second reporter name should not contain unescaped opening bracket in link")
+		assert.Contains(t, editedMsg.Entities, textLink(editedMsg.Text, "spam_user*bot (666)", "tg://user?id=666"))
+		assert.Contains(t, editedMsg.Entities, textLink(editedMsg.Text, "test_reporter", "tg://user?id=111"))
+		assert.Contains(t, editedMsg.Entities, textLink(editedMsg.Text, "admin[test]", "tg://user?id=222"))
 	})
 }
 
@@ -3067,15 +3125,15 @@ func TestUserReports_ReporterBanOutcome(t *testing.T) {
 		{name: "last reporter banned", wantBanReq: true, wantRowsDeleted: true,
 			wantText: "_all reporters banned by admin in"},
 		{name: "reporter banned, others remain", othersRemain: true, wantBanReq: true, wantRowsDeleted: true,
-			wantText: "_reporter reporter1 banned by admin_"},
+			wantText: "reporter reporter1 banned by admin"},
 		{name: "dry, last reporter", dry: true, wantRowsDeleted: true,
 			wantText: "_all reporters would have been banned (dry) by admin in"},
 		{name: "dry, others remain", dry: true, othersRemain: true, wantRowsDeleted: true,
-			wantText: "_reporter reporter1 would have been banned (dry) by admin_"},
+			wantText: "reporter reporter1 would have been banned (dry) by admin"},
 		{name: "training, last reporter", training: true, wantRowsDeleted: true,
 			wantText: "_all reporters would have been banned (training) by admin in"},
 		{name: "training, others remain", training: true, othersRemain: true, wantRowsDeleted: true,
-			wantText: "_reporter reporter1 would have been banned (training) by admin_"},
+			wantText: "reporter reporter1 would have been banned (training) by admin"},
 		{name: "telegram rejects the ban", ban: banErrored, wantBanReq: true, wantErr: true,
 			wantText: "\n\nban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
 		{name: "telegram answers not ok", ban: banNotOK, wantBanReq: true, wantErr: true,
@@ -3086,11 +3144,12 @@ func TestUserReports_ReporterBanOutcome(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var banReq bool
 			var editText string
+			var editEntities []tbapi.MessageEntity
 			var editMarkup *tbapi.InlineKeyboardMarkup
 			mockAPI := &mocks.TbAPIMock{
 				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 					if e, ok := c.(tbapi.EditMessageTextConfig); ok {
-						editText, editMarkup = e.Text, e.ReplyMarkup
+						editText, editEntities, editMarkup = e.Text, e.Entities, e.ReplyMarkup
 					}
 					return tbapi.Message{}, nil
 				},
@@ -3162,6 +3221,7 @@ func TestUserReports_ReporterBanOutcome(t *testing.T) {
 			assert.Equal(t, tt.wantRowsDeleted, len(mockReports.DeleteReporterCalls()) == 1, "reporter row deleted")
 			assert.Contains(t, editText, tt.wantText)
 			if tt.othersRemain {
+				assert.Contains(t, editEntities, entityAt(editText, tt.wantText, tbapi.MessageEntity{Type: "italic"}))
 				assert.Equal(t, reportKeyboard(666, 100), *editMarkup, "report keyboard restored for the rest")
 				return
 			}
@@ -3381,7 +3441,7 @@ func TestUserReports_AutoBanFailureNotification(t *testing.T) {
 	}{
 		{name: "new notification, telegram rejects the ban", ban: banErrored,
 			wantText: []string{"user not banned"},
-			wantNote: "ban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
+			wantNote: "ban failed: failed to ban user: Bad Request: USER_ID_INVALID"},
 		{name: "new notification, telegram answers not ok", ban: banNotOK,
 			wantText: []string{"user not banned"}, wantNote: "ban failed: response is not Ok: "},
 		{name: "new notification, network error carrying the bot token", ban: banNetwork,
@@ -3389,7 +3449,7 @@ func TestUserReports_AutoBanFailureNotification(t *testing.T) {
 			wantNote: "ban failed: failed to ban user: Post \"https://api.telegram.org/botxxxxx/banChatMember\": dial tcp: i/o timeout"},
 		{name: "updated notification, telegram rejects the ban", update: true, ban: banErrored,
 			wantText: []string{"user not banned"},
-			wantNote: "ban failed: failed to ban user: Bad Request: USER\\_ID\\_INVALID"},
+			wantNote: "ban failed: failed to ban user: Bad Request: USER_ID_INVALID"},
 		{name: "updated notification, telegram answers not ok", update: true, ban: banNotOK,
 			wantText: []string{"user not banned"}, wantNote: "ban failed: response is not Ok: "},
 		{name: "updated notification, dry", update: true, dry: true,
@@ -3402,12 +3462,12 @@ func TestUserReports_AutoBanFailureNotification(t *testing.T) {
 			wantText: []string{"Auto-moderation: user restricted after 1 reports"}, noFailureNote: true},
 		{name: "new notification, soft-ban restrict rejected", softBan: true, ban: banErrored,
 			wantText: []string{"Auto-moderation: user not banned after 1 reports"},
-			wantNote: "ban failed: failed to restrict user: Bad Request: USER\\_ID\\_INVALID"},
+			wantNote: "ban failed: failed to restrict user: Bad Request: USER_ID_INVALID"},
 		{name: "updated notification, soft-ban restricts", update: true, softBan: true,
 			wantText: []string{"auto-moderation: user restricted after reaching 1 reports"}, noFailureNote: true},
 		{name: "updated notification, soft-ban restrict rejected", update: true, softBan: true, ban: banErrored,
 			wantText: []string{"auto-moderation: user not banned after reaching 1 reports"},
-			wantNote: "ban failed: failed to restrict user: Bad Request: USER\\_ID\\_INVALID"},
+			wantNote: "ban failed: failed to restrict user: Bad Request: USER_ID_INVALID"},
 	}
 
 	for _, tt := range tests {
@@ -3476,7 +3536,6 @@ func TestUserReports_AutoBanFailureNotification(t *testing.T) {
 			if tt.noFailureNote {
 				assert.NotContains(t, text, "ban failed")
 			} else {
-				// the note is the last paragraph and not in italics, where an escaped underscore breaks markdown
 				assert.Equal(t, tt.wantNote, text[strings.LastIndex(text, "\n\n")+2:])
 			}
 			if tt.update {
@@ -3533,4 +3592,19 @@ func TestUserReports_NotificationMigrationHint(t *testing.T) {
 			assert.Equal(t, int64(-1001432162429), tgErr.MigrateToChatID)
 		})
 	}
+}
+
+func entityAt(text, label string, ent tbapi.MessageEntity) tbapi.MessageEntity {
+	before, _, ok := strings.Cut(text, label)
+	if !ok {
+		ent.Offset = -1
+		return ent
+	}
+	e := &entityText{}
+	ent.Offset, ent.Length = e.units(before), e.units(label)
+	return ent
+}
+
+func textLink(text, label, target string) tbapi.MessageEntity {
+	return entityAt(text, label, tbapi.MessageEntity{Type: "text_link", URL: target})
 }
