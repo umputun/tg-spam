@@ -165,12 +165,12 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - Modify: `app/events/events.go`
 - Modify: `app/events/events_test.go`
 
-- [ ] write table-driven tests for `entityText`: plain only, each formatted append, a bold `span` over plain text plus a link, offsets after ASCII, Cyrillic, emoji (surrogate pairs) and the braille padding, empty append or span adds no entity
-- [ ] write tests for `entityTextFrom`: keeps formatting entities with their offsets, drops `url`/`mention`/`hashtag`, appending after it continues at the right UTF-16 offset
-- [ ] implement `entityText` and `entityTextFrom` per the Task 1 contract
-- [ ] write tests for `sendEntities`: message and edit configs reach `Send` with entities, empty `ParseMode` and previews off; the returned message carries the `MessageID` from `Send`; a `Send` error is returned with no second `Send` call and carries the migration hint for an upgraded group
-- [ ] implement `sendEntities` in `app/events/events.go`
-- [ ] run tests - must pass before task 2
+- [x] write table-driven tests for `entityText`: plain only, each formatted append, a bold `span` over plain text plus a link, offsets after ASCII, Cyrillic, emoji (surrogate pairs) and the braille padding, empty append or span adds no entity
+- [x] write tests for `entityTextFrom`: keeps formatting entities with their offsets, drops `url`/`mention`/`hashtag`, appending after it continues at the right UTF-16 offset
+- [x] implement `entityText` and `entityTextFrom` per the Task 1 contract
+- [x] write tests for `sendEntities`: message and edit configs reach `Send` with entities, empty `ParseMode` and previews off; the returned message carries the `MessageID` from `Send`; a `Send` error is returned with no second `Send` call and carries the migration hint for an upgraded group
+- [x] implement `sendEntities` in `app/events/events.go`
+- [x] run tests - must pass before task 2
 
 ### Task 2: Admin ban notifications built with entities
 

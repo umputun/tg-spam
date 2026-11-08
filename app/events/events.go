@@ -153,6 +153,25 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 	return nil
 }
 
+// never retry without entities: that would make the links clickable again
+func sendEntities(msg tbapi.Chattable, tbAPI TbAPI) (tbapi.Message, error) {
+	switch m := msg.(type) {
+	case tbapi.MessageConfig:
+		m.ParseMode = ""
+		m.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+		msg = m
+	case tbapi.EditMessageTextConfig:
+		m.ParseMode = ""
+		m.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+		msg = m
+	}
+	resp, err := tbAPI.Send(msg)
+	if err != nil {
+		return tbapi.Message{}, withMigrationHint(err)
+	}
+	return resp, nil
+}
+
 // withMigrationHint adds the new chat id to a telegram error reporting that the target group was
 // upgraded to a supergroup. Telegram changes the chat id on upgrade, so the configured id stays dead
 // until the operator replaces it. Other errors are returned unchanged.

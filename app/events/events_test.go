@@ -223,6 +223,65 @@ func TestEvents_send(t *testing.T) {
 	})
 }
 
+func TestEvents_sendEntities(t *testing.T) {
+	ents := []tbapi.MessageEntity{{Type: "pre", Offset: 0, Length: 4}}
+
+	t.Run("message sent with entities and no parse mode", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{MessageID: 77}, nil
+		}}
+		msg := tbapi.NewMessage(123, "spam")
+		msg.ParseMode = tbapi.ModeMarkdown
+		msg.Entities = ents
+		resp, err := sendEntities(msg, mockAPI)
+		require.NoError(t, err)
+		assert.Equal(t, 77, resp.MessageID)
+		require.Len(t, mockAPI.SendCalls(), 1)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, "spam", sent.Text)
+		assert.Empty(t, sent.ParseMode)
+		assert.Equal(t, ents, sent.Entities)
+		assert.True(t, sent.LinkPreviewOptions.IsDisabled)
+	})
+
+	t.Run("edit sent with entities and no parse mode", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{MessageID: 5}, nil
+		}}
+		edit := tbapi.NewEditMessageText(123, 5, "spam")
+		edit.ParseMode = tbapi.ModeMarkdown
+		edit.Entities = ents
+		resp, err := sendEntities(edit, mockAPI)
+		require.NoError(t, err)
+		assert.Equal(t, 5, resp.MessageID)
+		require.Len(t, mockAPI.SendCalls(), 1)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
+		assert.Empty(t, sent.ParseMode)
+		assert.Equal(t, ents, sent.Entities)
+		assert.True(t, sent.LinkPreviewOptions.IsDisabled)
+	})
+
+	t.Run("error returned without a plain text retry", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, errors.New("bad entities")
+		}}
+		_, err := sendEntities(tbapi.NewMessage(123, "spam"), mockAPI)
+		require.EqualError(t, err, "bad entities")
+		assert.Len(t, mockAPI.SendCalls(), 1)
+	})
+
+	t.Run("error for a migrated group names the new chat id", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+			return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+				ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+		}}
+		_, err := sendEntities(tbapi.NewMessage(-403767890, "spam"), mockAPI)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "new chat id is -1001432162429")
+		assert.Len(t, mockAPI.SendCalls(), 1)
+	})
+}
+
 func TestEvents_withMigrationHint(t *testing.T) {
 	migrated := &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
 		ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
