@@ -43,6 +43,7 @@ type admin struct {
 	warnings               Warnings      // storage for /warn records, used by DirectWarnReport auto-ban path
 	warnThreshold          int           // auto-ban after N /warn within warnWindow (0 disables auto-ban)
 	warnWindow             time.Duration // sliding window for counting warns
+	noLinks                bool          // put spam text and check details in pre, so links are not clickable
 }
 
 const (
@@ -58,7 +59,6 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 	if msg.Quote != "" {
 		msgText = msg.Text + "\n" + msg.Quote
 	}
-	text := strings.ReplaceAll(escapeMarkDownV1Text(msgText), "\n", " ")
 	would := ""
 	if a.dry {
 		would = "would have "
@@ -71,20 +71,22 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 		callbackUser = bot.User{ID: msg.SenderChat.ID, Username: msg.SenderChat.UserName}
 	}
 
-	// for channels, use t.me link (tg://user doesn't resolve negative IDs);
-	// for regular users, keep the standard tg://user link
-	banLine := fmt.Sprintf("**%spermanently banned [%s](tg://user?id=%d)**",
-		would, escapeMarkDownV1Text(banUserStr), msg.From.ID)
+	e := &entityText{}
+	from := e.mark()
+	e.plain(would + "permanently banned ")
+	// for channels, use t.me link (tg://user doesn't resolve negative IDs)
 	switch {
 	case msg.SenderChat.ID != 0 && msg.SenderChat.UserName != "":
-		banLine = fmt.Sprintf("**%spermanently banned [%s](https://t.me/%s)**",
-			would, escapeMarkDownV1Text(banUserStr), msg.SenderChat.UserName)
+		e.link(banUserStr, "https://t.me/"+msg.SenderChat.UserName)
 	case msg.SenderChat.ID != 0:
-		banLine = fmt.Sprintf("**%spermanently banned %s (%d)**",
-			would, escapeMarkDownV1Text(banUserStr), msg.SenderChat.ID)
+		e.plain(fmt.Sprintf("%s (%d)", banUserStr, msg.SenderChat.ID))
+	default:
+		e.link(banUserStr, fmt.Sprintf("tg://user?id=%d", msg.From.ID))
 	}
-	forwardMsg := fmt.Sprintf("%s\n\n%s\n\n", banLine, text)
-	if err := a.sendWithUnbanMarkup(forwardMsg, "change ban", callbackUser, msg.ID, a.adminChatID); err != nil {
+	e.span(from, tbapi.MessageEntity{Type: "bold"})
+	e.plain("\n\n")
+	e.untrusted(strings.ReplaceAll(msgText, "\n", " "), a.noLinks)
+	if err := a.sendWithUnbanMarkup(e, callbackUser, msg.ID); err != nil {
 		log.Printf("[WARN] failed to send admin message, %v", err)
 	}
 }
@@ -94,21 +96,25 @@ func (a *admin) ReportBan(banUserStr string, msg *bot.Message) {
 // there is no underlying message, so msgID is 0; the unban path ignores it and deleteAndBan skips deletion for 0.
 // the body stays empty, so getCleanMessage finds no text and unban adds nothing to ham samples.
 func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
-	link := fmt.Sprintf("[%s](tg://user?id=%d)", markdownV1LinkLabel(banUserStr), user.ID)
-	cause = escapeMarkDownV1Text(cause)
 	// keep the user link immediately after "permanently banned" or "restricted" so extractUsername parses it
-	// cleanly on unban; telegram strips markdown from callback text, so any words placed between the two
-	// get captured as the name
-	text := fmt.Sprintf("**permanently banned %s %s**\n\n", link, cause)
+	// cleanly on unban; callback text carries no formatting, so any words placed between the two get
+	// captured as the name
+	action := "permanently banned "
 	switch {
 	case a.trainingMode:
-		text = fmt.Sprintf("**[training] would have permanently banned %s %s**\n\n", link, cause)
+		action = "[training] would have permanently banned "
 	case a.dry:
-		text = fmt.Sprintf("**[dry run] would have permanently banned %s %s**\n\n", link, cause)
+		action = "[dry run] would have permanently banned "
 	case a.softBan:
-		text = fmt.Sprintf("**restricted %s %s**\n\n", link, cause)
+		action = "restricted "
 	}
-	if err := a.sendWithUnbanMarkup(text, "change ban", user, 0, a.adminChatID); err != nil {
+	e := &entityText{}
+	from := e.mark()
+	e.plain(action)
+	e.link(banUserStr, fmt.Sprintf("tg://user?id=%d", user.ID))
+	e.plain(" " + cause)
+	e.span(from, tbapi.MessageEntity{Type: "bold"})
+	if err := a.sendWithUnbanMarkup(e, user, 0); err != nil {
 		log.Printf("[WARN] failed to send user ban notification: %v", err)
 	}
 }
@@ -678,12 +684,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		diagMsg.SenderChat = bot.SenderChat{ID: origMsg.SenderChat.ID, UserName: origMsg.SenderChat.UserName}
 	}
 	resp := a.bot.OnMessage(diagMsg, true)
-	spamInfoText := "**can't get spam info**"
 	for _, check := range resp.CheckResults {
-		spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
-	}
-	if len(spamInfo) > 0 {
-		spamInfoText = strings.Join(spamInfo, "\n")
+		spamInfo = append(spamInfo, "- "+check.String())
 	}
 	displayName := origMsg.From.UserName
 	displayID := origMsg.From.ID
@@ -693,14 +695,25 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 	// posts by anonymous admins and by the linked channel are deleted but never banned
 	ownChatSender := origMsg.SenderChat != nil && a.isOwnChatSender(origMsg.SenderChat.ID)
-	outcome := fmt.Sprintf("the user banned by %q and message deleted", escapeMarkDownV1Text(update.Message.From.UserName))
+	outcome := fmt.Sprintf("the user banned by %q and message deleted", update.Message.From.UserName)
 	if ownChatSender {
 		outcome = fmt.Sprintf("message deleted by %q, ban skipped for the group or its linked channel",
-			escapeMarkDownV1Text(update.Message.From.UserName))
+			update.Message.From.UserName)
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*%s*",
-		escapeMarkDownV1Text(displayName), displayID, msgTxt, escapeMarkDownV1Text(spamInfoText), outcome)
-	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
+	e := &entityText{}
+	e.bold(fmt.Sprintf("original detection results for %s (%d)", displayName, displayID))
+	e.plain("\n\n")
+	e.untrusted(msgTxt, a.noLinks)
+	e.plain("\n\n")
+	if len(spamInfo) == 0 {
+		e.bold("can't get spam info")
+	}
+	e.untrusted(strings.Join(spamInfo, "\n"), a.noLinks)
+	e.plain("\n\n\n")
+	e.bold(outcome)
+	newMsg := tbapi.NewMessage(a.adminChatID, e.text())
+	newMsg.Entities = e.entities()
+	if _, err := sendEntities(newMsg, a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
 	}
 
@@ -872,16 +885,19 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 // callback data: +userID:msgID
 func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	// clear keyboard and update message text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_", query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("ban confirmed by %s in %v", query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
 	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err == nil && cleanMsg != "" {
 		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
-			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+			return fmt.Errorf("failed to update spam: %w", err)
 		}
 	} else {
 		// we don't want to fail on this error, as lack of a clean message should not prevent deleteAndBan
@@ -941,7 +957,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr == nil && cleanMsg != "" {
 		// update ham samples if we have a clean message
 		if upErr := a.bot.UpdateHam(cleanMsg); upErr != nil {
-			return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, upErr)
+			return fmt.Errorf("failed to update ham: %w", upErr)
 		}
 	} else {
 		// we don't want to fail on this error, as lack of a clean message should not prevent unban action
@@ -973,27 +989,30 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// create the original forwarded message with new indication of "unbanned" and an empty keyboard
-	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, sinceQuery(query))
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("unbanned by %s in %v", query.From.UserName, sinceQuery(query)))
 
 	// add spam info to the message
 	if !strings.Contains(query.Message.Text, "spam detection results") && userID != 0 {
-		spamInfoText := []string{"\n\n**original detection results**\n"}
-
-		info, found := a.locator.Spam(context.TODO(), userID)
-		if found {
+		var checks []string
+		if info, found := a.locator.Spam(context.TODO(), userID); found {
 			for _, check := range info.Checks {
-				spamInfoText = append(spamInfoText, "- "+escapeMarkDownV1Text(check.String()))
+				checks = append(checks, "- "+check.String())
 			}
 		}
-
-		if len(spamInfoText) > 1 {
-			updText += strings.Join(spamInfoText, "\n")
+		if len(checks) > 0 {
+			e.plain("\n\n")
+			e.bold("original detection results")
+			e.plain("\n\n")
+			e.untrusted(strings.Join(checks, "\n"), a.noLinks)
 		}
 	}
 
-	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
 	return nil
@@ -1052,39 +1071,35 @@ func (a *admin) unbanChannel(channelID int64) error {
 // callbackShowInfo handles the callback when user asks for spam detection details for the ban.
 // callback data: !userID:msgID
 func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
-	callbackData := query.Data
-	spamInfoText := "**can't get spam info**"
-	spamInfo := []string{}
-	userID, _, err := parseCallbackData(callbackData)
-	if err != nil {
-		spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID from %q: %v**", callbackData[1:], err))
-	}
-
-	// collect spam detection details
+	// parseCallbackData returns userID 0 on error, which falls through to "can't get spam info"
+	userID, _, _ := parseCallbackData(query.Data)
+	var checks []string
 	if userID != 0 {
-		info, found := a.locator.Spam(context.TODO(), userID)
-		if found {
+		if info, found := a.locator.Spam(context.TODO(), userID); found {
 			for _, check := range info.Checks {
-				spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+				checks = append(checks, "- "+check.String())
 			}
 		}
-		if len(spamInfo) > 0 {
-			spamInfoText = strings.Join(spamInfo, "\n")
-		}
 	}
 
-	// escape markdown special characters to preserve user links when re-parsing rendered text
-	// telegram returns rendered text without markdown syntax, so we need to escape before re-parsing
-	escapedMessage := escapeMarkDownV1Text(query.Message.Text) + "\n\n**spam detection results**\n" + spamInfoText
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.bold("spam detection results")
+	e.plain("\n")
+	if len(checks) > 0 {
+		e.untrusted(strings.Join(checks, "\n"), a.noLinks)
+	} else {
+		e.bold("can't get spam info")
+	}
 	confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
 	if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
 		confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
 		confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
 	}
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, escapedMessage)
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
-	editMsg.ParseMode = tbapi.ModeMarkdown
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 	return nil
@@ -1181,28 +1196,22 @@ func (a *admin) getCleanMessage(msg string) (string, error) {
 	return strings.TrimSpace(cleanMsg), nil
 }
 
-// sendWithUnbanMarkup sends a message to admin chat and adds buttons to ui.
-// text is message with details and action is the button label to unban,
-// which is user id prefixed with "?" for confirmation.
-// the second button is to show info about the spam analysis.
-func (a *admin) sendWithUnbanMarkup(text, action string, user bot.User, msgID int, chatID int64) error {
-	log.Printf("[DEBUG] action response %q: user %+v, msgID:%d, text: %q",
-		action, user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
-	tbMsg := tbapi.NewMessage(chatID, text)
-	tbMsg.ParseMode = tbapi.ModeMarkdown
-	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
-
+func (a *admin) sendWithUnbanMarkup(e *entityText, user bot.User, msgID int) error {
+	text := e.text()
+	log.Printf("[DEBUG] ban report: user %+v, msgID:%d, text: %q", user, msgID, strings.ReplaceAll(text, "\n", "\\n"))
+	tbMsg := tbapi.NewMessage(a.adminChatID, text)
+	tbMsg.Entities = e.entities()
 	tbMsg.ReplyMarkup = tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
 			// ?userID to request confirmation
-			tbapi.NewInlineKeyboardButtonData("⛔︎ "+action, fmt.Sprintf("%s%d:%d", confirmationPrefix, user.ID, msgID)),
+			tbapi.NewInlineKeyboardButtonData("⛔︎ change ban", fmt.Sprintf("%s%d:%d", confirmationPrefix, user.ID, msgID)),
 			// !userID to request info
 			tbapi.NewInlineKeyboardButtonData("️⚑ info", fmt.Sprintf("%s%d:%d", infoPrefix, user.ID, msgID)),
 		),
 	)
 
-	if _, err := a.tbAPI.Send(tbMsg); err != nil {
-		return fmt.Errorf("can't send message to telegram %q: %w", text, withMigrationHint(err))
+	if _, err := sendEntities(tbMsg, a.tbAPI); err != nil {
+		return fmt.Errorf("can't send message to telegram %q: %w", text, err)
 	}
 	return nil
 }

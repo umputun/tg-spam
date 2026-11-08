@@ -41,13 +41,16 @@ func TestAdmin_reportBan(t *testing.T) {
 		adm.ReportBan("testUser", msg)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
-		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
-		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [testUser](tg://user?id=456)")
-		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test  \\_message\\_")
-		assert.NotNil(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup)
-		assert.Equal(t, "⛔︎ change ban",
-			mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup).InlineKeyboard[0][0].Text)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, int64(123), sent.ChatID)
+		assert.Equal(t, "permanently banned testUser\n\nTest  _message_", sent.Text)
+		assert.Empty(t, sent.ParseMode)
+		assert.Equal(t, []tbapi.MessageEntity{
+			{Type: "bold", Offset: 0, Length: 27},
+			{Type: "text_link", Offset: 19, Length: 8, URL: "tg://user?id=456"},
+		}, sent.Entities)
+		require.NotNil(t, sent.ReplyMarkup)
+		assert.Equal(t, "⛔︎ change ban", sent.ReplyMarkup.(tbapi.InlineKeyboardMarkup).InlineKeyboard[0][0].Text)
 	})
 
 	t.Run("name with md chars", func(t *testing.T) {
@@ -55,13 +58,38 @@ func TestAdmin_reportBan(t *testing.T) {
 		adm.ReportBan("test_User", msg)
 
 		require.Len(t, mockAPI.SendCalls(), 1)
-		t.Logf("sent text: %+v", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text)
-		assert.Equal(t, int64(123), mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ChatID)
-		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "permanently banned [test\\_User](tg://user?id=456)")
-		assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "Test  \\_message\\_")
-		assert.NotNil(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup)
-		assert.Equal(t, "⛔︎ change ban",
-			mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup).InlineKeyboard[0][0].Text)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, "permanently banned test_User\n\nTest  _message_", sent.Text)
+		assert.Equal(t, []tbapi.MessageEntity{
+			{Type: "bold", Offset: 0, Length: 28},
+			{Type: "text_link", Offset: 19, Length: 9, URL: "tg://user?id=456"},
+		}, sent.Entities)
+	})
+
+	t.Run("no links puts spam text in pre", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		nl := admin{tbAPI: mockAPI, adminChatID: 123, noLinks: true}
+		nl.ReportBan("testUser", &bot.Message{From: bot.User{ID: 456}, Text: "buy at https://phish.example\n@scam"})
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, "permanently banned testUser\n\nbuy at https://phish.example @scam", sent.Text)
+		assert.Equal(t, []tbapi.MessageEntity{
+			{Type: "bold", Offset: 0, Length: 27},
+			{Type: "text_link", Offset: 19, Length: 8, URL: "tg://user?id=456"},
+			{Type: "pre", Offset: 29, Length: 34},
+		}, sent.Entities)
+	})
+
+	t.Run("dry run header", func(t *testing.T) {
+		mockAPI.ResetCalls()
+		dry := admin{tbAPI: mockAPI, adminChatID: 123, dry: true}
+		dry.ReportBan("testUser", msg)
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		sent := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, "would have permanently banned testUser\n\nTest  _message_", sent.Text)
+		assert.Equal(t, tbapi.MessageEntity{Type: "bold", Offset: 0, Length: 38}, sent.Entities[0])
 	})
 
 	t.Run("message with quote", func(t *testing.T) {
@@ -75,9 +103,7 @@ func TestAdmin_reportBan(t *testing.T) {
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
-		t.Logf("sent text: %+v", sentText)
-		assert.Contains(t, sentText, "Спасибо!!")
-		assert.Contains(t, sentText, "Бесплатный VPN для Telegram")
+		assert.Equal(t, "permanently banned spammer\n\nСпасибо!! Бесплатный VPN для Telegram", sentText)
 	})
 }
 
@@ -125,6 +151,11 @@ func TestAdmin_getCleanMessage(t *testing.T) {
 			input:    "Line 1\n\nspam detection results:\nLine 3",
 			expected: "",
 			err:      true,
+		},
+		{
+			name:     "entity-built ban notification after info",
+			input:    "permanently banned spammer\n\n[Support](https://phish.example) a_b\n\nspam detection results\n- stopword: spam, x",
+			expected: "[Support](https://phish.example) a_b",
 		},
 		{
 			name:     "reaction ban notification has no body",
@@ -217,7 +248,7 @@ func TestAdmin_dryModeForwardMessage(t *testing.T) {
 	msg := &bot.Message{}
 
 	adm.ReportBan("testUser", msg)
-	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned [testUser]")
+	assert.Contains(t, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text, "would have permanently banned testUser")
 }
 
 func TestAdmin_reportBanChannel(t *testing.T) {
@@ -245,9 +276,11 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
 		assert.Contains(t, *markup.InlineKeyboard[0][0].CallbackData, "-100999888:")
 		assert.NotContains(t, *markup.InlineKeyboard[0][0].CallbackData, "136817688")
-		// ban message should use t.me link, not tg://user
-		assert.Contains(t, sentText, "https://t.me/spamchannel")
-		assert.NotContains(t, sentText, "tg://user?id=136817688")
+		assert.Equal(t, "permanently banned spamchannel\n\nspam from channel", sentText)
+		assert.Equal(t, []tbapi.MessageEntity{
+			{Type: "bold", Offset: 0, Length: 30},
+			{Type: "text_link", Offset: 19, Length: 11, URL: "https://t.me/spamchannel"},
+		}, mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Entities)
 	})
 
 	t.Run("channel message without username uses plain text with ID", func(t *testing.T) {
@@ -261,8 +294,9 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 
 		require.Len(t, mockAPI.SendCalls(), 1)
 		sentText := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Text
-		assert.Contains(t, sentText, "permanently banned Some Channel (-100999888)")
-		assert.NotContains(t, sentText, "tg://user")
+		assert.Equal(t, "permanently banned Some Channel (-100999888)\n\nspam from channel", sentText)
+		assert.Equal(t, []tbapi.MessageEntity{{Type: "bold", Offset: 0, Length: 44}},
+			mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Entities)
 	})
 
 	t.Run("regular user message uses From.ID in callback data", func(t *testing.T) {
@@ -278,8 +312,8 @@ func TestAdmin_reportBanChannel(t *testing.T) {
 		markup := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.NotNil(t, markup.InlineKeyboard[0][0].CallbackData)
 		assert.Contains(t, *markup.InlineKeyboard[0][0].CallbackData, "456:")
-		// regular user should use tg://user link
-		assert.Contains(t, sentText, "tg://user?id=456")
+		assert.Equal(t, "permanently banned spammer\n\nspam from user", sentText)
+		assert.Equal(t, "tg://user?id=456", mockAPI.SendCalls()[0].C.(tbapi.MessageConfig).Entities[1].URL)
 	})
 }
 
@@ -422,6 +456,71 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Equal(t, "spam message text", botMock.UpdateSpamCalls()[0].Msg)
 	})
 
+	t.Run("DirectSpamReport_KeepsMarkdownInTextLiteral", func(t *testing.T) {
+		// regression: the reported text went into the markdown notification unescaped, so a literal link hid its url
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+
+		spamText := "get [Support](https://phish.example) now_fast"
+		update := createReplyUpdate("admin", 111, "spammer", 222, spamText)
+		require.NoError(t, adm.DirectSpamReport(update))
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Empty(t, adminMsg.ParseMode)
+		assert.Equal(t, "original detection results for spammer (222)\n\n"+spamText+"\n\n- test: spam, test details\n\n\n"+
+			`the user banned by "admin" and message deleted`, adminMsg.Text)
+		for _, ent := range adminMsg.Entities {
+			assert.NotEqual(t, "text_link", ent.Type)
+		}
+
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, spamText, botMock.UpdateSpamCalls()[0].Msg)
+	})
+
+	t.Run("DirectSpamReport_NoLinks", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+		adm.noLinks = true
+		botMock.OnMessageFunc = func(msg bot.Message, checkOnly bool) bot.Response {
+			return bot.Response{CheckResults: []spamcheck.Response{
+				{Name: "stopword", Spam: true, Details: "https://phish.example"}}}
+		}
+
+		update := createReplyUpdate("admin", 111, "spammer", 222, "line one\nhttps://phish.example")
+		require.NoError(t, adm.DirectSpamReport(update))
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		header := "original detection results for spammer (222)"
+		body := "line one\nhttps://phish.example"
+		checks := "- stopword: spam, https://phish.example"
+		outcome := `the user banned by "admin" and message deleted`
+		assert.Equal(t, header+"\n\n"+body+"\n\n"+checks+"\n\n\n"+outcome, adminMsg.Text)
+		assert.Equal(t, []tbapi.MessageEntity{
+			{Type: "bold", Offset: 0, Length: len(header)},
+			{Type: "pre", Offset: len(header) + 2, Length: len(body)},
+			{Type: "pre", Offset: len(header) + 2 + len(body) + 2, Length: len(checks)},
+			{Type: "bold", Offset: len(header) + 2 + len(body) + 2 + len(checks) + 3, Length: len(outcome)},
+		}, adminMsg.Entities)
+	})
+
+	t.Run("DirectSpamReport_NoSpamInfo", func(t *testing.T) {
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+		botMock.OnMessageFunc = func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} }
+
+		update := createReplyUpdate("admin", 111, "spammer", 222, "spam message text")
+		require.NoError(t, adm.DirectSpamReport(update))
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Contains(t, adminMsg.Text, "\n\ncan't get spam info\n\n")
+		assert.NotContains(t, adminMsg.Text, "*")
+		offset := strings.Index(adminMsg.Text, "can't get spam info")
+		assert.Contains(t, adminMsg.Entities, tbapi.MessageEntity{Type: "bold", Offset: offset, Length: len("can't get spam info")})
+	})
+
 	t.Run("DirectReport_DryMode", func(t *testing.T) {
 		mockAPI, botMock, adm, teardown := setupTest()
 		defer teardown()
@@ -513,9 +612,8 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		// verify admin notification contains actual channel name and ID, not Channel_Bot
 		require.Len(t, mockAPI.SendCalls(), 1)
 		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
-		assert.Contains(t, adminMsg.Text, "spam\\_channel") // escaped markdown
-		assert.Contains(t, adminMsg.Text, "12345")
-		assert.NotContains(t, adminMsg.Text, "Channel\\_Bot")
+		assert.Contains(t, adminMsg.Text, "original detection results for spam_channel (12345)")
+		assert.NotContains(t, adminMsg.Text, "Channel_Bot")
 		assert.NotContains(t, adminMsg.Text, "136817688")
 	})
 
@@ -1608,189 +1706,152 @@ func TestAdmin_InlineCallbacks(t *testing.T) {
 	})
 }
 
-func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
-	// test that clicking the info button preserves user links in admin chat,
-	// including edge cases with usernames containing markdown special characters
-
-	var markdownErrorCount, htmlSuccessCount int
-
-	// create a mockAPI that simulates real Telegram API behavior with markdown
-	mockAPI := &mocks.TbAPIMock{
-		SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
-			switch msg := c.(type) {
-			case tbapi.EditMessageTextConfig:
-				switch msg.ParseMode {
-				case tbapi.ModeMarkdown:
-					// with the fix, underscore should be escaped
-					if strings.Contains(msg.Text, "user\\_name\\_with\\_underscore") {
-						// markdown should now succeed because special chars are escaped
-						return tbapi.Message{Text: msg.Text}, nil
-					}
-				case tbapi.ModeHTML:
-					// HTML mode should succeed where markdown failed
-					if strings.Contains(msg.Text, "user_name_with_underscore") {
-						htmlSuccessCount++
-						// the link URL should be preserved in HTML mode
-						assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved in HTML mode")
-						return tbapi.Message{Text: msg.Text}, nil
-					}
-				case "":
-					// when messages are sent as plain text after markdown failure
-					// the link URL should still be preserved
-					assert.Contains(t, msg.Text, "tg://user?id=12345", "Link URL should be preserved")
+func TestAdmin_CallbackEditsKeepEntities(t *testing.T) {
+	const header, spam = "permanently banned spammer", "[Support](https://phish.example) a_b"
+	orig := header + "\n\n" + spam
+	origEnts := []tbapi.MessageEntity{
+		{Type: "bold", Offset: 0, Length: len(header)},
+		{Type: "text_link", Offset: 19, Length: 7, URL: "tg://user?id=12345"},
+		{Type: "pre", Offset: len(header) + 2, Length: len(spam)},
+	}
+	check := "- stopword: spam, https://phish.example"
+	type fixture struct {
+		adm   *admin
+		api   *mocks.TbAPIMock
+		bot   *mocks.BotMock
+		query *tbapi.CallbackQuery
+	}
+	setup := func(data string, noLinks, found bool) fixture {
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc:    func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) { return &tbapi.APIResponse{Ok: true}, nil },
+		}
+		botMock := &mocks.BotMock{
+			UpdateSpamFunc:      func(msg string) error { return nil },
+			UpdateHamFunc:       func(msg string) error { return nil },
+			AddApprovedUserFunc: func(id int64, name string) error { return nil },
+		}
+		locatorMock := &mocks.LocatorMock{
+			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+				if !found {
+					return storage.SpamData{}, false
 				}
+				return storage.SpamData{Checks: []spamcheck.Response{{Name: "stopword", Spam: true, Details: "https://phish.example"}}}, true
+			},
+		}
+		adm := &admin{tbAPI: mockAPI, bot: botMock, locator: locatorMock, primChatID: 123, adminChatID: 456, noLinks: noLinks}
+		query := &tbapi.CallbackQuery{ID: "cb", Data: data, From: &tbapi.User{UserName: "admin_x", ID: 111},
+			Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 456}, Text: orig,
+				Entities: append([]tbapi.MessageEntity{{Type: "url", Offset: 38, Length: 21}}, origEnts...),
+				ReplyMarkup: &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{{
+					tbapi.NewInlineKeyboardButtonData("change ban", "?12345:999"), tbapi.NewInlineKeyboardButtonData("info", "!12345:999"),
+				}}}}}
+		return fixture{adm: adm, api: mockAPI, bot: botMock, query: query}
+	}
+	lastEdit := func(t *testing.T, mockAPI *mocks.TbAPIMock) tbapi.EditMessageTextConfig {
+		t.Helper()
+		require.NotEmpty(t, mockAPI.SendCalls())
+		edit, ok := mockAPI.SendCalls()[len(mockAPI.SendCalls())-1].C.(tbapi.EditMessageTextConfig)
+		require.True(t, ok)
+		assert.Empty(t, edit.ParseMode)
+		require.True(t, strings.HasPrefix(edit.Text, orig+"\n\n"), "edit keeps the message text, got %q", edit.Text)
+		return edit
+	}
+	with := func(ents ...tbapi.MessageEntity) []tbapi.MessageEntity {
+		return append(append([]tbapi.MessageEntity{}, origEnts...), ents...)
+	}
+
+	t.Run("ban confirmed", func(t *testing.T) {
+		f := setup("+12345:999", false, true)
+		require.NoError(t, f.adm.callbackBanConfirmed(f.query))
+		edit := lastEdit(t, f.api)
+		note := edit.Text[len(orig)+2:]
+		assert.True(t, strings.HasPrefix(note, "ban confirmed by admin_x in "), note)
+		assert.Equal(t, with(entityAt(edit.Text, note, tbapi.MessageEntity{Type: "italic"})), edit.Entities)
+		require.Len(t, f.bot.UpdateSpamCalls(), 1)
+		assert.Equal(t, spam, f.bot.UpdateSpamCalls()[0].Msg)
+	})
+
+	for _, noLinks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unban confirmed, no links %v", noLinks), func(t *testing.T) {
+			f := setup("12345:999", noLinks, true)
+			require.NoError(t, f.adm.callbackUnbanConfirmed(f.query))
+			edit := lastEdit(t, f.api)
+			note, rest, ok := strings.Cut(edit.Text[len(orig)+2:], "\n\n")
+			require.True(t, ok, edit.Text)
+			assert.True(t, strings.HasPrefix(note, "unbanned by admin_x in "), note)
+			assert.Equal(t, "original detection results\n\n"+check, rest)
+			want := with(entityAt(edit.Text, note, tbapi.MessageEntity{Type: "italic"}),
+				entityAt(edit.Text, "original detection results", tbapi.MessageEntity{Type: "bold"}))
+			if noLinks {
+				want = append(want, entityAt(edit.Text, check, tbapi.MessageEntity{Type: "pre"}))
 			}
-			return tbapi.Message{}, nil
-		},
+			assert.Equal(t, want, edit.Entities)
+			require.Len(t, f.bot.UpdateHamCalls(), 1)
+			assert.Equal(t, spam, f.bot.UpdateHamCalls()[0].Msg)
+		})
+
+		t.Run(fmt.Sprintf("show info, no links %v", noLinks), func(t *testing.T) {
+			f := setup("!12345:999", noLinks, true)
+			require.NoError(t, f.adm.callbackShowInfo(f.query))
+			edit := lastEdit(t, f.api)
+			assert.Equal(t, orig+"\n\nspam detection results\n"+check, edit.Text)
+			want := with(entityAt(edit.Text, "spam detection results", tbapi.MessageEntity{Type: "bold"}))
+			if noLinks {
+				want = append(want, entityAt(edit.Text, check, tbapi.MessageEntity{Type: "pre"}))
+			}
+			assert.Equal(t, want, edit.Entities)
+			require.NotNil(t, edit.ReplyMarkup)
+			assert.Len(t, edit.ReplyMarkup.InlineKeyboard[0], 1, "info button removed")
+		})
 	}
 
-	// set up the admin object
-	adm := &admin{
-		tbAPI:       mockAPI,
-		adminChatID: 456,
+	t.Run("show info without checks", func(t *testing.T) {
+		f := setup("!12345:999", false, false)
+		require.NoError(t, f.adm.callbackShowInfo(f.query))
+		edit := lastEdit(t, f.api)
+		assert.Equal(t, orig+"\n\nspam detection results\ncan't get spam info", edit.Text)
+		assert.Equal(t, with(entityAt(edit.Text, "spam detection results", tbapi.MessageEntity{Type: "bold"}),
+			entityAt(edit.Text, "can't get spam info", tbapi.MessageEntity{Type: "bold"})), edit.Entities)
+	})
+}
+
+func TestAdmin_CallbackShowInfo_PreservesUserLinks(t *testing.T) {
+	tests := []struct {
+		name, data, text, label, details, check string
+		userID                                  int64
+	}{
+		{name: "username with underscores", data: "!12345:999", userID: 12345,
+			text: "permanently banned user_name_with_underscore\n\nSpam message text", label: "user_name_with_underscore",
+			details: "test details", check: "- test: spam, test details"},
+		{name: "normal username", data: "!6236647121:123", userID: 6236647121,
+			text:  "permanently banned Евгения\n\nНужны 2-3 человека совершеннолетних, занятость из дома ! От 8К в день Пиши в лс",
+			label: "Евгения", details: "в лс", check: "- test: spam, в лс"},
+		{name: "username with underscore and display name", data: "!5519827604:123", userID: 5519827604,
+			text:  "permanently banned surkova_vlada Влада Суркова\n\nЕсть способ заработка от 35 000 р в неделю.",
+			label: "surkova_vlada Влада Суркова", details: "заработка", check: "- test: spam, заработка"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil }}
+			adm := &admin{tbAPI: mockAPI, adminChatID: 456, locator: &mocks.LocatorMock{
+				SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
+					return storage.SpamData{Checks: []spamcheck.Response{{Name: "test", Spam: true, Details: tt.details}}}, true
+				},
+			}}
+			link := textLink(tt.text, tt.label, fmt.Sprintf("tg://user?id=%d", tt.userID))
+			query := &tbapi.CallbackQuery{ID: "test", Data: tt.data, From: &tbapi.User{UserName: "admin", ID: 111},
+				Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 456}, Text: tt.text,
+					Entities: []tbapi.MessageEntity{link}}}
 
-	// test with username containing underscore to trigger the issue
-	t.Run("Preserve links for usernames with underscores", func(t *testing.T) {
-		mockAPI.ResetCalls()
-		markdownErrorCount = 0
-		htmlSuccessCount = 0
-
-		// setup query with a username that has underscores (already rendered by Telegram)
-		query := &tbapi.CallbackQuery{
-			ID:   "test-callback-id",
-			Data: "!12345:999",
-			Message: &tbapi.Message{
-				MessageID: 789,
-				Chat:      tbapi.Chat{ID: 456},
-				Text:      "permanently banned user_name_with_underscore\n\nSpam message text",
-				From:      &tbapi.User{UserName: "bot"},
-			},
-			From: &tbapi.User{
-				UserName: "admin",
-				ID:       111,
-			},
-		}
-
-		// mock functions needed for the test
-		adm.locator = &mocks.LocatorMock{
-			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
-				return storage.SpamData{
-					Checks: []spamcheck.Response{
-						{Name: "test", Spam: true, Details: "test details"},
-					},
-				}, true
-			},
-		}
-
-		// run the function that needs to maintain the links
-		err := adm.callbackShowInfo(query)
-		require.NoError(t, err)
-
-		// with the fix, markdown should succeed on first attempt because underscore is escaped
-		assert.Len(t, mockAPI.SendCalls(), 1, "Should succeed on first attempt with markdown")
-		assert.Equal(t, 0, markdownErrorCount, "Should not fail with markdown")
-		assert.Equal(t, 0, htmlSuccessCount, "Should not need HTML fallback")
-	})
-
-	t.Run("info button preserves link for normal username", func(t *testing.T) {
-		sendAttempts := 0
-		mockAPI := &mocks.TbAPIMock{
-			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
-				sendAttempts++
-				if editMsg, ok := c.(tbapi.EditMessageTextConfig); ok {
-					assert.Contains(t, editMsg.Text, "permanently banned")
-					assert.Contains(t, editMsg.Text, "spam detection results")
-					// for normal username without special chars, markdown should work fine
-					assert.Equal(t, tbapi.ModeMarkdown, editMsg.ParseMode)
-				}
-				return tbapi.Message{}, nil
-			},
-		}
-
-		adm := admin{
-			tbAPI:       mockAPI,
-			adminChatID: 123,
-		}
-
-		query := &tbapi.CallbackQuery{
-			ID:   "test",
-			Data: "!6236647121:123",
-			Message: &tbapi.Message{
-				MessageID: 123,
-				Chat:      tbapi.Chat{ID: 456},
-				Text:      "permanently banned Евгения\n\nНужны 2-3 человека совершеннолетних, занятость из дома ! От 8К в день Пиши в лс",
-				From:      &tbapi.User{UserName: "bot"},
-			},
-			From: &tbapi.User{UserName: "admin", ID: 111},
-		}
-
-		adm.locator = &mocks.LocatorMock{
-			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
-				return storage.SpamData{
-					Checks: []spamcheck.Response{
-						{Name: "stopword", Spam: true, Details: "в лс"},
-					},
-				}, true
-			},
-		}
-
-		err := adm.callbackShowInfo(query)
-		require.NoError(t, err)
-		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
-	})
-
-	t.Run("info button preserves link for username with underscore after fix", func(t *testing.T) {
-		sendAttempts := 0
-		var usedParseMode string
-		mockAPI := &mocks.TbAPIMock{
-			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
-				sendAttempts++
-				if editMsg, ok := c.(tbapi.EditMessageTextConfig); ok {
-					usedParseMode = editMsg.ParseMode
-					// with the fix, the underscore should be escaped as surkova\_vlada
-					assert.Contains(t, editMsg.Text, "surkova\\_vlada", "Underscore should be escaped")
-					assert.Equal(t, tbapi.ModeMarkdown, editMsg.ParseMode)
-					// markdown should now succeed because special chars are escaped
-					return tbapi.Message{}, nil
-				}
-				return tbapi.Message{}, nil
-			},
-		}
-
-		adm := admin{
-			tbAPI:       mockAPI,
-			adminChatID: 123,
-		}
-
-		query := &tbapi.CallbackQuery{
-			ID:   "test",
-			Data: "!5519827604:123",
-			Message: &tbapi.Message{
-				MessageID: 123,
-				Chat:      tbapi.Chat{ID: 456},
-				Text:      "permanently banned surkova_vlada Влада Суркова\n\nЕсть способ заработка от 35 000 р в неделю.",
-				From:      &tbapi.User{UserName: "bot"},
-			},
-			From: &tbapi.User{UserName: "admin", ID: 111},
-		}
-
-		adm.locator = &mocks.LocatorMock{
-			SpamFunc: func(ctx context.Context, userID int64) (storage.SpamData, bool) {
-				return storage.SpamData{
-					Checks: []spamcheck.Response{
-						{Name: "stopword", Spam: true, Details: "заработка"},
-					},
-				}, true
-			},
-		}
-
-		err := adm.callbackShowInfo(query)
-		require.NoError(t, err)
-		// with the fix, markdown should succeed on first attempt
-		assert.Equal(t, 1, sendAttempts, "Should succeed on first attempt with markdown")
-		assert.Equal(t, tbapi.ModeMarkdown, usedParseMode, "Should use markdown mode successfully")
-	})
+			require.NoError(t, adm.callbackShowInfo(query))
+			require.Len(t, mockAPI.SendCalls(), 1)
+			edit := mockAPI.SendCalls()[0].C.(tbapi.EditMessageTextConfig)
+			assert.Empty(t, edit.ParseMode)
+			assert.Equal(t, tt.text+"\n\nspam detection results\n"+tt.check, edit.Text)
+			assert.Contains(t, edit.Entities, link)
+		})
+	}
 }
 
 func TestAdmin_MsgHandlerWithEmptyText(t *testing.T) {
@@ -3334,7 +3395,6 @@ func TestAdmin_channelDisplayName(t *testing.T) {
 
 func TestAdmin_ReportUserBan(t *testing.T) {
 	user := bot.User{ID: 42, Username: "spammer"}
-	link := "[@spammer (42)](tg://user?id=42)"
 	tests := []struct {
 		name     string
 		training bool
@@ -3343,28 +3403,29 @@ func TestAdmin_ReportUserBan(t *testing.T) {
 		user     *bot.User
 		cause    string
 		want     string
+		label    string
 	}{
 		{name: "reaction", cause: "reaction spammer",
-			want: "**permanently banned " + link + " reaction spammer**\n\n"},
+			want: "permanently banned @spammer (42) reaction spammer", label: "@spammer (42)"},
 		{name: "join", cause: "on join by lua-names, lua-premium",
-			want: "**permanently banned " + link + " on join by lua-names, lua-premium**\n\n"},
-		{name: "join escapes cause", cause: "on join by lua-bad_names",
-			want: "**permanently banned " + link + " on join by lua-bad\\_names**\n\n"},
+			want: "permanently banned @spammer (42) on join by lua-names, lua-premium", label: "@spammer (42)"},
+		{name: "join keeps cause literal", cause: "on join by lua-bad_names",
+			want: "permanently banned @spammer (42) on join by lua-bad_names", label: "@spammer (42)"},
 		{name: "training", training: true, softBan: true, cause: "on join by lua-names",
-			want: "**[training] would have permanently banned " + link + " on join by lua-names**\n\n"},
+			want: "[training] would have permanently banned @spammer (42) on join by lua-names", label: "@spammer (42)"},
 		{name: "dry", dry: true, softBan: true, cause: "reaction spammer",
-			want: "**[dry run] would have permanently banned " + link + " reaction spammer**\n\n"},
+			want: "[dry run] would have permanently banned @spammer (42) reaction spammer", label: "@spammer (42)"},
 		{name: "soft-ban join", softBan: true, cause: "on join by lua-names",
-			want: "**restricted " + link + " on join by lua-names**\n\n"},
+			want: "restricted @spammer (42) on join by lua-names", label: "@spammer (42)"},
 		{name: "soft-ban reaction", softBan: true, cause: "reaction spammer",
-			want: "**restricted " + link + " reaction spammer**\n\n"},
+			want: "restricted @spammer (42) reaction spammer", label: "@spammer (42)"},
 		{name: "display name with closing bracket", user: &bot.User{ID: 7, DisplayName: "Shop] 24/7"}, cause: "on join by lua-names",
-			want: "**permanently banned [Shop 24/7 (7)](tg://user?id=7) on join by lua-names**\n\n"},
-		{name: "link injection in display name", user: &bot.User{ID: 7, DisplayName: "Admin](https://scam.example)"},
-			cause: "on join by lua-names",
-			want:  "**permanently banned [Admin(https://scam.example) (7)](tg://user?id=7) on join by lua-names**\n\n"},
-		{name: "username with underscore not escaped in label", user: &bot.User{ID: 8, Username: "spam_bot"},
-			cause: "reaction spammer", want: "**permanently banned [@spam_bot (8)](tg://user?id=8) reaction spammer**\n\n"},
+			want: "permanently banned Shop] 24/7 (7) on join by lua-names", label: "Shop] 24/7 (7)"},
+		{name: "markdown link in display name stays text", user: &bot.User{ID: 7, DisplayName: "Admin](https://scam.example)"},
+			cause: "on join by lua-names", want: "permanently banned Admin](https://scam.example) (7) on join by lua-names",
+			label: "Admin](https://scam.example) (7)"},
+		{name: "username with underscore", user: &bot.User{ID: 8, Username: "spam_bot"},
+			cause: "reaction spammer", want: "permanently banned @spam_bot (8) reaction spammer", label: "@spam_bot (8)"},
 	}
 
 	for _, tc := range tests {
@@ -3384,6 +3445,12 @@ func TestAdmin_ReportUserBan(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, int64(999), sent.ChatID)
 			assert.Equal(t, tc.want, sent.Text)
+			assert.Empty(t, sent.ParseMode)
+			assert.Equal(t, []tbapi.MessageEntity{
+				{Type: "bold", Offset: 0, Length: len(tc.want)},
+				{Type: "text_link", Offset: strings.Index(tc.want, tc.label), Length: len(tc.label),
+					URL: fmt.Sprintf("tg://user?id=%d", user.ID)},
+			}, sent.Entities)
 
 			markup, ok := sent.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 			require.True(t, ok)
@@ -3432,7 +3499,9 @@ func TestAdmin_sendWithUnbanMarkupMigrationHint(t *testing.T) {
 			ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
 	}}
 	adm := admin{tbAPI: mockAPI, adminChatID: -403767890}
-	err := adm.sendWithUnbanMarkup("banned", "change ban", bot.User{ID: 42, Username: "spammer"}, 1, adm.adminChatID)
+	e := &entityText{}
+	e.plain("banned")
+	err := adm.sendWithUnbanMarkup(e, bot.User{ID: 42, Username: "spammer"}, 1)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "group chat was upgraded to a supergroup chat, new chat id is -1001432162429")
 }

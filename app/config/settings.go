@@ -86,6 +86,7 @@ type TelegramSettings struct {
 type AdminSettings struct {
 	AdminGroup              string   `json:"admin_group" yaml:"admin_group" db:"admin_group"`
 	DisableAdminSpamForward bool     `json:"disable_admin_spam_forward" yaml:"disable_admin_spam_forward" db:"disable_admin_spam_forward"`
+	NoLinks                 bool     `json:"no_links" yaml:"no_links" db:"no_links"`
 	TestingIDs              []int64  `json:"testing_ids" yaml:"testing_ids" db:"testing_ids"`
 	SuperUsers              []string `json:"super_users" yaml:"super_users" db:"super_users"`
 }

@@ -399,6 +399,10 @@ To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. Th
 ![unban-confirmation](https://github.com/umputun/tg-spam/raw/master/site/docs/unban-confirmation.png)
 </details>
 
+**non-clickable spam text**
+
+Spam often carries links, and a link in an admin chat report opens with a single tap. With `--admin.no-links` (`$ADMIN_NO_LINKS`, also on the Behavior tab of the web settings), the bot shows the spam text and the spam check details in admin chat reports as a code block, which Telegram clients do not turn into links. This applies to ban notifications, `/spam` reports, user report notifications, and the check details added by the "info" and "unban" buttons. Edits that append to a report keep its existing code blocks, even after the option is turned off. Newly added check details and notifications rebuilt when reports change use the current option. The link to the banned user or channel on the first line and the buttons work as before. The option is off by default.
+
 **admin commands**
 
 * Admins can reply to the spam message with the text `spam` or `/spam` to mark it as spam. This is useful for training purposes as the bot will learn from the spam messages marked by the admin and will be able to detect similar spam in the future. The same `spam` or `/spam` text from a regular user posting under his own account does not mark the message as spam; it is an alias for `report` and behaves exactly like it (see [User Spam Reporting](#user-spam-reporting)).
@@ -666,6 +670,7 @@ Success! The new status is: DISABLED. /help
       --confdb-encrypt-key=             encryption key for sensitive config values in database [$CONFDB_ENCRYPT_KEY]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
+      --admin.no-links                  show spam text in admin chat reports without clickable links [$ADMIN_NO_LINKS]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=               history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=               history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]
@@ -851,6 +856,7 @@ Available commands:
 - `--training` - if set, the bot will not ban users and delete messages but will learn from them. This is useful for training purposes.
 - `--soft-ban` - if set, the bot will restrict user actions but won't ban. This is useful for chats where the false-positive is hard or costly to recover from. With soft ban, the user won't be removed from the chat but will be restricted in actions. Practically, it means the user won't be able to send messages, but the recovery is easy - just unban the user, and they won't need to rejoin the chat.
 - `--disable-admin-spam-forward` - if set to `true`, the bot will not treat messages forwarded to the admin chat as spam.
+- `--admin.no-links` - if set to `true`, the spam text and spam check details in admin chat reports are shown as a code block, so their links are not clickable. See the [Admin chat/group](#admin-chatgroup) section.
 - `--dry` - if set to `true`, the bot will not ban users and delete messages. This is useful for testing purposes.
 - `--dbg` - if set to `true`, the bot will print debug information to the console.
 - `--tg-dbg` - if set to `true`, the bot will print debug information from the telegram library to the console.

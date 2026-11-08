@@ -269,6 +269,7 @@ func updateSettingsFromForm(settings *config.Settings, r *http.Request) {
 		settings.Admin.AdminGroup = val
 	}
 	settings.Admin.DisableAdminSpamForward = r.FormValue("disableAdminSpamForward") == "on"
+	settings.Admin.NoLinks = r.FormValue("adminNoLinks") == "on"
 	settings.Logger.Enabled = r.FormValue("loggerEnabled") == "on"
 	settings.NoSpamReply = r.FormValue("noSpamReply") == "on"
 

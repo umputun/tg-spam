@@ -62,6 +62,7 @@ type TelegramListener struct {
 	Locator                 Locator       // message locator to get info about messages
 	ReportConfig            ReportConfig  // user spam reporting configuration
 	DisableAdminSpamForward bool          // disable forwarding spam reports to admin chat support
+	NoLinks                 bool          // show spam text in admin chat reports without clickable links
 	Dry                     bool          // dry run, do not ban or send messages
 	AggressiveCleanup       bool          // delete all messages from user when banned via /spam command
 	AggressiveCleanupLimit  int           // max messages to delete in aggressive cleanup mode
@@ -154,14 +155,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		primChatID: l.chatID, linkedChannelID: l.linkedChannelID, adminChatID: l.adminChatID,
 		trainingMode: l.TrainingMode, softBan: l.SoftBanMode, dry: l.Dry, warnMsg: l.WarnMsg,
 		aggressiveCleanup: l.AggressiveCleanup, aggressiveCleanupLimit: l.AggressiveCleanupLimit,
-		warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow,
+		warnings: l.Warnings, warnThreshold: l.WarnThreshold, warnWindow: l.WarnWindow, noLinks: l.NoLinks,
 	}
 
 	l.reportsHandler = &userReports{
 		ReportConfig: l.ReportConfig,
 		tbAPI:        l.TbAPI, bot: l.Bot, locator: l.Locator, superUsers: l.SuperUsers,
 		primChatID: l.chatID, linkedChannelID: l.linkedChannelID, adminChatID: l.adminChatID,
-		trainingMode: l.TrainingMode, softBanMode: l.SoftBanMode, dry: l.Dry,
+		trainingMode: l.TrainingMode, softBanMode: l.SoftBanMode, dry: l.Dry, noLinks: l.NoLinks,
 	}
 
 	adminForwardStatus := "enabled"

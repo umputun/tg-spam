@@ -758,6 +758,10 @@
                         <label class="form-check-label" for="disableAdminSpamForward">Disable Admin Spam Forward</label>
                     </div>
                     <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="adminNoLinks" name="adminNoLinks" {{if .Admin.NoLinks}}checked{{end}}>
+                        <label class="form-check-label" for="adminNoLinks">No Links in Admin Reports</label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
                         <input class="form-check-input" type="checkbox" id="noSpamReply" name="noSpamReply" {{if .NoSpamReply}}checked{{end}}>
                         <label class="form-check-label" for="noSpamReply">No Spam Reply</label>
                     </div>
@@ -798,6 +802,7 @@
                     <tbody>
                         <tr><th style="width: 30%">Super Users</th><td>{{range .Admin.SuperUsers}}{{.}}<br>{{end}}</td></tr>
                         <tr><th>Disable Admin Spam Forward</th><td>{{.Admin.DisableAdminSpamForward}}</td></tr>
+                        <tr><th>No Links in Admin Reports</th><td>{{.Admin.NoLinks}}</td></tr>
                         <tr><th>No Spam Reply</th><td>{{.NoSpamReply}}</td></tr>
                         <tr><th>Startup Message Enabled</th><td>{{.IsStartupMessageEnabled}}</td></tr>
                         <tr><th>Soft Ban Enabled</th><td>{{.SoftBan}}</td></tr>

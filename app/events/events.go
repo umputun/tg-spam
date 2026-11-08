@@ -66,14 +66,6 @@ func escapeMarkDownV1Text(text string) string {
 	return text
 }
 
-// markdownV1LinkLabel makes text safe as a legacy markdown link label. Telegram copies a label verbatim
-// up to the first "]" and applies no escapes inside it, so "\\]" cannot keep "]" in the label and other
-// escapes would show as text. "]" is removed instead: left in an arbitrary first+last display name it
-// would end the label early and let the name inject its own link.
-func markdownV1LinkLabel(text string) string {
-	return strings.ReplaceAll(text, "]", "")
-}
-
 // botTokenRe matches a Telegram bot token. the Bot API client puts the token in its request URLs, so
 // a network error from it carries the token
 var botTokenRe = regexp.MustCompile(`\d{5,}:[A-Za-z0-9_-]{30,}`)
@@ -151,6 +143,25 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 		}
 	}
 	return nil
+}
+
+// never retry without entities: that would make the links clickable again
+func sendEntities(msg tbapi.Chattable, tbAPI TbAPI) (tbapi.Message, error) {
+	switch m := msg.(type) {
+	case tbapi.MessageConfig:
+		m.ParseMode = ""
+		m.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+		msg = m
+	case tbapi.EditMessageTextConfig:
+		m.ParseMode = ""
+		m.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+		msg = m
+	}
+	resp, err := tbAPI.Send(msg)
+	if err != nil {
+		return tbapi.Message{}, withMigrationHint(err)
+	}
+	return resp, nil
 }
 
 // withMigrationHint adds the new chat id to a telegram error reporting that the target group was

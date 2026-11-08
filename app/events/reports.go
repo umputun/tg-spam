@@ -50,6 +50,15 @@ type userReports struct {
 	trainingMode    bool
 	softBanMode     bool
 	dry             bool
+	noLinks         bool // put the reported text in pre, so its links are not clickable
+}
+
+type reportNotice struct {
+	title   string
+	reports []storage.Report
+	note    string
+	banErr  error
+	padded  bool
 }
 
 // DirectUserReport handles a regular user's report of the message he replied to. the listener decides
@@ -369,16 +378,14 @@ func (r *userReports) banOutcome(banErr error, restricted bool) string {
 const banFailurePrefix = "ban failed: "
 
 // banFailureNote renders the reason a ban failed, empty when the ban succeeded or was never
-// attempted because the mode suppressed it. the reason stays outside any italic span: legacy
-// markdown doesn't honor an escaped underscore inside one, so an underscore in the reason would
-// make Telegram reject the whole message. its line breaks are flattened, so the note stays the one
-// last paragraph hasBanFailureNote looks for.
+// attempted because the mode suppressed it. line breaks are flattened so hasBanFailureNote
+// recognizes the final paragraph.
 func (r *userReports) banFailureNote(banErr error) string {
 	if banErr == nil || r.dry || r.trainingMode {
 		return ""
 	}
 	reason := strings.ReplaceAll(redactBotToken(banErr.Error()), "\n", " ")
-	return "\n\n" + banFailurePrefix + escapeMarkDownV1Text(reason)
+	return "\n\n" + banFailurePrefix + reason
 }
 
 // hasBanFailureNote reports whether a notification's last paragraph is a ban failure note
@@ -390,19 +397,53 @@ func (r *userReports) hasBanFailureNote(text string) bool {
 	return strings.HasPrefix(text[i+2:], banFailurePrefix)
 }
 
-// reportedUserMD links users and public channels; channel names without @ are plain text.
-func (r *userReports) reportedUserMD(name string, id int64) string {
+func (r *userReports) addReportedUser(e *entityText, name string, id int64) {
 	if name == "" {
 		name = fmt.Sprintf("user%d", id)
 	}
-	label := markdownV1LinkLabel(name)
-	if id < 0 {
-		if username, ok := strings.CutPrefix(name, "@"); ok {
-			return fmt.Sprintf("[%s (%d)](https://t.me/%s)", label, id, username)
-		}
-		return fmt.Sprintf("%s (%d)", escapeMarkDownV1Text(name), id)
+	label := fmt.Sprintf("%s (%d)", name, id)
+	if id >= 0 {
+		e.link(label, fmt.Sprintf("tg://user?id=%d", id))
+		return
 	}
-	return fmt.Sprintf("[%s (%d)](tg://user?id=%d)", label, id, id)
+	if username, ok := strings.CutPrefix(name, "@"); ok {
+		e.link(label, "https://t.me/"+username)
+		return
+	}
+	e.plain(label)
+}
+
+func (r *userReports) reportNotification(n reportNotice) *entityText {
+	first := n.reports[0]
+	e := &entityText{}
+	e.bold(n.title)
+	e.plain("\n\n")
+	r.addReportedUser(e, first.ReportedUserName, first.ReportedUserID)
+	e.plain("\n\n")
+	e.untrusted(truncateString(strings.ReplaceAll(first.MsgText, "\n", " "), 200, "..."), r.noLinks)
+	e.plain("\n\n")
+	e.bold("Reporters:")
+	for _, report := range n.reports {
+		name := report.ReporterUserName
+		if name == "" {
+			name = fmt.Sprintf("user%d", report.ReporterUserID)
+		}
+		e.plain("\n- ")
+		e.link(name, fmt.Sprintf("tg://user?id=%d", report.ReporterUserID))
+	}
+	if n.note != "" {
+		e.plain("\n\n")
+		e.italic(n.note)
+	}
+	e.plain(r.banFailureNote(n.banErr))
+	if attention := r.superUserAttention(); attention != "" {
+		e.plain("\n\n" + attention)
+	}
+	if n.padded {
+		// telegram sizes buttons by the text width; braille blank (U+2800) is invisible but takes width
+		e.plain("\n\n" + strings.Repeat("\u2800", 30))
+	}
+	return e
 }
 
 func (r *userReports) superUserAttention() string {
@@ -421,7 +462,7 @@ func (r *userReports) superUserAttention() string {
 			continue
 		}
 		seen[key] = struct{}{}
-		mentions = append(mentions, "@"+escapeMarkDownV1Text(username))
+		mentions = append(mentions, "@"+username)
 	}
 	if len(mentions) == 0 {
 		return ""
@@ -435,45 +476,19 @@ func (r *userReports) sendAutoBanNotification(reports []storage.Report, banErr e
 		return fmt.Errorf("no reports provided")
 	}
 
-	firstReport := reports[0]
-	reportedUserID := firstReport.ReportedUserID
-	reportedUserName := firstReport.ReportedUserName
-
-	// escape message text for markdown
-	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
-	msgText = truncateString(msgText, 200, "...")
-
-	// format reporter list
-	reporterList := make([]string, 0, len(reports))
-	for _, report := range reports {
-		reporterName := report.ReporterUserName
-		if reporterName == "" {
-			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
-		}
-		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
-			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
-	}
-
+	reportedUserID := reports[0].ReportedUserID
 	actionType := r.banOutcome(banErr, r.softBanMode && reportedUserID > 0)
-
-	notificationText := fmt.Sprintf("**Auto-moderation: user %s after %d reports**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
-		actionType,
-		len(reports),
-		r.reportedUserMD(reportedUserName, reportedUserID),
-		msgText,
-		strings.Join(reporterList, "\n"))
-	notificationText += r.banFailureNote(banErr)
-	if attention := r.superUserAttention(); attention != "" {
-		notificationText += "\n\n" + attention
-	}
+	e := r.reportNotification(reportNotice{
+		title:   fmt.Sprintf("Auto-moderation: user %s after %d reports", actionType, len(reports)),
+		reports: reports,
+		banErr:  banErr,
+	})
 
 	// send to admin chat (no buttons - action already taken)
-	tbMsg := tbapi.NewMessage(r.adminChatID, notificationText)
-	tbMsg.ParseMode = tbapi.ModeMarkdown
-	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
-
-	if _, err := r.tbAPI.Send(tbMsg); err != nil {
-		return fmt.Errorf("failed to send auto-ban notification: %w", withMigrationHint(err))
+	tbMsg := tbapi.NewMessage(r.adminChatID, e.text())
+	tbMsg.Entities = e.entities()
+	if _, err := sendEntities(tbMsg, r.tbAPI); err != nil {
+		return fmt.Errorf("failed to send auto-ban notification: %w", err)
 	}
 
 	log.Printf("[INFO] auto-ban notification sent to admin chat for user %d", reportedUserID)
@@ -494,48 +509,21 @@ func (r *userReports) updateNotificationForAutoBan(reports []storage.Report, ban
 	}
 
 	reportedUserID := firstReport.ReportedUserID
-	reportedUserName := firstReport.ReportedUserName
-
-	// escape message text for markdown
-	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
-	msgText = truncateString(msgText, 200, "...")
-
-	// format reporter list
-	reporterList := make([]string, 0, len(reports))
-	for _, report := range reports {
-		reporterName := report.ReporterUserName
-		if reporterName == "" {
-			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
-		}
-		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
-			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
-	}
-
 	actionType := r.banOutcome(banErr, r.softBanMode && reportedUserID > 0)
-
-	// create updated notification text with auto-ban confirmation
-	updatedText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n"+
-		"**Reporters:**\n%s\n\n_auto-moderation: user %s after reaching %d reports_",
-		len(reports),
-		r.reportedUserMD(reportedUserName, reportedUserID),
-		msgText,
-		strings.Join(reporterList, "\n"),
-		actionType,
-		len(reports))
-	updatedText += r.banFailureNote(banErr)
-	if attention := r.superUserAttention(); attention != "" {
-		updatedText += "\n\n" + attention
-	}
+	e := r.reportNotification(reportNotice{
+		title:   fmt.Sprintf("User spam reported (%d reports)", len(reports)),
+		reports: reports,
+		note:    fmt.Sprintf("auto-moderation: user %s after reaching %d reports", actionType, len(reports)),
+		banErr:  banErr,
+	})
 
 	// edit existing admin message, remove buttons
-	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, updatedText)
-	editMsg.ParseMode = "Markdown"
-	editMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}} // remove buttons
-
-	if _, err := r.tbAPI.Send(editMsg); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification for auto-ban (msgID:%d, adminMsgID:%d): %w",
-			firstReport.MsgID, adminMsgID, withMigrationHint(err))
+			firstReport.MsgID, adminMsgID, err)
 	}
 
 	log.Printf("[INFO] updated admin notification %d for auto-ban of user %d", adminMsgID, reportedUserID)
@@ -558,35 +546,8 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 	chatID := firstReport.ChatID
 	reportedUserID := firstReport.ReportedUserID
 	reportedUserName := firstReport.ReportedUserName
-
-	// escape message text for markdown
-	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
-	msgText = truncateString(msgText, 200, "...")
-
-	// format reporter list
-	reporterList := make([]string, 0, len(reports))
-	for _, report := range reports {
-		reporterName := report.ReporterUserName
-		if reporterName == "" {
-			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
-		}
-		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
-			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
-	}
-
-	// format notification message
-	notificationText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
-		len(reports),
-		r.reportedUserMD(reportedUserName, reportedUserID),
-		msgText,
-		strings.Join(reporterList, "\n"))
-	if attention := r.superUserAttention(); attention != "" {
-		notificationText += "\n\n" + attention
-	}
-
-	// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
-	padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
-	notificationText += "\n\n" + padding
+	e := r.reportNotification(reportNotice{title: fmt.Sprintf("User spam reported (%d reports)", len(reports)),
+		reports: reports, padded: true})
 
 	// create inline keyboard with action buttons
 	// callback format: R+reportedUserID:msgID, R-reportedUserID:msgID, R?reportedUserID:msgID
@@ -599,14 +560,13 @@ func (r *userReports) sendReportNotification(ctx context.Context, reports []stor
 	)
 
 	// send to admin chat
-	tbMsg := tbapi.NewMessage(r.adminChatID, notificationText)
-	tbMsg.ParseMode = tbapi.ModeMarkdown
-	tbMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	tbMsg := tbapi.NewMessage(r.adminChatID, e.text())
+	tbMsg.Entities = e.entities()
 	tbMsg.ReplyMarkup = keyboard
 
-	resp, err := r.tbAPI.Send(tbMsg)
+	resp, err := sendEntities(tbMsg, r.tbAPI)
 	if err != nil {
-		return fmt.Errorf("failed to send notification to admin chat: %w", withMigrationHint(err))
+		return fmt.Errorf("failed to send notification to admin chat: %w", err)
 	}
 
 	// update all reports with admin message ID
@@ -639,35 +599,8 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 	msgID := firstReport.MsgID
 	chatID := firstReport.ChatID
 	reportedUserID := firstReport.ReportedUserID
-	reportedUserName := firstReport.ReportedUserName
-
-	// escape message text for markdown
-	msgText := strings.ReplaceAll(escapeMarkDownV1Text(firstReport.MsgText), "\n", " ")
-	msgText = truncateString(msgText, 200, "...")
-
-	// format reporter list
-	reporterList := make([]string, 0, len(reports))
-	for _, report := range reports {
-		reporterName := report.ReporterUserName
-		if reporterName == "" {
-			reporterName = fmt.Sprintf("user%d", report.ReporterUserID)
-		}
-		reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
-			escapeMarkDownV1Text(reporterName), report.ReporterUserID))
-	}
-
-	// create notification message
-	notification := fmt.Sprintf("**User spam reported (%d reports)**\n\n", len(reports)) +
-		fmt.Sprintf("%s\n\n", r.reportedUserMD(reportedUserName, reportedUserID)) +
-		fmt.Sprintf("%s\n\n", msgText) +
-		fmt.Sprintf("**Reporters:**\n%s", strings.Join(reporterList, "\n"))
-	if attention := r.superUserAttention(); attention != "" {
-		notification += "\n\n" + attention
-	}
-
-	// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
-	padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
-	notification += "\n\n" + padding
+	e := r.reportNotification(reportNotice{title: fmt.Sprintf("User spam reported (%d reports)", len(reports)),
+		reports: reports, padded: true})
 
 	// create inline keyboard with 3 buttons (same as sendReportNotification)
 	keyboard := tbapi.NewInlineKeyboardMarkup(
@@ -679,13 +612,11 @@ func (r *userReports) updateReportNotification(_ context.Context, reports []stor
 	)
 
 	// edit existing admin message
-	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, notification)
-	editMsg.ParseMode = "Markdown"
-	editMsg.LinkPreviewOptions = tbapi.LinkPreviewOptions{IsDisabled: true}
+	editMsg := tbapi.NewEditMessageText(r.adminChatID, adminMsgID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &keyboard
-
-	if _, err := r.tbAPI.Send(editMsg); err != nil {
-		return fmt.Errorf("failed to edit admin notification for msgID:%d, chatID:%d: %w", msgID, chatID, withMigrationHint(err))
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
+		return fmt.Errorf("failed to edit admin notification for msgID:%d, chatID:%d: %w", msgID, chatID, err)
 	}
 
 	log.Printf("[INFO] updated report notification for msgID:%d (reported user:%d, %d reports total, admin_msg_id:%d)",
@@ -769,11 +700,14 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 	}
 
 	// update admin notification text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_%s by %s in %v_",
-		r.banOutcome(nil, r.softBanMode && reportedUserID > 0), query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("%s by %s in %v",
+		r.banOutcome(nil, r.softBanMode && reportedUserID > 0), query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -789,11 +723,13 @@ func (r *userReports) reportBanFailure(query *tbapi.CallbackQuery, banErr error)
 	if r.hasBanFailureNote(query.Message.Text) {
 		return nil
 	}
-	updText := query.Message.Text + r.banFailureNote(banErr)
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain(r.banFailureNote(banErr))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	// an edit without reply_markup removes the keyboard, so the current one is sent back
 	editMsg.ReplyMarkup = query.Message.ReplyMarkup
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -826,10 +762,13 @@ func (r *userReports) callbackReportReject(ctx context.Context, query *tbapi.Cal
 	}
 
 	// update admin notification text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_rejected by %s in %v_", query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("rejected by %s in %v", query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -961,11 +900,13 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, delErr)
 		}
 
-		updText := query.Message.Text + fmt.Sprintf("\n\n_all reporters %s by %s in %v_",
-			r.banOutcome(nil, false), query.From.UserName, sinceQuery(query))
-		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+		e := entityTextFrom(query.Message.Text, query.Message.Entities)
+		e.plain("\n\n")
+		e.italic(fmt.Sprintf("all reporters %s by %s in %v", r.banOutcome(nil, false), query.From.UserName, sinceQuery(query)))
+		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+		editMsg.Entities = e.entities()
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-		if err := send(editMsg, r.tbAPI); err != nil {
+		if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 			return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 				query.Message.Chat.ID, query.Message.MessageID, err)
 		}
@@ -973,37 +914,12 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 		// reporters remain - update text to remove banned reporter and restore original buttons
 		// reconstruct notification text without the banned reporter
 		reportedUserID := reports[0].ReportedUserID
-		reportedUserName := reports[0].ReportedUserName
-
-		// escape message text for markdown and flatten newlines
-		msgText := strings.ReplaceAll(escapeMarkDownV1Text(remainingReports[0].MsgText), "\n", " ")
-		msgText = truncateString(msgText, 200, "...")
-
-		// build reporter list from remaining reports
-		var reporterList []string
-		for _, report := range remainingReports {
-			rName := report.ReporterUserName
-			if rName == "" {
-				rName = fmt.Sprintf("user%d", report.ReporterUserID)
-			}
-			reporterList = append(reporterList, fmt.Sprintf("- [%s](tg://user?id=%d)",
-				escapeMarkDownV1Text(rName), report.ReporterUserID))
-		}
-
-		updText := fmt.Sprintf("**User spam reported (%d reports)**\n\n%s\n\n%s\n\n**Reporters:**\n%s",
-			len(remainingReports),
-			r.reportedUserMD(reportedUserName, reportedUserID),
-			msgText,
-			strings.Join(reporterList, "\n"))
-		updText += fmt.Sprintf("\n\n_reporter %s %s by %s_",
-			escapeMarkDownV1Text(reporterName), r.banOutcome(nil, false), query.From.UserName)
-		if attention := r.superUserAttention(); attention != "" {
-			updText += "\n\n" + attention
-		}
-
-		// add padding to ensure full-width buttons - telegram sizes buttons based on message text width
-		padding := strings.Repeat("\u2800", 30) // braille pattern blank (U+2800) - invisible but takes width
-		updText += "\n\n" + padding
+		e := r.reportNotification(reportNotice{
+			title:   fmt.Sprintf("User spam reported (%d reports)", len(remainingReports)),
+			reports: remainingReports,
+			note:    fmt.Sprintf("reporter %s %s by %s", reporterName, r.banOutcome(nil, false), query.From.UserName),
+			padded:  true,
+		})
 
 		// restore original buttons
 		keyboard := tbapi.NewInlineKeyboardMarkup(
@@ -1014,9 +930,10 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			),
 		)
 
-		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+		editMsg.Entities = e.entities()
 		editMsg.ReplyMarkup = &keyboard
-		if err := send(editMsg, r.tbAPI); err != nil {
+		if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 			return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 				query.Message.Chat.ID, query.Message.MessageID, err)
 		}

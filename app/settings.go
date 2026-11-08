@@ -28,6 +28,7 @@ func optToSettings(opts options) *config.Settings {
 		Admin: config.AdminSettings{
 			AdminGroup:              opts.AdminGroup,
 			DisableAdminSpamForward: opts.DisableAdminSpamForward,
+			NoLinks:                 opts.AdminNoLinks,
 			TestingIDs:              opts.TestingIDs,
 			SuperUsers:              opts.SuperUsers,
 		},

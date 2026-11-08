@@ -54,6 +54,7 @@ type options struct {
 
 	AdminGroup              string `long:"admin.group" env:"ADMIN_GROUP" description:"admin group name, or channel id"`
 	DisableAdminSpamForward bool   `long:"disable-admin-spam-forward" env:"DISABLE_ADMIN_SPAM_FORWARD" description:"disable handling messages forwarded to admin group as spam"`
+	AdminNoLinks            bool   `long:"admin.no-links" env:"ADMIN_NO_LINKS" description:"show spam text in admin chat reports without clickable links"`
 
 	TestingIDs []int64 `long:"testing-id" env:"TESTING_ID" env-delim:"," description:"testing ids, allow bot to reply to them"`
 
@@ -537,6 +538,7 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		TrainingMode:            settings.Training,
 		SoftBanMode:             settings.SoftBan,
 		DisableAdminSpamForward: settings.Admin.DisableAdminSpamForward,
+		NoLinks:                 settings.Admin.NoLinks,
 		Dry:                     settings.Dry,
 		AggressiveCleanup:       settings.AggressiveCleanup,
 		AggressiveCleanupLimit:  settings.AggressiveCleanupLimit,

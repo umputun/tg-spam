@@ -339,6 +339,7 @@ func TestOptToSettings(t *testing.T) {
 		o.TGDbg = true
 		o.AdminGroup = "123456"
 		o.DisableAdminSpamForward = true
+		o.AdminNoLinks = true
 		o.TestingIDs = []int64{1, 2, 3}
 		o.SuperUsers = []string{"user1", "user2"}
 		o.HistoryDuration = 24 * time.Hour
@@ -490,6 +491,7 @@ func TestOptToSettings(t *testing.T) {
 				// admin settings
 				assert.Equal(t, "123456", settings.Admin.AdminGroup)
 				assert.True(t, settings.Admin.DisableAdminSpamForward)
+				assert.True(t, settings.Admin.NoLinks)
 				assert.Equal(t, []int64{1, 2, 3}, settings.Admin.TestingIDs)
 				assert.Equal(t, []string{"user1", "user2"}, settings.Admin.SuperUsers)
 

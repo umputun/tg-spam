@@ -539,6 +539,27 @@ func TestSettings_MaxShortMsgCount_RoundTrip(t *testing.T) {
 	assert.Equal(t, 5, fromYAML.MaxShortMsgCount)
 }
 
+func TestSettings_AdminNoLinks_RoundTrip(t *testing.T) {
+	original := New()
+	original.Admin.NoLinks = true
+
+	jsonData, err := json.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"no_links":true`)
+
+	var fromJSON Settings
+	require.NoError(t, json.Unmarshal(jsonData, &fromJSON))
+	assert.True(t, fromJSON.Admin.NoLinks)
+
+	yamlData, err := yaml.Marshal(original)
+	require.NoError(t, err)
+	assert.Contains(t, string(yamlData), "no_links: true")
+
+	var fromYAML Settings
+	require.NoError(t, yaml.Unmarshal(yamlData, &fromYAML))
+	assert.True(t, fromYAML.Admin.NoLinks)
+}
+
 func TestSettings_ProhibitedLangs_RoundTrip(t *testing.T) {
 	original := New()
 	original.ProhibitedLangs = "chinese,russian"
