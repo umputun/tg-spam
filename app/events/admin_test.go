@@ -422,6 +422,24 @@ func TestAdmin_DirectCommands(t *testing.T) {
 		assert.Equal(t, "spam message text", botMock.UpdateSpamCalls()[0].Msg)
 	})
 
+	t.Run("DirectSpamReport_EscapesMarkdownInText", func(t *testing.T) {
+		// regression: the reported text went into the markdown notification unescaped, so a literal link hid its url
+		mockAPI, botMock, adm, teardown := setupTest()
+		defer teardown()
+
+		spamText := "get [Support](https://phish.example) now_fast"
+		update := createReplyUpdate("admin", 111, "spammer", 222, spamText)
+		require.NoError(t, adm.DirectSpamReport(update))
+
+		require.Len(t, mockAPI.SendCalls(), 1)
+		adminMsg := mockAPI.SendCalls()[0].C.(tbapi.MessageConfig)
+		assert.Equal(t, tbapi.ModeMarkdown, adminMsg.ParseMode)
+		assert.Contains(t, adminMsg.Text, `get \[Support](https://phish.example) now\_fast`)
+
+		require.Len(t, botMock.UpdateSpamCalls(), 1)
+		assert.Equal(t, spamText, botMock.UpdateSpamCalls()[0].Msg)
+	})
+
 	t.Run("DirectReport_DryMode", func(t *testing.T) {
 		mockAPI, botMock, adm, teardown := setupTest()
 		defer teardown()

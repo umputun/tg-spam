@@ -699,7 +699,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 			escapeMarkDownV1Text(update.Message.From.UserName))
 	}
 	newMsgText := fmt.Sprintf("**original detection results for %s (%d)**\n\n%s\n\n%s\n\n\n*%s*",
-		escapeMarkDownV1Text(displayName), displayID, msgTxt, escapeMarkDownV1Text(spamInfoText), outcome)
+		escapeMarkDownV1Text(displayName), displayID, escapeMarkDownV1Text(msgTxt), escapeMarkDownV1Text(spamInfoText), outcome)
 	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
 	}
