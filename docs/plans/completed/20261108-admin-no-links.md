@@ -243,20 +243,20 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - [x] run tests - must pass before task 6
 
 ### Task 6: Verify acceptance criteria
-- [ ] with the flag on, every notification listed in Context that carries spam text or check lines sends them in `pre` entities, and every button edit keeps those entities
-- [ ] with the flag off, rendered text and visible formatting match today's, with links and bold intact, except that names no longer show escape backslashes
-- [ ] training input from `getCleanMessage` is unchanged for both flag values
-- [ ] run full test suite: `go test -race ./...`
-- [ ] run e2e tests with the command the repo documents for `e2e-ui`
-- [ ] run linter: `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
-- [ ] verify test coverage for app/events does not drop
+- [x] with the flag on, every notification listed in Context that carries spam text or check lines sends them in `pre` entities, and every button edit keeps those entities
+- [x] with the flag off, rendered text and visible formatting match today's, with links and bold intact, except that names no longer show escape backslashes
+- [x] training input from `getCleanMessage` is unchanged for both flag values
+- [x] run full test suite: `go test -race ./...`
+- [x] run e2e tests with the command the repo documents for `e2e-ui`
+- [x] run linter: `golangci-lint run --max-issues-per-linter=0 --max-same-issues=0`
+- [x] verify test coverage for app/events does not drop
 
 ### Task 7: [Final] Update documentation
-- [ ] README.md "All Application Options": add `--admin.no-links` exactly as `--help` prints it
-- [ ] README.md admin chat section: what the flag does (spam text and check lines), that button edits keep it, and that the header link and buttons are unchanged
-- [ ] CLAUDE.md: section on admin-chat notifications built with entities (no parse mode, edits keep entities, no plain-text fallback, `getCleanMessage` layout contract)
-- [ ] CLAUDE.md: revise the "No-Message Ban Notifications" bullets, which describe `markdownV1LinkLabel`, `ModeMarkdown` label rules and the `[user](tg://user?id=N)` form, to the entity form
-- [ ] move this plan to `docs/plans/completed/`
+- [x] README.md "All Application Options": add `--admin.no-links` exactly as `--help` prints it (done in Task 5)
+- [x] README.md admin chat section: what the flag does (spam text and check lines), that button edits keep it, and that the header link and buttons are unchanged
+- [x] CLAUDE.md: section on admin-chat notifications built with entities (no parse mode, edits keep entities, no plain-text fallback, `getCleanMessage` layout contract)
+- [x] CLAUDE.md: revise the "No-Message Ban Notifications" bullets, which describe `markdownV1LinkLabel`, `ModeMarkdown` label rules and the `[user](tg://user?id=N)` form, to the entity form
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 *Items requiring manual intervention or external systems - no checkboxes, informational only*
