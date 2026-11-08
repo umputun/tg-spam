@@ -2091,6 +2091,24 @@ func TestUpdateSettingsFromForm_MetaDocumentsOnly_RoundTrip(t *testing.T) {
 	assert.False(t, settings.Meta.DocumentsOnly, "checkbox unchecked must clear DocumentsOnly")
 }
 
+func TestUpdateSettingsFromForm_AdminNoLinks(t *testing.T) {
+	settings := &config.Settings{}
+
+	setForm := url.Values{}
+	setForm.Add("adminNoLinks", "on")
+	req := httptest.NewRequest("PUT", "/config", strings.NewReader(setForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+	updateSettingsFromForm(settings, req)
+	assert.True(t, settings.Admin.NoLinks, "checked box must set NoLinks")
+
+	req = httptest.NewRequest("PUT", "/config", strings.NewReader(url.Values{}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	require.NoError(t, req.ParseForm())
+	updateSettingsFromForm(settings, req)
+	assert.False(t, settings.Admin.NoLinks, "unchecked box must clear NoLinks")
+}
+
 func TestUpdateConfigHandler_SaveFailure_RollsBackInMemory(t *testing.T) {
 	// when SettingsStore.Save returns an error, in-memory AppSettings must be
 	// restored to the pre-call state so the UI never observes a state that

@@ -158,6 +158,35 @@ func TestTelegramListener_DoNilFrom(t *testing.T) {
 	assert.Equal(t, "text 123", botMock.OnMessageCalls()[0].Msg.Text)
 }
 
+func TestTelegramListener_DoPassesNoLinks(t *testing.T) {
+	for _, noLinks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no links %v", noLinks), func(t *testing.T) {
+			updChan := make(chan tbapi.Update)
+			close(updChan)
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{Chat: tbapi.Chat{ID: 123}}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return []tbapi.ChatMember{}, nil
+				},
+				GetUpdatesChanFunc: func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan },
+			}
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+			l := TelegramListener{TbAPI: mockAPI, Bot: &mocks.BotMock{}, Group: "gr", AdminGroup: "987654321",
+				Locator: locator, SpamLogger: &mocks.SpamLoggerMock{}, NoLinks: noLinks}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+			assert.Equal(t, noLinks, l.adminHandler.noLinks)
+			assert.Equal(t, noLinks, l.reportsHandler.noLinks)
+		})
+	}
+}
+
 func TestTelegramListener_DoUserReportCommand(t *testing.T) {
 	// covers the procUserReply dispatch from the Do loop: report commands suppressed when the feature
 	// is disabled, delegated to the reports handler when enabled, with the spam aliases behaving

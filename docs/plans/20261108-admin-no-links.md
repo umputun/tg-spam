@@ -234,12 +234,13 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - Modify: `app/webapi/config_test.go`
 - Modify: `e2e-ui/e2e_test.go`
 
-- [ ] add `AdminNoLinks bool \`long:"admin.no-links" env:"ADMIN_NO_LINKS" description:"show spam text in admin chat reports without clickable links"\`` to `options`, mapped in `optToSettings` to `Settings.Admin.NoLinks` (`json:"no_links" yaml:"no_links" db:"no_links"`); not in `zeroAwarePaths`
-- [ ] add `NoLinks bool` to `TelegramListener` with a trailing field comment like its siblings, copy it into the `admin{}` and `userReports{}` literals, and set it from `settings.Admin.NoLinks` in `app/main.go`
-- [ ] add the `adminNoLinks` checkbox to the Behavior tab edit panel and its read-only row in `settings.html`, parsed in `config.go` like `disableAdminSpamForward`
-- [ ] write tests: `optToSettings` mapping, settings round trip, web form on/off parsing, and a listener test that `NoLinks` reaches both the `admin` and `userReports` handlers
-- [ ] add `TestSettings_AdminNoLinksPersists` to `e2e-ui/e2e_test.go`, modeled on `TestSettings_MentionOnlyPersists` with its own port and paths
-- [ ] run tests - must pass before task 6
+- [x] add `AdminNoLinks bool \`long:"admin.no-links" env:"ADMIN_NO_LINKS" description:"show spam text in admin chat reports without clickable links"\`` to `options`, mapped in `optToSettings` to `Settings.Admin.NoLinks` (`json:"no_links" yaml:"no_links" db:"no_links"`); not in `zeroAwarePaths`
+- [x] add `NoLinks bool` to `TelegramListener` with a trailing field comment like its siblings, copy it into the `admin{}` and `userReports{}` literals, and set it from `settings.Admin.NoLinks` in `app/main.go`
+- [x] add the `adminNoLinks` checkbox to the Behavior tab edit panel and its read-only row in `settings.html`, parsed in `config.go` like `disableAdminSpamForward`
+- [x] write tests: `optToSettings` mapping, settings round trip, web form on/off parsing, and a listener test that `NoLinks` reaches both the `admin` and `userReports` handlers
+- [x] add `TestSettings_AdminNoLinksPersists` to `e2e-ui/e2e_test.go`, modeled on `TestSettings_MentionOnlyPersists` with its own port and paths
+- [x] ➕ add the `--admin.no-links` line to the README "All Application Options" block here, not in Task 7: `TestREADMEAllOptionsMatchesHelp` fails without it
+- [x] run tests - must pass before task 6
 
 ### Task 6: Verify acceptance criteria
 - [ ] with the flag on, every notification listed in Context that carries spam text or check lines sends them in `pre` entities, and every button edit keeps those entities

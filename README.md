@@ -666,6 +666,7 @@ Success! The new status is: DISABLED. /help
       --confdb-encrypt-key=             encryption key for sensitive config values in database [$CONFDB_ENCRYPT_KEY]
       --admin.group=                    admin group name, or channel id [$ADMIN_GROUP]
       --disable-admin-spam-forward      disable handling messages forwarded to admin group as spam [$DISABLE_ADMIN_SPAM_FORWARD]
+      --admin.no-links                  show spam text in admin chat reports without clickable links [$ADMIN_NO_LINKS]
       --testing-id=                     testing ids, allow bot to reply to them [$TESTING_ID]
       --history-duration=               history duration (default: 24h) [$HISTORY_DURATION]
       --history-min-size=               history minimal size to keep (default: 1000) [$HISTORY_MIN_SIZE]

@@ -653,6 +653,100 @@ func TestSettings_MentionOnlyPersists(t *testing.T) {
 	assert.Equal(t, "0", gotHistory)
 }
 
+func TestSettings_AdminNoLinksPersists(t *testing.T) {
+	const (
+		port     = 18095
+		dbPath   = "/tmp/tg-spam-e2e-adminnolinks.db"
+		dataPath = "/tmp/tg-spam-e2e-adminnolinks-data"
+		password = "e2e-adminnolinks-password"
+		user     = "tg-spam"
+	)
+	settingsURL := fmt.Sprintf("http://localhost:%d", port)
+
+	_ = os.Remove(dbPath)
+	_ = os.RemoveAll(dataPath)
+	require.NoError(t, os.MkdirAll(dataPath, 0o755))
+	require.NoError(t, os.WriteFile(dataPath+"/spam-samples.txt", []byte("buy crypto now\n"), 0o644))
+	require.NoError(t, os.WriteFile(dataPath+"/ham-samples.txt", []byte("hello world\n"), 0o644))
+
+	saveCmd := exec.Command("/tmp/tg-spam-e2e",
+		"save-config",
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+	)
+	saveCmd.Stdout = os.Stdout
+	saveCmd.Stderr = os.Stderr
+	require.NoError(t, saveCmd.Run(), "failed to bootstrap settings via save-config")
+
+	cmd := exec.Command("/tmp/tg-spam-e2e",
+		"--server.enabled",
+		fmt.Sprintf("--server.listen=:%d", port),
+		"--server.auth="+password,
+		"--db="+dbPath,
+		"--files.samples="+dataPath,
+		"--files.dynamic="+dataPath,
+		"--confdb",
+		"--dbg",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.Remove(dbPath)
+		_ = os.RemoveAll(dataPath)
+	})
+
+	require.NoError(t, waitForServer(settingsURL+"/ping", 30*time.Second))
+
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		HttpCredentials: &playwright.HttpCredentials{Username: user, Password: password},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	require.NoError(t, err)
+
+	openBehavior := func() {
+		_, err := page.Goto(settingsURL + "/list_settings")
+		require.NoError(t, err)
+		require.NoError(t, page.Locator("#behavior-tab").Click())
+		waitVisible(t, page.Locator("#adminNoLinks"))
+	}
+	save := func() {
+		require.NoError(t, page.Locator("button[type='submit']:has-text('Save Changes')").Click())
+		assert.Eventually(t, func() bool {
+			text, e := page.Locator("#update-result").TextContent()
+			return e == nil && contains(text, "Configuration updated successfully")
+		}, 5*time.Second, 100*time.Millisecond)
+	}
+
+	openBehavior()
+	checked, err := page.Locator("#adminNoLinks").IsChecked()
+	require.NoError(t, err)
+	assert.False(t, checked, "no-links must be unchecked by default")
+
+	require.NoError(t, page.Locator("#adminNoLinks").Check())
+	save()
+	openBehavior()
+	checked, err = page.Locator("#adminNoLinks").IsChecked()
+	require.NoError(t, err)
+	assert.True(t, checked, "no-links must stay checked after reload")
+
+	require.NoError(t, page.Locator("#adminNoLinks").Uncheck())
+	save()
+	openBehavior()
+	checked, err = page.Locator("#adminNoLinks").IsChecked()
+	require.NoError(t, err)
+	assert.False(t, checked, "no-links must stay unchecked after reload")
+}
+
 func TestSettings_ProhibitedLangsPersists(t *testing.T) {
 	const (
 		port               = 18094
