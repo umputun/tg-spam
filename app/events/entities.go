@@ -52,6 +52,16 @@ func (e *entityText) link(label, url string) {
 	e.add(label, tbapi.MessageEntity{Type: "text_link", URL: url})
 }
 
+// untrusted adds text taken from a spam message or its check details; with noLinks it goes in pre,
+// which telegram clients do not linkify
+func (e *entityText) untrusted(s string, noLinks bool) {
+	if noLinks {
+		e.pre(s)
+		return
+	}
+	e.plain(s)
+}
+
 func (e *entityText) mark() int { return e.size }
 
 func (e *entityText) span(from int, ent tbapi.MessageEntity) {

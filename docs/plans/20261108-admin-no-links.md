@@ -106,6 +106,7 @@ Methods (full signatures):
 - `(e *entityText) plain(s string)`
 - `(e *entityText) add(s string, ent tbapi.MessageEntity)` - writes `s` and adds `ent` over it with `Offset`/`Length` filled in; skips the entity when `s` is empty
 - `(e *entityText) bold(s string)`, `(e *entityText) italic(s string)`, `(e *entityText) pre(s string)`, `(e *entityText) link(label, url string)` - one-line wrappers over `add` with `{Type: "bold"}`, `{Type: "italic"}`, `{Type: "pre"}`, `{Type: "text_link", URL: url}`
+- ➕ `(e *entityText) untrusted(s string, noLinks bool)` - spam text or check details: `pre` when `noLinks`, plain otherwise; added in Task 2, since `admin` and `userReports` both need it
 - `(e *entityText) mark() int` - current position in UTF-16 units, the start of a span
 - `(e *entityText) span(from int, ent tbapi.MessageEntity)` - adds `ent` over everything written since `from`; skips an empty span. Needed for a bold header that contains a link
 - `(e *entityText) units(s string) int` - UTF-16 length of `s`; called only from `plain` and `add`
@@ -178,12 +179,12 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - Modify: `app/events/admin.go`
 - Modify: `app/events/admin_test.go`
 
-- [ ] write tests for `ReportBan` with `noLinks` off and on: same `Text` as today's rendered message, bold header, `text_link` profile link (or `t.me` link / plain name for channels), spam text plain or `pre`, empty parse mode; dry-run header variant
-- [ ] write tests for `ReportUserBan` (all four header variants)
-- [ ] write tests for `directReport` with `noLinks` off and on: spam text with its newlines kept, a check whose `Details` is `https://phish.example` inside `pre` with the flag on, the "can't get spam info" fallback as bold text with no asterisks
-- [ ] add `noLinks bool` to `admin`; build `ReportBan`, `ReportUserBan` and the `directReport` notification with `entityText`; change `sendWithUnbanMarkup` per the Task 2 contract and send through `sendEntities`
-- [ ] update existing assertions in `admin_test.go` that check Markdown strings or `ParseMode` on these paths, including the `directReport` test from commit 6f8c083b
-- [ ] run tests - must pass before task 3
+- [x] write tests for `ReportBan` with `noLinks` off and on: same `Text` as today's rendered message, bold header, `text_link` profile link (or `t.me` link / plain name for channels), spam text plain or `pre`, empty parse mode; dry-run header variant
+- [x] write tests for `ReportUserBan` (all four header variants)
+- [x] write tests for `directReport` with `noLinks` off and on: spam text with its newlines kept, a check whose `Details` is `https://phish.example` inside `pre` with the flag on, the "can't get spam info" fallback as bold text with no asterisks
+- [x] add `noLinks bool` to `admin`; build `ReportBan`, `ReportUserBan` and the `directReport` notification with `entityText`; change `sendWithUnbanMarkup` per the Task 2 contract and send through `sendEntities`
+- [x] update existing assertions in `admin_test.go` that check Markdown strings or `ParseMode` on these paths, including the `directReport` test from commit 6f8c083b
+- [x] run tests - must pass before task 3
 
 ### Task 3: Report notifications built with entities
 

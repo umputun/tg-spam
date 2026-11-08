@@ -5570,7 +5570,8 @@ func TestProcReaction(t *testing.T) {
 		assert.Contains(t, sentMsg.Text, "permanently banned")
 		assert.Contains(t, sentMsg.Text, "reaction spammer")
 		// user link sits immediately after "permanently banned" so extractUsername parses it cleanly on unban
-		assert.Contains(t, sentMsg.Text, "permanently banned [@spammer (42)](tg://user?id=42)")
+		assert.Equal(t, "permanently banned @spammer (42) reaction spammer", sentMsg.Text)
+		assert.Contains(t, sentMsg.Entities, tbapi.MessageEntity{Type: "text_link", Offset: 19, Length: 13, URL: "tg://user?id=42"})
 
 		markup, ok := sentMsg.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.True(t, ok, "notification should carry inline keyboard")
@@ -6044,7 +6045,8 @@ func TestProcJoin(t *testing.T) {
 		require.Len(t, e.api.SendCalls(), 1)
 		sent := e.api.SendCalls()[0].C.(tbapi.MessageConfig)
 		assert.Equal(t, int64(999), sent.ChatID)
-		assert.Equal(t, "**permanently banned [@spammer (42)](tg://user?id=42) on join by lua-names, lua-premium**\n\n", sent.Text)
+		assert.Equal(t, "permanently banned @spammer (42) on join by lua-names, lua-premium", sent.Text)
+		assert.Contains(t, sent.Entities, tbapi.MessageEntity{Type: "text_link", Offset: 19, Length: 13, URL: "tg://user?id=42"})
 		markup, ok := sent.ReplyMarkup.(tbapi.InlineKeyboardMarkup)
 		require.True(t, ok)
 		assert.Equal(t, "?42:0", *markup.InlineKeyboard[0][0].CallbackData)
@@ -6060,7 +6062,7 @@ func TestProcJoin(t *testing.T) {
 		assert.Equal(t, int64(42), restrict.UserID)
 		texts := sentTexts(e.api)
 		require.Len(t, texts, 1)
-		assert.True(t, strings.HasPrefix(texts[0], "**restricted [@spammer (42)]"), texts[0])
+		assert.True(t, strings.HasPrefix(texts[0], "restricted @spammer (42) "), texts[0])
 	})
 
 	t.Run("dry and training do not ban", func(t *testing.T) {
@@ -6069,9 +6071,9 @@ func TestProcJoin(t *testing.T) {
 			mutate func(l *TelegramListener)
 			prefix string
 		}{
-			{name: "dry", mutate: func(l *TelegramListener) { l.Dry = true }, prefix: "**[dry run] would have permanently banned"},
+			{name: "dry", mutate: func(l *TelegramListener) { l.Dry = true }, prefix: "[dry run] would have permanently banned"},
 			{name: "training", mutate: func(l *TelegramListener) { l.TrainingMode = true },
-				prefix: "**[training] would have permanently banned"},
+				prefix: "[training] would have permanently banned"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				e := setup(t, spamFor(42), tc.mutate)
