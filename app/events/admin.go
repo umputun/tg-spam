@@ -885,16 +885,19 @@ func (a *admin) callbackAskBanConfirmation(query *tbapi.CallbackQuery) error {
 // callback data: +userID:msgID
 func (a *admin) callbackBanConfirmed(query *tbapi.CallbackQuery) error {
 	// clear keyboard and update message text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_ban confirmed by %s in %v_", query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("ban confirmed by %s in %v", query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to clear confirmation, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 
 	if cleanMsg, err := a.getCleanMessage(query.Message.Text); err == nil && cleanMsg != "" {
 		if err = a.bot.UpdateSpam(cleanMsg); err != nil { // update spam samples
-			return fmt.Errorf("failed to update spam for %q: %w", cleanMsg, err)
+			return fmt.Errorf("failed to update spam: %w", err)
 		}
 	} else {
 		// we don't want to fail on this error, as lack of a clean message should not prevent deleteAndBan
@@ -954,7 +957,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	if cleanMsg, cleanErr := a.getCleanMessage(query.Message.Text); cleanErr == nil && cleanMsg != "" {
 		// update ham samples if we have a clean message
 		if upErr := a.bot.UpdateHam(cleanMsg); upErr != nil {
-			return fmt.Errorf("failed to update ham for %q: %w", cleanMsg, upErr)
+			return fmt.Errorf("failed to update ham: %w", upErr)
 		}
 	} else {
 		// we don't want to fail on this error, as lack of a clean message should not prevent unban action
@@ -986,27 +989,30 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 	}
 
 	// create the original forwarded message with new indication of "unbanned" and an empty keyboard
-	updText := query.Message.Text + fmt.Sprintf("\n\n_unbanned by %s in %v_", query.From.UserName, sinceQuery(query))
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("unbanned by %s in %v", query.From.UserName, sinceQuery(query)))
 
 	// add spam info to the message
 	if !strings.Contains(query.Message.Text, "spam detection results") && userID != 0 {
-		spamInfoText := []string{"\n\n**original detection results**\n"}
-
-		info, found := a.locator.Spam(context.TODO(), userID)
-		if found {
+		var checks []string
+		if info, found := a.locator.Spam(context.TODO(), userID); found {
 			for _, check := range info.Checks {
-				spamInfoText = append(spamInfoText, "- "+escapeMarkDownV1Text(check.String()))
+				checks = append(checks, "- "+check.String())
 			}
 		}
-
-		if len(spamInfoText) > 1 {
-			updText += strings.Join(spamInfoText, "\n")
+		if len(checks) > 0 {
+			e.plain("\n\n")
+			e.bold("original detection results")
+			e.plain("\n\n")
+			e.untrusted(strings.Join(checks, "\n"), a.noLinks)
 		}
 	}
 
-	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, updText)
+	editMsg := tbapi.NewEditMessageText(chatID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to edit message, chatID:%d, msgID:%d, %w", chatID, query.Message.MessageID, err)
 	}
 	return nil
@@ -1065,39 +1071,35 @@ func (a *admin) unbanChannel(channelID int64) error {
 // callbackShowInfo handles the callback when user asks for spam detection details for the ban.
 // callback data: !userID:msgID
 func (a *admin) callbackShowInfo(query *tbapi.CallbackQuery) error {
-	callbackData := query.Data
-	spamInfoText := "**can't get spam info**"
-	spamInfo := []string{}
-	userID, _, err := parseCallbackData(callbackData)
-	if err != nil {
-		spamInfo = append(spamInfo, fmt.Sprintf("**failed to parse userID from %q: %v**", callbackData[1:], err))
-	}
-
-	// collect spam detection details
+	// parseCallbackData returns userID 0 on error, which falls through to "can't get spam info"
+	userID, _, _ := parseCallbackData(query.Data)
+	var checks []string
 	if userID != 0 {
-		info, found := a.locator.Spam(context.TODO(), userID)
-		if found {
+		if info, found := a.locator.Spam(context.TODO(), userID); found {
 			for _, check := range info.Checks {
-				spamInfo = append(spamInfo, "- "+escapeMarkDownV1Text(check.String()))
+				checks = append(checks, "- "+check.String())
 			}
 		}
-		if len(spamInfo) > 0 {
-			spamInfoText = strings.Join(spamInfo, "\n")
-		}
 	}
 
-	// escape markdown special characters to preserve user links when re-parsing rendered text
-	// telegram returns rendered text without markdown syntax, so we need to escape before re-parsing
-	escapedMessage := escapeMarkDownV1Text(query.Message.Text) + "\n\n**spam detection results**\n" + spamInfoText
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.bold("spam detection results")
+	e.plain("\n")
+	if len(checks) > 0 {
+		e.untrusted(strings.Join(checks, "\n"), a.noLinks)
+	} else {
+		e.bold("can't get spam info")
+	}
 	confirmationKeyboard := [][]tbapi.InlineKeyboardButton{}
 	if query.Message.ReplyMarkup != nil && len(query.Message.ReplyMarkup.InlineKeyboard) > 0 {
 		confirmationKeyboard = query.Message.ReplyMarkup.InlineKeyboard
 		confirmationKeyboard[0] = confirmationKeyboard[0][:1] // remove second button (info)
 	}
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, escapedMessage)
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: confirmationKeyboard}
-	editMsg.ParseMode = tbapi.ModeMarkdown
-	if err := send(editMsg, a.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, a.tbAPI); err != nil {
 		return fmt.Errorf("failed to send spam info, chatID:%d, msgID:%d, %w", query.Message.Chat.ID, query.Message.MessageID, err)
 	}
 	return nil

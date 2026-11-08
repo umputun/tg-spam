@@ -209,14 +209,15 @@ Telegram trims trailing whitespace from a message, so an entity must not extend 
 - Modify: `app/events/reports_test.go`
 - Delete: `docs/backlog/callback-edits-resend-unescaped-text.md`
 
-- [ ] write failing tests: a callback whose `query.Message` has spam text `[Support](https://phish.example) a_b` plus a `pre` entity is edited with that exact text, the `pre` entity kept, the note appended as an italic entity, and no parse mode; cover `callbackBanConfirmed`, `callbackUnbanConfirmed`, `callbackShowInfo`, `callbackReportBan`, `reportBanFailure`, `callbackReportReject` and the all-reporters-banned branch
-- [ ] write a test that an admin user name with an underscore appears literally in the note
-- [ ] write tests for `callbackShowInfo` and `callbackUnbanConfirmed` with a check whose `Details` is `https://phish.example`: inside `pre` with `noLinks` on, plain with it off; and the "can't get spam info" and "failed to parse userID" texts as bold with no asterisks
-- [ ] switch those edits to `entityTextFrom` plus `plain`/`italic`/`bold`/`pre` appends and `sendEntities`; `callbackShowInfo` drops its `escapeMarkDownV1Text`, the check lines are written raw (in `pre` when `noLinks` is on), and the `**...**` markers in `callbackShowInfo` and `callbackUnbanConfirmed` become `bold` entities
-- [ ] drop the spam text from the `failed to update spam for %q` and `failed to update ham for %q` errors in `callbackBanConfirmed` and `callbackUnbanConfirmed`: `postErrorToAdmin` posts error text to the admin chat through Markdown, where it would be clickable
-- [ ] keep `getCleanMessage` results identical: update `TestAdmin_getCleanMessage` cases only where input shape changed, and add one asserting the body of an entity-built message
-- [ ] delete the backlog item, since this task fixes every site it lists
-- [ ] run tests - must pass before task 5
+- [x] write failing tests: a callback whose `query.Message` has spam text `[Support](https://phish.example) a_b` plus a `pre` entity is edited with that exact text, the `pre` entity kept, the note appended as an italic entity, and no parse mode; cover `callbackBanConfirmed`, `callbackUnbanConfirmed`, `callbackShowInfo`, `callbackReportBan`, `reportBanFailure`, `callbackReportReject` and the all-reporters-banned branch
+- [x] write a test that an admin user name with an underscore appears literally in the note
+- [x] write tests for `callbackShowInfo` and `callbackUnbanConfirmed` with a check whose `Details` is `https://phish.example`: inside `pre` with `noLinks` on, plain with it off; and the "can't get spam info" text as bold with no asterisks
+- [x] ⚠️ the "failed to parse userID" line in `callbackShowInfo` was unreachable (`parseCallbackData` returns userID 0 on every error, so a parse failure already shows "can't get spam info"); the dead branch is removed instead of converted, and a malformed callback keeps its current outcome
+- [x] switch those edits to `entityTextFrom` plus `plain`/`italic`/`bold`/`pre` appends and `sendEntities`; `callbackShowInfo` drops its `escapeMarkDownV1Text`, the check lines are written raw (in `pre` when `noLinks` is on), and the `**...**` markers in `callbackShowInfo` and `callbackUnbanConfirmed` become `bold` entities
+- [x] drop the spam text from the `failed to update spam for %q` and `failed to update ham for %q` errors in `callbackBanConfirmed` and `callbackUnbanConfirmed`: `postErrorToAdmin` posts error text to the admin chat through Markdown, where it would be clickable
+- [x] keep `getCleanMessage` results identical: update `TestAdmin_getCleanMessage` cases only where input shape changed, and add one asserting the body of an entity-built message
+- [x] delete the backlog item, since this task fixes every site it lists
+- [x] run tests - must pass before task 5
 
 ### Task 5: Wire the --admin.no-links setting
 

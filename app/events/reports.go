@@ -700,11 +700,14 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 	}
 
 	// update admin notification text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_%s by %s in %v_",
-		r.banOutcome(nil, r.softBanMode && reportedUserID > 0), query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("%s by %s in %v",
+		r.banOutcome(nil, r.softBanMode && reportedUserID > 0), query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -720,11 +723,13 @@ func (r *userReports) reportBanFailure(query *tbapi.CallbackQuery, banErr error)
 	if r.hasBanFailureNote(query.Message.Text) {
 		return nil
 	}
-	updText := query.Message.Text + escapeMarkDownV1Text(r.banFailureNote(banErr))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain(r.banFailureNote(banErr))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	// an edit without reply_markup removes the keyboard, so the current one is sent back
 	editMsg.ReplyMarkup = query.Message.ReplyMarkup
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -757,10 +762,13 @@ func (r *userReports) callbackReportReject(ctx context.Context, query *tbapi.Cal
 	}
 
 	// update admin notification text with confirmation
-	updText := query.Message.Text + fmt.Sprintf("\n\n_rejected by %s in %v_", query.From.UserName, sinceQuery(query))
-	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+	e := entityTextFrom(query.Message.Text, query.Message.Entities)
+	e.plain("\n\n")
+	e.italic(fmt.Sprintf("rejected by %s in %v", query.From.UserName, sinceQuery(query)))
+	editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+	editMsg.Entities = e.entities()
 	editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-	if err := send(editMsg, r.tbAPI); err != nil {
+	if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 		return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 			query.Message.Chat.ID, query.Message.MessageID, err)
 	}
@@ -892,11 +900,13 @@ func (r *userReports) callbackReportBanReporterConfirm(ctx context.Context, quer
 			log.Printf("[WARN] failed to delete reports for msgID:%d: %v", msgID, delErr)
 		}
 
-		updText := query.Message.Text + fmt.Sprintf("\n\n_all reporters %s by %s in %v_",
-			r.banOutcome(nil, false), query.From.UserName, sinceQuery(query))
-		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, updText)
+		e := entityTextFrom(query.Message.Text, query.Message.Entities)
+		e.plain("\n\n")
+		e.italic(fmt.Sprintf("all reporters %s by %s in %v", r.banOutcome(nil, false), query.From.UserName, sinceQuery(query)))
+		editMsg := tbapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, e.text())
+		editMsg.Entities = e.entities()
 		editMsg.ReplyMarkup = &tbapi.InlineKeyboardMarkup{InlineKeyboard: [][]tbapi.InlineKeyboardButton{}}
-		if err := send(editMsg, r.tbAPI); err != nil {
+		if _, err := sendEntities(editMsg, r.tbAPI); err != nil {
 			return fmt.Errorf("failed to update notification, chatID:%d, msgID:%d, %w",
 				query.Message.Chat.ID, query.Message.MessageID, err)
 		}
