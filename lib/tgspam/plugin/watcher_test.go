@@ -79,6 +79,7 @@ end
 	// create a watcher and start it
 	watcher, err := NewWatcher(checker, tmpDir)
 	require.NoError(t, err)
+	watcher.debounceTime = 50 * time.Millisecond
 	checker.SetWatcher(watcher)
 	err = watcher.Start()
 	require.NoError(t, err)
@@ -92,23 +93,14 @@ end
 	`), 0o644)
 	require.NoError(t, err)
 
-	// manually add event to the watcher's event queue
-	watcher.mu.Lock()
-	watcher.events[scriptPath] = time.Now().Add(-time.Second) // make it old enough to process
-	watcher.mu.Unlock()
-
-	// manually process events
-	watcher.processEvents()
-
-	// wait a moment for the reload to complete
-	time.Sleep(100 * time.Millisecond)
-
-	// check that the script was reloaded
-	check, err = checker.GetCheck("test_script")
-	require.NoError(t, err)
-	response = check(createTestRequest())
-	assert.Equal(t, "updated version", response.Details)
-	assert.True(t, response.Spam)
+	assert.Eventually(t, func() bool {
+		check, err := checker.GetCheck("test_script")
+		if err != nil {
+			return false
+		}
+		resp := check(createTestRequest())
+		return resp.Details == "updated version" && resp.Spam
+	}, 5*time.Second, 20*time.Millisecond)
 }
 
 func TestWatcher_HandleEvent(t *testing.T) {
