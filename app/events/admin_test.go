@@ -3496,7 +3496,7 @@ func TestAdmin_UnbanJoinNotification(t *testing.T) {
 func TestAdmin_sendWithUnbanMarkupMigrationHint(t *testing.T) {
 	mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 		return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
-			ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+			MigrateToChatID: -1001432162429}
 	}}
 	adm := admin{tbAPI: mockAPI, adminChatID: -403767890}
 	e := &entityText{}

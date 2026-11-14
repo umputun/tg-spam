@@ -328,6 +328,16 @@ func prepareInputRichBlock(block InputRichBlock, name string, plan *uploadPlan) 
 		prepared := *current
 		prepareInputMediaItem(&prepared.Audio, name, plan)
 		return &prepared
+	case InputRichBlockDocument:
+		prepareInputMediaItem(&current.Document, name, plan)
+		return current
+	case *InputRichBlockDocument:
+		if current == nil {
+			return current
+		}
+		prepared := *current
+		prepareInputMediaItem(&prepared.Document, name, plan)
+		return &prepared
 	case InputRichBlockPhoto:
 		prepareInputMediaItem(&current.Photo, name, plan)
 		return current

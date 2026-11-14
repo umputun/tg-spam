@@ -23,8 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 1.25 is the minimum go.mod declares, 1.27 is what the docker image is built with
-        go: ["1.25", "1.27"]
+        # 1.27 is both the minimum go.mod declares and what the docker image is built with
+        go: ["1.27"]
     steps:
     - name: checkout
       uses: actions/checkout@v7

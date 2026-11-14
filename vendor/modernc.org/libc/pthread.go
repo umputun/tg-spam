@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/cpu"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/pthread"
 	"modernc.org/libc/sys/types"
@@ -20,9 +21,6 @@ import (
 )
 
 var (
-	mutexes   = map[uintptr]*mutex{}
-	mutexesMu sync.Mutex
-
 	threads   = map[int32]*TLS{}
 	threadsMu sync.Mutex
 
@@ -37,7 +35,7 @@ var (
 // Thread local storage.
 type TLS struct {
 	errnop      uintptr
-	allocaStack [][]uintptr
+	allocaStack []allocaMark
 	allocas     []uintptr
 	jumpBuffers []uintptr
 	lastError   uint32
@@ -45,9 +43,18 @@ type TLS struct {
 	sp    int
 	stack stackHeader
 
+	// The alloca(3) bump region, see allocaChunk.
+	allocaChunks []allocaChunk
+	allocaNext   int     // allocaChunks index of the chunk to use when the current one is full
+	allocaP      uintptr // the next free byte in the current chunk
+	allocaEnd    uintptr // the end of the current chunk, zero before the first chunk
+	allocaExitFn func()  // tls.AllocaExit, returned by every FreeAlloca
+
 	ID                 int32
 	reentryGuard       int32 // memgrind
 	stackHeaderBalance int32
+
+	allocaSeq uintptr // numbers the alloca regions, see TLSCheckpoint
 }
 
 var errno0 int32 // Temp errno for NewTLS
@@ -73,31 +80,40 @@ func (tls *TLS) StackSlots() int {
 	return tls.sp
 }
 
-func (t *TLS) alloca(n size_t) (r uintptr) {
-	r = Xmalloc(t, n)
-	t.allocas = append(t.allocas, r)
-	return r
-}
-
+// FreeAlloca does what AllocaEntry does and returns AllocaExit. For the
+// targets of this file the generated code of a function that calls alloca(3)
+// starts with 'defer tls.FreeAlloca()()'. The function returned is the same on
+// every call, so the region costs no allocation.
 func (t *TLS) FreeAlloca() func() {
-	t.allocaStack = append(t.allocaStack, t.allocas)
-	t.allocas = nil
-	return func() {
-		for _, v := range t.allocas {
-			Xfree(t, v)
-		}
-		n := len(t.allocaStack)
-		t.allocas = t.allocaStack[n-1]
-		t.allocaStack = t.allocaStack[:n-1]
+	t.AllocaEntry()
+	if t.allocaExitFn == nil {
+		t.allocaExitFn = t.AllocaExit
 	}
+	return t.allocaExitFn
 }
 
+// PushJumpBuffer arms jb, which stays armed until the matching PopJumpBuffer or
+// until a Longjmp targets it. C keeps every jump buffer of a live frame valid, so
+// more than one can be armed at a time and they need not be left in the order they
+// were armed in.
 func (tls *TLS) PushJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = append(tls.jumpBuffers, jb)
 }
 
-type LongjmpRetval int32
+// LongjmpRetval is what Longjmp panics with. A panic unwinds through every setjmp
+// region between the longjmp and its target, so a recovering region must compare
+// JumpBuffer with its own and re-panic unless they are equal: recovering a longjmp
+// aimed past it would resume at the wrong setjmp.
+type LongjmpRetval struct {
+	// JumpBuffer is the buffer the longjmp targeted, already disarmed.
+	JumpBuffer uintptr
+	// Val is what setjmp must appear to return, never zero.
+	Val int32
+}
 
+// PopJumpBuffer disarms jb, which must be the most recently armed buffer still
+// armed. Regions leave in the order they were entered, so anything else is a bug
+// in the generated code rather than in the C being translated.
 func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	n := len(tls.jumpBuffers)
 	if n == 0 || tls.jumpBuffers[n-1] != jb {
@@ -107,12 +123,26 @@ func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = tls.jumpBuffers[:n-1]
 }
 
+// Longjmp disarms jb and panics with a LongjmpRetval naming it. jb need not be the
+// most recently armed buffer: C allows jumping past regions entered after the one
+// being jumped to, and those regions disarm their own buffers as the panic unwinds
+// through them. Of two regions sharing a buffer the innermost one is disarmed,
+// which is the one C resumes at.
 func (tls *TLS) Longjmp(jb uintptr, val int32) {
-	tls.PopJumpBuffer(jb)
+	i := len(tls.jumpBuffers) - 1
+	for ; i >= 0 && tls.jumpBuffers[i] != jb; i-- {
+	}
+	if i < 0 {
+		// Jumping to a buffer no setjmp armed, or to one whose region has been
+		// left already, which C leaves undefined.
+		panic(todo("unsupported setjmp/longjmp usage"))
+	}
+
+	tls.jumpBuffers = append(tls.jumpBuffers[:i], tls.jumpBuffers[i+1:]...)
 	if val == 0 {
 		val = 1
 	}
-	panic(LongjmpRetval(val))
+	panic(LongjmpRetval{JumpBuffer: jb, Val: val})
 }
 
 func Xalloca(tls *TLS, size size_t) uintptr {
@@ -137,6 +167,7 @@ type pthreadData struct {
 	wait   chan struct{} // cond var interaction
 
 	detached bool
+	started  bool // by Xpthread_create, whose goroutine ends the thread
 }
 
 func (d *pthreadData) init(t *TLS, detached bool) {
@@ -337,13 +368,16 @@ func Xpthread_cond_wait(t *TLS, pCond, pMutex uintptr) int32 {
 
 	condsMu.Unlock()
 
-	mutexesMu.Lock()
-	mu := mutexes[pMutex]
-	mutexesMu.Unlock()
+	mu := lookupMutex(pMutex)
 
-	mu.Unlock()
+	// Release and reacquire through the mutex's own unlock and lock: the
+	// embedded sync.Mutex is the lock itself only for a NORMAL mutex, a
+	// RECURSIVE one holds it only briefly (#62). A recursive mutex releases
+	// one level, like musl's pthread_cond_wait, so one locked more than once
+	// stays held while waiting.
+	mu.unlock()
 	<-t.wait
-	mu.Lock()
+	mu.lock(t.ID)
 	return 0
 }
 
@@ -354,6 +388,16 @@ func Xpthread_cond_timedwait(t *TLS, pCond, pMutex, pAbsTime uintptr) int32 {
 	}
 	if pCond == 0 {
 		return errno.EINVAL
+	}
+
+	deadlineSecs := (*ctime.Timespec)(unsafe.Pointer(pAbsTime)).Ftv_sec
+	deadlineNsecs := (*ctime.Timespec)(unsafe.Pointer(pAbsTime)).Ftv_nsec
+	deadline := time.Unix(int64(deadlineSecs), int64(deadlineNsecs))
+	d := deadline.Sub(time.Now())
+	if d <= 0 {
+		// Return before registering as a waiter: a registration left behind
+		// would take a later pthread_cond_signal meant for a real waiter.
+		return errno.ETIMEDOUT
 	}
 
 	condsMu.Lock()
@@ -369,35 +413,69 @@ func Xpthread_cond_timedwait(t *TLS, pCond, pMutex, pAbsTime uintptr) int32 {
 
 	condsMu.Unlock()
 
-	mutexesMu.Lock()
-	mu := mutexes[pMutex]
-	mutexesMu.Unlock()
+	mu := lookupMutex(pMutex)
 
-	deadlineSecs := (*ctime.Timespec)(unsafe.Pointer(pAbsTime)).Ftv_sec
-	deadlineNsecs := (*ctime.Timespec)(unsafe.Pointer(pAbsTime)).Ftv_nsec
-	deadline := time.Unix(int64(deadlineSecs), int64(deadlineNsecs))
-	d := deadline.Sub(time.Now())
-	switch {
-	case d <= 0:
-		return errno.ETIMEDOUT
-	default:
-		to := time.After(d)
-		mu.Unlock()
+	// See Xpthread_cond_wait for why this goes through unlock and lock.
+	to := time.After(d)
+	mu.unlock()
 
-		defer mu.Lock()
+	defer mu.lock(t.ID)
 
+	select {
+	case <-t.wait:
+		return 0
+	case <-to:
+		cond.Lock()
+
+		defer cond.Unlock()
+
+		delete(cond.waiters, t)
 		select {
 		case <-t.wait:
-			return 0
-		case <-to:
-			cond.Lock()
-
-			defer cond.Unlock()
-
-			delete(cond.waiters, t)
-			return errno.ETIMEDOUT
+		default:
 		}
+		return errno.ETIMEDOUT
 	}
+}
+
+// mutexShards maps pthread_mutex_t addresses to their Go side, sharded by
+// address so threads using distinct mutexes rarely contend on a table lock.
+var mutexShards [64]mutexShard
+
+type mutexShard struct {
+	sync.Mutex
+	m map[uintptr]*mutex
+	_ cpu.CacheLinePad
+}
+
+func init() {
+	for i := range mutexShards {
+		mutexShards[i].m = map[uintptr]*mutex{}
+	}
+}
+
+func mutexShardOf(pMutex uintptr) *mutexShard {
+	return &mutexShards[uint64(pMutex)*0x9e3779b97f4a7c15>>58] // Fibonacci hash, top 6 bits
+}
+
+func lookupMutex(pMutex uintptr) *mutex {
+	s := mutexShardOf(pMutex)
+	s.Lock()
+	mu := s.m[pMutex]
+	s.Unlock()
+	return mu
+}
+
+// setMutex registers mu for pMutex, or removes the entry when mu is nil.
+func setMutex(pMutex uintptr, mu *mutex) {
+	s := mutexShardOf(pMutex)
+	s.Lock()
+	if mu == nil {
+		delete(s.m, pMutex)
+	} else {
+		s.m[pMutex] = mu
+	}
+	s.Unlock()
 }
 
 // Go side data of pthread_mutex_t
@@ -470,6 +548,11 @@ func (m *mutex) tryLock(id int32) int32 {
 	default:
 		fallthrough
 	case pthread.PTHREAD_MUTEX_NORMAL:
+		if m.TryLock() {
+			m.id = id
+			return 0
+		}
+
 		return errno.EBUSY
 	case pthread.PTHREAD_MUTEX_RECURSIVE:
 		m.Lock()
@@ -527,11 +610,7 @@ func Xpthread_mutex_destroy(t *TLS, pMutex uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pMutex=%v, (%v:)", t, pMutex, origin(2))
 	}
-	mutexesMu.Lock()
-
-	defer mutexesMu.Unlock()
-
-	delete(mutexes, pMutex)
+	setMutex(pMutex, nil)
 	return 0
 }
 
@@ -540,13 +619,14 @@ func Xpthread_mutex_lock(t *TLS, pMutex uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pMutex=%v, (%v:)", t, pMutex, origin(2))
 	}
-	mutexesMu.Lock()
-	mu := mutexes[pMutex]
+	s := mutexShardOf(pMutex)
+	s.Lock()
+	mu := s.m[pMutex]
 	if mu == nil { // static initialized mutexes are valid
 		mu = newMutex(int(X__ccgo_getMutexType(t, pMutex)))
-		mutexes[pMutex] = mu
+		s.m[pMutex] = mu
 	}
-	mutexesMu.Unlock()
+	s.Unlock()
 	return mu.lock(t.ID)
 }
 
@@ -555,13 +635,14 @@ func Xpthread_mutex_trylock(t *TLS, pMutex uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pMutex=%v, (%v:)", t, pMutex, origin(2))
 	}
-	mutexesMu.Lock()
-	mu := mutexes[pMutex]
+	s := mutexShardOf(pMutex)
+	s.Lock()
+	mu := s.m[pMutex]
 	if mu == nil { // static initialized mutexes are valid
 		mu = newMutex(int(X__ccgo_getMutexType(t, pMutex)))
-		mutexes[pMutex] = mu
+		s.m[pMutex] = mu
 	}
-	mutexesMu.Unlock()
+	s.Unlock()
 	return mu.tryLock(t.ID)
 }
 
@@ -570,11 +651,7 @@ func Xpthread_mutex_unlock(t *TLS, pMutex uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pMutex=%v, (%v:)", t, pMutex, origin(2))
 	}
-	mutexesMu.Lock()
-
-	defer mutexesMu.Unlock()
-
-	return mutexes[pMutex].unlock()
+	return lookupMutex(pMutex).unlock()
 }
 
 // int pthread_key_create(pthread_key_t *key, void (*destructor)(void*));
@@ -636,9 +713,18 @@ func Xpthread_create(t *TLS, pThread, pAttr, startRoutine, arg uintptr) int32 {
 	})(unsafe.Pointer(&struct{ uintptr }{startRoutine})).f
 	detached := pAttr != 0 && X__ccgo_pthreadAttrGetDetachState(t, pAttr) == pthread.PTHREAD_CREATE_DETACHED
 	tls := newTLS(detached)
+	tls.started = true
 	*(*pthread.Pthread_t)(unsafe.Pointer(pThread)) = pthread.Pthread_t(tls.ID)
 
 	go func() {
+		// Xpthread_exit ends in runtime.Goexit, which runs the deferred calls
+		// of the thread's frames. They still use its memory, so it is freed
+		// only after them, and only then does the thread count as exited.
+		defer func() {
+			tls.freeMemory()
+			tls.exited()
+		}()
+
 		Xpthread_exit(tls, fn(tls, arg))
 	}()
 
@@ -651,7 +737,12 @@ func Xpthread_detach(t *TLS, thread pthread.Pthread_t) int32 {
 		trc("t=%v thread=%v, (%v:)", t, thread, origin(2))
 	}
 	threadsMu.Lock()
-	threads[int32(thread)].detached = true
+	tls := threads[int32(thread)]
+	if tls == nil {
+		threadsMu.Unlock()
+		return errno.ESRCH
+	}
+	tls.detached = true
 	threadsMu.Unlock()
 	return 0
 }
@@ -692,15 +783,24 @@ func Xpthread_exit(t *TLS, value uintptr) {
 		}
 	}
 
-	switch {
-	case t.detached:
-		threadsMu.Lock()
-		delete(threads, t.ID)
-		threadsMu.Unlock()
-	default:
-		close(t.done)
+	if !t.started {
+		t.exited()
 	}
 	runtime.Goexit()
+}
+
+// exited marks the thread of t as exited. A detached thread is forgotten, the
+// joiner of a joinable one is released.
+func (t *TLS) exited() {
+	threadsMu.Lock()
+	detached := t.detached
+	if detached {
+		delete(threads, t.ID)
+	}
+	threadsMu.Unlock()
+	if !detached {
+		close(t.done)
+	}
 }
 
 // int pthread_join(pthread_t thread, void **value_ptr);
@@ -710,6 +810,10 @@ func Xpthread_join(t *TLS, thread pthread.Pthread_t, pValue uintptr) int32 {
 	}
 	threadsMu.Lock()
 	tls := threads[int32(thread)]
+	if tls == nil {
+		threadsMu.Unlock()
+		return errno.ESRCH
+	}
 	delete(threads, int32(thread))
 	threadsMu.Unlock()
 	<-tls.done

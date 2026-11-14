@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-
-	"github.com/sashabaranov/go-openai/jsonschema"
 )
 
 // Chat message role defined by the OpenAI API.
@@ -237,13 +235,16 @@ func (r *ChatCompletionResponseFormatJSONSchema) UnmarshalJSON(data []byte) erro
 	r.Name = raw.Name
 	r.Description = raw.Description
 	r.Strict = raw.Strict
+	r.Schema = nil
 	if len(raw.Schema) > 0 && string(raw.Schema) != "null" {
-		var d jsonschema.Definition
-		err := json.Unmarshal(raw.Schema, &d)
-		if err != nil {
+		// Keep the schema verbatim. Decoding into jsonschema.Definition silently
+		// drops any keyword it doesn't model (anyOf, title, $schema, ...), which
+		// corrupts the schema on round-trip. RawMessage still implements Marshaler.
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw.Schema, &obj); err != nil {
 			return err
 		}
-		r.Schema = &d
+		r.Schema = raw.Schema
 	}
 	return nil
 }
@@ -265,6 +266,7 @@ type ChatCompletionRequest struct {
 	Messages []ChatCompletionMessage `json:"messages"`
 	// MaxTokens The maximum number of tokens that can be generated in the chat completion.
 	// This value can be used to control costs for text generated via API.
+	//
 	// Deprecated: use MaxCompletionTokens. Not compatible with o1-series models.
 	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 	MaxTokens int `json:"max_tokens,omitempty"`
@@ -274,7 +276,7 @@ type ChatCompletionRequest struct {
 	Temperature         float32                       `json:"temperature,omitempty"`
 	TopP                float32                       `json:"top_p,omitempty"`
 	N                   int                           `json:"n,omitempty"`
-	Stream              bool                          `json:"stream,omitempty"`
+	Stream              bool                          `json:"stream"`
 	Stop                []string                      `json:"stop,omitempty"`
 	PresencePenalty     float32                       `json:"presence_penalty,omitempty"`
 	ResponseFormat      *ChatCompletionResponseFormat `json:"response_format,omitempty"`
@@ -307,7 +309,7 @@ type ChatCompletionRequest struct {
 	// Store can be set to true to store the output of this completion request for use in distillations and evals.
 	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-store
 	Store bool `json:"store,omitempty"`
-	// Controls effort on reasoning for reasoning models. It can be set to "low", "medium", or "high".
+	// Controls reasoning effort. Supported values depend on the model; see ReasoningEffort* constants.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	// Metadata to store with the completion.
 	Metadata map[string]string `json:"metadata,omitempty"`
@@ -346,12 +348,45 @@ type StreamOptions struct {
 type ToolType string
 
 const (
-	ToolTypeFunction ToolType = "function"
+	ToolTypeFunction           ToolType = "function"
+	ToolTypeWebSearch          ToolType = "web_search"
+	ToolTypeWebSearchPreview   ToolType = "web_search_preview"
+	ToolTypeFileSearch         ToolType = "file_search"
+	ToolTypeComputer           ToolType = "computer"
+	ToolTypeComputerUsePreview ToolType = "computer_use_preview"
+	ToolTypeComputerUse        ToolType = "computer_use"
+	ToolTypeCodeInterpreter    ToolType = "code_interpreter"
+	ToolTypeImageGeneration    ToolType = "image_generation"
+	ToolTypeMCP                ToolType = "mcp"
+	ToolTypeCustom             ToolType = "custom"
+	ToolTypeLocalShell         ToolType = "local_shell"
+	ToolTypeShell              ToolType = "shell"
+	ToolTypeApplyPatch         ToolType = "apply_patch"
+	ToolTypeToolSearch         ToolType = "tool_search"
 )
 
 type Tool struct {
 	Type     ToolType            `json:"type"`
 	Function *FunctionDefinition `json:"function,omitempty"`
+	// Parameters contains Responses API tool properties that are serialized next to type.
+	// For example: {"search_context_size": "low"} for a web search tool.
+	Parameters map[string]any `json:"-"`
+}
+
+// MarshalJSON preserves the nested Chat Completions function format while also
+// supporting the inline properties used by built-in and function tools in the Responses API.
+func (t Tool) MarshalJSON() ([]byte, error) {
+	tool := map[string]any{"type": t.Type}
+	if t.Function != nil {
+		tool["function"] = t.Function
+	}
+	for key, value := range t.Parameters {
+		if key == "type" || key == "function" {
+			return nil, errors.New("tool parameters cannot override type or function")
+		}
+		tool[key] = value
+	}
+	return json.Marshal(tool)
 }
 
 type ToolChoice struct {

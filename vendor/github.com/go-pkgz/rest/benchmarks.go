@@ -68,7 +68,9 @@ func (b *Benchmarks) Handler(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		st := b.nowFn()
 		defer func() {
-			b.update(time.Since(st))
+			// both ends come from nowFn so the measurement follows the same clock as the bucketing,
+			// which lets tests drive it instead of waiting on wall time
+			b.update(b.nowFn().Sub(st))
 		}()
 		next.ServeHTTP(w, r)
 	}
@@ -156,10 +158,7 @@ func (b *Benchmarks) Stats(interval time.Duration) BenchmarkStats {
 	}
 
 	// ensure we calculate rate based on actual interval
-	actualInterval := fnInterval.Sub(stInterval)
-	if actualInterval < time.Second {
-		actualInterval = time.Second
-	}
+	actualInterval := max(fnInterval.Sub(stInterval), time.Second)
 
 	return BenchmarkStats{
 		Requests:        requests,

@@ -114,7 +114,7 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 	log.Printf("[INFO] primary chat ID: %d", l.chatID)
 
 	// resolve the linked channel for this discussion group
-	chatInfo, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	chatInfo, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{ChatID: l.chatID})
 	if err != nil {
 		log.Printf("[WARN] failed to get chat info for linked channel resolution: %v", err)
 	} else if chatInfo.LinkedChatID != 0 {
@@ -319,10 +319,9 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 			if !fromSuper && l.isReportCommand(update.Message.Text) && update.Message.ReplyToMessage == nil {
 				log.Printf("[DEBUG] deleting orphaned report command %q from %s (%d)",
 					update.Message.Text, update.Message.From.UserName, update.Message.From.ID)
-				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-					MessageID:  update.Message.MessageID,
-					ChatConfig: tbapi.ChatConfig{ChatID: update.Message.Chat.ID},
-				}})
+				_, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
+					MessageID: update.Message.MessageID,
+					ChatID:    update.Message.Chat.ID})
 				if err != nil {
 					log.Printf("[WARN] failed to delete orphaned report message %d: %v", update.Message.MessageID, err)
 				}
@@ -491,10 +490,9 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	canDelete := resp.DeleteReplyTo && resp.ReplyTo != 0 && !l.Dry &&
 		!l.SuperUsers.IsSuper(msg.From.Username, msg.From.ID) && !l.TrainingMode
 	if canDelete {
-		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  resp.ReplyTo,
-			ChatConfig: tbapi.ChatConfig{ChatID: fromChat},
-		}}); err != nil {
+		if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: resp.ReplyTo,
+			ChatID:    fromChat}); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", resp.ReplyTo, err))
 		}
 	}
@@ -695,7 +693,7 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 		return nil
 	}
 	if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
-		BaseChatMessage: tbapi.BaseChatMessage{ChatConfig: tbapi.ChatConfig{ChatID: fromChat}, MessageID: msg.MsgID},
+		ChatID: fromChat, MessageID: msg.MsgID,
 	}); err != nil {
 		return fmt.Errorf("failed to delete new chat member message %d: %w", msg.MsgID, err)
 	}
@@ -706,10 +704,8 @@ func (l *TelegramListener) procLeftChatMemberMessage(update tbapi.Update) error 
 // deleteSystemMessage deletes a system message immediately
 func (l *TelegramListener) deleteSystemMessage(msgID int, chatID int64, msgType string) {
 	deleteMsg := tbapi.DeleteMessageConfig{
-		BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  msgID,
-			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
-		},
+		MessageID: msgID,
+		ChatID:    chatID,
 	}
 	if _, err := l.TbAPI.Request(deleteMsg); err != nil {
 		log.Printf("[WARN] failed to delete %s message %d: %v", msgType, msgID, err)
@@ -819,7 +815,7 @@ func (l *TelegramListener) getChatID(group string) (int64, error) {
 		return chatID, nil
 	}
 
-	chat, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{ChatConfig: tbapi.ChatConfig{SuperGroupUsername: "@" + group}})
+	chat, err := l.TbAPI.GetChat(tbapi.ChatInfoConfig{SuperGroupUsername: "@" + group})
 	if err != nil {
 		return 0, fmt.Errorf("can't get chat for %s: %w", group, err)
 	}
@@ -842,7 +838,7 @@ func (l *TelegramListener) updateSupers() error {
 		return false
 	}
 
-	admins, err := l.TbAPI.GetChatAdministrators(tbapi.ChatAdministratorsConfig{ChatConfig: tbapi.ChatConfig{ChatID: l.chatID}})
+	admins, err := l.TbAPI.GetChatAdministrators(tbapi.ChatAdministratorsConfig{ChatID: l.chatID})
 	if err != nil {
 		return fmt.Errorf("failed to get chat administrators: %w", err)
 	}
@@ -886,10 +882,9 @@ func (l *TelegramListener) deleteExtraMessages(checkResults []spamcheck.Response
 		for _, msgID := range checkResult.ExtraDeleteIDs {
 			// add small delay to avoid rate limiting
 			time.Sleep(35 * time.Millisecond)
-			if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-				MessageID:  msgID,
-				ChatConfig: tbapi.ChatConfig{ChatID: chatID},
-			}}); err != nil {
+			if _, err := l.TbAPI.Request(tbapi.DeleteMessageConfig{
+				MessageID: msgID,
+				ChatID:    chatID}); err != nil {
 				// don't fail the whole operation if some messages can't be deleted
 				log.Printf("[WARN] failed to delete extra message %d: %v", msgID, err)
 			}

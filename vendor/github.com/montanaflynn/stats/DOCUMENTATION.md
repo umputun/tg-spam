@@ -36,18 +36,31 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
 
 ## <a name="pkg-index">Index</a>
 * [Variables](#pkg-variables)
+* [func ArgMax(input Float64Data) (int, error)](#ArgMax)
+* [func ArgMin(input Float64Data) (int, error)](#ArgMin)
 * [func AutoCorrelation(data Float64Data, lags int) (float64, error)](#AutoCorrelation)
 * [func ChebyshevDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)](#ChebyshevDistance)
+* [func Clip(input Float64Data, min, max float64) ([]float64, error)](#Clip)
+* [func CoefficientOfVariation(input Float64Data) (float64, error)](#CoefficientOfVariation)
 * [func Correlation(data1, data2 Float64Data) (float64, error)](#Correlation)
 * [func Covariance(data1, data2 Float64Data) (float64, error)](#Covariance)
 * [func CovariancePopulation(data1, data2 Float64Data) (float64, error)](#CovariancePopulation)
+* [func CumulativeMax(input Float64Data) ([]float64, error)](#CumulativeMax)
+* [func CumulativeMin(input Float64Data) ([]float64, error)](#CumulativeMin)
+* [func CumulativeProduct(input Float64Data) ([]float64, error)](#CumulativeProduct)
 * [func CumulativeSum(input Float64Data) ([]float64, error)](#CumulativeSum)
+* [func Diff(input Float64Data) ([]float64, error)](#Diff)
+* [func EWMA(input Float64Data, alpha float64) ([]float64, error)](#EWMA)
 * [func Entropy(input Float64Data) (float64, error)](#Entropy)
 * [func EuclideanDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)](#EuclideanDistance)
 * [func ExpGeom(p float64) (exp float64, err error)](#ExpGeom)
 * [func GeometricMean(input Float64Data) (float64, error)](#GeometricMean)
 * [func HarmonicMean(input Float64Data) (float64, error)](#HarmonicMean)
+* [func Histogram(input Float64Data, bins int) ([]int, []float64, error)](#Histogram)
 * [func InterQuartileRange(input Float64Data) (float64, error)](#InterQuartileRange)
+* [func Interp(x, xp, fp Float64Data) ([]float64, error)](#Interp)
+* [func KendallTau(data1, data2 Float64Data) (float64, error)](#KendallTau)
+* [func Kurtosis(input Float64Data) (float64, error)](#Kurtosis)
 * [func ManhattanDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)](#ManhattanDistance)
 * [func Max(input Float64Data) (max float64, err error)](#Max)
 * [func Mean(input Float64Data) (float64, error)](#Mean)
@@ -58,13 +71,19 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
 * [func Min(input Float64Data) (min float64, err error)](#Min)
 * [func MinkowskiDistance(dataPointX, dataPointY Float64Data, lambda float64) (distance float64, err error)](#MinkowskiDistance)
 * [func Mode(input Float64Data) (mode []float64, err error)](#Mode)
+* [func MovingAverage(input Float64Data, window int) ([]float64, error)](#MovingAverage)
+* [func MovingMax(input Float64Data, window int) ([]float64, error)](#MovingMax)
+* [func MovingMedian(input Float64Data, window int) ([]float64, error)](#MovingMedian)
+* [func MovingMin(input Float64Data, window int) ([]float64, error)](#MovingMin)
+* [func MovingStdDev(input Float64Data, window int) ([]float64, error)](#MovingStdDev)
+* [func MovingSum(input Float64Data, window int) ([]float64, error)](#MovingSum)
 * [func Ncr(n, r int) int](#Ncr)
 * [func NormBoxMullerRvs(loc float64, scale float64, size int) []float64](#NormBoxMullerRvs)
 * [func NormCdf(x float64, loc float64, scale float64) float64](#NormCdf)
 * [func NormEntropy(loc float64, scale float64) float64](#NormEntropy)
 * [func NormFit(data []float64) [2]float64](#NormFit)
 * [func NormInterval(alpha float64, loc float64, scale float64) [2]float64](#NormInterval)
-* [func NormIsf(p float64, loc float64, scale float64) (x float64)](#NormIsf)
+* [func NormIsf(p float64, loc float64, scale float64) float64](#NormIsf)
 * [func NormLogCdf(x float64, loc float64, scale float64) float64](#NormLogCdf)
 * [func NormLogPdf(x float64, loc float64, scale float64) float64](#NormLogPdf)
 * [func NormLogSf(x float64, loc float64, scale float64) float64](#NormLogSf)
@@ -74,20 +93,36 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
 * [func NormPdf(x float64, loc float64, scale float64) float64](#NormPdf)
 * [func NormPpf(p float64, loc float64, scale float64) (x float64)](#NormPpf)
 * [func NormPpfRvs(loc float64, scale float64, size int) []float64](#NormPpfRvs)
+* [func NormSample(loc float64, scale float64, size int) []float64](#NormSample)
 * [func NormSf(x float64, loc float64, scale float64) float64](#NormSf)
 * [func NormStats(loc float64, scale float64, moments string) []float64](#NormStats)
 * [func NormStd(loc float64, scale float64) float64](#NormStd)
 * [func NormVar(loc float64, scale float64) float64](#NormVar)
 * [func Pearson(data1, data2 Float64Data) (float64, error)](#Pearson)
+* [func PercentChange(input Float64Data) ([]float64, error)](#PercentChange)
 * [func Percentile(input Float64Data, percent float64) (percentile float64, err error)](#Percentile)
 * [func PercentileNearestRank(input Float64Data, percent float64) (percentile float64, err error)](#PercentileNearestRank)
+* [func PercentileOfScore(input Float64Data, score float64) (float64, error)](#PercentileOfScore)
+* [func PercentileWeighted(data, weights Float64Data, percent float64) (percentile float64, err error)](#PercentileWeighted)
+* [func PopulationKurtosis(input Float64Data) (float64, error)](#PopulationKurtosis)
+* [func PopulationSkewness(input Float64Data) (float64, error)](#PopulationSkewness)
 * [func PopulationVariance(input Float64Data) (pvar float64, err error)](#PopulationVariance)
 * [func ProbGeom(a int, b int, p float64) (prob float64, err error)](#ProbGeom)
+* [func Product(input Float64Data) (float64, error)](#Product)
+* [func RMS(input Float64Data) (float64, error)](#RMS)
+* [func Range(input Float64Data) (float64, error)](#Range)
+* [func Rank(input Float64Data) ([]float64, error)](#Rank)
+* [func Rescale(input Float64Data) ([]float64, error)](#Rescale)
 * [func Round(input float64, places int) (rounded float64, err error)](#Round)
+* [func SEM(input Float64Data) (float64, error)](#SEM)
 * [func Sample(input Float64Data, takenum int, replacement bool) ([]float64, error)](#Sample)
+* [func SampleKurtosis(input Float64Data) (float64, error)](#SampleKurtosis)
+* [func SampleSkewness(input Float64Data) (float64, error)](#SampleSkewness)
 * [func SampleVariance(input Float64Data) (svar float64, err error)](#SampleVariance)
 * [func Sigmoid(input Float64Data) ([]float64, error)](#Sigmoid)
+* [func Skewness(input Float64Data) (float64, error)](#Skewness)
 * [func SoftMax(input Float64Data) ([]float64, error)](#SoftMax)
+* [func Spearman(data1, data2 Float64Data) (float64, error)](#Spearman)
 * [func StableSample(input Float64Data, takenum int) ([]float64, error)](#StableSample)
 * [func StandardDeviation(input Float64Data) (sdev float64, err error)](#StandardDeviation)
 * [func StandardDeviationPopulation(input Float64Data) (sdev float64, err error)](#StandardDeviationPopulation)
@@ -95,11 +130,17 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
 * [func StdDevP(input Float64Data) (sdev float64, err error)](#StdDevP)
 * [func StdDevS(input Float64Data) (sdev float64, err error)](#StdDevS)
 * [func Sum(input Float64Data) (sum float64, err error)](#Sum)
+* [func TTest(data1, data2 Float64Data, populationMean float64) (t float64, pvalue float64, err error)](#TTest)
 * [func Trimean(input Float64Data) (float64, error)](#Trimean)
+* [func TrimmedMean(input Float64Data, percent float64) (float64, error)](#TrimmedMean)
 * [func VarGeom(p float64) (exp float64, err error)](#VarGeom)
 * [func VarP(input Float64Data) (sdev float64, err error)](#VarP)
 * [func VarS(input Float64Data) (sdev float64, err error)](#VarS)
 * [func Variance(input Float64Data) (sdev float64, err error)](#Variance)
+* [func WeightedMean(data, weights Float64Data) (float64, error)](#WeightedMean)
+* [func Winsorize(input Float64Data, percent float64) ([]float64, error)](#Winsorize)
+* [func ZScore(input Float64Data) ([]float64, error)](#ZScore)
+* [func ZTest(data1, data2 Float64Data, populationMean, populationStdDev float64) (z float64, pvalue float64, err error)](#ZTest)
 * [type Coordinate](#Coordinate)
   * [func ExpReg(s []Coordinate) (regressions []Coordinate, err error)](#ExpReg)
   * [func LinReg(s []Coordinate) (regressions []Coordinate, err error)](#LinReg)
@@ -110,16 +151,28 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
   * [func (d *Description) String(decimals int) string](#Description.String)
 * [type Float64Data](#Float64Data)
   * [func LoadRawData(raw interface{}) (f Float64Data)](#LoadRawData)
+  * [func (f Float64Data) ArgMax() (int, error)](#Float64Data.ArgMax)
+  * [func (f Float64Data) ArgMin() (int, error)](#Float64Data.ArgMin)
   * [func (f Float64Data) AutoCorrelation(lags int) (float64, error)](#Float64Data.AutoCorrelation)
+  * [func (f Float64Data) Clip(min, max float64) ([]float64, error)](#Float64Data.Clip)
+  * [func (f Float64Data) CoefficientOfVariation() (float64, error)](#Float64Data.CoefficientOfVariation)
   * [func (f Float64Data) Correlation(d Float64Data) (float64, error)](#Float64Data.Correlation)
   * [func (f Float64Data) Covariance(d Float64Data) (float64, error)](#Float64Data.Covariance)
   * [func (f Float64Data) CovariancePopulation(d Float64Data) (float64, error)](#Float64Data.CovariancePopulation)
+  * [func (f Float64Data) CumulativeMax() ([]float64, error)](#Float64Data.CumulativeMax)
+  * [func (f Float64Data) CumulativeMin() ([]float64, error)](#Float64Data.CumulativeMin)
+  * [func (f Float64Data) CumulativeProduct() ([]float64, error)](#Float64Data.CumulativeProduct)
   * [func (f Float64Data) CumulativeSum() ([]float64, error)](#Float64Data.CumulativeSum)
+  * [func (f Float64Data) Diff() ([]float64, error)](#Float64Data.Diff)
+  * [func (f Float64Data) EWMA(alpha float64) ([]float64, error)](#Float64Data.EWMA)
   * [func (f Float64Data) Entropy() (float64, error)](#Float64Data.Entropy)
   * [func (f Float64Data) GeometricMean() (float64, error)](#Float64Data.GeometricMean)
   * [func (f Float64Data) Get(i int) float64](#Float64Data.Get)
   * [func (f Float64Data) HarmonicMean() (float64, error)](#Float64Data.HarmonicMean)
+  * [func (f Float64Data) Histogram(bins int) ([]int, []float64, error)](#Float64Data.Histogram)
   * [func (f Float64Data) InterQuartileRange() (float64, error)](#Float64Data.InterQuartileRange)
+  * [func (f Float64Data) KendallTau(d Float64Data) (float64, error)](#Float64Data.KendallTau)
+  * [func (f Float64Data) Kurtosis() (float64, error)](#Float64Data.Kurtosis)
   * [func (f Float64Data) Len() int](#Float64Data.Len)
   * [func (f Float64Data) Less(i, j int) bool](#Float64Data.Less)
   * [func (f Float64Data) Max() (float64, error)](#Float64Data.Max)
@@ -130,24 +183,45 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
   * [func (f Float64Data) Midhinge(d Float64Data) (float64, error)](#Float64Data.Midhinge)
   * [func (f Float64Data) Min() (float64, error)](#Float64Data.Min)
   * [func (f Float64Data) Mode() ([]float64, error)](#Float64Data.Mode)
+  * [func (f Float64Data) MovingAverage(window int) ([]float64, error)](#Float64Data.MovingAverage)
+  * [func (f Float64Data) MovingMax(window int) ([]float64, error)](#Float64Data.MovingMax)
+  * [func (f Float64Data) MovingMedian(window int) ([]float64, error)](#Float64Data.MovingMedian)
+  * [func (f Float64Data) MovingMin(window int) ([]float64, error)](#Float64Data.MovingMin)
+  * [func (f Float64Data) MovingStdDev(window int) ([]float64, error)](#Float64Data.MovingStdDev)
+  * [func (f Float64Data) MovingSum(window int) ([]float64, error)](#Float64Data.MovingSum)
   * [func (f Float64Data) Pearson(d Float64Data) (float64, error)](#Float64Data.Pearson)
+  * [func (f Float64Data) PercentChange() ([]float64, error)](#Float64Data.PercentChange)
   * [func (f Float64Data) Percentile(p float64) (float64, error)](#Float64Data.Percentile)
   * [func (f Float64Data) PercentileNearestRank(p float64) (float64, error)](#Float64Data.PercentileNearestRank)
+  * [func (f Float64Data) PercentileOfScore(score float64) (float64, error)](#Float64Data.PercentileOfScore)
+  * [func (f Float64Data) PopulationKurtosis() (float64, error)](#Float64Data.PopulationKurtosis)
   * [func (f Float64Data) PopulationVariance() (float64, error)](#Float64Data.PopulationVariance)
+  * [func (f Float64Data) Product() (float64, error)](#Float64Data.Product)
   * [func (f Float64Data) Quartile(d Float64Data) (Quartiles, error)](#Float64Data.Quartile)
   * [func (f Float64Data) QuartileOutliers() (Outliers, error)](#Float64Data.QuartileOutliers)
   * [func (f Float64Data) Quartiles() (Quartiles, error)](#Float64Data.Quartiles)
+  * [func (f Float64Data) RMS() (float64, error)](#Float64Data.RMS)
+  * [func (f Float64Data) Range() (float64, error)](#Float64Data.Range)
+  * [func (f Float64Data) Rank() ([]float64, error)](#Float64Data.Rank)
+  * [func (f Float64Data) Rescale() ([]float64, error)](#Float64Data.Rescale)
+  * [func (f Float64Data) SEM() (float64, error)](#Float64Data.SEM)
   * [func (f Float64Data) Sample(n int, r bool) ([]float64, error)](#Float64Data.Sample)
+  * [func (f Float64Data) SampleKurtosis() (float64, error)](#Float64Data.SampleKurtosis)
   * [func (f Float64Data) SampleVariance() (float64, error)](#Float64Data.SampleVariance)
   * [func (f Float64Data) Sigmoid() ([]float64, error)](#Float64Data.Sigmoid)
   * [func (f Float64Data) SoftMax() ([]float64, error)](#Float64Data.SoftMax)
+  * [func (f Float64Data) Spearman(d Float64Data) (float64, error)](#Float64Data.Spearman)
   * [func (f Float64Data) StandardDeviation() (float64, error)](#Float64Data.StandardDeviation)
   * [func (f Float64Data) StandardDeviationPopulation() (float64, error)](#Float64Data.StandardDeviationPopulation)
   * [func (f Float64Data) StandardDeviationSample() (float64, error)](#Float64Data.StandardDeviationSample)
   * [func (f Float64Data) Sum() (float64, error)](#Float64Data.Sum)
   * [func (f Float64Data) Swap(i, j int)](#Float64Data.Swap)
   * [func (f Float64Data) Trimean(d Float64Data) (float64, error)](#Float64Data.Trimean)
+  * [func (f Float64Data) TrimmedMean(percent float64) (float64, error)](#Float64Data.TrimmedMean)
   * [func (f Float64Data) Variance() (float64, error)](#Float64Data.Variance)
+  * [func (f Float64Data) WeightedMean(weights Float64Data) (float64, error)](#Float64Data.WeightedMean)
+  * [func (f Float64Data) Winsorize(percent float64) ([]float64, error)](#Float64Data.Winsorize)
+  * [func (f Float64Data) ZScore() ([]float64, error)](#Float64Data.ZScore)
 * [type Outliers](#Outliers)
   * [func QuartileOutliers(input Float64Data) (Outliers, error)](#QuartileOutliers)
 * [type Quartiles](#Quartiles)
@@ -158,26 +232,57 @@ MIT License Copyright (c) 2014-2026 Montana Flynn (<a href="https://montanaflynn
   * [func LogarithmicRegression(s Series) (regressions Series, err error)](#LogarithmicRegression)
 
 #### <a name="pkg-examples">Examples</a>
+* [ArgMax](#example_ArgMax)
+* [ArgMin](#example_ArgMin)
 * [AutoCorrelation](#example_AutoCorrelation)
 * [ChebyshevDistance](#example_ChebyshevDistance)
+* [Clip](#example_Clip)
 * [Correlation](#example_Correlation)
+* [CumulativeMax](#example_CumulativeMax)
+* [CumulativeMin](#example_CumulativeMin)
+* [CumulativeProduct](#example_CumulativeProduct)
 * [CumulativeSum](#example_CumulativeSum)
+* [Diff](#example_Diff)
+* [EWMA](#example_EWMA)
 * [Entropy](#example_Entropy)
 * [ExpGeom](#example_ExpGeom)
+* [Histogram](#example_Histogram)
+* [Interp](#example_Interp)
+* [KendallTau](#example_KendallTau)
+* [Kurtosis](#example_Kurtosis)
 * [LinearRegression](#example_LinearRegression)
 * [LoadRawData](#example_LoadRawData)
 * [Max](#example_Max)
 * [Median](#example_Median)
 * [Min](#example_Min)
+* [MovingAverage](#example_MovingAverage)
+* [MovingMax](#example_MovingMax)
+* [MovingMedian](#example_MovingMedian)
+* [MovingMin](#example_MovingMin)
+* [MovingStdDev](#example_MovingStdDev)
+* [MovingSum](#example_MovingSum)
+* [PercentChange](#example_PercentChange)
+* [PercentileOfScore](#example_PercentileOfScore)
 * [ProbGeom](#example_ProbGeom)
+* [Product](#example_Product)
+* [RMS](#example_RMS)
+* [Range](#example_Range)
+* [Rank](#example_Rank)
+* [Rescale](#example_Rescale)
 * [Round](#example_Round)
+* [SEM](#example_SEM)
+* [SampleKurtosis](#example_SampleKurtosis)
 * [Sigmoid](#example_Sigmoid)
 * [SoftMax](#example_SoftMax)
+* [Spearman](#example_Spearman)
 * [Sum](#example_Sum)
+* [TrimmedMean](#example_TrimmedMean)
 * [VarGeom](#example_VarGeom)
+* [Winsorize](#example_Winsorize)
+* [ZScore](#example_ZScore)
 
 #### <a name="pkg-files">Package files</a>
-[correlation.go](/src/github.com/montanaflynn/stats/correlation.go) [cumulative_sum.go](/src/github.com/montanaflynn/stats/cumulative_sum.go) [data.go](/src/github.com/montanaflynn/stats/data.go) [describe.go](/src/github.com/montanaflynn/stats/describe.go) [deviation.go](/src/github.com/montanaflynn/stats/deviation.go) [distances.go](/src/github.com/montanaflynn/stats/distances.go) [doc.go](/src/github.com/montanaflynn/stats/doc.go) [entropy.go](/src/github.com/montanaflynn/stats/entropy.go) [errors.go](/src/github.com/montanaflynn/stats/errors.go) [geometric_distribution.go](/src/github.com/montanaflynn/stats/geometric_distribution.go) [legacy.go](/src/github.com/montanaflynn/stats/legacy.go) [load.go](/src/github.com/montanaflynn/stats/load.go) [max.go](/src/github.com/montanaflynn/stats/max.go) [mean.go](/src/github.com/montanaflynn/stats/mean.go) [median.go](/src/github.com/montanaflynn/stats/median.go) [min.go](/src/github.com/montanaflynn/stats/min.go) [mode.go](/src/github.com/montanaflynn/stats/mode.go) [norm.go](/src/github.com/montanaflynn/stats/norm.go) [outlier.go](/src/github.com/montanaflynn/stats/outlier.go) [percentile.go](/src/github.com/montanaflynn/stats/percentile.go) [quartile.go](/src/github.com/montanaflynn/stats/quartile.go) [ranksum.go](/src/github.com/montanaflynn/stats/ranksum.go) [regression.go](/src/github.com/montanaflynn/stats/regression.go) [round.go](/src/github.com/montanaflynn/stats/round.go) [sample.go](/src/github.com/montanaflynn/stats/sample.go) [sigmoid.go](/src/github.com/montanaflynn/stats/sigmoid.go) [softmax.go](/src/github.com/montanaflynn/stats/softmax.go) [sum.go](/src/github.com/montanaflynn/stats/sum.go) [util.go](/src/github.com/montanaflynn/stats/util.go) [variance.go](/src/github.com/montanaflynn/stats/variance.go) 
+[clip.go](/src/github.com/montanaflynn/stats/clip.go) [coefficient_of_variation.go](/src/github.com/montanaflynn/stats/coefficient_of_variation.go) [correlation.go](/src/github.com/montanaflynn/stats/correlation.go) [cumulative.go](/src/github.com/montanaflynn/stats/cumulative.go) [cumulative_sum.go](/src/github.com/montanaflynn/stats/cumulative_sum.go) [data.go](/src/github.com/montanaflynn/stats/data.go) [describe.go](/src/github.com/montanaflynn/stats/describe.go) [deviation.go](/src/github.com/montanaflynn/stats/deviation.go) [diff.go](/src/github.com/montanaflynn/stats/diff.go) [distances.go](/src/github.com/montanaflynn/stats/distances.go) [doc.go](/src/github.com/montanaflynn/stats/doc.go) [entropy.go](/src/github.com/montanaflynn/stats/entropy.go) [errors.go](/src/github.com/montanaflynn/stats/errors.go) [ewma.go](/src/github.com/montanaflynn/stats/ewma.go) [extremes.go](/src/github.com/montanaflynn/stats/extremes.go) [geometric_distribution.go](/src/github.com/montanaflynn/stats/geometric_distribution.go) [histogram.go](/src/github.com/montanaflynn/stats/histogram.go) [interp.go](/src/github.com/montanaflynn/stats/interp.go) [kendall.go](/src/github.com/montanaflynn/stats/kendall.go) [kurtosis.go](/src/github.com/montanaflynn/stats/kurtosis.go) [legacy.go](/src/github.com/montanaflynn/stats/legacy.go) [load.go](/src/github.com/montanaflynn/stats/load.go) [max.go](/src/github.com/montanaflynn/stats/max.go) [mean.go](/src/github.com/montanaflynn/stats/mean.go) [median.go](/src/github.com/montanaflynn/stats/median.go) [min.go](/src/github.com/montanaflynn/stats/min.go) [mode.go](/src/github.com/montanaflynn/stats/mode.go) [moving.go](/src/github.com/montanaflynn/stats/moving.go) [norm.go](/src/github.com/montanaflynn/stats/norm.go) [outlier.go](/src/github.com/montanaflynn/stats/outlier.go) [percentile.go](/src/github.com/montanaflynn/stats/percentile.go) [percentile_of_score.go](/src/github.com/montanaflynn/stats/percentile_of_score.go) [percentile_weighted.go](/src/github.com/montanaflynn/stats/percentile_weighted.go) [product.go](/src/github.com/montanaflynn/stats/product.go) [quartile.go](/src/github.com/montanaflynn/stats/quartile.go) [rank.go](/src/github.com/montanaflynn/stats/rank.go) [ranksum.go](/src/github.com/montanaflynn/stats/ranksum.go) [regression.go](/src/github.com/montanaflynn/stats/regression.go) [rescale.go](/src/github.com/montanaflynn/stats/rescale.go) [rms.go](/src/github.com/montanaflynn/stats/rms.go) [rolling.go](/src/github.com/montanaflynn/stats/rolling.go) [round.go](/src/github.com/montanaflynn/stats/round.go) [sample.go](/src/github.com/montanaflynn/stats/sample.go) [sem.go](/src/github.com/montanaflynn/stats/sem.go) [sigmoid.go](/src/github.com/montanaflynn/stats/sigmoid.go) [skewness.go](/src/github.com/montanaflynn/stats/skewness.go) [softmax.go](/src/github.com/montanaflynn/stats/softmax.go) [sum.go](/src/github.com/montanaflynn/stats/sum.go) [trimmed_mean.go](/src/github.com/montanaflynn/stats/trimmed_mean.go) [ttest.go](/src/github.com/montanaflynn/stats/ttest.go) [util.go](/src/github.com/montanaflynn/stats/util.go) [variance.go](/src/github.com/montanaflynn/stats/variance.go) [weighted_mean.go](/src/github.com/montanaflynn/stats/weighted_mean.go) [winsorize.go](/src/github.com/montanaflynn/stats/winsorize.go) [zscore.go](/src/github.com/montanaflynn/stats/zscore.go) [ztest.go](/src/github.com/montanaflynn/stats/ztest.go) 
 
 
 
@@ -200,6 +305,9 @@ var (
     ErrInfValue = statsError{"Value is infinite."}
     // ErrYCoord Y Value must be greater than zero
     ErrYCoord = statsError{"Y Value must be greater than zero."}
+    // ErrTooFew Input has too few elements for the statistic. It matches
+    // ErrEmptyInput with errors.Is.
+    ErrTooFew = tooFewError{statsError{"Input has too few elements."}}
 )
 ```
 These are the package-wide error values.
@@ -223,43 +331,122 @@ Legacy error names that didn't start with Err
 
 
 
-## <a name="AutoCorrelation">func</a> [AutoCorrelation](/correlation.go?s=853:918#L38)
+## <a name="ArgMax">func</a> [ArgMax](/extremes.go?s=256:299#L9)
+``` go
+func ArgMax(input Float64Data) (int, error)
+```
+ArgMax finds the index of the highest number in a slice,
+returning the first occurrence in the case of ties. A NaN is
+treated as the highest value, matching numpy.argmax, so the
+index of the first NaN is returned.
+
+
+
+## <a name="ArgMin">func</a> [ArgMin](/extremes.go?s=993:1036#L38)
+``` go
+func ArgMin(input Float64Data) (int, error)
+```
+ArgMin finds the index of the lowest number in a slice,
+returning the first occurrence in the case of ties. A NaN is
+treated as the lowest value, matching numpy.argmin, so the
+index of the first NaN is returned.
+
+
+
+## <a name="AutoCorrelation">func</a> [AutoCorrelation](/correlation.go?s=3440:3505#L133)
 ``` go
 func AutoCorrelation(data Float64Data, lags int) (float64, error)
 ```
-AutoCorrelation is the correlation of a signal with a delayed copy of itself as a function of delay
+AutoCorrelation is the correlation of a signal with a delayed copy of itself as a function of delay.
+It returns 0 with ErrZero for constant data, where the correlation is undefined.
 
 
 
-## <a name="ChebyshevDistance">func</a> [ChebyshevDistance](/distances.go?s=368:456#L20)
+## <a name="ChebyshevDistance">func</a> [ChebyshevDistance](/distances.go?s=429:517#L21)
 ``` go
 func ChebyshevDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)
 ```
-ChebyshevDistance computes the Chebyshev distance between two data sets
+ChebyshevDistance computes the Chebyshev distance between two data sets.
+If any coordinate difference is NaN the distance is NaN.
 
 
 
-## <a name="Correlation">func</a> [Correlation](/correlation.go?s=112:171#L8)
+## <a name="Clip">func</a> [Clip](/clip.go?s=199:264#L8)
+``` go
+func Clip(input Float64Data, min, max float64) ([]float64, error)
+```
+Clip clamps each value in the input slice into the
+inclusive range between min and max. A min greater than max,
+or a min or max that is NaN, returns ErrBounds.
+
+
+
+## <a name="CoefficientOfVariation">func</a> [CoefficientOfVariation](/coefficient_of_variation.go?s=375:438#L12)
+``` go
+func CoefficientOfVariation(input Float64Data) (float64, error)
+```
+CoefficientOfVariation finds the coefficient of variation of a slice
+of floats, defined as the sample standard deviation divided by the
+mean. This matches the behavior of Python's scipy.stats.variation
+with ddof=1.
+
+The input must have at least two elements and its mean must not be
+zero. A single element returns ErrTooFew.
+
+
+
+## <a name="Correlation">func</a> [Correlation](/correlation.go?s=262:321#L11)
 ``` go
 func Correlation(data1, data2 Float64Data) (float64, error)
 ```
-Correlation describes the degree of relationship between two sets of data
+Correlation describes the degree of relationship between two sets of data.
+The correlation is undefined for a single pair or when either set is
+constant, so it returns 0 with ErrTooFew or ErrZero respectively.
 
 
 
-## <a name="Covariance">func</a> [Covariance](/variance.go?s=1284:1342#L53)
+## <a name="Covariance">func</a> [Covariance](/variance.go?s=2070:2128#L74)
 ``` go
 func Covariance(data1, data2 Float64Data) (float64, error)
 ```
-Covariance is a measure of how much two sets of data change
+Covariance is a measure of how much two sets of data change. It is the
+sample covariance, so it returns ErrTooFew for a single pair.
 
 
 
-## <a name="CovariancePopulation">func</a> [CovariancePopulation](/variance.go?s=1864:1932#L81)
+## <a name="CovariancePopulation">func</a> [CovariancePopulation](/variance.go?s=2699:2767#L106)
 ``` go
 func CovariancePopulation(data1, data2 Float64Data) (float64, error)
 ```
 CovariancePopulation computes covariance for entire population between two variables.
+
+
+
+## <a name="CumulativeMax">func</a> [CumulativeMax](/cumulative.go?s=587:643#L28)
+``` go
+func CumulativeMax(input Float64Data) ([]float64, error)
+```
+CumulativeMax calculates the cumulative maximum of the input slice.
+Like NumPy's maximum.accumulate, every value from the first NaN
+onward is NaN.
+
+
+
+## <a name="CumulativeMin">func</a> [CumulativeMin](/cumulative.go?s=1080:1136#L50)
+``` go
+func CumulativeMin(input Float64Data) ([]float64, error)
+```
+CumulativeMin calculates the cumulative minimum of the input slice.
+Like NumPy's minimum.accumulate, every value from the first NaN
+onward is NaN.
+
+
+
+## <a name="CumulativeProduct">func</a> [CumulativeProduct](/cumulative.go?s=104:164#L6)
+``` go
+func CumulativeProduct(input Float64Data) ([]float64, error)
+```
+CumulativeProduct calculates the cumulative product of the input slice
 
 
 
@@ -271,6 +458,30 @@ CumulativeSum calculates the cumulative sum of the input slice
 
 
 
+## <a name="Diff">func</a> [Diff](/diff.go?s=238:285#L7)
+``` go
+func Diff(input Float64Data) ([]float64, error)
+```
+Diff calculates the successive differences of the input slice,
+returning input[i] - input[i-1] for each i in 1..len(input)-1.
+The output has length len(input) - 1; a single-element input
+returns an empty slice.
+
+
+
+## <a name="EWMA">func</a> [EWMA](/ewma.go?s=435:497#L11)
+``` go
+func EWMA(input Float64Data, alpha float64) ([]float64, error)
+```
+EWMA calculates the exponentially weighted moving average of the input
+with smoothing factor alpha. The first output equals the first input and
+each subsequent entry is alpha*input[i] + (1-alpha)*output[i-1], so the
+result has the same length as the input. The alpha must satisfy
+0 < alpha <= 1 or ErrBounds is returned, so a NaN alpha is rejected.
+An empty input returns ErrEmptyInput.
+
+
+
 ## <a name="Entropy">func</a> [Entropy](/entropy.go?s=77:125#L6)
 ``` go
 func Entropy(input Float64Data) (float64, error)
@@ -279,7 +490,7 @@ Entropy provides calculation of the entropy
 
 
 
-## <a name="EuclideanDistance">func</a> [EuclideanDistance](/distances.go?s=836:924#L36)
+## <a name="EuclideanDistance">func</a> [EuclideanDistance](/distances.go?s=986:1074#L38)
 ``` go
 func EuclideanDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)
 ```
@@ -287,7 +498,7 @@ EuclideanDistance computes the Euclidean distance between two data sets
 
 
 
-## <a name="ExpGeom">func</a> [ExpGeom](/geometric_distribution.go?s=652:700#L27)
+## <a name="ExpGeom">func</a> [ExpGeom](/geometric_distribution.go?s=940:988#L33)
 ``` go
 func ExpGeom(p float64) (exp float64, err error)
 ```
@@ -296,7 +507,7 @@ for a geometric random variable with parameter p
 
 
 
-## <a name="GeometricMean">func</a> [GeometricMean](/mean.go?s=319:373#L18)
+## <a name="GeometricMean">func</a> [GeometricMean](/mean.go?s=693:747#L31)
 ``` go
 func GeometricMean(input Float64Data) (float64, error)
 ```
@@ -304,7 +515,7 @@ GeometricMean gets the geometric mean for a slice of numbers
 
 
 
-## <a name="HarmonicMean">func</a> [HarmonicMean](/mean.go?s=717:770#L40)
+## <a name="HarmonicMean">func</a> [HarmonicMean](/mean.go?s=1216:1269#L54)
 ``` go
 func HarmonicMean(input Float64Data) (float64, error)
 ```
@@ -312,7 +523,20 @@ HarmonicMean gets the harmonic mean for a slice of numbers
 
 
 
-## <a name="InterQuartileRange">func</a> [InterQuartileRange](/quartile.go?s=821:880#L45)
+## <a name="Histogram">func</a> [Histogram](/histogram.go?s=420:489#L14)
+``` go
+func Histogram(input Float64Data, bins int) ([]int, []float64, error)
+```
+Histogram calculates the histogram of a slice using the given
+number of equal-width bins over [min, max], returning the count
+of values in each bin along with the bins+1 bin edges. Each bin
+is half-open [edges[i], edges[i+1]) except the last, which also
+includes the maximum value. A NaN cannot be placed in any
+bin, so input containing a NaN returns ErrNaN.
+
+
+
+## <a name="InterQuartileRange">func</a> [InterQuartileRange](/quartile.go?s=1056:1115#L49)
 ``` go
 func InterQuartileRange(input Float64Data) (float64, error)
 ```
@@ -320,7 +544,45 @@ InterQuartileRange finds the range between Q1 and Q3
 
 
 
-## <a name="ManhattanDistance">func</a> [ManhattanDistance](/distances.go?s=1277:1365#L50)
+## <a name="Interp">func</a> [Interp](/interp.go?s=635:688#L16)
+``` go
+func Interp(x, xp, fp Float64Data) ([]float64, error)
+```
+Interp calculates the one-dimensional piecewise-linear interpolant to a
+function with given discrete data points (xp, fp), evaluated at each x.
+Values of x below xp[0] return fp[0] and values above xp[len(xp)-1] return
+fp[len(xp)-1], so no extrapolation is performed. Unlike numpy's interp,
+which silently returns nonsense for unsorted coordinates, xp must be
+strictly increasing or ErrBounds is returned. An empty x or xp returns
+ErrEmptyInput and xp and fp of different lengths return ErrSize.
+A NaN in xp returns ErrBounds and a NaN in x gives a NaN in the output.
+
+
+
+## <a name="KendallTau">func</a> [KendallTau](/kendall.go?s=497:555#L13)
+``` go
+func KendallTau(data1, data2 Float64Data) (float64, error)
+```
+KendallTau calculates Kendall's tau-b rank correlation coefficient
+between two variables. Tau-b corrects for ties, matching the values
+produced by SciPy's kendalltau and pandas' corr(method="kendall").
+Pairs are compared with a simple O(n^2) loop for clarity.
+
+Tau-b is undefined for a single pair or when either variable is constant,
+so it returns 0 with ErrTooFew or ErrZero respectively. If either variable contains a NaN
+the result is NaN.
+
+
+
+## <a name="Kurtosis">func</a> [Kurtosis](/kurtosis.go?s=97:146#L6)
+``` go
+func Kurtosis(input Float64Data) (float64, error)
+```
+Kurtosis computes the population excess kurtosis of the dataset
+
+
+
+## <a name="ManhattanDistance">func</a> [ManhattanDistance](/distances.go?s=1427:1515#L52)
 ``` go
 func ManhattanDistance(dataPointX, dataPointY Float64Data) (distance float64, err error)
 ```
@@ -328,11 +590,12 @@ ManhattanDistance computes the Manhattan distance between two data sets
 
 
 
-## <a name="Max">func</a> [Max](/max.go?s=78:130#L8)
+## <a name="Max">func</a> [Max](/max.go?s=129:181#L9)
 ``` go
 func Max(input Float64Data) (max float64, err error)
 ```
-Max finds the highest number in a slice
+Max finds the highest number in a slice. If the slice contains a NaN
+the result is NaN.
 
 
 
@@ -344,11 +607,12 @@ Mean gets the average of a slice of numbers
 
 
 
-## <a name="Median">func</a> [Median](/median.go?s=85:143#L6)
+## <a name="Median">func</a> [Median](/median.go?s=136:194#L7)
 ``` go
 func Median(input Float64Data) (median float64, err error)
 ```
-Median gets the median number in a slice of numbers
+Median gets the median number in a slice of numbers. If the slice
+contains a NaN the result is NaN.
 
 
 
@@ -360,15 +624,16 @@ MedianAbsoluteDeviation finds the median of the absolute deviations from the dat
 
 
 
-## <a name="MedianAbsoluteDeviationPopulation">func</a> [MedianAbsoluteDeviationPopulation](/deviation.go?s=360:442#L11)
+## <a name="MedianAbsoluteDeviationPopulation">func</a> [MedianAbsoluteDeviationPopulation](/deviation.go?s=411:493#L12)
 ``` go
 func MedianAbsoluteDeviationPopulation(input Float64Data) (mad float64, err error)
 ```
-MedianAbsoluteDeviationPopulation finds the median of the absolute deviations from the population median
+MedianAbsoluteDeviationPopulation finds the median of the absolute deviations from the population median.
+If the input contains a NaN the result is NaN.
 
 
 
-## <a name="Midhinge">func</a> [Midhinge](/quartile.go?s=1075:1124#L55)
+## <a name="Midhinge">func</a> [Midhinge](/quartile.go?s=1296:1345#L59)
 ``` go
 func Midhinge(input Float64Data) (float64, error)
 ```
@@ -376,15 +641,16 @@ Midhinge finds the average of the first and third quartiles
 
 
 
-## <a name="Min">func</a> [Min](/min.go?s=78:130#L6)
+## <a name="Min">func</a> [Min](/min.go?s=128:180#L7)
 ``` go
 func Min(input Float64Data) (min float64, err error)
 ```
-Min finds the lowest number in a set of data
+Min finds the lowest number in a set of data. If the data contains a
+NaN the result is NaN.
 
 
 
-## <a name="MinkowskiDistance">func</a> [MinkowskiDistance](/distances.go?s=2133:2237#L78)
+## <a name="MinkowskiDistance">func</a> [MinkowskiDistance](/distances.go?s=2342:2446#L81)
 ``` go
 func MinkowskiDistance(dataPointX, dataPointY Float64Data, lambda float64) (distance float64, err error)
 ```
@@ -400,7 +666,8 @@ Arguments:
 	            returned distance is manhattan distance and
 	            lambda = 2; it is euclidean distance. Lambda
 	            reaching to infinite - distance would be chebysev
-	            distance.
+	            distance. A negative or NaN lambda returns
+	            ErrBounds.
 
 Return:
 
@@ -417,16 +684,95 @@ Mode gets the mode [most frequent value(s)] of a slice of float64s
 
 
 
-## <a name="Ncr">func</a> [Ncr](/norm.go?s=7384:7406#L239)
+## <a name="MovingAverage">func</a> [MovingAverage](/rolling.go?s=362:430#L8)
+``` go
+func MovingAverage(input Float64Data, window int) ([]float64, error)
+```
+MovingAverage calculates the rolling mean of the input over a trailing
+window. Only fully-populated windows produce output, so the result has
+len(input)-window+1 entries and entry i is the mean of input[i : i+window].
+The window must satisfy 1 <= window <= len(input) or ErrBounds is
+returned. An empty input returns ErrEmptyInput.
+
+
+
+## <a name="MovingMax">func</a> [MovingMax](/moving.go?s=1892:1956#L60)
+``` go
+func MovingMax(input Float64Data, window int) ([]float64, error)
+```
+MovingMax calculates the rolling maximum of the input over a trailing
+window. Only fully-populated windows produce output, so the result has
+len(input)-window+1 entries and entry i is the maximum of
+input[i : i+window]. The window must satisfy 1 <= window <= len(input) or
+ErrBounds is returned. An empty input returns ErrEmptyInput.
+
+
+
+## <a name="MovingMedian">func</a> [MovingMedian](/moving.go?s=365:432#L8)
+``` go
+func MovingMedian(input Float64Data, window int) ([]float64, error)
+```
+MovingMedian calculates the rolling median of the input over a trailing
+window. Only fully-populated windows produce output, so the result has
+len(input)-window+1 entries and entry i is the median of input[i : i+window].
+The window must satisfy 1 <= window <= len(input) or ErrBounds is
+returned. An empty input returns ErrEmptyInput.
+
+
+
+## <a name="MovingMin">func</a> [MovingMin](/moving.go?s=1136:1200#L34)
+``` go
+func MovingMin(input Float64Data, window int) ([]float64, error)
+```
+MovingMin calculates the rolling minimum of the input over a trailing
+window. Only fully-populated windows produce output, so the result has
+len(input)-window+1 entries and entry i is the minimum of
+input[i : i+window]. The window must satisfy 1 <= window <= len(input) or
+ErrBounds is returned. An empty input returns ErrEmptyInput.
+
+
+
+## <a name="MovingStdDev">func</a> [MovingStdDev](/rolling.go?s=1239:1306#L36)
+``` go
+func MovingStdDev(input Float64Data, window int) ([]float64, error)
+```
+MovingStdDev calculates the rolling sample standard deviation of the input
+over a trailing window. Only fully-populated windows produce output, so the
+result has len(input)-window+1 entries and entry i is the sample standard
+deviation of input[i : i+window]. The window must satisfy
+2 <= window <= len(input) or ErrBounds is returned, since the sample
+standard deviation of a single value is undefined. An empty input returns
+ErrEmptyInput.
+
+
+
+## <a name="MovingSum">func</a> [MovingSum](/moving.go?s=2640:2704#L86)
+``` go
+func MovingSum(input Float64Data, window int) ([]float64, error)
+```
+MovingSum calculates the rolling sum of the input over a trailing
+window. Only fully-populated windows produce output, so the result has
+len(input)-window+1 entries and entry i is the sum of input[i : i+window].
+The window must satisfy 1 <= window <= len(input) or ErrBounds is
+returned. An empty input returns ErrEmptyInput.
+
+
+
+## <a name="Ncr">func</a> [Ncr](/norm.go?s=9498:9520#L294)
 ``` go
 func Ncr(n, r int) int
 ```
-Ncr is an N choose R algorithm.
-Aaron Cannon's algorithm.
+Ncr returns the binomial coefficient "n choose r", the number of ways
+to choose r items from n without regard to order.
+
+Ncr returns 0 when r < 0 or r > n, since no such selection exists.
+When the coefficient is too large to fit in an int, Ncr returns
+math.MaxInt instead of an overflowed value, so a result equal to
+math.MaxInt almost certainly means the true value did not fit.
 
 
 
-## <a name="NormBoxMullerRvs">func</a> [NormBoxMullerRvs](/norm.go?s=667:736#L23)
+## <a name="NormBoxMullerRvs">func</a> [NormBoxMullerRvs](/norm.go?s=906:975#L29)
 ``` go
 func NormBoxMullerRvs(loc float64, scale float64, size int) []float64
 ```
@@ -435,7 +781,7 @@ For more information please visit: <a href="http://mathworld.wolfram.com/Box-Mul
 
 
 
-## <a name="NormCdf">func</a> [NormCdf](/norm.go?s=1826:1885#L52)
+## <a name="NormCdf">func</a> [NormCdf](/norm.go?s=2034:2093#L59)
 ``` go
 func NormCdf(x float64, loc float64, scale float64) float64
 ```
@@ -443,7 +789,7 @@ NormCdf is the cumulative distribution function.
 
 
 
-## <a name="NormEntropy">func</a> [NormEntropy](/norm.go?s=5773:5825#L180)
+## <a name="NormEntropy">func</a> [NormEntropy](/norm.go?s=7526:7578#L235)
 ``` go
 func NormEntropy(loc float64, scale float64) float64
 ```
@@ -451,7 +797,7 @@ NormEntropy is the differential entropy of the RV.
 
 
 
-## <a name="NormFit">func</a> [NormFit](/norm.go?s=6058:6097#L187)
+## <a name="NormFit">func</a> [NormFit](/norm.go?s=7811:7850#L242)
 ``` go
 func NormFit(data []float64) [2]float64
 ```
@@ -461,7 +807,7 @@ Returns array of Mean followed by Standard Deviation.
 
 
 
-## <a name="NormInterval">func</a> [NormInterval](/norm.go?s=6976:7047#L221)
+## <a name="NormInterval">func</a> [NormInterval](/norm.go?s=8651:8722#L272)
 ``` go
 func NormInterval(alpha float64, loc float64, scale float64) [2]float64
 ```
@@ -469,15 +815,15 @@ NormInterval finds endpoints of the range that contains alpha percent of the dis
 
 
 
-## <a name="NormIsf">func</a> [NormIsf](/norm.go?s=4330:4393#L137)
+## <a name="NormIsf">func</a> [NormIsf](/norm.go?s=5589:5648#L177)
 ``` go
-func NormIsf(p float64, loc float64, scale float64) (x float64)
+func NormIsf(p float64, loc float64, scale float64) float64
 ```
 NormIsf is the inverse survival function (inverse of sf).
 
 
 
-## <a name="NormLogCdf">func</a> [NormLogCdf](/norm.go?s=2016:2078#L57)
+## <a name="NormLogCdf">func</a> [NormLogCdf](/norm.go?s=2218:2280#L64)
 ``` go
 func NormLogCdf(x float64, loc float64, scale float64) float64
 ```
@@ -485,7 +831,7 @@ NormLogCdf is the log of the cumulative distribution function.
 
 
 
-## <a name="NormLogPdf">func</a> [NormLogPdf](/norm.go?s=1590:1652#L47)
+## <a name="NormLogPdf">func</a> [NormLogPdf](/norm.go?s=1829:1891#L53)
 ``` go
 func NormLogPdf(x float64, loc float64, scale float64) float64
 ```
@@ -493,7 +839,7 @@ NormLogPdf is the log of the probability density function.
 
 
 
-## <a name="NormLogSf">func</a> [NormLogSf](/norm.go?s=2423:2484#L67)
+## <a name="NormLogSf">func</a> [NormLogSf](/norm.go?s=2664:2725#L78)
 ``` go
 func NormLogSf(x float64, loc float64, scale float64) float64
 ```
@@ -501,7 +847,7 @@ NormLogSf is the log of the survival function.
 
 
 
-## <a name="NormMean">func</a> [NormMean](/norm.go?s=6560:6609#L206)
+## <a name="NormMean">func</a> [NormMean](/norm.go?s=8235:8284#L257)
 ``` go
 func NormMean(loc float64, scale float64) float64
 ```
@@ -509,7 +855,7 @@ NormMean is the mean/expected value of the distribution.
 
 
 
-## <a name="NormMedian">func</a> [NormMedian](/norm.go?s=6431:6482#L201)
+## <a name="NormMedian">func</a> [NormMedian](/norm.go?s=8106:8157#L252)
 ``` go
 func NormMedian(loc float64, scale float64) float64
 ```
@@ -517,16 +863,20 @@ NormMedian is the median of the distribution.
 
 
 
-## <a name="NormMoment">func</a> [NormMoment](/norm.go?s=4694:4752#L146)
+## <a name="NormMoment">func</a> [NormMoment](/norm.go?s=6299:6357#L189)
 ``` go
 func NormMoment(n int, loc float64, scale float64) float64
 ```
-NormMoment approximates the non-central (raw) moment of order n.
+NormMoment returns the non-central (raw) moment of order n, E[X^n] for
+X ~ N(loc, scale^2). It returns 0 for n < 0.
+It uses the recurrence M(n) = loc*M(n-1) + (n-1)*scale^2*M(n-2), with
+M(0) = 1 and M(1) = loc, evaluated in float64, so it only overflows to
+±Inf when the moment itself is too large for a float64.
 For more information please visit: <a href="https://math.stackexchange.com/questions/1945448/methods-for-finding-raw-moments-of-the-normal-distribution">https://math.stackexchange.com/questions/1945448/methods-for-finding-raw-moments-of-the-normal-distribution</a>
 
 
 
-## <a name="NormPdf">func</a> [NormPdf](/norm.go?s=1357:1416#L42)
+## <a name="NormPdf">func</a> [NormPdf](/norm.go?s=1596:1655#L48)
 ``` go
 func NormPdf(x float64, loc float64, scale float64) float64
 ```
@@ -534,7 +884,7 @@ NormPdf is the probability density function.
 
 
 
-## <a name="NormPpf">func</a> [NormPpf](/norm.go?s=2854:2917#L75)
+## <a name="NormPpf">func</a> [NormPpf](/norm.go?s=3828:3891#L107)
 ``` go
 func NormPpf(p float64, loc float64, scale float64) (x float64)
 ```
@@ -545,7 +895,7 @@ For more information please visit: <a href="https://stackedboxes.org/2017/05/01/
 
 
 
-## <a name="NormPpfRvs">func</a> [NormPpfRvs](/norm.go?s=247:310#L12)
+## <a name="NormPpfRvs">func</a> [NormPpfRvs](/norm.go?s=486:549#L18)
 ``` go
 func NormPpfRvs(loc float64, scale float64, size int) []float64
 ```
@@ -554,7 +904,16 @@ For more information please visit: <a href="https://demonstrations.wolfram.com/T
 
 
 
-## <a name="NormSf">func</a> [NormSf](/norm.go?s=2250:2308#L62)
+## <a name="NormSample">func</a> [NormSample](/norm.go?s=194:257#L12)
+``` go
+func NormSample(loc float64, scale float64, size int) []float64
+```
+NormSample generates random samples from a normal distribution
+with the given mean (loc) and standard deviation (scale).
+
+
+
+## <a name="NormSf">func</a> [NormSf](/norm.go?s=2498:2556#L73)
 ``` go
 func NormSf(x float64, loc float64, scale float64) float64
 ```
@@ -562,7 +921,7 @@ NormSf is the survival function (also defined as 1 - cdf, but sf is sometimes mo
 
 
 
-## <a name="NormStats">func</a> [NormStats](/norm.go?s=5277:5345#L162)
+## <a name="NormStats">func</a> [NormStats](/norm.go?s=7030:7098#L217)
 ``` go
 func NormStats(loc float64, scale float64, moments string) []float64
 ```
@@ -573,7 +932,7 @@ Returns array of m v s k in that order.
 
 
 
-## <a name="NormStd">func</a> [NormStd](/norm.go?s=6814:6862#L216)
+## <a name="NormStd">func</a> [NormStd](/norm.go?s=8489:8537#L267)
 ``` go
 func NormStd(loc float64, scale float64) float64
 ```
@@ -581,7 +940,7 @@ NormStd is the standard deviation of the distribution.
 
 
 
-## <a name="NormVar">func</a> [NormVar](/norm.go?s=6675:6723#L211)
+## <a name="NormVar">func</a> [NormVar](/norm.go?s=8350:8398#L262)
 ``` go
 func NormVar(loc float64, scale float64) float64
 ```
@@ -589,7 +948,7 @@ NormVar is the variance of the distribution.
 
 
 
-## <a name="Pearson">func</a> [Pearson](/correlation.go?s=655:710#L33)
+## <a name="Pearson">func</a> [Pearson](/correlation.go?s=1474:1529#L56)
 ``` go
 func Pearson(data1, data2 Float64Data) (float64, error)
 ```
@@ -597,36 +956,112 @@ Pearson calculates the Pearson product-moment correlation coefficient between tw
 
 
 
-## <a name="Percentile">func</a> [Percentile](/percentile.go?s=598:681#L20)
+## <a name="PercentChange">func</a> [PercentChange](/diff.go?s=891:947#L29)
+``` go
+func PercentChange(input Float64Data) ([]float64, error)
+```
+PercentChange calculates the fractional change between successive
+elements of the input slice, returning
+(input[i] - input[i-1]) / input[i-1] for each i in 1..len(input)-1.
+The output has length len(input) - 1; a single-element input
+returns an empty slice. A zero denominator follows IEEE 754
+semantics, yielding +Inf, -Inf, or NaN (for 0/0), matching the
+behavior of pandas pct_change.
+
+
+
+## <a name="Percentile">func</a> [Percentile](/percentile.go?s=1073:1156#L29)
 ``` go
 func Percentile(input Float64Data, percent float64) (percentile float64, err error)
 ```
 Percentile finds the relative standing in a slice of floats.
 
 The function uses the Linear Interpolation Between Closest Ranks method
-as recommended by NIST [1] and used by Excel (PERCENTILE), Google Sheets,
-NumPy (default), and other standard tools.
+(Hyndman & Fan type 7), the default in Excel (PERCENTILE, PERCENTILE.INC),
+Google Sheets, NumPy, and R. Note that NIST [1] describes the closely
+related p(N+1) variant (Hyndman & Fan type 6, Excel PERCENTILE.EXC),
+which gives different results for the same input.
 
 Algorithm (for percent p and sorted data of length n):
 
 
 	1. Compute the rank: rank = (p / 100) * (n - 1)
 	2. Split into integer part k and fractional part f
-	3. Result = data[k] + f * (data[k+1] - data[k])
+	3. Result = data[k] + f * (data[k+1] - data[k]), or data[k] when f is 0
+	   or data[k] equals data[k+1]
+
+When data[k+1] - data[k] is infinite, because it overflows or an endpoint
+is infinite, the endpoints are weighted separately as
+(1 - f) * data[k] + f * data[k+1] so large finite inputs stay finite.
+
+If the input contains a NaN the result is NaN.
 
 [1] <a href="https://www.itl.nist.gov/div898/handbook/prc/section2/prc262.htm">https://www.itl.nist.gov/div898/handbook/prc/section2/prc262.htm</a>
 
 
 
-## <a name="PercentileNearestRank">func</a> [PercentileNearestRank](/percentile.go?s=1382:1476#L55)
+## <a name="PercentileNearestRank">func</a> [PercentileNearestRank](/percentile.go?s=2641:2735#L82)
 ``` go
 func PercentileNearestRank(input Float64Data, percent float64) (percentile float64, err error)
 ```
-PercentileNearestRank finds the relative standing in a slice of floats using the Nearest Rank method
+PercentileNearestRank finds the relative standing in a slice of floats using the Nearest Rank method.
+If the input contains a NaN the result is NaN.
 
 
 
-## <a name="PopulationVariance">func</a> [PopulationVariance](/variance.go?s=828:896#L31)
+## <a name="PercentileOfScore">func</a> [PercentileOfScore](/percentile_of_score.go?s=462:535#L13)
+``` go
+func PercentileOfScore(input Float64Data, score float64) (float64, error)
+```
+PercentileOfScore calculates the percentile rank of a score
+relative to a slice of floats, defined as the percentage of
+values strictly below the score plus half the percentage of
+values equal to the score. The result is between 0 and 100.
+This matches the behavior of Python's
+scipy.stats.percentileofscore with kind="mean". A NaN score
+returns ErrBounds, and if the input contains a NaN the result
+is NaN.
+
+
+
+## <a name="PercentileWeighted">func</a> [PercentileWeighted](/percentile_weighted.go?s=620:719#L19)
+``` go
+func PercentileWeighted(data, weights Float64Data, percent float64) (percentile float64, err error)
+```
+PercentileWeighted finds the weighted percentile of a slice of floats
+using the weighted empirical CDF (inverse CDF / nearest-rank method).
+
+For a given percent p, it returns the smallest data value x such that
+the cumulative weight of all values <= x is at least p% of the total
+weight. This matches the behavior of Python's statsmodels
+DescrStatsW.quantile.
+
+The data and weights slices must be the same length. Weights must be
+non-negative and at least one weight must be positive. The percent
+parameter must be between 0 and 100 (exclusive).
+
+
+
+## <a name="PopulationKurtosis">func</a> [PopulationKurtosis](/kurtosis.go?s=391:450#L13)
+``` go
+func PopulationKurtosis(input Float64Data) (float64, error)
+```
+PopulationKurtosis computes the population excess kurtosis (Fisher
+definition) using the fourth central moment normalized by the squared
+variance, so a normal distribution has a kurtosis of zero.
+
+
+
+## <a name="PopulationSkewness">func</a> [PopulationSkewness](/skewness.go?s=318:377#L12)
+``` go
+func PopulationSkewness(input Float64Data) (float64, error)
+```
+PopulationSkewness computes the population skewness using the third
+central moment normalized by the cube of the standard deviation.
+
+
+
+## <a name="PopulationVariance">func</a> [PopulationVariance](/variance.go?s=1402:1470#L46)
 ``` go
 func PopulationVariance(input Float64Data) (pvar float64, err error)
 ```
@@ -634,13 +1069,66 @@ PopulationVariance finds the amount of variance within a population
 
 
 
-## <a name="ProbGeom">func</a> [ProbGeom](/geometric_distribution.go?s=258:322#L10)
+## <a name="ProbGeom">func</a> [ProbGeom](/geometric_distribution.go?s=309:373#L11)
 ``` go
 func ProbGeom(a int, b int, p float64) (prob float64, err error)
 ```
 ProbGeom generates the probability for a geometric random variable
-with parameter p to achieve success in the interval of [a, b] trials
+with parameter p to achieve success in the interval of [a, b] trials.
+A p outside [0, 1], or NaN, returns ErrBounds.
 See <a href="https://en.wikipedia.org/wiki/Geometric_distribution">https://en.wikipedia.org/wiki/Geometric_distribution</a> for more information
+
+
+
+## <a name="Product">func</a> [Product](/product.go?s=299:347#L10)
+``` go
+func Product(input Float64Data) (float64, error)
+```
+Product calculates the product of a slice of floats by
+multiplying the values from left to right. It is the scalar
+counterpart of CumulativeProduct. Large inputs can overflow
+to Inf; use GeometricMean for an overflow-safe summary of
+multiplicative data.
+
+
+
+## <a name="RMS">func</a> [RMS](/rms.go?s=156:200#L7)
+``` go
+func RMS(input Float64Data) (float64, error)
+```
+RMS calculates the root mean square of a slice of floats,
+defined as the square root of the mean of the squared values.
+
+
+
+## <a name="Range">func</a> [Range](/extremes.go?s=1638:1684#L66)
+``` go
+func Range(input Float64Data) (float64, error)
+```
+Range finds the difference between the highest and
+lowest numbers in a slice. If the slice contains a NaN
+the result is NaN.
+
+
+
+## <a name="Rank">func</a> [Rank](/rank.go?s=271:318#L9)
+``` go
+func Rank(input Float64Data) ([]float64, error)
+```
+Rank assigns fractional (average) ranks to the input values.
+Ranks are 1-based and tied values receive the average of the
+ranks they would have been assigned. Like SciPy's rankdata,
+if the input contains a NaN every rank is NaN.
+
+
+
+## <a name="Rescale">func</a> [Rescale](/rescale.go?s=189:239#L8)
+``` go
+func Rescale(input Float64Data) ([]float64, error)
+```
+Rescale normalizes the input values to the range of 0 to 1
+by subtracting the minimum and dividing by the range,
+also known as min-max normalization.
 
 
 
@@ -652,6 +1140,18 @@ Round a float to a specific decimal place or precision
 
 
 
+## <a name="SEM">func</a> [SEM](/sem.go?s=331:375#L10)
+``` go
+func SEM(input Float64Data) (float64, error)
+```
+SEM calculates the standard error of the mean of a slice
+of floats, defined as the sample standard deviation divided
+by the square root of the sample size. This matches the
+behavior of Python's scipy.stats.sem with ddof=1, except that a
+single element returns ErrTooFew instead of NaN.
+
+
+
 ## <a name="Sample">func</a> [Sample](/sample.go?s=112:192#L9)
 ``` go
 func Sample(input Float64Data, takenum int, replacement bool) ([]float64, error)
@@ -660,11 +1160,30 @@ Sample returns sample from input with replacement or without
 
 
 
-## <a name="SampleVariance">func</a> [SampleVariance](/variance.go?s=1058:1122#L42)
+## <a name="SampleKurtosis">func</a> [SampleKurtosis](/kurtosis.go?s=1334:1389#L46)
+``` go
+func SampleKurtosis(input Float64Data) (float64, error)
+```
+SampleKurtosis computes the bias-corrected sample excess kurtosis,
+matching pandas .kurt() and scipy.stats.kurtosis with bias=False.
+
+
+
+## <a name="SampleSkewness">func</a> [SampleSkewness](/skewness.go?s=1422:1477#L51)
+``` go
+func SampleSkewness(input Float64Data) (float64, error)
+```
+SampleSkewness computes the adjusted Fisher-Pearson standardized moment
+coefficient, correcting for bias in small samples.
+
+
+
+## <a name="SampleVariance">func</a> [SampleVariance](/variance.go?s=1710:1774#L58)
 ``` go
 func SampleVariance(input Float64Data) (svar float64, err error)
 ```
-SampleVariance finds the amount of variance within a sample
+SampleVariance finds the amount of variance within a sample. It returns
+ErrTooFew for a single element, where the n-1 divisor is zero.
 
 
 
@@ -679,6 +1198,14 @@ activation function.
 
 
 
+## <a name="Skewness">func</a> [Skewness](/skewness.go?s=90:139#L6)
+``` go
+func Skewness(input Float64Data) (float64, error)
+```
+Skewness computes the population skewness of the dataset
+
+
+
 ## <a name="SoftMax">func</a> [SoftMax](/softmax.go?s=206:256#L8)
 ``` go
 func SoftMax(input Float64Data) ([]float64, error)
@@ -686,6 +1213,19 @@ func SoftMax(input Float64Data) ([]float64, error)
 SoftMax returns the input values in the range of 0 to 1
 with sum of all the probabilities being equal to one. It
 is commonly used in machine learning neural networks.
+
+
+
+## <a name="Spearman">func</a> [Spearman](/correlation.go?s=1991:2047#L66)
+``` go
+func Spearman(data1, data2 Float64Data) (float64, error)
+```
+Spearman calculates the Spearman rank correlation coefficient between two variables.
+It works by ranking the data and then computing the Pearson correlation of the ranks.
+This method handles tied values using fractional (average) ranking.
+Like Correlation, it returns 0 with ErrTooFew for a single pair and 0 with
+ErrZero when either set is constant. If either variable contains a NaN the
+result is NaN.
 
 
 
@@ -697,7 +1237,7 @@ StableSample like stable sort, it returns samples from input while keeps the ord
 
 
 
-## <a name="StandardDeviation">func</a> [StandardDeviation](/deviation.go?s=695:762#L27)
+## <a name="StandardDeviation">func</a> [StandardDeviation](/deviation.go?s=746:813#L28)
 ``` go
 func StandardDeviation(input Float64Data) (sdev float64, err error)
 ```
@@ -705,7 +1245,7 @@ StandardDeviation the amount of variation in the dataset
 
 
 
-## <a name="StandardDeviationPopulation">func</a> [StandardDeviationPopulation](/deviation.go?s=892:969#L32)
+## <a name="StandardDeviationPopulation">func</a> [StandardDeviationPopulation](/deviation.go?s=943:1020#L33)
 ``` go
 func StandardDeviationPopulation(input Float64Data) (sdev float64, err error)
 ```
@@ -713,11 +1253,12 @@ StandardDeviationPopulation finds the amount of variation from the population
 
 
 
-## <a name="StandardDeviationSample">func</a> [StandardDeviationSample](/deviation.go?s=1250:1323#L46)
+## <a name="StandardDeviationSample">func</a> [StandardDeviationSample](/deviation.go?s=1369:1442#L48)
 ``` go
 func StandardDeviationSample(input Float64Data) (sdev float64, err error)
 ```
-StandardDeviationSample finds the amount of variation from a sample
+StandardDeviationSample finds the amount of variation from a sample. It
+returns ErrTooFew for a single element.
 
 
 
@@ -745,7 +1286,31 @@ Sum adds all the numbers of a slice together
 
 
 
-## <a name="Trimean">func</a> [Trimean](/quartile.go?s=1320:1368#L65)
+## <a name="TTest">func</a> [TTest](/ttest.go?s=823:922#L22)
+``` go
+func TTest(data1, data2 Float64Data, populationMean float64) (t float64, pvalue float64, err error)
+```
+TTest performs a one-sample or two-sample (independent) Student's t-test.
+
+For a one-sample t-test, pass the sample data as data1, nil for data2,
+and the expected population mean as populationMean.
+
+For a two-sample independent t-test (assuming equal variance), pass both
+sample datasets. The populationMean parameter is ignored in this case.
+Either sample may have a single element as long as there are at least
+three values in total, matching scipy.stats.ttest_ind.
+
+When the data has zero variance the t statistic is undefined: if the
+means being compared are equal TTest returns a t of 0 and a p-value of 1,
+otherwise it returns ErrBounds.
+
+Returns the t statistic and the two-tailed p-value.
+
+<a href="https://en.wikipedia.org/wiki/Student%27s_t-test">https://en.wikipedia.org/wiki/Student%27s_t-test</a>
+
+
+
+## <a name="Trimean">func</a> [Trimean](/quartile.go?s=1645:1693#L75)
 ``` go
 func Trimean(input Float64Data) (float64, error)
 ```
@@ -753,7 +1318,22 @@ Trimean finds the average of the median and the midhinge
 
 
 
-## <a name="VarGeom">func</a> [VarGeom](/geometric_distribution.go?s=885:933#L37)
+## <a name="TrimmedMean">func</a> [TrimmedMean](/trimmed_mean.go?s=450:519#L13)
+``` go
+func TrimmedMean(input Float64Data, percent float64) (float64, error)
+```
+TrimmedMean finds the mean of a slice of floats after removing a
+fraction of the smallest and largest values. This matches the
+behavior of Python's scipy.stats.trim_mean.
+
+The percent parameter is the fraction removed from each tail and
+must be in the range [0, 0.5). The number of elements trimmed from
+each tail is floor(len(input) * percent). A percent of zero returns
+the same result as Mean.
+
+
+
+## <a name="VarGeom">func</a> [VarGeom](/geometric_distribution.go?s=1173:1221#L43)
 ``` go
 func VarGeom(p float64) (exp float64, err error)
 ```
@@ -778,11 +1358,73 @@ VarS is a shortcut to SampleVariance
 
 
 
-## <a name="Variance">func</a> [Variance](/variance.go?s=659:717#L26)
+## <a name="Variance">func</a> [Variance](/variance.go?s=1233:1291#L41)
 ``` go
 func Variance(input Float64Data) (sdev float64, err error)
 ```
 Variance the amount of variation in the dataset
+
+
+
+## <a name="WeightedMean">func</a> [WeightedMean](/weighted_mean.go?s=415:476#L12)
+``` go
+func WeightedMean(data, weights Float64Data) (float64, error)
+```
+WeightedMean finds the weighted mean of a slice of floats, defined as
+the sum of each data value multiplied by its weight divided by the sum
+of all the weights. This matches the behavior of Python's
+numpy.average with the weights argument.
+
+The data and weights slices must be the same length. Weights must be
+non-negative and at least one weight must be positive.
+
+
+
+## <a name="Winsorize">func</a> [Winsorize](/winsorize.go?s=618:687#L16)
+``` go
+func Winsorize(input Float64Data, percent float64) ([]float64, error)
+```
+Winsorize limits the effect of outliers in a slice of floats by
+clamping a fraction of the smallest and largest values. This matches
+the behavior of Python's scipy.stats.mstats.winsorize with symmetric
+limits.
+
+The percent parameter is the fraction clamped in each tail and must
+be in the range [0, 0.5). With k = floor(len(input) * percent),
+values below the k-th smallest value are set to it and values above
+the k-th largest value are set to it. The returned slice preserves
+the original element order and a percent of zero returns a copy of
+the input.
+
+
+
+## <a name="ZScore">func</a> [ZScore](/zscore.go?s=279:328#L7)
+``` go
+func ZScore(input Float64Data) ([]float64, error)
+```
+ZScore standardizes the input values by subtracting the mean
+and dividing by the sample standard deviation, returning the
+number of standard deviations each value is from the mean. A
+single element returns ErrTooFew and constant input returns ErrZero.
+
+
+
+## <a name="ZTest">func</a> [ZTest](/ztest.go?s=537:654#L17)
+``` go
+func ZTest(data1, data2 Float64Data, populationMean, populationStdDev float64) (z float64, pvalue float64, err error)
+```
+ZTest performs a one-sample or two-sample Z-test.
+
+For a one-sample Z-test, pass the sample data as data1, nil for data2,
+the known population mean as populationMean, and the known population
+standard deviation as populationStdDev.
+
+For a two-sample Z-test, pass both sample datasets and the known population
+standard deviations. The populationMean parameter is ignored in this case.
+
+Returns the Z statistic and the two-tailed p-value.
+
+<a href="https://en.wikipedia.org/wiki/Z-test">https://en.wikipedia.org/wiki/Z-test</a>
 
 
 
@@ -826,7 +1468,7 @@ LogReg is a shortcut to LogarithmicRegression
 
 
 
-## <a name="Description">type</a> [Description](/describe.go?s=89:349#L6)
+## <a name="Description">type</a> [Description](/describe.go?s=89:381#L6)
 ``` go
 type Description struct {
     Count                  int
@@ -834,6 +1476,7 @@ type Description struct {
     Std                    float64
     Max                    float64
     Min                    float64
+    Range                  float64
     DescriptionPercentiles []descriptionPercentile
     AllowedNaN             bool
 }
@@ -847,14 +1490,14 @@ Holds information about the dataset provided to Describe
 
 
 
-### <a name="Describe">func</a> [Describe](/describe.go?s=579:672#L23)
+### <a name="Describe">func</a> [Describe](/describe.go?s=611:704#L24)
 ``` go
 func Describe(input Float64Data, allowNaN bool, percentiles *[]float64) (*Description, error)
 ```
 Describe generates descriptive statistics about a provided dataset, similar to python's pandas.describe()
 
 
-### <a name="DescribePercentileFunc">func</a> [DescribePercentileFunc](/describe.go?s=917:1084#L29)
+### <a name="DescribePercentileFunc">func</a> [DescribePercentileFunc](/describe.go?s=949:1116#L30)
 ``` go
 func DescribePercentileFunc(input Float64Data, allowNaN bool, percentiles *[]float64, percentileFunc func(Float64Data, float64) (float64, error)) (*Description, error)
 ```
@@ -865,7 +1508,7 @@ Takes in a function to use for percentile calculation
 
 
 
-### <a name="Description.String">func</a> (\*Description) [String](/describe.go?s=2078:2127#L68)
+### <a name="Description.String">func</a> (\*Description) [String](/describe.go?s=2161:2210#L71)
 ``` go
 func (d *Description) String(decimals int) string
 ```
@@ -877,6 +1520,7 @@ Represents the Description instance in a string format with specified number of 
 	std     0.82
 	max     3.00
 	min     1.00
+	range   2.00
 	25.00%  NaN
 	50.00%  1.50
 	75.00%  2.50
@@ -907,7 +1551,25 @@ LoadRawData parses and converts a slice of mixed data types to floats
 
 
 
-### <a name="Float64Data.AutoCorrelation">func</a> (Float64Data) [AutoCorrelation](/data.go?s=3257:3320#L91)
+### <a name="Float64Data.ArgMax">func</a> (Float64Data) [ArgMax](/extremes.go?s=1978:2020#L81)
+``` go
+func (f Float64Data) ArgMax() (int, error)
+```
+ArgMax returns the index of the highest number in the data
+
+
+
+
+### <a name="Float64Data.ArgMin">func</a> (Float64Data) [ArgMin](/extremes.go?s=2104:2146#L84)
+``` go
+func (f Float64Data) ArgMin() (int, error)
+```
+ArgMin returns the index of the lowest number in the data
+
+
+
+
+### <a name="Float64Data.AutoCorrelation">func</a> (Float64Data) [AutoCorrelation](/data.go?s=3274:3337#L91)
 ``` go
 func (f Float64Data) AutoCorrelation(lags int) (float64, error)
 ```
@@ -916,7 +1578,26 @@ AutoCorrelation is the correlation of a signal with a delayed copy of itself as 
 
 
 
-### <a name="Float64Data.Correlation">func</a> (Float64Data) [Correlation](/data.go?s=3058:3122#L86)
+### <a name="Float64Data.Clip">func</a> (Float64Data) [Clip](/clip.go?s=678:740#L33)
+``` go
+func (f Float64Data) Clip(min, max float64) ([]float64, error)
+```
+Clip clamps each value in the input slice into the
+inclusive range between min and max.
+
+
+
+
+### <a name="Float64Data.CoefficientOfVariation">func</a> (Float64Data) [CoefficientOfVariation](/coefficient_of_variation.go?s=834:896#L32)
+``` go
+func (f Float64Data) CoefficientOfVariation() (float64, error)
+```
+CoefficientOfVariation finds the sample standard deviation divided by the mean
+
+
+
+
+### <a name="Float64Data.Correlation">func</a> (Float64Data) [Correlation](/data.go?s=3075:3139#L86)
 ``` go
 func (f Float64Data) Correlation(d Float64Data) (float64, error)
 ```
@@ -925,7 +1606,7 @@ Correlation describes the degree of relationship between two sets of data
 
 
 
-### <a name="Float64Data.Covariance">func</a> (Float64Data) [Covariance](/data.go?s=4801:4864#L141)
+### <a name="Float64Data.Covariance">func</a> (Float64Data) [Covariance](/data.go?s=4996:5059#L146)
 ``` go
 func (f Float64Data) Covariance(d Float64Data) (float64, error)
 ```
@@ -934,11 +1615,38 @@ Covariance is a measure of how much two sets of data change
 
 
 
-### <a name="Float64Data.CovariancePopulation">func</a> (Float64Data) [CovariancePopulation](/data.go?s=4983:5056#L146)
+### <a name="Float64Data.CovariancePopulation">func</a> (Float64Data) [CovariancePopulation](/data.go?s=5178:5251#L151)
 ``` go
 func (f Float64Data) CovariancePopulation(d Float64Data) (float64, error)
 ```
 CovariancePopulation computes covariance for entire population between two variables
+
+
+
+
+### <a name="Float64Data.CumulativeMax">func</a> (Float64Data) [CumulativeMax](/cumulative.go?s=1641:1696#L75)
+``` go
+func (f Float64Data) CumulativeMax() ([]float64, error)
+```
+CumulativeMax calculates the cumulative maximum of the data
+
+
+
+
+### <a name="Float64Data.CumulativeMin">func</a> (Float64Data) [CumulativeMin](/cumulative.go?s=1790:1845#L80)
+``` go
+func (f Float64Data) CumulativeMin() ([]float64, error)
+```
+CumulativeMin calculates the cumulative minimum of the data
+
+
+
+
+### <a name="Float64Data.CumulativeProduct">func</a> (Float64Data) [CumulativeProduct](/cumulative.go?s=1484:1543#L70)
+``` go
+func (f Float64Data) CumulativeProduct() ([]float64, error)
+```
+CumulativeProduct calculates the cumulative product of the data
 
 
 
@@ -952,7 +1660,25 @@ CumulativeSum returns the cumulative sum of the data
 
 
 
-### <a name="Float64Data.Entropy">func</a> (Float64Data) [Entropy](/data.go?s=5480:5527#L162)
+### <a name="Float64Data.Diff">func</a> (Float64Data) [Diff](/diff.go?s=1220:1266#L45)
+``` go
+func (f Float64Data) Diff() ([]float64, error)
+```
+Diff returns the successive differences of the data
+
+
+
+
+### <a name="Float64Data.EWMA">func</a> (Float64Data) [EWMA](/ewma.go?s=912:971#L32)
+``` go
+func (f Float64Data) EWMA(alpha float64) ([]float64, error)
+```
+EWMA returns the exponentially weighted moving average of the data with smoothing factor alpha
+
+
+
+
+### <a name="Float64Data.Entropy">func</a> (Float64Data) [Entropy](/data.go?s=5675:5722#L167)
 ``` go
 func (f Float64Data) Entropy() (float64, error)
 ```
@@ -961,11 +1687,11 @@ Entropy provides calculation of the entropy
 
 
 
-### <a name="Float64Data.GeometricMean">func</a> (Float64Data) [GeometricMean](/data.go?s=1332:1385#L40)
+### <a name="Float64Data.GeometricMean">func</a> (Float64Data) [GeometricMean](/data.go?s=1340:1393#L40)
 ``` go
 func (f Float64Data) GeometricMean() (float64, error)
 ```
-GeometricMean returns the median of the data
+GeometricMean returns the geometric mean of the data
 
 
 
@@ -979,20 +1705,48 @@ Get item in slice
 
 
 
-### <a name="Float64Data.HarmonicMean">func</a> (Float64Data) [HarmonicMean](/data.go?s=1460:1512#L43)
+### <a name="Float64Data.HarmonicMean">func</a> (Float64Data) [HarmonicMean](/data.go?s=1477:1529#L43)
 ``` go
 func (f Float64Data) HarmonicMean() (float64, error)
 ```
-HarmonicMean returns the mode of the data
+HarmonicMean returns the harmonic mean of the data
 
 
 
 
-### <a name="Float64Data.InterQuartileRange">func</a> (Float64Data) [InterQuartileRange](/data.go?s=3755:3813#L106)
+### <a name="Float64Data.Histogram">func</a> (Float64Data) [Histogram](/histogram.go?s=1807:1873#L73)
+``` go
+func (f Float64Data) Histogram(bins int) ([]int, []float64, error)
+```
+Histogram returns the counts and equal-width bin edges of the data
+
+
+
+
+### <a name="Float64Data.InterQuartileRange">func</a> (Float64Data) [InterQuartileRange](/data.go?s=3950:4008#L111)
 ``` go
 func (f Float64Data) InterQuartileRange() (float64, error)
 ```
 InterQuartileRange finds the range between Q1 and Q3
+
+
+
+
+### <a name="Float64Data.KendallTau">func</a> (Float64Data) [KendallTau](/kendall.go?s=1748:1811#L68)
+``` go
+func (f Float64Data) KendallTau(d Float64Data) (float64, error)
+```
+KendallTau calculates Kendall's tau-b rank correlation coefficient
+between two variables.
+
+
+
+
+### <a name="Float64Data.Kurtosis">func</a> (Float64Data) [Kurtosis](/kurtosis.go?s=1764:1812#L63)
+``` go
+func (f Float64Data) Kurtosis() (float64, error)
+```
+Kurtosis finds the population excess kurtosis of a slice of floats
 
 
 
@@ -1042,7 +1796,7 @@ Median returns the median of the data
 
 
 
-### <a name="Float64Data.MedianAbsoluteDeviation">func</a> (Float64Data) [MedianAbsoluteDeviation](/data.go?s=1630:1693#L46)
+### <a name="Float64Data.MedianAbsoluteDeviation">func</a> (Float64Data) [MedianAbsoluteDeviation](/data.go?s=1647:1710#L46)
 ``` go
 func (f Float64Data) MedianAbsoluteDeviation() (float64, error)
 ```
@@ -1051,7 +1805,7 @@ MedianAbsoluteDeviation the median of the absolute deviations from the dataset m
 
 
 
-### <a name="Float64Data.MedianAbsoluteDeviationPopulation">func</a> (Float64Data) [MedianAbsoluteDeviationPopulation](/data.go?s=1842:1915#L51)
+### <a name="Float64Data.MedianAbsoluteDeviationPopulation">func</a> (Float64Data) [MedianAbsoluteDeviationPopulation](/data.go?s=1859:1932#L51)
 ``` go
 func (f Float64Data) MedianAbsoluteDeviationPopulation() (float64, error)
 ```
@@ -1060,7 +1814,7 @@ MedianAbsoluteDeviationPopulation finds the median of the absolute deviations fr
 
 
 
-### <a name="Float64Data.Midhinge">func</a> (Float64Data) [Midhinge](/data.go?s=3912:3973#L111)
+### <a name="Float64Data.Midhinge">func</a> (Float64Data) [Midhinge](/data.go?s=4107:4168#L116)
 ``` go
 func (f Float64Data) Midhinge(d Float64Data) (float64, error)
 ```
@@ -1087,7 +1841,61 @@ Mode returns the mode of the data
 
 
 
-### <a name="Float64Data.Pearson">func</a> (Float64Data) [Pearson](/data.go?s=3455:3515#L96)
+### <a name="Float64Data.MovingAverage">func</a> (Float64Data) [MovingAverage](/rolling.go?s=1768:1833#L58)
+``` go
+func (f Float64Data) MovingAverage(window int) ([]float64, error)
+```
+MovingAverage returns the rolling mean of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.MovingMax">func</a> (Float64Data) [MovingMax](/moving.go?s=3475:3536#L118)
+``` go
+func (f Float64Data) MovingMax(window int) ([]float64, error)
+```
+MovingMax returns the rolling maximum of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.MovingMedian">func</a> (Float64Data) [MovingMedian](/moving.go?s=3125:3189#L108)
+``` go
+func (f Float64Data) MovingMedian(window int) ([]float64, error)
+```
+MovingMedian returns the rolling median of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.MovingMin">func</a> (Float64Data) [MovingMin](/moving.go?s=3303:3364#L113)
+``` go
+func (f Float64Data) MovingMin(window int) ([]float64, error)
+```
+MovingMin returns the rolling minimum of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.MovingStdDev">func</a> (Float64Data) [MovingStdDev](/rolling.go?s=1969:2033#L63)
+``` go
+func (f Float64Data) MovingStdDev(window int) ([]float64, error)
+```
+MovingStdDev returns the rolling sample standard deviation of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.MovingSum">func</a> (Float64Data) [MovingSum](/moving.go?s=3643:3704#L123)
+``` go
+func (f Float64Data) MovingSum(window int) ([]float64, error)
+```
+MovingSum returns the rolling sum of the data over a trailing window
+
+
+
+
+### <a name="Float64Data.Pearson">func</a> (Float64Data) [Pearson](/data.go?s=3472:3532#L96)
 ``` go
 func (f Float64Data) Pearson(d Float64Data) (float64, error)
 ```
@@ -1096,7 +1904,16 @@ Pearson calculates the Pearson product-moment correlation coefficient between tw
 
 
 
-### <a name="Float64Data.Percentile">func</a> (Float64Data) [Percentile](/data.go?s=2696:2755#L76)
+### <a name="Float64Data.PercentChange">func</a> (Float64Data) [PercentChange](/diff.go?s=1374:1429#L48)
+``` go
+func (f Float64Data) PercentChange() ([]float64, error)
+```
+PercentChange returns the fractional change between successive elements of the data
+
+
+
+
+### <a name="Float64Data.Percentile">func</a> (Float64Data) [Percentile](/data.go?s=2713:2772#L76)
 ``` go
 func (f Float64Data) Percentile(p float64) (float64, error)
 ```
@@ -1105,7 +1922,7 @@ Percentile finds the relative standing in a slice of floats
 
 
 
-### <a name="Float64Data.PercentileNearestRank">func</a> (Float64Data) [PercentileNearestRank](/data.go?s=2869:2939#L81)
+### <a name="Float64Data.PercentileNearestRank">func</a> (Float64Data) [PercentileNearestRank](/data.go?s=2886:2956#L81)
 ``` go
 func (f Float64Data) PercentileNearestRank(p float64) (float64, error)
 ```
@@ -1114,7 +1931,25 @@ PercentileNearestRank finds the relative standing using the Nearest Rank method
 
 
 
-### <a name="Float64Data.PopulationVariance">func</a> (Float64Data) [PopulationVariance](/data.go?s=4495:4553#L131)
+### <a name="Float64Data.PercentileOfScore">func</a> (Float64Data) [PercentileOfScore](/percentile_of_score.go?s=1040:1110#L40)
+``` go
+func (f Float64Data) PercentileOfScore(score float64) (float64, error)
+```
+PercentileOfScore calculates the percentile rank of a score relative to the data
+
+
+
+
+### <a name="Float64Data.PopulationKurtosis">func</a> (Float64Data) [PopulationKurtosis](/kurtosis.go?s=1918:1976#L68)
+``` go
+func (f Float64Data) PopulationKurtosis() (float64, error)
+```
+PopulationKurtosis finds the population excess kurtosis of a slice of floats
+
+
+
+
+### <a name="Float64Data.PopulationVariance">func</a> (Float64Data) [PopulationVariance](/data.go?s=4690:4748#L136)
 ``` go
 func (f Float64Data) PopulationVariance() (float64, error)
 ```
@@ -1123,7 +1958,16 @@ PopulationVariance finds the amount of variance within a population
 
 
 
-### <a name="Float64Data.Quartile">func</a> (Float64Data) [Quartile](/data.go?s=3610:3673#L101)
+### <a name="Float64Data.Product">func</a> (Float64Data) [Product](/product.go?s=544:591#L24)
+``` go
+func (f Float64Data) Product() (float64, error)
+```
+Product calculates the product of the data
+
+
+
+
+### <a name="Float64Data.Quartile">func</a> (Float64Data) [Quartile](/data.go?s=3805:3868#L106)
 ``` go
 func (f Float64Data) Quartile(d Float64Data) (Quartiles, error)
 ```
@@ -1132,7 +1976,7 @@ Quartile returns the three quartile points from a slice of data
 
 
 
-### <a name="Float64Data.QuartileOutliers">func</a> (Float64Data) [QuartileOutliers](/data.go?s=2542:2599#L71)
+### <a name="Float64Data.QuartileOutliers">func</a> (Float64Data) [QuartileOutliers](/data.go?s=2559:2616#L71)
 ``` go
 func (f Float64Data) QuartileOutliers() (Outliers, error)
 ```
@@ -1141,7 +1985,7 @@ QuartileOutliers finds the mild and extreme outliers
 
 
 
-### <a name="Float64Data.Quartiles">func</a> (Float64Data) [Quartiles](/data.go?s=5628:5679#L167)
+### <a name="Float64Data.Quartiles">func</a> (Float64Data) [Quartiles](/data.go?s=5823:5874#L172)
 ``` go
 func (f Float64Data) Quartiles() (Quartiles, error)
 ```
@@ -1150,7 +1994,53 @@ Quartiles returns the three quartile points from instance of Float64Data
 
 
 
-### <a name="Float64Data.Sample">func</a> (Float64Data) [Sample](/data.go?s=4208:4269#L121)
+### <a name="Float64Data.RMS">func</a> (Float64Data) [RMS](/rms.go?s=668:711#L26)
+``` go
+func (f Float64Data) RMS() (float64, error)
+```
+RMS calculates the root mean square of the data
+
+
+
+
+### <a name="Float64Data.Range">func</a> (Float64Data) [Range](/extremes.go?s=2252:2297#L87)
+``` go
+func (f Float64Data) Range() (float64, error)
+```
+Range returns the difference between the highest and lowest numbers in the data
+
+
+
+
+### <a name="Float64Data.Rank">func</a> (Float64Data) [Rank](/rank.go?s=607:653#L24)
+``` go
+func (f Float64Data) Rank() ([]float64, error)
+```
+Rank assigns fractional (average) ranks to the input values
+
+
+
+
+### <a name="Float64Data.Rescale">func</a> (Float64Data) [Rescale](/rescale.go?s=879:928#L39)
+``` go
+func (f Float64Data) Rescale() ([]float64, error)
+```
+Rescale normalizes the input values to the range of 0 to 1
+by subtracting the minimum and dividing by the range
+
+
+
+
+### <a name="Float64Data.SEM">func</a> (Float64Data) [SEM](/sem.go?s=581:624#L20)
+``` go
+func (f Float64Data) SEM() (float64, error)
+```
+SEM calculates the standard error of the mean of the data
+
+
+
+
+### <a name="Float64Data.Sample">func</a> (Float64Data) [Sample](/data.go?s=4403:4464#L126)
 ``` go
 func (f Float64Data) Sample(n int, r bool) ([]float64, error)
 ```
@@ -1159,7 +2049,16 @@ Sample returns sample from input with replacement or without
 
 
 
-### <a name="Float64Data.SampleVariance">func</a> (Float64Data) [SampleVariance](/data.go?s=4652:4706#L136)
+### <a name="Float64Data.SampleKurtosis">func</a> (Float64Data) [SampleKurtosis](/kurtosis.go?s=2099:2153#L73)
+``` go
+func (f Float64Data) SampleKurtosis() (float64, error)
+```
+SampleKurtosis finds the bias-corrected sample excess kurtosis of a slice of floats
+
+
+
+
+### <a name="Float64Data.SampleVariance">func</a> (Float64Data) [SampleVariance](/data.go?s=4847:4901#L141)
 ``` go
 func (f Float64Data) SampleVariance() (float64, error)
 ```
@@ -1168,7 +2067,7 @@ SampleVariance finds the amount of variance within a sample
 
 
 
-### <a name="Float64Data.Sigmoid">func</a> (Float64Data) [Sigmoid](/data.go?s=5169:5218#L151)
+### <a name="Float64Data.Sigmoid">func</a> (Float64Data) [Sigmoid](/data.go?s=5364:5413#L156)
 ``` go
 func (f Float64Data) Sigmoid() ([]float64, error)
 ```
@@ -1177,7 +2076,7 @@ Sigmoid returns the input values along the sigmoid or s-shaped curve
 
 
 
-### <a name="Float64Data.SoftMax">func</a> (Float64Data) [SoftMax](/data.go?s=5359:5408#L157)
+### <a name="Float64Data.SoftMax">func</a> (Float64Data) [SoftMax](/data.go?s=5554:5603#L162)
 ``` go
 func (f Float64Data) SoftMax() ([]float64, error)
 ```
@@ -1187,7 +2086,16 @@ with sum of all the probabilities being equal to one.
 
 
 
-### <a name="Float64Data.StandardDeviation">func</a> (Float64Data) [StandardDeviation](/data.go?s=2026:2083#L56)
+### <a name="Float64Data.Spearman">func</a> (Float64Data) [Spearman](/data.go?s=3648:3709#L101)
+``` go
+func (f Float64Data) Spearman(d Float64Data) (float64, error)
+```
+Spearman calculates the Spearman rank correlation coefficient between two variables.
+
+
+
+
+### <a name="Float64Data.StandardDeviation">func</a> (Float64Data) [StandardDeviation](/data.go?s=2043:2100#L56)
 ``` go
 func (f Float64Data) StandardDeviation() (float64, error)
 ```
@@ -1196,7 +2104,7 @@ StandardDeviation the amount of variation in the dataset
 
 
 
-### <a name="Float64Data.StandardDeviationPopulation">func</a> (Float64Data) [StandardDeviationPopulation](/data.go?s=2199:2266#L61)
+### <a name="Float64Data.StandardDeviationPopulation">func</a> (Float64Data) [StandardDeviationPopulation](/data.go?s=2216:2283#L61)
 ``` go
 func (f Float64Data) StandardDeviationPopulation() (float64, error)
 ```
@@ -1205,7 +2113,7 @@ StandardDeviationPopulation finds the amount of variation from the population
 
 
 
-### <a name="Float64Data.StandardDeviationSample">func</a> (Float64Data) [StandardDeviationSample](/data.go?s=2382:2445#L66)
+### <a name="Float64Data.StandardDeviationSample">func</a> (Float64Data) [StandardDeviationSample](/data.go?s=2399:2462#L66)
 ``` go
 func (f Float64Data) StandardDeviationSample() (float64, error)
 ```
@@ -1232,7 +2140,7 @@ Swap switches out two numbers in slice
 
 
 
-### <a name="Float64Data.Trimean">func</a> (Float64Data) [Trimean](/data.go?s=4059:4119#L116)
+### <a name="Float64Data.Trimean">func</a> (Float64Data) [Trimean](/data.go?s=4254:4314#L121)
 ``` go
 func (f Float64Data) Trimean(d Float64Data) (float64, error)
 ```
@@ -1241,11 +2149,50 @@ Trimean finds the average of the median and the midhinge
 
 
 
-### <a name="Float64Data.Variance">func</a> (Float64Data) [Variance](/data.go?s=4350:4398#L126)
+### <a name="Float64Data.TrimmedMean">func</a> (Float64Data) [TrimmedMean](/trimmed_mean.go?s=1132:1198#L36)
+``` go
+func (f Float64Data) TrimmedMean(percent float64) (float64, error)
+```
+TrimmedMean finds the mean of the data after removing a fraction of
+the smallest and largest values from each tail
+
+
+
+
+### <a name="Float64Data.Variance">func</a> (Float64Data) [Variance](/data.go?s=4545:4593#L131)
 ``` go
 func (f Float64Data) Variance() (float64, error)
 ```
 Variance the amount of variation in the dataset
+
+
+
+
+### <a name="Float64Data.WeightedMean">func</a> (Float64Data) [WeightedMean](/weighted_mean.go?s=1824:1895#L65)
+``` go
+func (f Float64Data) WeightedMean(weights Float64Data) (float64, error)
+```
+WeightedMean finds the weighted mean of the data using the given weights
+
+
+
+
+### <a name="Float64Data.Winsorize">func</a> (Float64Data) [Winsorize](/winsorize.go?s=1319:1385#L48)
+``` go
+func (f Float64Data) Winsorize(percent float64) ([]float64, error)
+```
+Winsorize returns a copy of the data with a fraction of the smallest
+and largest values in each tail clamped
+
+
+
+
+### <a name="Float64Data.ZScore">func</a> (Float64Data) [ZScore](/zscore.go?s=692:740#L28)
+``` go
+func (f Float64Data) ZScore() ([]float64, error)
+```
+ZScore standardizes the input values by subtracting the mean
+and dividing by the sample standard deviation
 
 
 
@@ -1293,11 +2240,14 @@ Quartiles holds the three quartile points
 
 
 
-### <a name="Quartile">func</a> [Quartile](/quartile.go?s=205:256#L13)
+### <a name="Quartile">func</a> [Quartile](/quartile.go?s=356:407#L16)
 ``` go
 func Quartile(input Float64Data) (Quartiles, error)
 ```
-Quartile returns the three quartile points from a slice of data
+Quartile returns the three quartile points from a slice of data.
+
+The input must contain at least two elements: Q1 and Q3 are the medians of
+the lower and upper halves, which are empty for a single element.
 
 
 
@@ -1315,25 +2265,30 @@ Series is a container for a series of data
 
 
 
-### <a name="ExponentialRegression">func</a> [ExponentialRegression](/regression.go?s=1089:1157#L50)
+### <a name="ExponentialRegression">func</a> [ExponentialRegression](/regression.go?s=1269:1337#L54)
 ``` go
 func ExponentialRegression(s Series) (regressions Series, err error)
 ```
-ExponentialRegression returns an exponential regression on data series
+ExponentialRegression returns an exponential regression on data series.
+A non-positive Y value returns ErrYCoord, and a series without at least two
+distinct X values returns ErrBounds.
 
 
-### <a name="LinearRegression">func</a> [LinearRegression](/regression.go?s=262:325#L14)
+### <a name="LinearRegression">func</a> [LinearRegression](/regression.go?s=333:396#L15)
 ``` go
 func LinearRegression(s Series) (regressions Series, err error)
 ```
-LinearRegression finds the least squares linear regression on data series
+LinearRegression finds the least squares linear regression on data series.
+A series without at least two distinct X values returns ErrBounds.
 
 
-### <a name="LogarithmicRegression">func</a> [LogarithmicRegression](/regression.go?s=1903:1971#L85)
+### <a name="LogarithmicRegression">func</a> [LogarithmicRegression](/regression.go?s=2368:2436#L98)
 ``` go
 func LogarithmicRegression(s Series) (regressions Series, err error)
 ```
-LogarithmicRegression returns an logarithmic regression on data series
+LogarithmicRegression returns a logarithmic regression on data series.
+A non-positive X value or a series without at least two distinct X values
+returns ErrBounds.
 
 
 

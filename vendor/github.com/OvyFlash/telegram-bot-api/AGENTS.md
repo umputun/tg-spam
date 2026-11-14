@@ -25,6 +25,10 @@ This document serves as the **single source of truth** for all development rules
     - [Information Gathering](#information-gathering)
     - [Feedback \& Communication](#feedback--communication)
     - [Development Process](#development-process)
+    - [Git \& Pull Requests](#git--pull-requests)
+  - [📡 Telegram Bot API Updates](#-telegram-bot-api-updates)
+    - [Implementation Workflow](#implementation-workflow)
+    - [Type \& Config Patterns](#type--config-patterns)
   - [📋 Rule Application](#-rule-application)
 
 ---
@@ -46,7 +50,7 @@ This document serves as the **single source of truth** for all development rules
 ### Core Principles
 | Principle                      | Implementation                                                                      |
 | ------------------------------ | ----------------------------------------------------------------------------------- |
-| **Self-documenting code** 📖    | No comments—clear names and structure speak for themselves                          |
+| **Self-documenting code** 📖    | No comments in logic—clear names and structure speak for themselves; **Telegram API types** in `types.go` use exported field comments mirroring [official docs](https://core.telegram.org/bots/api) |
 | **Professional standards** 👨‍💻   | Write like a professional Go developer would, without unnecessary code bloat or inf |
 | **Minimum viable** 🎯           | Focus on minimum viable implementation                                              |
 | **Architecture first** 🏛️       | Audit before coding: scan repo, read related packages, plan all changes             |
@@ -182,6 +186,52 @@ This document serves as the **single source of truth** for all development rules
 | **Complete Implementation** ✅ | No placeholders - write complete code                                   |
 | **Multiple Tools** ⚡          | Use multiple tools at once to achieve the best result                   |
 | **Maximum Impact** ⚡          | Prefer batch file edits over single separate micro-edits for efficiency |
+
+### Git & Pull Requests
+
+| Rule | Detail |
+| ---- | ------ |
+| **Never merge PRs** 🚫 | Do not run `gh pr merge`, squash/rebase merge, or auto-merge unless the user explicitly asks to merge that PR. |
+| **Create, don't land** ✅ | Implement on a branch, push, and open a PR when asked — then stop. |
+| **No direct master pushes** 🚫 | Do not push commits to `master` without explicit user approval. |
+
+---
+
+## 📡 Telegram Bot API Updates
+
+Library tracks [Bot API changelog](https://core.telegram.org/bots/api-changelog). Implement **one version per PR**; do not skip versions.
+
+### Implementation Workflow
+
+| Step | Action |
+| ---- | ------ |
+| **Source** 📜 | Changelog + [Bot API docs](https://core.telegram.org/bots/api); parity schema: gitignored `api.json` from [PaulSonOfLars spec](https://github.com/PaulSonOfLars/telegram-bot-api-spec) |
+| **Branch** 🌿 | `bot-api-X.Y` (one version per PR); base `master` |
+| **Files** 📂 | `types.go`, `configs.go`, `helper_structs.go`, `helper_methods.go`, `upload.go`, `bot.go`, tests, examples — touch only what the changelog needs |
+| **Commit** 💬 | `Add Telegram Bot API X.Y support` or focused fix title for the same version |
+| **Validate** ✅ | `go vet ./...` → `go test ./...` → optional `go test -tags=api_parity ./...` |
+
+```mermaid
+flowchart LR
+  A[latest bot-api-X.Y] --> B[bot-api-X.Y+1]
+  B --> C[implement + test]
+  C --> D[push + open PR]
+  D --> E[stop — user merges]
+```
+
+### Type & Config Patterns
+
+| Area | Pattern |
+| ---- | ------- |
+| **Configs** | `*Config` + `method()` + `params()` (+ `files()` if uploads); embed bases from `helper_structs.go` |
+| **Helpers** | `New*` constructors; bot wrappers in `bot.go` when return ≠ `Message` |
+| **Inbound unions** | Flattened struct + discriminator (`TransactionPartner`-style), not interface JSON |
+| **Outbound polymorphism** | Small interfaces (`InputMedia`, …) or concrete structs with `Type` in `New*` |
+| **Field order** | Match official docs for **new** fields/types; do not mass-reorder legacy structs |
+| **Optional nested send params** | Value type + `AddInterfaceNonZero` (e.g. `LinkPreviewOptions`, `ReplyParameters`, `EphemeralMessageParameters`) — not pointers |
+| **Optional pointers** | Use `*T` + `AddInterface` only where the repo already does (e.g. `SuggestedPostParameters`, edit `ReplyMarkup`) |
+| **String enums** | Named constants + predicate helpers (`Left()`, `Center()`, `Right()`, `Primary()`, …) where useful |
+| **Compile checks** | `parity_interfaces_test.go`: `_ Chattable = …{}` / `_ Fileable = …{}` |
 
 ---
 

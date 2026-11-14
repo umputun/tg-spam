@@ -222,10 +222,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 	// delete message
 	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
-		BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  info.MsgID,
-			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-		},
+		MessageID: info.MsgID,
+		ChatID:    a.primChatID,
 	})
 	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
@@ -369,10 +367,9 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 	errs := new(multierror.Error)
 	// delete original message
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  origMsg.MessageID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+		MessageID: origMsg.MessageID,
+		ChatID:    a.primChatID})
 	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
@@ -380,10 +377,9 @@ func (a *admin) DirectWarnReport(update tbapi.Update) error {
 	}
 
 	// delete reply message
-	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  update.Message.MessageID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
+	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{
+		MessageID: update.Message.MessageID,
+		ChatID:    a.primChatID})
 	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
@@ -594,10 +590,8 @@ func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
 		}
 
 		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
-			BaseChatMessage: tbapi.BaseChatMessage{
-				MessageID:  msgID,
-				ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-			},
+			MessageID: msgID,
+			ChatID:    a.primChatID,
 		})
 		if err == nil {
 			deleted++
@@ -732,10 +726,9 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	// delete original message
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  origMsg.MessageID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+		MessageID: origMsg.MessageID,
+		ChatID:    a.primChatID})
 	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
 	} else {
@@ -743,10 +736,9 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	// delete reply message
-	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  update.Message.MessageID,
-		ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-	}})
+	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{
+		MessageID: update.Message.MessageID,
+		ChatID:    a.primChatID})
 	if err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", update.Message.MessageID, err))
 	} else {
@@ -1021,7 +1013,7 @@ func (a *admin) callbackUnbanConfirmed(query *tbapi.CallbackQuery) error {
 func (a *admin) unban(userID int64) error {
 	if a.softBan { // soft ban, just drop restrictions
 		_, err := a.tbAPI.Request(tbapi.RestrictChatMemberConfig{
-			ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID}},
+			UserID: userID, ChatID: a.primChatID,
 			Permissions: &tbapi.ChatPermissions{
 				CanSendMessages:      true,
 				CanSendAudios:        true,
@@ -1044,8 +1036,8 @@ func (a *admin) unban(userID int64) error {
 
 	// hard ban, unban the user for real
 	cfg := tbapi.UnbanChatMemberConfig{
-		ChatMemberConfig: tbapi.ChatMemberConfig{UserID: userID, ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID}},
-		OnlyIfBanned:     true,
+		UserID: userID, ChatID: a.primChatID,
+		OnlyIfBanned: true,
 	}
 	_, err := a.tbAPI.Request(cfg)
 	// onlyIfBanned seems to prevent user from being removed from the chat according to this confusing doc:
@@ -1059,7 +1051,7 @@ func (a *admin) unban(userID int64) error {
 // unbanChannel unbans a previously banned channel (sender chat) from the group
 func (a *admin) unbanChannel(channelID int64) error {
 	_, err := a.tbAPI.Request(tbapi.UnbanChatSenderChatConfig{
-		ChatConfig:   tbapi.ChatConfig{ChatID: a.primChatID},
+		ChatID:       a.primChatID,
 		SenderChatID: channelID,
 	})
 	if err != nil {
@@ -1132,10 +1124,9 @@ func (a *admin) deleteAndBan(userID int64, msgID int) error {
 	// reaction and join bans have no underlying message (msgID 0), so there is nothing to delete.
 	// we allow deleting messages from supers. This can be useful if super is training the bot by adding spam messages
 	if msgID != 0 {
-		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  msgID,
-			ChatConfig: tbapi.ChatConfig{ChatID: a.primChatID},
-		}})
+		_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: msgID,
+			ChatID:    a.primChatID})
 		if err != nil {
 			return fmt.Errorf("failed to delete message %d: %w", msgID, err)
 		}

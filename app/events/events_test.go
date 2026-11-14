@@ -211,7 +211,7 @@ func TestEvents_send(t *testing.T) {
 	t.Run("send to migrated group names the new chat id", func(t *testing.T) {
 		migratedAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
-				ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+				MigrateToChatID: -1001432162429}
 		}}
 		for _, msg := range []tbapi.Chattable{tbapi.NewMessage(-403767890, "test"),
 			tbapi.NewEditMessageText(-403767890, 1, "banned [user](tg://user?id=42)")} {
@@ -273,7 +273,7 @@ func TestEvents_sendEntities(t *testing.T) {
 	t.Run("error for a migrated group names the new chat id", func(t *testing.T) {
 		mockAPI := &mocks.TbAPIMock{SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
 			return tbapi.Message{}, &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
-				ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+				MigrateToChatID: -1001432162429}
 		}}
 		_, err := sendEntities(tbapi.NewMessage(-403767890, "spam"), mockAPI)
 		require.Error(t, err)
@@ -283,8 +283,8 @@ func TestEvents_sendEntities(t *testing.T) {
 }
 
 func TestEvents_withMigrationHint(t *testing.T) {
-	migrated := &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
-		ResponseParameters: tbapi.ResponseParameters{MigrateToChatID: -1001432162429}}
+	var migrated error = &tbapi.Error{Code: 400, Message: "Bad Request: group chat was upgraded to a supergroup chat",
+		MigrateToChatID: -1001432162429}
 	other := &tbapi.Error{Code: 400, Message: "Bad Request: chat not found"}
 	plain := errors.New("dial tcp: i/o timeout")
 	tests := []struct {

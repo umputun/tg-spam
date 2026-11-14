@@ -68,6 +68,71 @@ func NewSendRichMessage(chatID int64, richMessage InputRichMessage) SendRichMess
 	}
 }
 
+// NewSendWidget creates a new message with an HTML widget.
+func NewSendWidget(chatID int64, html string) SendWidgetConfig {
+	return SendWidgetConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{
+				ChatID: chatID,
+			},
+		},
+		HTML: html,
+	}
+}
+
+// NewSendSharedWidget creates a new message that sends again a shared widget created by the bot.
+func NewSendSharedWidget(chatID int64, widgetID string) SendSharedWidgetConfig {
+	return SendSharedWidgetConfig{
+		BaseChat: BaseChat{
+			ChatConfig: ChatConfig{
+				ChatID: chatID,
+			},
+		},
+		WidgetID: widgetID,
+	}
+}
+
+// NewAnswerWidgetQuery creates an answer to a query from a widget.
+func NewAnswerWidgetQuery(widgetQueryID, data string) AnswerWidgetQueryConfig {
+	return AnswerWidgetQueryConfig{
+		WidgetQueryID: widgetQueryID,
+		Data:          data,
+	}
+}
+
+// NewEditMessageWidgetData creates a request to edit data of a widget in a message.
+func NewEditMessageWidgetData(chatID int64, messageID int) EditMessageWidgetDataConfig {
+	return EditMessageWidgetDataConfig{
+		ChatConfig: ChatConfig{
+			ChatID: chatID,
+		},
+		MessageID: messageID,
+	}
+}
+
+// NewEditSharedWidgetData creates a request to edit public data of a shared widget.
+// An empty publicData removes the public data.
+func NewEditSharedWidgetData(widgetID, publicData string) EditSharedWidgetDataConfig {
+	return EditSharedWidgetDataConfig{
+		WidgetID:   widgetID,
+		PublicData: publicData,
+	}
+}
+
+// NewInputWidgetMessageContent creates new widget content for inline query results.
+func NewInputWidgetMessageContent(html string) InputWidgetMessageContent {
+	return InputWidgetMessageContent{
+		HTML: html,
+	}
+}
+
+// NewInputSharedWidgetMessageContent creates new shared widget content for inline query results.
+func NewInputSharedWidgetMessageContent(widgetID string) InputSharedWidgetMessageContent {
+	return InputSharedWidgetMessageContent{
+		WidgetID: widgetID,
+	}
+}
+
 // NewSendRichMessageDraft creates a new rich message draft.
 func NewSendRichMessageDraft(chatID int64, draftID int, richMessage InputRichMessage) SendRichMessageDraftConfig {
 	return SendRichMessageDraftConfig{
@@ -919,6 +984,33 @@ func newBaseEphemeralMessage(chatID, receiverUserID int64, ephemeralMessageID in
 		ReceiverUserID:     receiverUserID,
 		EphemeralMessageID: ephemeralMessageID,
 	}
+}
+
+// NewEphemeralMessage creates a text message visible only to receiverUserID.
+//
+// Bot administrators can send the returned config directly. Other bots must
+// additionally set EphemeralMessageParameters.CallbackQueryID or
+// ReplyParameters.EphemeralMessageID within 15 seconds of an eligible action.
+func NewEphemeralMessage(chatID, receiverUserID int64, text string) MessageConfig {
+	config := NewMessage(chatID, text)
+	config.EphemeralMessageParameters = EphemeralMessageParameters{
+		ReceiverUserID: receiverUserID,
+	}
+	return config
+}
+
+// NewEphemeralCallbackReply creates a text message sent as an ephemeral reply
+// to a callback query. Only the user who pressed the button sees the message.
+//
+// The request omits chat_id and receiver_user_id. Ephemeral replies can't be sent
+// to callback queries from messages in channel direct messages chats. The bot must
+// still answer the callback query using answerCallbackQuery.
+func NewEphemeralCallbackReply(callbackQueryID, text string) MessageConfig {
+	config := NewMessage(0, text)
+	config.EphemeralMessageParameters = EphemeralMessageParameters{
+		CallbackQueryID: callbackQueryID,
+	}
+	return config
 }
 
 // NewEditEphemeralMessageText creates a request to edit ephemeral message text.

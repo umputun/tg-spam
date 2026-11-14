@@ -82,6 +82,21 @@ func (c *conn) RegisterRollbackHook(callback RollbackHookFn) {
 	sqlite3.Xsqlite3_rollback_hook(c.tls, c.db, cFuncPointer(rollbackHookTrampoline), c.db)
 }
 
+// unregisterHooks forgets the pre-update, commit and rollback hooks registered
+// for db. Close calls it before the handle is freed: afterwards the same handle
+// value can belong to a newly opened connection.
+func unregisterHooks(db uintptr) {
+	xPreUpdateHandlers.mu.Lock()
+	delete(xPreUpdateHandlers.m, db)
+	xPreUpdateHandlers.mu.Unlock()
+	xCommitHandlers.mu.Lock()
+	delete(xCommitHandlers.m, db)
+	xCommitHandlers.mu.Unlock()
+	xRollbackHandlers.mu.Lock()
+	delete(xRollbackHandlers.m, db)
+	xRollbackHandlers.mu.Unlock()
+}
+
 type SQLitePreUpdateData struct {
 	tls          *libc.TLS
 	pCsr         uintptr
@@ -182,7 +197,7 @@ func (d *SQLitePreUpdateData) value(ppValue uintptr, i int, new bool) (any, erro
 	return src, nil
 }
 
-func preUpdateHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr, op int32, zDb uintptr, pTab uintptr, iKey1 int64, iReg int32, iBlobWrite int32) {
+func preUpdateHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr, op int32, zDb uintptr, pTab uintptr, iKey1 int64, iKey2 int64) {
 	xPreUpdateHandlers.mu.RLock()
 	xPreUpdateHandler := xPreUpdateHandlers.m[handle]
 	xPreUpdateHandlers.mu.RUnlock()
@@ -197,12 +212,12 @@ func preUpdateHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr, op int
 		DatabaseName: libc.GoString(zDb),
 		TableName:    libc.GoString(pTab),
 		OldRowID:     iKey1,
-		NewRowID:     int64(iReg),
+		NewRowID:     iKey2,
 	}
 	xPreUpdateHandler(data)
 }
 
-func commitHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr) int32 {
+func commitHookTrampoline(tls *libc.TLS, handle uintptr) int32 {
 	xCommitHandlers.mu.RLock()
 	xCommitHandler := xCommitHandlers.m[handle]
 	xCommitHandlers.mu.RUnlock()
@@ -214,7 +229,7 @@ func commitHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr) int32 {
 	return xCommitHandler()
 }
 
-func rollbackHookTrampoline(tls *libc.TLS, handle uintptr, pCsr uintptr) {
+func rollbackHookTrampoline(tls *libc.TLS, handle uintptr) {
 	xRollbackHandlers.mu.RLock()
 	xRollbackHandler := xRollbackHandlers.m[handle]
 	xRollbackHandlers.mu.RUnlock()

@@ -3,5 +3,6 @@ coverage.out
 tmp/
 book/
 .vscode/
+.cursor/
 CLAUDE.md
 api.json

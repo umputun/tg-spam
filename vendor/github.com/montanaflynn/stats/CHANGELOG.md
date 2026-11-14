@@ -2,6 +2,153 @@
 ## [Unreleased]
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+<a name="v0.14.0"></a>
+## [v0.14.0] - 2026-10-25
+### Fix
+- Prevent overflow in RMS and MinkowskiDistance ([#158](https://github.com/montanaflynn/stats/issues/158))
+- Compute squared and higher-power statistics without overflow at extreme scales ([#156](https://github.com/montanaflynn/stats/issues/156))
+- Avoid overflow in Mean and midpoints near MaxFloat64 ([#155](https://github.com/montanaflynn/stats/issues/155))
+- Compute Correlation without overflow at extreme scales ([#152](https://github.com/montanaflynn/stats/issues/152))
+- Avoid range overflow in Histogram and Rescale ([#151](https://github.com/montanaflynn/stats/issues/151))
+- Return errors for statistics undefined on too few or constant values ([#150](https://github.com/montanaflynn/stats/issues/150))
+- Handle single-element and zero-variance samples in two-sample TTest ([#149](https://github.com/montanaflynn/stats/issues/149))
+- Propagate NaN through order statistics ([#148](https://github.com/montanaflynn/stats/issues/148))
+- Reject NaN and out-of-domain parameters ([#147](https://github.com/montanaflynn/stats/issues/147))
+- Preserve finite Euclidean distances across scales ([#145](https://github.com/montanaflynn/stats/issues/145))
+
+### CI
+- Run tests on arm64 ([#157](https://github.com/montanaflynn/stats/issues/157))
+
+### Chore
+- Group ci and chore commits in release notes ([#144](https://github.com/montanaflynn/stats/issues/144))
+
+
+<a name="v0.13.0"></a>
+## [v0.13.0] - 2026-10-06
+### Fix
+- Preserve finite interpolation in Percentile ([#139](https://github.com/montanaflynn/stats/issues/139))
+- Return 0 for invalid Ncr input and return math.MaxInt on overflow ([#140](https://github.com/montanaflynn/stats/issues/140))
+- Compute NormMoment with a float64 to avoid factorial overflow ([#141](https://github.com/montanaflynn/stats/issues/141))
+
+### CI
+- Pin actions to SHAs, restrict token, and test minimum Go version ([#143](https://github.com/montanaflynn/stats/issues/143))
+- Update checkout, setup-go, and codecov to current major versions ([#138](https://github.com/montanaflynn/stats/issues/138))
+
+### Chore
+- Bump minimum Go version to 1.17 ([#142](https://github.com/montanaflynn/stats/issues/142))
+
+
+<a name="v0.12.7"></a>
+## [v0.12.7] - 2026-09-19
+### Fix
+- Return ErrZero from PopulationSkewness for zero-variance input ([#137](https://github.com/montanaflynn/stats/issues/137))
+
+
+<a name="v0.12.6"></a>
+## [v0.12.6] - 2026-09-09
+### Fix
+- Return an error from Quartile and callers for single-element input ([#135](https://github.com/montanaflynn/stats/issues/135))
+
+
+<a name="v0.12.5"></a>
+## [v0.12.5] - 2026-08-28
+### Fix
+- Enforce percent bounds in Percentile for single-element input ([#133](https://github.com/montanaflynn/stats/issues/133))
+
+
+<a name="v0.12.4"></a>
+## [v0.12.4] - 2026-08-17
+### Fix
+- Make Interp robust to extreme values and exact knot hits ([#132](https://github.com/montanaflynn/stats/issues/132))
+- Reject NaN percent in PercentileWeighted ([#131](https://github.com/montanaflynn/stats/issues/131))
+- Reject NaN percent in Percentile and PercentileNearestRank ([#130](https://github.com/montanaflynn/stats/issues/130))
+- Interp panics when x or xp contains a NaN ([#129](https://github.com/montanaflynn/stats/issues/129))
+
+
+<a name="v0.12.3"></a>
+## [v0.12.3] - 2026-08-10
+### Fix
+- ProbGeom off-by-one that drops the first interval term ([#127](https://github.com/montanaflynn/stats/issues/127))
+- NormIsf ignores loc, NormPpf uncorrected above the median ([#126](https://github.com/montanaflynn/stats/issues/126))
+- Normal tail collapses to 0/-Inf past ~8 sigma ([#125](https://github.com/montanaflynn/stats/issues/125))
+
+
+<a name="v0.12.2"></a>
+## [v0.12.2] - 2026-07-17
+### Fix
+- Regression stability and invalid domains ([#124](https://github.com/montanaflynn/stats/issues/124))
+
+
+<a name="v0.12.1"></a>
+## [v0.12.1] - 2026-07-16
+### Fix
+- Stop Entropy from mutating its input slice ([#123](https://github.com/montanaflynn/stats/issues/123))
+
+
+<a name="v0.12.0"></a>
+## [v0.12.0] - 2026-07-16
+
+<a name="v0.11.0"></a>
+## [v0.11.0] - 2026-07-13
+### Add
+- Add Interp for piecewise-linear interpolation ([#121](https://github.com/montanaflynn/stats/issues/121))
+- Add Histogram with equal-width bins ([#120](https://github.com/montanaflynn/stats/issues/120))
+- Add KendallTau rank correlation coefficient ([#119](https://github.com/montanaflynn/stats/issues/119))
+- Add SEM, RMS, Product, and PercentileOfScore ([#118](https://github.com/montanaflynn/stats/issues/118))
+- Add MovingMedian, MovingMin, MovingMax, MovingSum, and EWMA ([#117](https://github.com/montanaflynn/stats/issues/117))
+- Add TrimmedMean and Winsorize robust statistics ([#116](https://github.com/montanaflynn/stats/issues/116))
+- Add Kurtosis, PopulationKurtosis, and SampleKurtosis ([#115](https://github.com/montanaflynn/stats/issues/115))
+- Add Clip and Rescale elementwise transforms ([#114](https://github.com/montanaflynn/stats/issues/114))
+
+
+<a name="v0.10.0"></a>
+## [v0.10.0] - 2026-07-10
+### Add
+- Add MovingAverage and MovingStdDev ([#112](https://github.com/montanaflynn/stats/issues/112))
+- Add ZScore and Rank functions ([#111](https://github.com/montanaflynn/stats/issues/111))
+- Add WeightedMean and CoefficientOfVariation ([#110](https://github.com/montanaflynn/stats/issues/110))
+- Add ArgMax, ArgMin and Range functions ([#109](https://github.com/montanaflynn/stats/issues/109))
+- Add CumulativeProduct, CumulativeMax and CumulativeMin ([#108](https://github.com/montanaflynn/stats/issues/108))
+- Add Diff and PercentChange functions ([#107](https://github.com/montanaflynn/stats/issues/107))
+- Add weighted percentile function ([#102](https://github.com/montanaflynn/stats/issues/102))
+- Add NormSample function for normal distribution sampling ([#100](https://github.com/montanaflynn/stats/issues/100))
+- Add Z-test and T-test functions ([#99](https://github.com/montanaflynn/stats/issues/99))
+- Add Spearman rank correlation function ([#98](https://github.com/montanaflynn/stats/issues/98))
+
+### Fix
+- Stabilize GeometricMean and add input validation
+- Use math.Round to avoid ARM64 FMA fusion miscompile ([#97](https://github.com/montanaflynn/stats/issues/97))
+- Correct AutoCorrelation lag handling ([#83](https://github.com/montanaflynn/stats/issues/83)) ([#95](https://github.com/montanaflynn/stats/issues/95))
+
+
+<a name="v0.9.0"></a>
+## [v0.9.0] - 2026-03-24
+### Add
+- Add Skewness, PopulationSkewness, and SampleSkewness functions ([#91](https://github.com/montanaflynn/stats/issues/91))
+
+### Fix
+- Restore 100% test coverage for skewness
+- Remove unused sum[4] in LinearRegression
+
+
+<a name="v0.8.2"></a>
+## [v0.8.2] - 2026-03-11
+
+<a name="v0.8.1"></a>
+## [v0.8.1] - 2026-03-11
+
 <a name="v0.8.0"></a>
 ## [v0.8.0] - 2026-03-11
 ### Fix
@@ -527,7 +674,22 @@
 - Merge pull request [#4](https://github.com/montanaflynn/stats/issues/4) from saromanov/sample
 
 
-[Unreleased]: https://github.com/montanaflynn/stats/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/montanaflynn/stats/compare/v0.14.0...HEAD
+[v0.14.0]: https://github.com/montanaflynn/stats/compare/v0.13.0...v0.14.0
+[v0.13.0]: https://github.com/montanaflynn/stats/compare/v0.12.7...v0.13.0
+[v0.12.7]: https://github.com/montanaflynn/stats/compare/v0.12.6...v0.12.7
+[v0.12.6]: https://github.com/montanaflynn/stats/compare/v0.12.5...v0.12.6
+[v0.12.5]: https://github.com/montanaflynn/stats/compare/v0.12.4...v0.12.5
+[v0.12.4]: https://github.com/montanaflynn/stats/compare/v0.12.3...v0.12.4
+[v0.12.3]: https://github.com/montanaflynn/stats/compare/v0.12.2...v0.12.3
+[v0.12.2]: https://github.com/montanaflynn/stats/compare/v0.12.1...v0.12.2
+[v0.12.1]: https://github.com/montanaflynn/stats/compare/v0.12.0...v0.12.1
+[v0.12.0]: https://github.com/montanaflynn/stats/compare/v0.11.0...v0.12.0
+[v0.11.0]: https://github.com/montanaflynn/stats/compare/v0.10.0...v0.11.0
+[v0.10.0]: https://github.com/montanaflynn/stats/compare/v0.9.0...v0.10.0
+[v0.9.0]: https://github.com/montanaflynn/stats/compare/v0.8.2...v0.9.0
+[v0.8.2]: https://github.com/montanaflynn/stats/compare/v0.8.1...v0.8.2
+[v0.8.1]: https://github.com/montanaflynn/stats/compare/v0.8.0...v0.8.1
 [v0.8.0]: https://github.com/montanaflynn/stats/compare/v0.7.1...v0.8.0
 [v0.7.1]: https://github.com/montanaflynn/stats/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/montanaflynn/stats/compare/v0.6.6...v0.7.0

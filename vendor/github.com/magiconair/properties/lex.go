@@ -223,7 +223,7 @@ Loop:
 		case isEscape(r):
 			err := l.scanEscapeSequence()
 			if err != nil {
-				return l.errorf(err.Error())
+				return l.errorf("%s", err.Error())
 			}
 
 		case isEndOfKey(r):
@@ -272,7 +272,7 @@ func lexValue(l *lexer) stateFn {
 			} else {
 				err := l.scanEscapeSequence()
 				if err != nil {
-					return l.errorf(err.Error())
+					return l.errorf("%s", err.Error())
 				}
 			}
 

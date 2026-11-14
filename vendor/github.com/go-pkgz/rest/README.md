@@ -92,6 +92,8 @@ Logs request, request handling time and response. Log record fields in order of 
 
 _remote IP can be masked with user defined function_
 
+_request body can be transformed before logging with a user-defined function (`BodyFn`), e.g. to mask credentials. It only runs when body logging is on (`WithBody`), and receives the body along with a `truncated` flag that is set when the body exceeded `MaxBodySize` - the function can use it to emit a marker instead of logging a partial body it can't safely process_
+
 example: `019/03/05 17:26:12.976 [INFO] GET - /api/v1/find?site=remark - 8e228e9cfece - 200 (115) - 4.47784618s`
 
 ### Recoverer middleware
@@ -100,10 +102,15 @@ Recoverer is a middleware that recovers from panics, logs the panic (and a backt
 and returns an HTTP 500 (Internal Server Error) status if possible. 
 It prevents server crashes in case of panic in one of the controllers.
 
+`http.ErrAbortHandler` is re-panicked untouched and neither logged nor turned into a 500, as `net/http`
+relies on the sentinel reaching the server to abort the response and close the connection.
+
 ### OnlyFrom middleware
 
 OnlyFrom middleware allows access from a limited list of source IPs.
 Such IPs can be defined as complete ip (like 192.168.1.12), prefix (129.168.) or CIDR (192.168.0.0/16).
+Complete IP rules use semantic address equality (so equivalent IPv6 spellings match), CIDRs use network containment,
+and all other rules use literal textual prefix matching.
 The middleware will respond with `StatusForbidden` (403) if the request comes from a different IP. 
 It supports both IPv4 and IPv6 and checks the usual headers like `X-Forwarded-For` and `X-Real-IP` and the remote address.
 
@@ -111,12 +118,20 @@ _Note: headers should be trusted and set by a proxy, otherwise it is possible to
 
 ### Metrics middleware
 
-Metrics middleware responds to GET /metrics with list of [expvar](https://golang.org/pkg/expvar/). 
-Optionally allows a restricted list of source ips.
+Metrics middleware responds to GET /metrics with list of [expvar](https://golang.org/pkg/expvar/),
+limited to a list of source ips, i.e. `rest.Metrics("127.0.0.1", "192.168.0.0/16")`.
+Called without any ip, as `rest.Metrics()`, it rejects every request.
+
+To serve the endpoint to everyone, ask for it explicitly with `rest.MetricsAllowAll()`. Note that expvar
+publishes `cmdline`, which usually carries the flag values the process was started with, so only do this
+where something else already keeps the endpoint private.
 
 ### BlackWords middleware
 
 BlackWords middleware doesn't allow user-defined words in the request body.
+It reads the whole body to inspect it and responds with `StatusBadRequest` (400) if the body can't be read.
+The body is not capped on its own, so put `SizeLimit` in front of it to bound what a request can allocate:
+`rest.Wrap(handler, rest.SizeLimit(1024*1024), rest.BlackWords("word1", "word2"))`.
 
 ### SizeLimit middleware
 
@@ -143,9 +158,44 @@ The `Rewrite` middleware is designed to rewrite the URL path based on a given ru
 
 For example, `Rewrite("^/sites/(.*)/settings/$", "/sites/settings/$1")` will change request's URL from `/sites/id1/settings/` to `/sites/settings/id1`
 
+### CleanPath middleware
+
+Cleans double slashes from URL path. For example, requests to `/users//1` or `//users////1` will be cleaned to `/users/1` before routing. Trailing slashes are preserved: `/api//v1/` becomes `/api/v1/`. Note: dot segments (`.` and `..`) are intentionally not cleaned to preserve routing semantics.
+
+```go
+router.Use(rest.CleanPath)
+```
+
+### StripSlashes middleware
+
+Removes trailing slashes from URL path. For example, `/users/` becomes `/users`. The root path `/` is preserved.
+
+```go
+router.Use(rest.StripSlashes)
+```
+
 ### NoCache middleware
 
 Sets a number of HTTP headers to prevent a router (handler's) response from being cached by an upstream proxy and/or client.
+
+### CacheControl middleware
+
+Sets `Cache-Control` with the given expiration and an `Etag` derived from the request URL plus a version,
+either a fixed string (`CacheControl`) or one computed per request (`CacheControlDynamic`).
+
+```go
+router.Use(rest.CacheControl(time.Hour, "v1"))
+router.Use(rest.CacheControlDynamic(time.Hour, func(r *http.Request) string { return userVersion(r) }))
+```
+
+Conditional requests are handled for GET and HEAD only: an `If-None-Match` carrying the current etag gets a
+`StatusNotModified` (304) and the handler is skipped. The header is parsed as a proper tag list, so
+comma-separated values and the `W/` weak-validator prefix are understood and a tag only matches in full;
+repeated `If-None-Match` fields count as one list, so a match in any of them is honoured.
+Requests with other methods are passed to the handler untouched, since their preconditions need to know
+whether the resource exists and this middleware can't answer that. The `*` wildcard is not matched for the
+same reason, and a request also carrying `If-Match` or `If-Unmodified-Since` is left to the handler, since
+those outrank `If-None-Match` and may call for a `StatusPreconditionFailed` (412) that a 304 would hide.
 
 ### Headers middleware
 
@@ -153,7 +203,26 @@ Sets headers (passed as key:value) to requests. I.e. `rest.Headers("Server:MySer
 
 ### Gzip middleware
 
-Compresses response with gzip.
+Compresses response with gzip. Adds `Vary: Accept-Encoding` to every response it handles, compressed or not,
+so shared caches key on the encoding rather than serving gzip bytes to a client that never asked for them.
+
+The decision is made on the **response** content type, either the one the handler set or, when it set none,
+the type sniffed from the first chunk of the body. By default the common textual types are compressed
+(`text/html`, `text/plain`, `text/css`, `text/xml`, `text/javascript`, `application/javascript`,
+`application/x-javascript`, `application/json`); pass your own list to override, i.e. `rest.Gzip("text/html")`.
+
+`Accept-Encoding` is parsed rather than substring-matched, so `gzip;q=0` is honoured as a refusal and a named
+`gzip` entry outranks a `*` wildcard. Compression is skipped for responses that carry no body (204 and 304),
+for responses the handler already encoded (`Content-Encoding` set), and for partial responses (206 or a
+`Content-Range`), whose offsets describe the uncompressed representation. `Content-Length` is dropped when the
+body is compressed, interim 1xx responses pass through without becoming the final status, and `Flush` and
+`Hijack` pass through so streaming responses and protocol upgrades keep working. The wrapper offers those two
+only when the writer beneath it does, so composing with `Timeout`, which offers neither, does not leave a
+handler with a `Flush` that silently does nothing.
+
+One deviation is worth knowing about: sniffing means the status cannot be sent until the body arrives, so when
+a handler calls `WriteHeader` without setting `Content-Type`, headers it changes before the first `Write` still
+reach the client, where `net/http` would have ignored them.
 
 ### RealIP middleware
 
@@ -165,6 +234,165 @@ RealIP is a middleware that sets a http.Request's RemoteAddr to the results of p
 4. `RemoteAddr` - fallback for direct connections
 
 Only public IPs are accepted from headers; private/loopback/link-local IPs are skipped. This makes the middleware compatible with CDN setups like Cloudflare where the leftmost IP in `X-Forwarded-For` is the actual client.
+
+### Timeout middleware
+
+Timeout bounds a request to the given duration and responds with `StatusGatewayTimeout` (504) at the deadline if the handler has not finished — even for a handler that does not observe the context. The handler runs with a context deadline and its output is buffered; on success the buffered response is written through unchanged, and if the deadline fires first the buffered output is discarded, a 504 is sent, and further writes by the still-running handler return `http.ErrHandlerTimeout`. Because the response is buffered, `http.Flusher` and `http.Hijacker` are not available under `Timeout` (as with `net/http.TimeoutHandler`), so it is not suitable for streaming or connection-hijacking handlers. A non-positive duration disables the middleware (the handler is called directly).
+
+```go
+router.Use(rest.Timeout(5 * time.Second))
+```
+
+### CORS middleware
+
+Handles Cross-Origin Resource Sharing, allowing controlled access from different origins.
+
+```go
+// allow all origins (default)
+router.Use(rest.CORS())
+
+// specific origins with credentials
+router.Use(rest.CORS(
+    rest.CorsAllowedOrigins("https://app.example.com", "https://admin.example.com"),
+    rest.CorsAllowCredentials(true),
+    rest.CorsMaxAge(86400),
+))
+
+// full configuration
+router.Use(rest.CORS(
+    rest.CorsAllowedOrigins("https://app.example.com"),
+    rest.CorsAllowedMethods("GET", "POST", "PUT", "DELETE"),
+    rest.CorsAllowedHeaders("Authorization", "Content-Type", "X-Custom-Header"),
+    rest.CorsExposedHeaders("X-Request-Id", "X-Total-Count"),
+    rest.CorsAllowCredentials(true),
+    rest.CorsMaxAge(3600),
+))
+```
+
+Features:
+- Automatic preflight (OPTIONS) handling
+- Origin validation with case-insensitive matching
+- Credentials support (reflects the request origin instead of `*`)
+- Configurable cache duration for preflight results
+- Cache-correct `Vary` headers (adds `Access-Control-Request-Method` and `Access-Control-Request-Headers` on preflight)
+
+Available options:
+- `CorsAllowedOrigins(origins...)` - allowed origins (default: `*`), can't include `*` with credentials enabled
+- `CorsAllowedMethods(methods...)` - allowed HTTP methods (default: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)
+- `CorsAllowedHeaders(headers...)` - allowed request headers (default: Accept, Content-Type, Authorization, X-Requested-With)
+- `CorsExposedHeaders(headers...)` - headers exposed to client
+- `CorsAllowCredentials(bool)` - enable credentials (cookies, auth headers)
+- `CorsUnsafeAnyOriginWithCredentials(bool)` - allow `*` together with credentials, see below
+- `CorsMaxAge(seconds)` - preflight cache duration
+
+`CORS` panics if credentials are enabled while `*` is among the allowed origins, the default list included.
+That combination reflects any origin back together with `Access-Control-Allow-Credentials: true`, which lets
+any site a signed-in user visits read authenticated responses, so it should not be reached by accident.
+Name the origins instead:
+
+```go
+router.Use(rest.CORS(
+    rest.CorsAllowedOrigins("https://app.example.com"),
+    rest.CorsAllowCredentials(true),
+))
+```
+
+A service that genuinely has to accept credentialed requests from arbitrary third-party origins, such as an
+embeddable widget, can opt back in explicitly. Do this only when state-changing requests are protected by
+something other than the origin:
+
+```go
+router.Use(rest.CORS(
+    rest.CorsAllowedOrigins("*"),
+    rest.CorsAllowCredentials(true),
+    rest.CorsUnsafeAnyOriginWithCredentials(true),
+))
+```
+
+### Secure middleware
+
+Adds security headers to responses. By default sets: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection`, and `Strict-Transport-Security` (for HTTPS only).
+
+```go
+// with sensible defaults
+router.Use(rest.Secure())
+
+// with full security headers for web apps (adds CSP and Permissions-Policy)
+router.Use(rest.Secure(rest.SecAllHeaders()))
+
+// with custom options
+router.Use(rest.Secure(
+    rest.SecFrameOptions("SAMEORIGIN"),
+    rest.SecReferrerPolicy("no-referrer"),
+    rest.SecHSTS(86400, true, true),
+    rest.SecContentSecurityPolicy("default-src 'self'"),
+    rest.SecPermissionsPolicy("geolocation=(), camera=()"),
+))
+```
+
+Default headers:
+- `X-Frame-Options: DENY` - prevents clickjacking
+- `X-Content-Type-Options: nosniff` - prevents MIME-type sniffing
+- `Referrer-Policy: strict-origin-when-cross-origin` - controls referrer information
+- `X-XSS-Protection: 1; mode=block` - enables XSS filtering (legacy browsers)
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` - enforces HTTPS (only sent over HTTPS)
+
+Available options:
+- `SecFrameOptions(value)` - set X-Frame-Options (DENY, SAMEORIGIN)
+- `SecContentTypeNosniff(enable)` - enable/disable nosniff
+- `SecReferrerPolicy(policy)` - set Referrer-Policy
+- `SecContentSecurityPolicy(policy)` - set Content-Security-Policy
+- `SecPermissionsPolicy(policy)` - set Permissions-Policy
+- `SecHSTS(maxAge, includeSubdomains, preload)` - configure HSTS
+- `SecXSSProtection(value)` - set X-XSS-Protection
+- `SecAllHeaders()` - convenience option that sets CSP and Permissions-Policy with restrictive defaults
+
+### CSRF middleware
+
+Provides Cross-Site Request Forgery protection using modern browser Fetch metadata headers (`Sec-Fetch-Site`, `Origin`). For Go 1.25+, this wraps the stdlib's `http.CrossOriginProtection`. For earlier versions, a compatible custom implementation is used.
+
+```go
+// basic protection
+protection := rest.NewCrossOriginProtection()
+router.Use(protection.Handler)
+
+// with trusted origins for cross-origin requests
+protection := rest.NewCrossOriginProtection()
+if err := protection.AddTrustedOrigin("https://mobile.example.com"); err != nil {
+    log.Fatal(err)
+}
+if err := protection.AddTrustedOrigin("https://admin.example.com"); err != nil {
+    log.Fatal(err)
+}
+router.Use(protection.Handler)
+
+// with bypass patterns for webhooks or OAuth
+protection := rest.NewCrossOriginProtection()
+protection.AddBypassPattern("/api/webhook")
+protection.AddBypassPattern("/oauth/")
+router.Use(protection.Handler)
+
+// with custom deny handler
+protection := rest.NewCrossOriginProtection()
+protection.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    http.Error(w, "CSRF validation failed", http.StatusForbidden)
+}))
+router.Use(protection.Handler)
+```
+
+How it works:
+- Safe methods (GET, HEAD, OPTIONS) are always allowed
+- Checks `Sec-Fetch-Site` header for "same-origin" or "none"
+- Falls back to comparing `Origin` header with request `Host`
+- Requests without these headers are assumed same-origin (non-browser clients)
+
+Available methods:
+- `NewCrossOriginProtection()` - creates new CSRF protection middleware
+- `AddTrustedOrigin(origin)` - adds origin allowed for cross-origin requests (format: "scheme://host[:port]")
+- `AddBypassPattern(pattern)` - adds URL pattern that bypasses protection (for webhooks, OAuth, etc.)
+- `SetDenyHandler(handler)` - sets custom handler for rejected requests (default: 403 Forbidden)
+- `Check(request)` - manually validates a request, returns error if blocked
+- `Handler(handler)` - wraps an http.Handler with CSRF protection
 
 ### Maybe middleware
 
@@ -284,7 +512,7 @@ example with chi router:
 - `realip.Get` - returns client's IP address
 - `rest.ParseFromTo` - parses "from" and "to" request's query params with various formats
 - `rest.DecodeJSON` - decodes request body to the provided struct
-- `rest.EncodeJSON` - encodes response body from the provided struct, sets `Content-Type` to `application/json` and sends the status code
+- `rest.EncodeJSON` - encodes response body from the provided struct, sets `Content-Type` to `application/json` and sends the status code. The value is encoded before anything is written, so an encoding failure leaves the response uncommitted and the caller can still replace it with an error status. Write failures are reported too, by which point the response has already been committed
 
 ## Profiler
 
@@ -301,4 +529,3 @@ Profiler is a convenient sub-router used for mounting net/http/pprof, i.e.
 ```
 
 It exposes a bunch of `/pprof/*` endpoints as well as `/vars`. Builtin support for `onlyIps` allows restricting access, which is important if it runs on a publicly exposed port. However, counting on IP check only is not that reliable way to limit request and for production use it would be better to add some sort of auth (for example provided `BasicAuth` middleware) or run with a separate http server, exposed to internal ip/port only.
-
