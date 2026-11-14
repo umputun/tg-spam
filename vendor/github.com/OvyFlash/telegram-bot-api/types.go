@@ -108,6 +108,15 @@ type Update struct {
 	//
 	// optional
 	CallbackQuery *CallbackQuery `json:"callback_query,omitempty"`
+	// WidgetQuery new incoming query from a widget in a message sent by the bot
+	// or via the bot
+	//
+	// optional
+	WidgetQuery *WidgetQuery `json:"widget_query,omitempty"`
+	// SharedWidgetQuery new incoming query from a forwarded message with a shared widget
+	//
+	// optional
+	SharedWidgetQuery *SharedWidgetQuery `json:"shared_widget_query,omitempty"`
 	// ShippingQuery new incoming shipping query. Only for invoices with
 	// flexible price
 	//
@@ -167,6 +176,10 @@ type Update struct {
 	//
 	// optional
 	Subscription *BotSubscriptionUpdated `json:"subscription,omitempty"`
+	// StoppedMessageGeneration is emitted when a user stops message generation.
+	//
+	// optional
+	StoppedMessageGeneration *MessageGenerationStopped `json:"stopped_message_generation,omitempty"`
 }
 
 // SentFrom returns the user who sent an update. Can be nil, if Telegram did not provide information
@@ -197,6 +210,10 @@ func (u *Update) SentFrom() *User {
 		return u.ChosenInlineResult.From
 	case u.CallbackQuery != nil:
 		return u.CallbackQuery.From
+	case u.WidgetQuery != nil:
+		return &u.WidgetQuery.From
+	case u.SharedWidgetQuery != nil:
+		return &u.SharedWidgetQuery.From
 	case u.ShippingQuery != nil:
 		return u.ShippingQuery.From
 	case u.PreCheckoutQuery != nil:
@@ -257,6 +274,8 @@ func (u *Update) FromChat() *Chat {
 		return &u.GuestMessage.Chat
 	case u.CallbackQuery != nil && u.CallbackQuery.Message != nil:
 		return &u.CallbackQuery.Message.Chat
+	case u.WidgetQuery != nil && u.WidgetQuery.Chat != nil:
+		return u.WidgetQuery.Chat
 	case u.MyChatMember != nil:
 		return &u.MyChatMember.Chat
 	case u.ChatMember != nil:
@@ -267,6 +286,8 @@ func (u *Update) FromChat() *Chat {
 		return &u.ChatBoost.Chat
 	case u.ChatBoostRemoved != nil:
 		return &u.ChatBoostRemoved.Chat
+	case u.StoppedMessageGeneration != nil:
+		return &u.StoppedMessageGeneration.Chat
 	default:
 		return nil
 	}
@@ -637,6 +658,16 @@ type ChatFullInfo struct {
 	//
 	// optional
 	Community *Community `json:"community,omitempty"`
+	// TonWalletCard for private chats, the TON wallet card of the user,
+	// which is shown on their profile page.
+	//
+	// optional
+	TonWalletCard *TonWalletCard `json:"ton_wallet_card,omitempty"`
+	// ShareTheme for private chats, supergroups and channels, the theme of the screen
+	// for sharing a link to the user or the chat; omitted if the default theme is used.
+	//
+	// optional
+	ShareTheme *ChatShareTheme `json:"share_theme,omitempty"`
 }
 
 // IsPrivate returns if the Chat is a private conversation.
@@ -894,7 +925,12 @@ type Message struct {
 	//
 	// optional
 	Voice *Voice `json:"voice,omitempty"`
-	// Caption for the animation, audio, document, photo, video or voice, 0-1024 characters;
+	// Widget message is an HTML widget, information about the widget
+	//
+	// optional
+	Widget *Widget `json:"widget,omitempty"`
+	// Caption for the animation, audio, document, live photo, paid media, photo, video,
+	// voice, or widget, 0-1024 characters;
 	//
 	// optional
 	Caption string `json:"caption,omitempty"`
@@ -902,7 +938,7 @@ type Message struct {
 	//
 	// optional
 	CaptionEntities []MessageEntity `json:"caption_entities,omitempty"`
-	// ShowCaptionAboveMedia is True, if the caption must be shown above the message media
+	// ShowCaptionAboveMedia is True, if the caption must be shown above the message media or the widget
 	//
 	// optional
 	ShowCaptionAboveMedia bool `json:"show_caption_above_media,omitempty"`
@@ -1089,6 +1125,10 @@ type Message struct {
 	//
 	// optional
 	CommunityChatAdded *CommunityChatAdded `json:"community_chat_added,omitempty"`
+	// CommunityChatJoined is a service message about a chat being joined from a community.
+	//
+	// optional
+	CommunityChatJoined *CommunityChatJoined `json:"community_chat_joined,omitempty"`
 	// CommunityChatRemoved is a service message about a chat being removed from a community.
 	//
 	// optional
@@ -1145,6 +1185,11 @@ type Message struct {
 	//
 	// optional
 	PaidMessagePriceChanged *PaidMessagePriceChanged `json:"paid_message_price_changed,omitempty"`
+	// PaidMessagesWaived is a service message: the sender of the message used a link
+	// of the other user, which allows sending messages to the user without paying Telegram Stars.
+	//
+	// optional
+	PaidMessagesWaived *PaidMessagesWaived `json:"paid_messages_waived,omitempty"`
 	// PollOptionAdded is a service message about an option added to a poll.
 	//
 	// optional
@@ -1173,6 +1218,10 @@ type Message struct {
 	//
 	// optional
 	SuggestedPostRefunded *SuggestedPostRefunded `json:"suggested_post_refunded,omitempty"`
+	// TonWalletTransfer is a service message: a transfer with a TON wallet.
+	//
+	// optional
+	TonWalletTransfer *TonWalletTransfer `json:"ton_wallet_transfer,omitempty"`
 	// VideoChatScheduled is a service message: video chat scheduled.
 	//
 	// optional
@@ -1286,6 +1335,8 @@ type MessageEntity struct {
 	//  "url" (https://telegram.org),
 	//  "email" (do-not-reply@telegram.org),
 	//  "phone_number" (+1-212-555-0123),
+	//  "bank_card_number" (bank card number),
+	//  "ton_address" (address in the TON blockchain),
 	//  "bold" (bold text),
 	//  "italic" (italic text),
 	//  "underline" (underlined text),
@@ -1401,16 +1452,23 @@ func (e MessageEntity) IsTextLink() bool {
 // TextQuote contains information about the quoted part of a message
 // that is replied to by the given message
 type TextQuote struct {
-	// Text of the quoted part of a message that is replied to by the given message
+	// Text of the quoted part of a message that is replied to by the given message;
+	// may be empty if the quote was chosen from a rich message
 	Text string `json:"text"`
 	// Entities special entities that appear in the quote.
 	// Currently, only bold, italic, underline, strikethrough, spoiler,
-	// and custom_emoji entities are kept in quotes.
+	// custom_emoji, and date_time entities are kept in quotes.
 	//
 	// optional
 	Entities []MessageEntity `json:"entities,omitempty"`
+	// RichTexts rich text of the quote if it was chosen from a rich message
+	//
+	// optional
+	RichTexts []RichText `json:"rich_texts,omitempty"`
 	// Position is approximate quote position in the original message
-	// in UTF-16 code units as specified by the sender
+	// in UTF-16 code units as specified by the sender. For quotes from rich messages,
+	// it is the position in the text formed by joining plain texts of all quotable
+	// texts of the message, separated by line feeds.
 	Position int `json:"position"`
 	// IsManual True, if the quote was chosen manually by the message sender.
 	// Otherwise, the quote was added automatically by the server.
@@ -1478,6 +1536,10 @@ type ExternalReplyInfo struct {
 	//
 	// optional
 	Voice *Voice `json:"voice,omitempty"`
+	// Widget message is an HTML widget, information about the widget
+	//
+	// optional
+	Widget *Widget `json:"widget,omitempty"`
 	// HasMediaSpoiler True, if the message media is covered by a spoiler animation
 	//
 	// optional
@@ -1565,6 +1627,12 @@ type ReplyParameters struct {
 	//
 	// optional
 	QuoteEntities []MessageEntity `json:"quote_entities,omitempty"`
+	// QuoteRichTexts a JSON-serialized list of quoted parts of the rich message
+	// to be replied to, one element for each quoted text in order of appearance.
+	// If non-empty, then Quote, QuoteParseMode and QuoteEntities are ignored.
+	//
+	// optional
+	QuoteRichTexts []RichText `json:"quote_rich_texts,omitempty"`
 	// QuotePosition is a position of the quote in the original message in UTF-16 code units
 	//
 	// optional
@@ -2756,6 +2824,16 @@ type RichTextBankCardNumber struct {
 	BankCardNumber string   `json:"bank_card_number"`
 }
 
+// RichTextTonAddress describes an address in the TON blockchain.
+type RichTextTonAddress struct {
+	// Type type of the rich text, always "ton_address"
+	Type string `json:"type"`
+	// Text text of the address
+	Text RichText `json:"text"`
+	// Address the address
+	Address string `json:"address"`
+}
+
 // RichTextMention describes text with a username mention.
 type RichTextMention struct {
 	Type     string   `json:"type"`
@@ -2782,6 +2860,14 @@ type RichTextBotCommand struct {
 	Type       string   `json:"type"`
 	Text       RichText `json:"text"`
 	BotCommand string   `json:"bot_command"`
+}
+
+// RichTextButton describes a rich text button.
+type RichTextButton struct {
+	// Type type of the rich text, always "button"
+	Type string `json:"type"`
+	// Button the button
+	Button RichMessageButton `json:"button"`
 }
 
 // RichTextAnchor describes an anchor.
@@ -2896,6 +2982,18 @@ type RichBlockBlockQuotation struct {
 	Credit RichText    `json:"credit,omitempty"`
 }
 
+// RichBlockExpandableBlockQuotation describes an expandable block quotation.
+type RichBlockExpandableBlockQuotation struct {
+	// Type type of the block, always "expandable_blockquote"
+	Type string `json:"type"`
+	// Text content of the block
+	Text RichText `json:"text"`
+	// Credit credit of the block
+	//
+	// optional
+	Credit RichText `json:"credit,omitempty"`
+}
+
 // RichBlockPullQuotation describes a pull quotation.
 type RichBlockPullQuotation struct {
 	Type   string   `json:"type"`
@@ -2922,8 +3020,15 @@ type RichBlockTable struct {
 	Type       string                 `json:"type"`
 	Cells      [][]RichBlockTableCell `json:"cells"`
 	IsBordered bool                   `json:"is_bordered,omitempty"`
-	IsStriped  bool                   `json:"is_striped,omitempty"`
-	Caption    RichText               `json:"caption,omitempty"`
+	// IsStriped True, if the table is striped
+	//
+	// optional
+	IsStriped bool `json:"is_striped,omitempty"`
+	// IsCompact True, if table cells have smaller indents
+	//
+	// optional
+	IsCompact bool     `json:"is_compact,omitempty"`
+	Caption   RichText `json:"caption,omitempty"`
 }
 
 // RichBlockDetails describes an expandable details block.
@@ -2944,6 +3049,36 @@ type RichBlockMap struct {
 	Caption  *RichBlockCaption `json:"caption,omitempty"`
 }
 
+// RichBlockButtonsAlignLeft is the left horizontal alignment for RichBlockButtons.
+const RichBlockButtonsAlignLeft = "left"
+
+// RichBlockButtonsAlignCenter is the center horizontal alignment for RichBlockButtons.
+const RichBlockButtonsAlignCenter = "center"
+
+// RichBlockButtonsAlignRight is the right horizontal alignment for RichBlockButtons.
+const RichBlockButtonsAlignRight = "right"
+
+// RichBlockButtons describes a row of rich message buttons.
+type RichBlockButtons struct {
+	// Type type of the block, always "buttons"
+	Type string `json:"type"`
+	// Buttons the buttons
+	Buttons []RichMessageButton `json:"buttons"`
+	// Align horizontal alignment of the buttons; must be one of "left", "center", or "right"
+	//
+	// optional
+	Align string `json:"align,omitempty"`
+}
+
+// Left returns true if the buttons are aligned to the left.
+func (b RichBlockButtons) Left() bool { return b.Align == RichBlockButtonsAlignLeft }
+
+// Center returns true if the buttons are centered.
+func (b RichBlockButtons) Center() bool { return b.Align == RichBlockButtonsAlignCenter }
+
+// Right returns true if the buttons are aligned to the right.
+func (b RichBlockButtons) Right() bool { return b.Align == RichBlockButtonsAlignRight }
+
 // RichBlockAnimation describes an animation block.
 type RichBlockAnimation struct {
 	Type       string            `json:"type"`
@@ -2956,6 +3091,18 @@ type RichBlockAnimation struct {
 type RichBlockAudio struct {
 	Type    string            `json:"type"`
 	Audio   Audio             `json:"audio"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// RichBlockDocument describes a document block.
+type RichBlockDocument struct {
+	// Type type of the block, always "document"
+	Type string `json:"type"`
+	// Document the document
+	Document Document `json:"document"`
+	// Caption caption of the block
+	//
+	// optional
 	Caption *RichBlockCaption `json:"caption,omitempty"`
 }
 
@@ -3056,6 +3203,18 @@ type InputRichBlockBlockQuotation struct {
 	Credit RichText         `json:"credit,omitempty"`
 }
 
+// InputRichBlockExpandableBlockQuotation describes an outgoing expandable block quotation.
+type InputRichBlockExpandableBlockQuotation struct {
+	// Type type of the block, always "expandable_blockquote"
+	Type string `json:"type"`
+	// Text content of the block
+	Text RichText `json:"text"`
+	// Credit credit of the block
+	//
+	// optional
+	Credit RichText `json:"credit,omitempty"`
+}
+
 // InputRichBlockPullQuotation describes an outgoing pull quotation.
 type InputRichBlockPullQuotation struct {
 	Type   string   `json:"type"`
@@ -3082,8 +3241,15 @@ type InputRichBlockTable struct {
 	Type       string                 `json:"type"`
 	Cells      [][]RichBlockTableCell `json:"cells"`
 	IsBordered bool                   `json:"is_bordered,omitempty"`
-	IsStriped  bool                   `json:"is_striped,omitempty"`
-	Caption    RichText               `json:"caption,omitempty"`
+	// IsStriped True, if the table is striped
+	//
+	// optional
+	IsStriped bool `json:"is_striped,omitempty"`
+	// IsCompact True, if table cells have smaller indents
+	//
+	// optional
+	IsCompact bool     `json:"is_compact,omitempty"`
+	Caption   RichText `json:"caption,omitempty"`
 }
 
 // InputRichBlockDetails describes an outgoing details block.
@@ -3104,6 +3270,27 @@ type InputRichBlockMap struct {
 	Caption  *RichBlockCaption `json:"caption,omitempty"`
 }
 
+// InputRichBlockButtons describes an outgoing row of rich message buttons.
+type InputRichBlockButtons struct {
+	// Type type of the block, always "buttons"
+	Type string `json:"type"`
+	// Buttons list of 1-8 buttons to send
+	Buttons []RichMessageButton `json:"buttons"`
+	// Align horizontal alignment of the buttons; must be one of "left", "center", or "right"
+	//
+	// optional
+	Align string `json:"align,omitempty"`
+}
+
+// Left returns true if the buttons are aligned to the left.
+func (b InputRichBlockButtons) Left() bool { return b.Align == RichBlockButtonsAlignLeft }
+
+// Center returns true if the buttons are centered.
+func (b InputRichBlockButtons) Center() bool { return b.Align == RichBlockButtonsAlignCenter }
+
+// Right returns true if the buttons are aligned to the right.
+func (b InputRichBlockButtons) Right() bool { return b.Align == RichBlockButtonsAlignRight }
+
 // InputRichBlockAnimation describes an outgoing animation block.
 type InputRichBlockAnimation struct {
 	Type      string              `json:"type"`
@@ -3115,6 +3302,18 @@ type InputRichBlockAnimation struct {
 type InputRichBlockAudio struct {
 	Type    string            `json:"type"`
 	Audio   InputMediaAudio   `json:"audio"`
+	Caption *RichBlockCaption `json:"caption,omitempty"`
+}
+
+// InputRichBlockDocument describes an outgoing document block.
+type InputRichBlockDocument struct {
+	// Type type of the block, always "document"
+	Type string `json:"type"`
+	// Document the document; caption on the document is ignored
+	Document InputMediaDocument `json:"document"`
+	// Caption caption of the block
+	//
+	// optional
 	Caption *RichBlockCaption `json:"caption,omitempty"`
 }
 
@@ -3228,6 +3427,11 @@ type ReplyKeyboardMarkup struct {
 	//
 	// optional
 	Selective bool `json:"selective,omitempty"`
+	// ForceReply shows reply interface to the user, as if they manually
+	// selected the bot's message and tapped 'Reply'.
+	//
+	// optional
+	ForceReply bool `json:"force_reply,omitempty"`
 }
 
 // KeyboardButton represents one button of the reply keyboard. For simple text
@@ -3392,7 +3596,10 @@ type KeyboardButtonRequestManagedBot struct {
 	//
 	// optional
 	SuggestedName string `json:"suggested_name,omitempty"`
-	// SuggestedUsername is a suggested username for the bot.
+	// SuggestedUsername is a suggested username for the bot. The username must end
+	// with "bot". If the user creating the bot has a Telegram Premium subscription,
+	// then the username can also end with "agent", "ai", "app", "game", or "gay";
+	// such a username is assigned as a secondary username.
 	//
 	// optional
 	SuggestedUsername string `json:"suggested_username,omitempty"`
@@ -3437,6 +3644,12 @@ type InlineKeyboardMarkup struct {
 	// InlineKeyboard array of button rows, each represented by an Array of
 	// InlineKeyboardButton objects
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
+	// ForceReply shows reply interface to the user, as if they manually
+	// selected the bot's message and tapped 'Reply'. The value of the field
+	// can't be changed when the inline keyboard is edited.
+	//
+	// optional
+	ForceReply bool `json:"force_reply,omitempty"`
 }
 
 // InlineKeyboardButton represents one button of an inline keyboard. You must
@@ -3524,6 +3737,10 @@ type InlineKeyboardButton struct {
 	//
 	// optional
 	Pay bool `json:"pay,omitempty"`
+	// Disabled marks the button as disabled so it does nothing.
+	//
+	// optional
+	Disabled *DisabledButton `json:"disabled,omitempty"`
 }
 
 // LoginURL represents a parameter of the inline keyboard button used to
@@ -3725,6 +3942,11 @@ type ChatAdministratorRights struct {
 	CanManageTopics         bool `json:"can_manage_topics"`
 	CanManageDirectMessages bool `json:"can_manage_direct_messages,omitempty"`
 	CanManageTags           bool `json:"can_manage_tags,omitempty"`
+	// CanSendWelcomeMessages True, if the administrator can manage chat welcome
+	// messages or directly send them in the case of bots.
+	//
+	// optional
+	CanSendWelcomeMessages bool `json:"can_send_welcome_messages,omitempty"`
 }
 
 // ChatMember contains information about one member of a chat.
@@ -3900,8 +4122,8 @@ type ChatMember struct {
 	// optional
 	CanReactToMessages bool `json:"can_react_to_messages,omitempty"`
 	// CanSendOtherMessages restricted only.
-	// True, if the user is allowed to send audios, documents,
-	// photos, videos, video notes and voice notes.
+	// True, if the user is allowed to send animations, games, stickers, widgets
+	// and use inline bots.
 	//
 	// optional
 	CanSendOtherMessages bool `json:"can_send_other_messages,omitempty"`
@@ -3916,6 +4138,11 @@ type ChatMember struct {
 	//
 	// optional
 	CanManageTags bool `json:"can_manage_tags,omitempty"`
+	// CanSendWelcomeMessages True, if the administrator can manage chat welcome
+	// messages or directly send them in the case of bots.
+	//
+	// optional
+	CanSendWelcomeMessages bool `json:"can_send_welcome_messages,omitempty"`
 	// CanEditTag True, if the user is allowed to edit their own tag.
 	//
 	// optional
@@ -4051,7 +4278,7 @@ type ChatPermissions struct {
 	// optional
 	CanReactToMessages bool `json:"can_react_to_messages,omitempty"`
 	// CanSendOtherMessages is true, if the user is allowed to send animations,
-	// games, stickers and use inline bots, implies can_send_media_messages
+	// games, stickers, widgets and use inline bots
 	//
 	// optional
 	CanSendOtherMessages bool `json:"can_send_other_messages,omitempty"`
@@ -6947,6 +7174,90 @@ type InputRichMessageContent struct {
 	RichMessage InputRichMessage `json:"rich_message"`
 }
 
+// InputWidgetMessageContent represents the content of a message with an HTML widget
+// to be sent as the result of an inline query.
+//
+// Currently, widgets can't be sent in response to inline queries in the production environment.
+type InputWidgetMessageContent struct {
+	// HTML code of the widget, 1-32768 bytes. The code must not exceed 4096 bytes
+	// when compressed by zlib with the maximum compression level.
+	HTML string `json:"html"`
+	// Width of the widget in logical pixels; omit if the widget must occupy
+	// the whole width of the message bubble
+	//
+	// optional
+	Width int `json:"width,omitempty"`
+	// Height of the widget in logical pixels; omit if the height of the widget isn't fixed
+	//
+	// optional
+	Height int `json:"height,omitempty"`
+	// PublicData public data of the widget, 0-1024 bytes, which will be available
+	// wherever the widget is shown
+	//
+	// optional
+	PublicData string `json:"public_data,omitempty"`
+	// ChatData data of the widget, which is specific to the message, 0-1024 bytes
+	//
+	// optional
+	ChatData string `json:"chat_data,omitempty"`
+	// Caption widget caption, 0-1024 characters after entities parsing
+	//
+	// optional
+	Caption string `json:"caption,omitempty"`
+	// ParseMode mode for parsing entities in the widget caption
+	//
+	// optional
+	ParseMode string `json:"parse_mode,omitempty"`
+	// CaptionEntities list of special entities that appear in the caption,
+	// which can be specified instead of parse_mode
+	//
+	// optional
+	CaptionEntities []MessageEntity `json:"caption_entities,omitempty"`
+	// ShowCaptionAboveMedia pass True if the caption must be shown above the widget
+	//
+	// optional
+	ShowCaptionAboveMedia bool `json:"show_caption_above_media,omitempty"`
+	// AllowQueries pass True to allow the widget to send queries to the bot
+	//
+	// optional
+	AllowQueries bool `json:"allow_queries,omitempty"`
+	// IsShared pass True to create a shared widget. Each message sent from the result
+	// creates a separate shared widget.
+	//
+	// optional
+	IsShared bool `json:"is_shared,omitempty"`
+}
+
+// InputSharedWidgetMessageContent represents the content of a message with a shared widget
+// to be sent as the result of an inline query.
+//
+// Currently, widgets can't be sent in response to inline queries in the production environment.
+type InputSharedWidgetMessageContent struct {
+	// WidgetID unique identifier of the shared widget created by the bot
+	WidgetID string `json:"widget_id"`
+	// ChatData data of the widget, which is specific to the message, 0-1024 bytes
+	//
+	// optional
+	ChatData string `json:"chat_data,omitempty"`
+	// Caption widget caption, 0-1024 characters after entities parsing
+	//
+	// optional
+	Caption string `json:"caption,omitempty"`
+	// ParseMode mode for parsing entities in the widget caption
+	//
+	// optional
+	ParseMode string `json:"parse_mode,omitempty"`
+	// CaptionEntities list of special entities that appear in the caption,
+	// which can be specified instead of parse_mode
+	//
+	// optional
+	CaptionEntities []MessageEntity `json:"caption_entities,omitempty"`
+	// ShowCaptionAboveMedia pass True if the caption must be shown above the widget
+	//
+	// optional
+	ShowCaptionAboveMedia bool `json:"show_caption_above_media,omitempty"`
+}
+
 // InlineQueryResult represents any inline query result object.
 type InlineQueryResult any
 
@@ -7082,8 +7393,125 @@ type CommunityChatAdded struct {
 	Community Community `json:"community"`
 }
 
+// CommunityChatJoined describes a chat being joined by a user from a community.
+type CommunityChatJoined struct {
+	// Community the community from which the chat was joined
+	Community Community `json:"community"`
+}
+
 // CommunityChatRemoved describes a chat being removed from a community.
 type CommunityChatRemoved struct{}
+
+// MessageGenerationStopped describes an update about a user stopping message generation.
+type MessageGenerationStopped struct {
+	// Chat chat in which the message is generated
+	Chat Chat `json:"chat"`
+	// MessageThreadID unique identifier of the message thread in which the message is generated
+	//
+	// optional
+	MessageThreadID int `json:"message_thread_id,omitempty"`
+	// DraftID unique identifier of the message draft which was stopped
+	DraftID int `json:"draft_id"`
+}
+
+// EphemeralMessageParameters describes parameters of an ephemeral message to send.
+type EphemeralMessageParameters struct {
+	// ReceiverUserID identifier of the user who will receive the message;
+	// required unless the message is sent as an ephemeral reply to a callback query.
+	// If omitted, then the parameter chat_id of the method is ignored.
+	//
+	// optional
+	ReceiverUserID int64 `json:"receiver_user_id,omitempty"`
+	// CallbackQueryID identifier of the callback query which triggered the message, if any.
+	// If specified and ReceiverUserID is omitted, then the message is sent as an ephemeral
+	// reply to the callback query and is shown only to the user who pressed the button.
+	//
+	// optional
+	CallbackQueryID string `json:"callback_query_id,omitempty"`
+	// ReplaceCallbackQueryMessage pass True to show the ephemeral message in place of
+	// the original message; must be False for callback queries from ephemeral messages
+	//
+	// optional
+	ReplaceCallbackQueryMessage bool `json:"replace_callback_query_message,omitempty"`
+}
+
+// DisabledButton represents a disabled button which does nothing.
+type DisabledButton struct{}
+
+// RichMessageButtonStyleDanger is the red button style.
+const RichMessageButtonStyleDanger = "danger"
+
+// RichMessageButtonStyleSuccess is the green button style.
+const RichMessageButtonStyleSuccess = "success"
+
+// RichMessageButtonStylePrimary is the blue button style.
+const RichMessageButtonStylePrimary = "primary"
+
+// RichMessageButtonStyleLink shows the button as a regular link without borders.
+const RichMessageButtonStyleLink = "link"
+
+// RichMessageButton represents a button in a RichMessage.
+//
+// Exactly one of the optional action fields must be used to specify the type of the button.
+type RichMessageButton struct {
+	// Text text of the button; may contain only plain text, RichTextCustomEmoji and RichTextDateTime entities
+	Text RichText `json:"text"`
+	// Style style of the button; must be one of "danger", "success", "primary", or "link"
+	//
+	// optional
+	Style string `json:"style,omitempty"`
+	// URL HTTP or tg:// URL to be opened when the button is pressed
+	//
+	// optional
+	URL string `json:"url,omitempty"`
+	// CallbackData data to be sent in a callback query to the bot when the button is pressed, 1-64 bytes
+	//
+	// optional
+	CallbackData string `json:"callback_data,omitempty"`
+	// WebApp description of the Web App that will be launched when the user presses the button
+	//
+	// optional
+	WebApp *WebAppInfo `json:"web_app,omitempty"`
+	// LoginURL an HTTPS URL used to automatically authorize the user; not supported for ephemeral messages
+	//
+	// optional
+	LoginURL *LoginURL `json:"login_url,omitempty"`
+	// SwitchInlineQuery if set, pressing the button will prompt the user to select one of their chats,
+	// open that chat and insert the bot's username and the specified inline query in the input field
+	//
+	// optional
+	SwitchInlineQuery *string `json:"switch_inline_query,omitempty"`
+	// SwitchInlineQueryCurrentChat if set, pressing the button will insert the bot's username and the
+	// specified inline query in the current chat's input field
+	//
+	// optional
+	SwitchInlineQueryCurrentChat *string `json:"switch_inline_query_current_chat,omitempty"`
+	// SwitchInlineQueryChosenChat if set, pressing the button will prompt the user to select one of their
+	// chats of the specified type and insert the bot's username and the specified inline query
+	//
+	// optional
+	SwitchInlineQueryChosenChat *SwitchInlineQueryChosenChat `json:"switch_inline_query_chosen_chat,omitempty"`
+	// CopyText a button that copies the specified text to the clipboard
+	//
+	// optional
+	CopyText *CopyTextButton `json:"copy_text,omitempty"`
+	// Disabled if set, then the button is disabled and does nothing
+	//
+	// optional
+	Disabled *DisabledButton `json:"disabled,omitempty"`
+}
+
+// Danger returns true if the button uses the danger style.
+func (b RichMessageButton) Danger() bool { return b.Style == RichMessageButtonStyleDanger }
+
+// Success returns true if the button uses the success style.
+func (b RichMessageButton) Success() bool { return b.Style == RichMessageButtonStyleSuccess }
+
+// Primary returns true if the button uses the primary style.
+func (b RichMessageButton) Primary() bool { return b.Style == RichMessageButtonStylePrimary }
+
+// LinkStyle returns true if the button uses the link style.
+func (b RichMessageButton) LinkStyle() bool { return b.Style == RichMessageButtonStyleLink }
 
 // PollOptionAdded describes a service message about an option added to a poll.
 type PollOptionAdded struct {
@@ -7247,8 +7675,8 @@ type LocationAddress struct {
 	Street      string `json:"street,omitempty"`
 }
 
-// StoryAreaPosition describes position of a story area.
-type StoryAreaPosition struct {
+// AreaPosition describes the position of a rectangle area on a story media or a TON wallet card.
+type AreaPosition struct {
 	XPercentage            float64 `json:"x_percentage"`
 	YPercentage            float64 `json:"y_percentage"`
 	WidthPercentage        float64 `json:"width_percentage"`
@@ -7256,6 +7684,11 @@ type StoryAreaPosition struct {
 	RotationAngle          float64 `json:"rotation_angle"`
 	CornerRadiusPercentage float64 `json:"corner_radius_percentage"`
 }
+
+// StoryAreaPosition describes position of a story area.
+//
+// Deprecated: Bot API 10.4 renamed the type to AreaPosition.
+type StoryAreaPosition = AreaPosition
 
 // StoryAreaType describes flattened story area type payload.
 type StoryAreaType struct {
@@ -7275,8 +7708,8 @@ type StoryAreaType struct {
 
 // StoryArea describes a story area.
 type StoryArea struct {
-	Position StoryAreaPosition `json:"position"`
-	Type     StoryAreaType     `json:"type"`
+	Position AreaPosition  `json:"position"`
+	Type     StoryAreaType `json:"type"`
 }
 
 // SuggestedPostPrice describes suggested post price.
@@ -7389,13 +7822,25 @@ type UniqueGift struct {
 
 // UniqueGiftInfo describes information about a unique gift in a message.
 type UniqueGiftInfo struct {
-	Gift               UniqueGift `json:"gift"`
-	Origin             string     `json:"origin"`
-	LastResaleCurrency string     `json:"last_resale_currency,omitempty"`
-	LastResaleAmount   int        `json:"last_resale_amount,omitempty"`
-	OwnedGiftID        string     `json:"owned_gift_id,omitempty"`
-	TransferStarCount  int        `json:"transfer_star_count,omitempty"`
-	NextTransferDate   int64      `json:"next_transfer_date,omitempty"`
+	Gift   UniqueGift `json:"gift"`
+	Origin string     `json:"origin"`
+	// Text text of the message that was added to the gift
+	//
+	// optional
+	Text string `json:"text,omitempty"`
+	// Entities special entities that appear in the text
+	//
+	// optional
+	Entities []MessageEntity `json:"entities,omitempty"`
+	// IsPrivate True, if the sender and gift text are shown only to the gift receiver
+	//
+	// optional
+	IsPrivate          bool   `json:"is_private,omitempty"`
+	LastResaleCurrency string `json:"last_resale_currency,omitempty"`
+	LastResaleAmount   int    `json:"last_resale_amount,omitempty"`
+	OwnedGiftID        string `json:"owned_gift_id,omitempty"`
+	TransferStarCount  int    `json:"transfer_star_count,omitempty"`
+	NextTransferDate   int64  `json:"next_transfer_date,omitempty"`
 }
 
 // UserProfileAudios contains audios displayed on user profile.
@@ -7440,6 +7885,305 @@ type BusinessBotRights struct {
 	CanManageStories           bool `json:"can_manage_stories,omitempty"`
 }
 
+// PaidMessagesWaived describes a service message about the sender of the message
+// using a link of the other user, which allows sending messages to the user
+// without paying Telegram Stars. Currently holds no information.
+type PaidMessagesWaived struct{}
+
+// TonWalletTransfer describes a service message about a transfer with a TON wallet.
+type TonWalletTransfer struct {
+	// TransactionID unique identifier of the transaction;
+	// may be empty if the transfer hasn't been sent yet
+	TransactionID string `json:"transaction_id"`
+	// PeerAddress address of the transfer peer in the TON blockchain
+	PeerAddress string `json:"peer_address"`
+	// Amount the amount of transferred cryptocurrency, in the smallest units
+	// of the cryptocurrency, as a decimal number; negative for outgoing transfers
+	Amount string `json:"amount"`
+	// Comment added to the transfer; omitted if the comment is encrypted
+	//
+	// optional
+	Comment string `json:"comment,omitempty"`
+}
+
+// TonNftAttribute represents an attribute of an NFT in the TON blockchain.
+type TonNftAttribute struct {
+	// TraitType trait type of the attribute
+	TraitType string `json:"trait_type"`
+	// Value of the attribute
+	Value string `json:"value"`
+}
+
+// TonNft represents an NFT in the TON blockchain.
+type TonNft struct {
+	// Address of the NFT
+	Address string `json:"address"`
+	// CollectionAddress address of the collection to which the NFT belongs; omitted if unknown
+	//
+	// optional
+	CollectionAddress string `json:"collection_address,omitempty"`
+	// Index of the NFT among all NFTs from the collection as a decimal number
+	Index string `json:"index"`
+	// Name of the NFT
+	Name string `json:"name"`
+	// Description of the NFT
+	Description string `json:"description"`
+	// Attributes of the NFT
+	//
+	// optional
+	Attributes []TonNftAttribute `json:"attributes,omitempty"`
+	// Gift the unique gift corresponding to the NFT
+	//
+	// optional
+	Gift *UniqueGift `json:"gift,omitempty"`
+}
+
+// TonWalletCardSticker describes a sticker on a TON wallet card.
+type TonWalletCardSticker struct {
+	// Position of the sticker on the card
+	Position AreaPosition `json:"position"`
+	// Nft the NFT shown as the sticker
+	Nft TonNft `json:"nft"`
+}
+
+// TonWalletCard describes a TON wallet card, which is shown on the profile page
+// of a user to everyone.
+type TonWalletCard struct {
+	// Address of the wallet
+	Address string `json:"address"`
+	// Amount balance of the wallet, in the smallest units of the cryptocurrency,
+	// as a decimal number
+	Amount string `json:"amount"`
+	// Stickers placed on the card
+	Stickers []TonWalletCardSticker `json:"stickers"`
+	// BackgroundNftAddress address of the NFT of one of the stickers, whose colors
+	// must be used for the card background; omitted if the default background must be used
+	//
+	// optional
+	BackgroundNftAddress string `json:"background_nft_address,omitempty"`
+}
+
+// Widget describes an HTML widget.
+type Widget struct {
+	// ID unique identifier of the shared widget, which can be used to send the widget
+	// again using the method sendSharedWidget; omitted if the widget isn't shared
+	//
+	// optional
+	ID string `json:"id,omitempty"`
+	// Width of the widget in logical pixels; omitted if the widget must occupy
+	// the whole width of the message bubble
+	//
+	// optional
+	Width int `json:"width,omitempty"`
+	// Height of the widget in logical pixels; omitted if the height of the widget isn't fixed
+	//
+	// optional
+	Height int `json:"height,omitempty"`
+	// HTML code of the widget
+	HTML string `json:"html"`
+	// PublicData public data of the widget, which is available wherever the widget is shown.
+	// All messages with a shared widget have the same public data.
+	//
+	// optional
+	PublicData string `json:"public_data,omitempty"`
+	// ChatData data of the widget, which is specific to the message
+	//
+	// optional
+	ChatData string `json:"chat_data,omitempty"`
+}
+
+// WidgetQueryWallet describes a TON wallet of the user, which is used in a query from a widget.
+type WidgetQueryWallet struct {
+	// Address of the wallet
+	Address string `json:"address"`
+	// Amount balance of the wallet, in the smallest units of the cryptocurrency,
+	// as a decimal number
+	Amount string `json:"amount"`
+	// PublicKey hex-encoded public key of the wallet; omitted if unknown
+	//
+	// optional
+	PublicKey string `json:"public_key,omitempty"`
+	// StateInit base64-encoded serialized StateInit of the wallet contract;
+	// omitted if and only if PublicKey is omitted
+	//
+	// optional
+	StateInit string `json:"state_init,omitempty"`
+}
+
+// WidgetQueryType describes the type of a query from a widget. Currently, it can be one of
+//   - WidgetQueryTypeData
+//   - WidgetQueryTypeSignData
+//   - WidgetQueryTypeSentTransaction
+type WidgetQueryType struct {
+	// Type of the query, can be "data", "sign_data" or "sent_transaction"
+	Type string `json:"type"`
+	// WalletCard "data" only. TON wallet card of the user who sent the query,
+	// if it was sent to the bot along with the query
+	//
+	// optional
+	WalletCard *TonWalletCard `json:"wallet_card,omitempty"`
+	// Wallet "sign_data" and "sent_transaction" only. The wallet that signed the data
+	// or from which the transaction was sent
+	//
+	// optional
+	Wallet *WidgetQueryWallet `json:"wallet,omitempty"`
+	// SignData "sign_data" only. JSON-serialized data signed for the domain bot<bot_id>
+	//
+	// optional
+	SignData string `json:"sign_data,omitempty"`
+	// MsgHash "sent_transaction" only. Value of msg_hash of the transaction
+	//
+	// optional
+	MsgHash string `json:"msg_hash,omitempty"`
+}
+
+// IsData returns true if the query contains data for the bot.
+func (t WidgetQueryType) IsData() bool {
+	return t.Type == "data"
+}
+
+// IsSignData returns true if the query contains data signed by a TON wallet of the user.
+func (t WidgetQueryType) IsSignData() bool {
+	return t.Type == "sign_data"
+}
+
+// IsSentTransaction returns true if the query notifies the bot about a transaction
+// sent from a TON wallet of the user.
+func (t WidgetQueryType) IsSentTransaction() bool {
+	return t.Type == "sent_transaction"
+}
+
+// WidgetQuery represents an incoming query from a widget in a message sent by the bot
+// or via the bot. Use answerWidgetQuery to answer the query.
+type WidgetQuery struct {
+	// ID unique identifier for this query
+	ID string `json:"id"`
+	// From sender
+	From User `json:"from"`
+	// Chat with the message containing the widget; omitted if the widget is in an inline message
+	//
+	// optional
+	Chat *Chat `json:"chat,omitempty"`
+	// MessageID identifier of the message containing the widget;
+	// omitted if the widget is in an inline message
+	//
+	// optional
+	MessageID int `json:"message_id,omitempty"`
+	// InlineMessageID identifier of the inline message containing the widget
+	//
+	// optional
+	InlineMessageID string `json:"inline_message_id,omitempty"`
+	// ChatInstance global identifier, uniquely corresponding to the chat
+	// to which the message with the widget was sent
+	ChatInstance string `json:"chat_instance"`
+	// ChatType for widgets in inline messages, type of the chat to which the message was sent.
+	// Can be either "sender" for a private chat with the inline query sender,
+	// "private", "group", "supergroup", or "channel".
+	//
+	// optional
+	ChatType string `json:"chat_type,omitempty"`
+	// Type of the query
+	Type WidgetQueryType `json:"type"`
+	// Data of the query, 1-64 bytes
+	Data string `json:"data"`
+	// WidgetID unique identifier of the shared widget, which sent the query;
+	// omitted if the widget isn't shared
+	//
+	// optional
+	WidgetID string `json:"widget_id,omitempty"`
+}
+
+// SharedWidgetQuery represents an incoming query from a forwarded message with a shared widget
+// created by the bot. Use answerWidgetQuery to answer the query.
+type SharedWidgetQuery struct {
+	// ID unique identifier for this query
+	ID string `json:"id"`
+	// From sender
+	From User `json:"from"`
+	// Type of the query
+	Type WidgetQueryType `json:"type"`
+	// Data of the query, 1-64 bytes
+	Data string `json:"data"`
+	// WidgetID unique identifier of the shared widget, which sent the query
+	WidgetID string `json:"widget_id"`
+}
+
+// EmojiType describes an emoji. Currently, it can be one of
+//   - EmojiTypeEmoji
+//   - EmojiTypeCustomEmoji
+type EmojiType struct {
+	// Type of the emoji, can be "emoji" or "custom_emoji"
+	Type string `json:"type"`
+	// Emoji "emoji" only. The emoji
+	//
+	// optional
+	Emoji string `json:"emoji,omitempty"`
+	// CustomEmojiID "custom_emoji" only. Identifier of the custom emoji
+	//
+	// optional
+	CustomEmojiID string `json:"custom_emoji_id,omitempty"`
+}
+
+// IsEmoji returns true if the emoji is a regular emoji.
+func (e EmojiType) IsEmoji() bool {
+	return e.Type == "emoji"
+}
+
+// IsCustomEmoji returns true if the emoji is a custom emoji.
+func (e EmojiType) IsCustomEmoji() bool {
+	return e.Type == "custom_emoji"
+}
+
+// ChatShareTheme describes the theme of the screen for sharing a link to a user or a chat.
+// Currently, it can be one of
+//   - ChatShareThemeEmoji
+//   - ChatShareThemeUniqueGift
+type ChatShareTheme struct {
+	// Type of the theme, can be "emoji" or "unique_gift"
+	Type string `json:"type"`
+	// Emojis "emoji" only. The emoji; 0-6 regular or custom emoji
+	//
+	// optional
+	Emojis []EmojiType `json:"emojis,omitempty"`
+	// BackgroundBackdropID "emoji" only. Identifier of the backdrop used as the background;
+	// omitted if the default background is used
+	//
+	// optional
+	BackgroundBackdropID int `json:"background_backdrop_id,omitempty"`
+	// Gift "unique_gift" only. The gift
+	//
+	// optional
+	Gift *UniqueGift `json:"gift,omitempty"`
+}
+
+// IsEmoji returns true if the theme has emoji placed on a background.
+func (t ChatShareTheme) IsEmoji() bool {
+	return t.Type == "emoji"
+}
+
+// IsUniqueGift returns true if the theme is based on a unique gift.
+func (t ChatShareTheme) IsUniqueGift() bool {
+	return t.Type == "unique_gift"
+}
+
+// ChatShareThemeBackdrop describes a backdrop, which can be used as the background
+// of a theme of the screen for sharing a link to a user or a chat.
+type ChatShareThemeBackdrop struct {
+	// ID unique identifier of the backdrop
+	ID int `json:"id"`
+	// Name of the backdrop
+	Name string `json:"name"`
+	// Colors of the backdrop
+	Colors UniqueGiftBackdropColors `json:"colors"`
+}
+
+// ChatShareThemeBackdrops contains a list of backdrops, which can be used as the background
+// of a theme of the screen for sharing a link to a user or a chat.
+type ChatShareThemeBackdrops struct {
+	// Backdrops the list of backdrops
+	Backdrops []ChatShareThemeBackdrop `json:"backdrops"`
+}
+
 // API naming aliases for flattened subtypes.
 type (
 	BackgroundFillSolid                  = BackgroundFill
@@ -7462,6 +8206,10 @@ type (
 	ChatMemberRestricted                 = ChatMember
 	ChatMemberLeft                       = ChatMember
 	ChatMemberBanned                     = ChatMember
+	ChatShareThemeEmoji                  = ChatShareTheme
+	ChatShareThemeUniqueGift             = ChatShareTheme
+	EmojiTypeEmoji                       = EmojiType
+	EmojiTypeCustomEmoji                 = EmojiType
 	MenuButtonCommands                   = MenuButton
 	MenuButtonWebApp                     = MenuButton
 	MenuButtonDefault                    = MenuButton
@@ -7482,6 +8230,9 @@ type (
 	StoryAreaTypeUniqueGift              = StoryAreaType
 	TransactionPartnerOther              = TransactionPartner
 	TransactionPartnerTelegramAds        = TransactionPartner
+	WidgetQueryTypeData                  = WidgetQueryType
+	WidgetQueryTypeSignData              = WidgetQueryType
+	WidgetQueryTypeSentTransaction       = WidgetQueryType
 )
 
 // API naming casing aliases.

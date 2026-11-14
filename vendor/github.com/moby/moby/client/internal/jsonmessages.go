@@ -8,6 +8,8 @@ import (
 	"iter"
 	"sync"
 
+	"github.com/moby/moby/client/internal/httperror"
+
 	"github.com/moby/moby/api/types/jsonstream"
 )
 
@@ -44,40 +46,57 @@ func (r Stream) Close() error {
 
 var _ io.ReadCloser = Stream{}
 
-// JSONMessages decodes the response stream as a sequence of JSONMessages.
-// if stream ends or context is cancelled, the underlying [io.Reader] is closed.
+// JSONMessages decodes the response stream as a sequence of [jsonstream.Message].
+// The underlying [io.Reader] is closed when the stream ends or if the context
+// is cancelled.
 func (r Stream) JSONMessages(ctx context.Context) iter.Seq2[jsonstream.Message, error] {
 	stop := context.AfterFunc(ctx, func() {
 		_ = r.Close()
 	})
-	dec := json.NewDecoder(r)
 	return func(yield func(jsonstream.Message, error) bool) {
 		defer func() {
 			stop() // unregister AfterFunc
-			r.Close()
+			_ = r.Close()
 		}()
+
+		dec := json.NewDecoder(r)
 		for {
 			var jm jsonstream.Message
-			err := dec.Decode(&jm)
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if ctx.Err() != nil {
-				yield(jm, ctx.Err())
+			if err := dec.Decode(&jm); err != nil {
+				if errors.Is(err, io.EOF) {
+					return
+				}
+				if err := ctx.Err(); err != nil {
+					// Do not return decoding errors if the context was
+					// cancelled, because the decoding errors may be due
+					// to the context being cancelled.
+					yield(jsonstream.Message{}, err)
+					return
+				}
+				yield(jsonstream.Message{}, err)
 				return
 			}
-			if !yield(jm, err) {
+			if !yield(jm, nil) {
 				return
 			}
 		}
 	}
 }
 
-// Wait waits for operation to complete and detects errors reported as JSONMessage
+// Wait consumes the stream until completion.
+//
+// It returns nil if the operation completes successfully. Errors are
+// returned if the context is canceled, a decoding/transport failure
+// occurs, or a JSON message reports an error ([jsonstream.Message.Error]).
 func (r Stream) Wait(ctx context.Context) error {
-	for _, err := range r.JSONMessages(ctx) {
+	for jm, err := range r.JSONMessages(ctx) {
 		if err != nil {
+			// decode, transport and context cancellation errors.
 			return err
+		}
+		if jm.Error != nil {
+			// push/pull failures.
+			return httperror.FromStatusCode(jm.Error, jm.Error.Code)
 		}
 	}
 	return nil

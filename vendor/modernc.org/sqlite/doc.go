@@ -8,6 +8,37 @@
 // SQLite is an in-process implementation of a self-contained, serverless,
 // zero-configuration, transactional SQL database engine.
 //
+// # Pluggable page cache
+//
+// The package exposes a Go-facing wrapper for SQLite's
+// SQLITE_CONFIG_PCACHE2 mechanism. Applications can supply their own
+// page cache implementation by registering a [PageCache] before the
+// first [sql.Open] via [RegisterPageCache]. See the docstrings
+// on [PageCache], [Cache], and [Page] for the contract; the binding
+// owns the sqlite3_pcache_page stub on behalf of the implementation
+// and re-consults Cache.Fetch on every SQLite request, so a bounded
+// and evicting purgeable cache works as the C contract intends.
+//
+// # OFD locking (Linux)
+//
+// On Linux the library can take Open File Description (OFD) locks instead of
+// POSIX record locks on database files, which stops an unrelated os.File
+// close anywhere in the process from silently stripping SQLite's transaction
+// locks. The switch is process-wide, off by default, and must happen before
+// the first connection is opened: set MODERNC_SQLITE_OFD_LOCK=1 in the
+// environment the process starts with, or call [OFDLocking] from Go. See the
+// [OFDLocking] documentation for the full contract.
+//
+// # Syncing with fdatasync
+//
+// SQLite commits with fsync(2), which on a journaling file system also
+// flushes the file's timestamps through the journal. The library can sync
+// with fdatasync(2) instead, which skips that and keeps a commit just as
+// durable. The switch is process-wide, off by default, and honored on Linux,
+// FreeBSD, illumos and NetBSD: call [Fdatasync] from Go at any time;
+// [FdatasyncEnabled] reports the setting. See the [Fdatasync] documentation
+// for the full contract.
+//
 // # Fragile modernc.org/libc dependency
 //
 // When you import this package you should use in your go.mod file the exact
@@ -15,6 +46,11 @@
 // repository.
 //
 // See the discussion at https://gitlab.com/cznic/sqlite/-/issues/177 for more details.
+//
+// # Changelog
+//
+// Release notes are kept in CHANGELOG.md in the repository root, see
+// https://gitlab.com/cznic/sqlite/-/blob/master/CHANGELOG.md.
 //
 // # Thanks
 //
@@ -27,130 +63,82 @@
 //
 //	OS      Arch    SQLite version
 //	------------------------------
-//	darwin	amd64   3.50.4
-//	darwin	arm64   3.50.4
-//	freebsd	amd64   3.50.4
-//	freebsd	arm64   3.50.4
-//	linux	386     3.50.4
-//	linux	amd64   3.50.4
-//	linux	arm     3.50.4
-//	linux	arm64   3.50.4
-//	linux	loong64 3.50.4
-//	linux	ppc64le 3.50.4
-//	linux	riscv64 3.50.4
-//	linux	s390x   3.50.4
-//	windows	386     3.50.4
-//	windows	amd64   3.50.4
-//	windows	arm64   3.50.4
+//	darwin	amd64   3.54.1
+//	darwin	arm64   3.54.1
+//	freebsd	386     3.54.1
+//	freebsd	amd64   3.54.1
+//	freebsd	arm     3.54.1
+//	freebsd	arm64   3.54.1
+//	illumos	amd64   3.54.1
+//	linux	386     3.54.1
+//	linux	amd64   3.54.1
+//	linux	arm     3.54.1
+//	linux	arm64   3.54.1
+//	linux	loong64 3.54.1
+//	linux	ppc64le 3.54.1
+//	linux	riscv64 3.54.1
+//	linux	s390x   3.54.1
+//	netbsd	amd64   3.54.1
+//	openbsd	amd64   3.54.1
+//	openbsd	arm64   3.54.1
+//	windows	386     3.54.1
+//	windows	amd64   3.54.1
+//	windows	arm64   3.54.1
 //
 // # Benchmarks
 //
 // [The SQLite Drivers Benchmarks Game]
+//
+// # Performance
+//
+// The transpiled SQLite core runs slower than the same C compiled natively.
+// The gap is in CPU-bound work: the bytecode interpreter loop, b-tree page
+// balancing and record building. I/O-bound work is dominated by the operating
+// system either way. The ratios below are CPU time per query, measured in
+// September 2026 on linux/amd64 with Go 1.27 and modernc.org/libc v1.75.7,
+// against SQLite 3.53.4 compiled with the same compile-time options this
+// package uses:
+//
+//	Workload                                                        Driver vs C
+//	-------------------------------------------------------------------------
+//	Unindexed ORDER BY ... LIMIT 100 over 584k rows of 23 columns      2.0x
+//	GROUP BY aggregate over the same table                             1.9x
+//	Correlated subquery walking an index with text comparisons         1.3x
+//
+// Throughput across four connections scaled at least as well as the C build
+// did, so the ratios hold under concurrency.
+//
+// Two things follow. First, this package uses the same query planner as C
+// SQLite, so a query that is slow in C is slower here by the ratio above and
+// no more; but a missing index costs the same ratio more, and a query that is
+// merely sluggish in C can cross a deadline here. Check EXPLAIN QUERY PLAN for
+// USE TEMP B-TREE and index the columns that ORDER BY, GROUP BY and WHERE use.
+// Second, database/sql opens connections without limit by default. Each
+// connection carries its own page cache and its own libc thread state, and a
+// periodic query that takes longer than its period piles up without bound.
+// Bound the pool with [sql.DB.SetMaxOpenConns] and do not issue a periodic
+// query before the previous one has returned.
+//
+// Part of the gap is in modernc.org/libc rather than in the transpiled SQLite.
+// On Linux, libc versions before v1.75.7 implemented memcpy, memmove, memset
+// and memcmp as transpiled musl loops moving at most four bytes per step;
+// v1.75.7 replaced them with native Go routines backed by the runtime's
+// vectorized memmove, and the three workloads above went from 3.0x, 2.2x and
+// 1.6x to the figures shown. The libc version this package is validated
+// against is the one pinned in its go.mod, see "Fragile modernc.org/libc
+// dependency" above. On the non-Linux targets memcpy and memmove are native Go
+// copies already; memcmp there is still a byte loop.
+//
+// Because everything is Go, the usual Go tooling reaches into the SQLite core:
+// a CPU profile taken with runtime/pprof attributes time to the transpiled
+// SQLite functions under their C names, for example lib._balance_nonroot or
+// lib.Xsqlite3_step, and to the libc routines they call.
 //
 // # Builders
 //
 // Builder results available at:
 //
 // https://modern-c.appspot.com/-/builder/?importpath=modernc.org%2fsqlite
-//
-// # Changelog
-//
-//   - 2025-10-10 v1.39.1: Upgrade to SQLite 3.50.4.
-//
-//   - 2025-06-09 v1.38.0: Upgrade to SQLite 3.50.1.
-//
-//   - 2025-02-26 v1.36.0: Upgrade to SQLite 3.49.0.
-//
-//   - 2024-11-16 v1.34.0: Implement ResetSession and IsValid methods in connection
-//
-//   - 2024-07-22 v1.31.0: Support windows/386.
-//
-//   - 2024-06-04 v1.30.0: Upgrade to SQLite 3.46.0, release notes at
-//     https://sqlite.org/releaselog/3_46_0.html.
-//
-//   - 2024-02-13 v1.29.0: Upgrade to SQLite 3.45.1, release notes at
-//     https://sqlite.org/releaselog/3_45_1.html.
-//
-//   - 2023-12-14: v1.28.0: Add (*Driver).RegisterConnectionHook,
-//     ConnectionHookFn, ExecQuerierContext, RegisterConnectionHook.
-//
-//   - 2023-08-03 v1.25.0: enable SQLITE_ENABLE_DBSTAT_VTAB.
-//
-//   - 2023-07-11 v1.24.0: Add
-//     (*conn).{Serialize,Deserialize,NewBackup,NewRestore} methods, add Backup
-//     type.
-//
-//   - 2023-06-01 v1.23.0: Allow registering aggregate functions.
-//
-//   - 2023-04-22 v1.22.0: Support linux/s390x.
-//
-//   - 2023-02-23 v1.21.0: Upgrade to SQLite 3.41.0, release notes at
-//     https://sqlite.org/releaselog/3_41_0.html.
-//
-//   - 2022-11-28 v1.20.0: Support linux/ppc64le.
-//
-//   - 2022-09-16 v1.19.0: Support frebsd/arm64.
-//
-//   - 2022-07-26 v1.18.0: Add support for Go fs.FS based SQLite virtual
-//     filesystems, see function New in modernc.org/sqlite/vfs and/or TestVFS in
-//     all_test.go
-//
-//   - 2022-04-24 v1.17.0: Support windows/arm64.
-//
-//   - 2022-04-04 v1.16.0: Support scalar application defined functions written
-//     in Go. See https://www.sqlite.org/appfunc.html
-//
-//   - 2022-03-13 v1.15.0: Support linux/riscv64.
-//
-//   - 2021-11-13 v1.14.0: Support windows/amd64. This target had previously
-//     only experimental status because of a now resolved memory leak.
-//
-//   - 2021-09-07 v1.13.0: Support freebsd/amd64.
-//
-//   - 2021-06-23 v1.11.0: Upgrade to use sqlite 3.36.0, release notes at
-//     https://www.sqlite.org/releaselog/3_36_0.html.
-//
-//   - 2021-05-06 v1.10.6: Fixes a memory corruption issue
-//     (https://gitlab.com/cznic/sqlite/-/issues/53).  Versions since v1.8.6 were
-//     affected and should be updated to v1.10.6.
-//
-//   - 2021-03-14 v1.10.0: Update to use sqlite 3.35.0, release notes at
-//     https://www.sqlite.org/releaselog/3_35_0.html.
-//
-//   - 2021-03-11 v1.9.0: Support darwin/arm64.
-//
-//   - 2021-01-08 v1.8.0: Support darwin/amd64.
-//
-//   - 2020-09-13 v1.7.0: Support linux/arm and linux/arm64.
-//
-//   - 2020-09-08 v1.6.0: Support linux/386.
-//
-//   - 2020-09-03 v1.5.0: This project is now completely CGo-free, including
-//     the Tcl tests.
-//
-//   - 2020-08-26 v1.4.0: First stable release for linux/amd64.  The
-//     database/sql driver and its tests are CGo free.  Tests of the translated
-//     sqlite3.c library still require CGo.
-//
-//   - 2020-07-26 v1.4.0-beta1: The project has reached beta status while
-//     supporting linux/amd64 only at the moment. The 'extraquick' Tcl testsuite
-//     reports
-//
-//   - 2019-12-28 v1.2.0-alpha.3: Third alpha fixes issue #19.
-//
-//   - 2019-12-26 v1.1.0-alpha.2: Second alpha release adds support for
-//     accessing a database concurrently by multiple goroutines and/or processes.
-//     v1.1.0 is now considered feature-complete. Next planed release should be a
-//     beta with a proper test suite.
-//
-//   - 2019-12-18 v1.1.0-alpha.1: First alpha release using the new cc/v3,
-//     gocc, qbe toolchain. Some primitive tests pass on linux_{amd64,386}. Not
-//     yet safe for concurrent access by multiple goroutines. Next alpha release
-//     is planed to arrive before the end of this year.
-//
-//   - 2017-06-10: Windows/Intel no more uses the VM (thanks Steffen Butzer).
-//
-//   - 2017-06-05 Linux/Intel no more uses the VM (cznic/virtual).
 //
 // # Connecting to a database
 //
@@ -169,20 +157,56 @@
 //
 //	...
 //
+// The dsnURI is a plain file name or a "file:" URI, either optionally followed
+// by '?' and query parameters. [Driver.Open] documents the parameters the
+// driver interprets and how SQLite's own URI parameters, such as mode=ro,
+// reach SQLite.
+//
+// [NewConnector] is an alternative entry point returning a
+// [driver.Connector] for use with [sql.OpenDB]. It opens the same
+// connections sql.Open does, from the same driver, and exists for callers that
+// need to interpose on them -- tracing, metrics, or connection-scoped setup --
+// which sql.Open gives no access to. See its docstring for an example.
+//
+// Connection-scoped state outlives the caller that set it. A [sql.DB] is a
+// pool, and a physical connection returned to it keeps whatever was done on
+// it: PRAGMAs set with Exec, ATTACHed databases, temporary tables, and
+// anything registered through [sql.Conn.Raw]. The next caller to borrow that
+// connection inherits it; the driver does not reset it between borrowers. For
+// state every connection should have, use DSN parameters or a connection hook,
+// which apply to each connection as it is opened. For state only one caller
+// should see, hold a [sql.Conn] for as long as it is needed and undo it, or
+// close that connection, before releasing it.
+//
+// A driver connection reached through [sql.Conn.Raw] is not safe for
+// concurrent use, and must not be used after the function passed to Raw
+// returns. Every connection is opened with SQLITE_OPEN_FULLMUTEX, but that
+// serializes access only inside SQLite: the driver's own per-connection
+// state, including the [modernc.org/libc.TLS] every call into SQLite runs
+// on, is used before that mutex is reached, and two goroutines using one
+// connection can corrupt memory.
+//
 // # Debug and development versions
 //
-// A comma separated list of options can be passed to `go generate` via the
-// environment variable GO_GENERATE. Some useful options include for example:
+// The transpiled SQLite sources under lib/, and the sqlite-vec sources under
+// vec/, are not generated in this repository. They are produced by
+// modernc.org/libsqlite3 and modernc.org/libsqlite_vec respectively, which own
+// the transpilation and the SQLite compile-time options it uses, and are
+// copied here by
 //
-//	-DSQLITE_DEBUG
-//	-DSQLITE_MEM_DEBUG
-//	-ccgo-verify-structs
+//	$ make vendor
 //
-// To create a debug/development version, issue for example:
+// which reads them from checkouts of those two repositories placed next to
+// this one. To build a debug or otherwise modified version, adjust the
+// compile-time options in modernc.org/libsqlite3, regenerate there with 'make
+// generate', and vendor the result here with
 //
-//	$ GO_GENERATE=-DSQLITE_DEBUG,-DSQLITE_MEM_DEBUG go generate
+//	$ make vendor VENDORFLAGS=-allow-dirty
 //
-// Note: To run `go generate` you need to have modernc.org/ccgo/v3 installed.
+// since plain 'make vendor' refuses a checkout with uncommitted changes. The
+// vendor.json it writes records the checkout as dirty, so the last step of
+// make vendor and TestVendorStamp both fail, by design: such a tree is for
+// local use and must not be committed or released.
 //
 // # Hacking
 //
@@ -262,7 +286,9 @@
 //	 }
 //	0:jnml@e5-1650:~/src/modernc.org/libc$
 //
-// We need to tell the Go build system to use our local, patched/debug libc:
+// We need to tell the Go build system to use our local, patched/debug libc.
+// 'make work' sets up a go.work covering this and the sibling repositories;
+// by hand it is:
 //
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$ go work use $(go env GOPATH)/src/modernc.org/libc
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$ go work use .

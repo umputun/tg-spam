@@ -223,7 +223,7 @@ func banUserOrChannel(r banRequest) error {
 	// they must be banned/unbanned via BanChatSenderChatConfig/UnbanChatSenderChatConfig
 	if r.channelID != 0 {
 		resp, err := r.tbAPI.Request(tbapi.BanChatSenderChatConfig{
-			ChatConfig:   tbapi.ChatConfig{ChatID: r.chatID},
+			ChatID:       r.chatID,
 			SenderChatID: r.channelID,
 			UntilDate:    time.Now().Add(r.duration).Unix(),
 		})
@@ -239,10 +239,8 @@ func banUserOrChannel(r banRequest) error {
 
 	if r.restrict { // soft ban mode - restrict user permissions
 		resp, err := r.tbAPI.Request(tbapi.RestrictChatMemberConfig{
-			ChatMemberConfig: tbapi.ChatMemberConfig{
-				ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
-				UserID:     r.userID,
-			},
+			ChatID:    r.chatID,
+			UserID:    r.userID,
 			UntilDate: time.Now().Add(r.duration).Unix(),
 			Permissions: &tbapi.ChatPermissions{
 				CanSendMessages:      false,
@@ -269,10 +267,8 @@ func banUserOrChannel(r banRequest) error {
 	}
 
 	resp, err := r.tbAPI.Request(tbapi.BanChatMemberConfig{
-		ChatMemberConfig: tbapi.ChatMemberConfig{
-			ChatConfig: tbapi.ChatConfig{ChatID: r.chatID},
-			UserID:     r.userID,
-		},
+		ChatID:    r.chatID,
+		UserID:    r.userID,
 		UntilDate: time.Now().Add(r.duration).Unix(),
 	})
 	if err != nil {

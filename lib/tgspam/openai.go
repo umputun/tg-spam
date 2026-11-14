@@ -193,7 +193,7 @@ func (o *openAIChecker) sendRequest(ctx context.Context, msg string) (response l
 	if o.isReasoningModel() {
 		request.MaxCompletionTokens = o.params.MaxTokensResponse
 	} else {
-		request.MaxTokens = o.params.MaxTokensResponse
+		request.MaxTokens = o.params.MaxTokensResponse //nolint:staticcheck // local OpenAI-compatible servers need max_tokens
 	}
 
 	// "none" is the default and is persisted in saved configs, so it keeps meaning "omit the parameter":

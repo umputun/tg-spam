@@ -753,7 +753,10 @@ func (p *Properties) WriteComment(w io.Writer, prefix string, enc Encoding) (n i
 		if p.WriteSeparator != "" {
 			sep = p.WriteSeparator
 		}
-		x, err = fmt.Fprintf(w, "%s%s%s\n", encode(key, " :", enc), sep, encode(value, "", enc))
+		// A key that starts with a comment marker is written back as
+		// a comment, so the marker is escaped like the other
+		// characters that are special in a key.
+		x, err = fmt.Fprintf(w, "%s%s%s\n", encode(key, " :=#!", enc), sep, encode(value, "", enc))
 		if err != nil {
 			return
 		}
@@ -870,7 +873,7 @@ func expand(s string, keys []string, prefix, postfix string, values map[string]s
 				for _, k1 := range keys {
 					fmt.Fprintf(&b, "%s=%s\n", k1, values[k1])
 				}
-				return "", fmt.Errorf(b.String())
+				return "", fmt.Errorf("%s", b.String())
 			}
 		}
 

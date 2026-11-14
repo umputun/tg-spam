@@ -530,11 +530,11 @@ func TestMaxTokensFieldBasedOnModel(t *testing.T) {
 
 			// verify the correct field is used
 			if tt.expectMaxTokens {
-				assert.Equal(t, 100, capturedRequest.MaxTokens, "MaxTokens should be set for model %s", tt.model)
+				assert.Equal(t, 100, capturedRequest.MaxTokens, "MaxTokens should be set for model %s", tt.model) //nolint:staticcheck // verifies max_tokens is still sent
 				assert.Equal(t, 0, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should not be set for model %s", tt.model)
 			}
 			if tt.expectMaxCompletionTokens {
-				assert.Equal(t, 0, capturedRequest.MaxTokens, "MaxTokens should not be set for model %s", tt.model)
+				assert.Equal(t, 0, capturedRequest.MaxTokens, "MaxTokens should not be set for model %s", tt.model) //nolint:staticcheck // verifies max_tokens is omitted
 				assert.Equal(t, 100, capturedRequest.MaxCompletionTokens, "MaxCompletionTokens should be set for model %s", tt.model)
 			}
 		})

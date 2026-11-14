@@ -38,7 +38,7 @@ import (
 const maxChunkSize = 8 * 1024 * 1024 // 8 MB chunk size
 const maxRetryCount = 3
 const initialRetryDelay = time.Second
-const delayMultiplier = 2
+const vertexPrefix = "vertex-genai-modules/"
 
 type apiClient struct {
 	clientConfig *ClientConfig
@@ -66,17 +66,25 @@ func sendStreamRequest[T responseStream[R], R any](ctx context.Context, ac *apiC
 	var cancel context.CancelFunc
 	if timeout != nil && *timeout > 0*time.Second && isTimeoutBeforeDeadline(ctx, *timeout) {
 		requestContext, cancel = context.WithTimeout(ctx, *timeout)
-		defer cancel()
 	}
 	req = req.WithContext(requestContext)
 
-	resp, err := doRequest(ac, req)
+	resp, err := doRequest(ac, req, httpOptions.RetryOptions)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return err
 	}
 
+	output.cancel = cancel
+
 	// resp.Body will be closed by the iterator
-	return deserializeStreamResponse(resp, output)
+	err = deserializeStreamResponse(resp, output)
+	if err != nil && cancel != nil {
+		cancel()
+	}
+	return err
 }
 
 // SendRequest issues an API request and returns a map of the response contents.
@@ -101,7 +109,7 @@ func sendRequest(ctx context.Context, ac *apiClient, path string, method string,
 	}
 	req = req.WithContext(requestContext)
 
-	resp, err := doRequest(ac, req)
+	resp, err := doRequest(ac, req, httpOptions.RetryOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +120,21 @@ func sendRequest(ctx context.Context, ac *apiClient, path string, method string,
 }
 
 func downloadFile(ctx context.Context, ac *apiClient, path string, httpOptions *HTTPOptions) ([]byte, error) {
-	// The client and request timeout are not used for downloadFile.
-	// TODO(b/427540996): implement timeout.
-	req, _, err := buildRequest(ctx, ac, path, nil, http.MethodGet, httpOptions)
+	req, patchedHTTPOptions, err := buildRequest(ctx, ac, path, nil, http.MethodGet, httpOptions)
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(ctx)
 
-	resp, err := doRequest(ac, req)
+	requestContext := ctx
+	timeout := patchedHTTPOptions.Timeout
+	var cancel context.CancelFunc
+	if timeout != nil && *timeout > 0*time.Second && isTimeoutBeforeDeadline(ctx, *timeout) {
+		requestContext, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
+	}
+	req = req.WithContext(requestContext)
+
+	resp, err := doRequest(ac, req, patchedHTTPOptions.RetryOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +173,7 @@ func (ac *apiClient) createAPIURL(suffix, method string, httpOptions *HTTPOption
 	var finalURL *url.URL
 	if ac.clientConfig.Backend == BackendVertexAI {
 		queryVertexBaseModel := method == http.MethodGet && strings.HasPrefix(path, "publishers/google/models")
-		shouldPrepend := ac.clientConfig.APIKey == "" &&
-			ac.clientConfig.Project != "" &&
+		shouldPrepend := ac.clientConfig.Project != "" &&
 			ac.clientConfig.Location != "" &&
 			httpOptions.BaseURLResourceScope != ResourceScopeCollection &&
 			(!strings.HasPrefix(path, "projects/") && !queryVertexBaseModel)
@@ -223,6 +236,11 @@ func patchHTTPOptions(options, patchOptions HTTPOptions) (*HTTPOptions, error) {
 	if patchOptions.Timeout != nil {
 		copyOption.Timeout = patchOptions.Timeout
 	}
+	// Request retry config overrides client retry config wholesale, so that a
+	// request can opt out of the client's retries by setting its own options.
+	if patchOptions.RetryOptions != nil {
+		copyOption.RetryOptions = patchOptions.RetryOptions
+	}
 	appendSDKHeaders(copyOption.Headers)
 
 	return &copyOption, nil
@@ -237,6 +255,43 @@ func appendSDKHeaders(headers http.Header) {
 
 	libraryLabel := fmt.Sprintf("google-genai-sdk/%s", version)
 	languageLabel := fmt.Sprintf("gl-go/%s", runtime.Version())
+
+	var vertexLabel string
+	if uaValues := headers.Values("user-agent"); uaValues != nil {
+		var newUserAgents []string
+		for _, ua := range uaValues {
+			var newParts []string
+			parts := strings.Fields(ua)
+			foundVertex := false
+			for _, part := range parts {
+				if strings.HasPrefix(part, vertexPrefix) {
+					if vertexLabel == "" {
+						vertexLabel = part
+					}
+					foundVertex = true
+				} else {
+					newParts = append(newParts, part)
+				}
+			}
+
+			if foundVertex {
+				if len(newParts) > 0 {
+					newUserAgents = append(newUserAgents, strings.Join(newParts, " "))
+				}
+			} else {
+				newUserAgents = append(newUserAgents, ua)
+			}
+		}
+
+		if vertexLabel != "" {
+			headers.Del("user-agent")
+			for _, ua := range newUserAgents {
+				headers.Add("user-agent", ua)
+			}
+			libraryLabel = fmt.Sprintf("%s+%s", libraryLabel, vertexLabel)
+		}
+	}
+
 	versionHeaderValue := fmt.Sprintf("%s %s", libraryLabel, languageLabel)
 
 	if !slices.Contains(headers.Values("user-agent"), versionHeaderValue) {
@@ -364,10 +419,10 @@ func inferTimeout(ctx context.Context, ac *apiClient, requestTimeout *time.Durat
 	return effectiveTimeout
 }
 
-func doRequest(ac *apiClient, req *http.Request) (*http.Response, error) {
+func doRequest(ac *apiClient, req *http.Request, retryOptions *HTTPRetryOptions) (*http.Response, error) {
 	// Create a new HTTP client and send the request
 	client := ac.clientConfig.HTTPClient
-	resp, err := client.Do(req)
+	resp, err := retryHTTPRequest(req, retryOptions, client.Do)
 	if err != nil {
 		return nil, fmt.Errorf("doRequest: error sending request: %w", err)
 	}
@@ -399,9 +454,10 @@ func deserializeUnaryResponse(resp *http.Response) (map[string]any, error) {
 }
 
 type responseStream[R any] struct {
-	r  *bufio.Scanner
-	rc io.ReadCloser
-	h  http.Header
+	r      *bufio.Scanner
+	rc     io.ReadCloser
+	h      http.Header
+	cancel context.CancelFunc
 }
 
 func iterateResponseStream[R any](rs *responseStream[R], responseConverter func(responseMap map[string]any) (*R, error)) iter.Seq2[*R, error] {
@@ -410,6 +466,9 @@ func iterateResponseStream[R any](rs *responseStream[R], responseConverter func(
 			// Close the response body range over function is done.
 			if err := rs.rc.Close(); err != nil {
 				log.Printf("Error closing response body: %v", err)
+			}
+			if rs.cancel != nil {
+				rs.cancel()
 			}
 		}()
 		for rs.r.Scan() {
@@ -427,6 +486,15 @@ func iterateResponseStream[R any](rs *responseStream[R], responseConverter func(
 					err = fmt.Errorf("iterateResponseStream: error unmarshalling data %s:%s. error: %w", string(prefix), string(data), err)
 					if !yield(nil, err) {
 						return
+					}
+				}
+				if respRaw["error"] != nil {
+					var respWithError responseWithError
+					if err := json.Unmarshal(data, &respWithError); err == nil && respWithError.ErrorInfo != nil {
+						if !yield(nil, *respWithError.ErrorInfo) {
+							return
+						}
+						continue
 					}
 				}
 				// Step 2: The toStruct function calls fromConverter(handle Vertex and MLDev schema
@@ -482,6 +550,7 @@ func iterateResponseStream[R any](rs *responseStream[R], responseConverter func(
 				log.Printf("The response is too large to process in streaming mode. Please use a non-streaming method.")
 			}
 			log.Printf("Error %v", rs.r.Err())
+			yield(nil, rs.r.Err())
 		}
 	}
 }
@@ -622,8 +691,14 @@ func (ac *apiClient) upload(ctx context.Context, r io.Reader, uploadURL string, 
 				}
 			}
 
-			// TODO(b/427540996): Support timeout.
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, finalUploadURL, bytes.NewReader(buffer[:bytesRead]))
+			requestContext := ctx
+			timeout := patchedHTTPOptions.Timeout
+			var cancel context.CancelFunc
+			if timeout != nil && *timeout > 0*time.Second && isTimeoutBeforeDeadline(ctx, *timeout) {
+				requestContext, cancel = context.WithTimeout(ctx, *timeout)
+				defer cancel()
+			}
+			req, err := http.NewRequestWithContext(requestContext, http.MethodPost, finalUploadURL, bytes.NewReader(buffer[:bytesRead]))
 			if err != nil {
 				return nil, fmt.Errorf("Failed to create upload request for chunk at offset %d: %w", offset, err)
 			}
@@ -633,12 +708,18 @@ func (ac *apiClient) upload(ctx context.Context, r io.Reader, uploadURL string, 
 			if ac.clientConfig.APIKey != "" {
 				req.Header.Set("x-goog-api-key", ac.clientConfig.APIKey)
 			}
-			// TODO(b/427540996): Add timeout logging.
+			timeoutSeconds := inferTimeout(ctx, ac, patchedHTTPOptions.Timeout).Seconds()
+			if timeoutSeconds > 0 {
+				req.Header.Set("x-server-timeout", strconv.FormatInt(int64(math.Ceil(timeoutSeconds)), 10))
+			}
 
 			req.Header.Set("X-Goog-Upload-Command", uploadCommand)
 			req.Header.Set("X-Goog-Upload-Offset", strconv.FormatInt(offset, 10))
 			req.Header.Set("Content-Length", strconv.FormatInt(int64(bytesRead), 10))
-			resp, err = doRequest(ac, req)
+			// Retry options are deliberately not forwarded here: this loop
+			// already retries on a missing X-Goog-Upload-Status header, and
+			// nesting the two would multiply the backoff.
+			resp, err = doRequest(ac, req, nil)
 			if err != nil {
 				return nil, fmt.Errorf("upload request failed for chunk at offset %d: %w", offset, err)
 			}
@@ -650,7 +731,7 @@ func (ac *apiClient) upload(ctx context.Context, r io.Reader, uploadURL string, 
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("upload aborted while waiting to retry (attempt %d, offset %d): %w", attempt+1, offset, ctx.Err())
-			case <-time.After(initialRetryDelay * time.Duration(delayMultiplier^attempt)):
+			case <-time.After(initialRetryDelay * time.Duration(1<<attempt)):
 				// Sleep completed, continue to the next attempt.
 			}
 		}

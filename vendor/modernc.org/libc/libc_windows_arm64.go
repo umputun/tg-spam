@@ -449,16 +449,9 @@ func Xpipe(t *TLS, pipefd uintptr) int32 {
 // int dup2(int oldfd, int newfd);
 func Xdup2(t *TLS, oldfd, newfd int32) int32 {
 	if __ccgo_strace {
-		trc("t=%v newfd=%v, (%v:)", t, newfd, origin(2))
+		trc("t=%v oldfd=%v newfd=%v, (%v:)", t, oldfd, newfd, origin(2))
 	}
-	panic(todo(""))
-	// n, _, err := unix.Syscall(unix.SYS_DUP2, uintptr(oldfd), uintptr(newfd), 0)
-	// if err != 0 {
-	// 	t.setErrno(err)
-	// 	return -1
-	// }
-
-	// return int32(n)
+	return dup2(t, oldfd, newfd)
 }
 
 // ssize_t readlink(const char *restrict path, char *restrict buf, size_t bufsize);
@@ -626,4 +619,62 @@ func Xstrspn(tls *TLS, s uintptr, c uintptr) size_t { /* strspn.c:6:8: */
 	for ; *(*int8)(unsafe.Pointer(s)) != 0 && *(*size_t)(unsafe.Pointer(bp + uintptr(size_t(*(*uint8)(unsafe.Pointer(s)))/(uint64(8)*uint64(unsafe.Sizeof(size_t(0)))))*8))&(size_t(uint64(1))<<(size_t(*(*uint8)(unsafe.Pointer(s)))%(uint64(8)*uint64(unsafe.Sizeof(size_t(0)))))) != 0; s++ {
 	}
 	return size_t((int64(s) - int64(a)) / 1)
+}
+
+// Defined in libc_windows_arm64.s
+func callStrtod(fn uintptr, s uintptr, p uintptr) float64
+
+func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
+	if __ccgo_strace {
+		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
+	}
+	return callStrtod(procStrtod.Addr(), s, p)
+}
+
+// largeInteger is LARGE_INTEGER exactly as ccgo translates it for
+// windows/amd64 and windows/arm64, so that XSetFilePointerEx, which takes one
+// by value, has the caller's parameter type. The shape matters: under the Go
+// register ABI this struct occupies two integer registers (LowPart and
+// HighPart; zero-length arrays occupy none) where an int64 would occupy one
+// and shift every later argument.
+type largeInteger = struct {
+	Fu [0]struct {
+		FLowPart  uint32
+		FHighPart int32
+	}
+	FQuadPart  [0]int64
+	F__ccgo0_0 struct {
+		FLowPart  uint32
+		FHighPart int32
+	}
+}
+
+// BOOL SetFilePointerEx(
+//
+//	HANDLE         hFile,
+//	LARGE_INTEGER  liDistanceToMove,
+//	PLARGE_INTEGER lpNewFilePointer,
+//	DWORD          dwMoveMethod
+//
+// );
+func XSetFilePointerEx(t *TLS, hFile uintptr, liDistanceToMove largeInteger, lpNewFilePointer uintptr, dwMoveMethod uint32) int32 {
+	d := int64(liDistanceToMove.F__ccgo0_0.FHighPart)<<32 | int64(liDistanceToMove.F__ccgo0_0.FLowPart)
+	if __ccgo_strace {
+		trc("t=%v hFile=%v liDistanceToMove=%v lpNewFilePointer=%v dwMoveMethod=%v, (%v:)", t, hFile, d, lpNewFilePointer, dwMoveMethod, origin(2))
+	}
+	// The 8-byte LARGE_INTEGER travels in a single register.
+	r0, _, e1 := procSetFilePointerEx.Call(hFile, uintptr(d), lpNewFilePointer, uintptr(dwMoveMethod))
+	if r0 == 0 {
+		t.setErrno(e1)
+	}
+	return int32(r0)
+}
+
+// ULONGLONG GetTickCount64();
+func XGetTickCount64(t *TLS) uint64 {
+	if __ccgo_strace {
+		trc("t=%v, (%v:)", t, origin(2))
+	}
+	r0, _, _ := procGetTickCount64.Call()
+	return uint64(r0)
 }

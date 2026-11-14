@@ -83,8 +83,7 @@ func redactDSN(dsn string) string {
 // unwrapURLError strips the *url.Error wrapper, which embeds the raw URL and would put the
 // credentials it carries straight back into the message the caller formats.
 func unwrapURLError(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		return urlErr.Err
 	}
 	return err

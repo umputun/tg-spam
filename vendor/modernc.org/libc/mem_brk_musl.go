@@ -27,7 +27,10 @@ import (
 )
 
 const (
-	isMemBrk = true
+	// allocaBump selects the alloca(3) bump region, see allocaChunk. Each
+	// alloca is malloc'd instead, so that it is never reused.
+	allocaBump = false
+	isMemBrk   = true
 
 	heapSize = 1 << 30
 )
@@ -185,6 +188,9 @@ func Xrealloc(tls *TLS, p uintptr, n Tsize_t) (r uintptr) {
 
 	// malloc
 	r = malloc0(tls, pc, n, false)
+	if r == 0 {
+		return 0
+	}
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(r)), usable), unsafe.Slice((*byte)(unsafe.Pointer(p)), usable))
 	Xfree(tls, p)
 	return r
@@ -314,3 +320,6 @@ func MemAuditStart() {}
 // It is intended only for debug/test builds. It slows down memory allocation
 // routines and it has additional memory costs.
 func MemAuditReport() error { return nil }
+
+// tcacheFlushAll is a no-op, this allocator does not use TLS.tcache.
+func (tls *TLS) tcacheFlushAll() {}

@@ -154,7 +154,9 @@ func (bot *BotAPI) executeRequest(ctx context.Context, endpoint string, payload 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var apiResp APIResponse
 	bytes, err := bot.decodeAPIResponse(resp.Body, &apiResp)
@@ -328,6 +330,21 @@ func (bot *BotAPI) SendRichMessage(config SendRichMessageConfig) (Message, error
 
 // SendRichMessageDraft streams a partial rich message draft.
 func (bot *BotAPI) SendRichMessageDraft(config SendRichMessageDraftConfig) (bool, error) {
+	return bot.requestBool(config)
+}
+
+// AnswerWidgetQuery sends an answer to a query from a widget.
+func (bot *BotAPI) AnswerWidgetQuery(config AnswerWidgetQueryConfig) (bool, error) {
+	return bot.requestBool(config)
+}
+
+// EditMessageWidgetData edits data of a widget in a message.
+func (bot *BotAPI) EditMessageWidgetData(config EditMessageWidgetDataConfig) (bool, error) {
+	return bot.requestBool(config)
+}
+
+// EditSharedWidgetData edits public data of a shared widget created by the bot.
+func (bot *BotAPI) EditSharedWidgetData(config EditSharedWidgetDataConfig) (bool, error) {
 	return bot.requestBool(config)
 }
 
@@ -821,6 +838,37 @@ func (bot *BotAPI) GetBusinessAccountGifts(config GetBusinessAccountGiftsConfig)
 	return gifts, err
 }
 
+// DeleteBusinessAccountGift deletes a regular gift owned by a managed business account.
+func (bot *BotAPI) DeleteBusinessAccountGift(config DeleteBusinessAccountGiftConfig) (bool, error) {
+	return bot.requestBool(config)
+}
+
+// GetUniqueGift gets information about a unique gift by its name.
+func (bot *BotAPI) GetUniqueGift(config GetUniqueGiftConfig) (UniqueGift, error) {
+	resp, err := bot.Request(config)
+	if err != nil {
+		return UniqueGift{}, err
+	}
+
+	var gift UniqueGift
+	err = json.Unmarshal(resp.Result, &gift)
+
+	return gift, err
+}
+
+// GetChatShareThemeBackdrops gets the list of backdrops for chat share themes.
+func (bot *BotAPI) GetChatShareThemeBackdrops(config GetChatShareThemeBackdropsConfig) (ChatShareThemeBackdrops, error) {
+	resp, err := bot.Request(config)
+	if err != nil {
+		return ChatShareThemeBackdrops{}, err
+	}
+
+	var backdrops ChatShareThemeBackdrops
+	err = json.Unmarshal(resp.Result, &backdrops)
+
+	return backdrops, err
+}
+
 // GetUserGifts gets gifts owned by a user.
 func (bot *BotAPI) GetUserGifts(config GetUserGiftsConfig) (OwnedGifts, error) {
 	resp, err := bot.Request(config)
@@ -1035,18 +1083,19 @@ func (bot *BotAPI) SavePreparedKeyboardButton(config SavePreparedKeyboardButtonC
 func EscapeText(parseMode string, text string) string {
 	var replacer *strings.Replacer
 
-	if parseMode == ModeHTML {
+	switch parseMode {
+	case ModeHTML:
 		replacer = strings.NewReplacer("<", "&lt;", ">", "&gt;", "&", "&amp;")
-	} else if parseMode == ModeMarkdown {
+	case ModeMarkdown:
 		replacer = strings.NewReplacer("_", "\\_", "*", "\\*", "`", "\\`", "[", "\\[")
-	} else if parseMode == ModeMarkdownV2 {
+	case ModeMarkdownV2:
 		replacer = strings.NewReplacer(
 			"_", "\\_", "*", "\\*", "[", "\\[", "]", "\\]", "(",
 			"\\(", ")", "\\)", "~", "\\~", "`", "\\`", ">", "\\>",
 			"#", "\\#", "+", "\\+", "-", "\\-", "=", "\\=", "|",
 			"\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!",
 		)
-	} else {
+	default:
 		return ""
 	}
 

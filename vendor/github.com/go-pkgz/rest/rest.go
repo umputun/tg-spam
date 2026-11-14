@@ -13,7 +13,7 @@ import (
 type JSON map[string]any
 
 // RenderJSON sends data as json
-func RenderJSON(w http.ResponseWriter, data interface{}) {
+func RenderJSON(w http.ResponseWriter, data any) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(true)
@@ -35,9 +35,8 @@ func RenderJSONFromBytes(w http.ResponseWriter, r *http.Request, data []byte) er
 }
 
 // RenderJSONWithHTML allows html tags and forces charset=utf-8
-func RenderJSONWithHTML(w http.ResponseWriter, r *http.Request, v interface{}) error {
-
-	encodeJSONWithHTML := func(v interface{}) ([]byte, error) {
+func RenderJSONWithHTML(w http.ResponseWriter, r *http.Request, v any) error {
+	encodeJSONWithHTML := func(v any) ([]byte, error) {
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
 		enc.SetEscapeHTML(false)
@@ -55,7 +54,7 @@ func RenderJSONWithHTML(w http.ResponseWriter, r *http.Request, v interface{}) e
 }
 
 // renderJSONWithStatus sends data as json and enforces status code
-func renderJSONWithStatus(w http.ResponseWriter, data interface{}, code int) {
+func renderJSONWithStatus(w http.ResponseWriter, data any, code int) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(true)
@@ -106,12 +105,19 @@ func DecodeJSON[T any](r *http.Request, res *T) error {
 	return nil
 }
 
-// EncodeJSON encodes given type to http.ResponseWriter and sets status code and content type header
+// EncodeJSON encodes given type to http.ResponseWriter and sets status code and content type header.
+// The value is encoded before anything is written, so an encoding failure leaves the response
+// uncommitted and the caller is free to replace it with an error status. Write failures are reported
+// as well, by which point the response has already been committed.
 func EncodeJSON[T any](w http.ResponseWriter, status int, v T) error {
+	buf := &bytes.Buffer{}
+	if err := json.NewEncoder(buf).Encode(v); err != nil {
+		return fmt.Errorf("encode json: %w", err)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		return fmt.Errorf("encode json: %w", err)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		return fmt.Errorf("write json: %w", err)
 	}
 	return nil
 }

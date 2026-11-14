@@ -116,10 +116,9 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	// validate reported user is not super user (check both username and ID)
 	if origMsg.SenderChat == nil && r.superUsers.IsSuper(origMsg.From.UserName, reportedID) {
 		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  update.Message.MessageID,
-			ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
-		}})
+		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: update.Message.MessageID,
+			ChatID:    r.primChatID})
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
@@ -128,10 +127,9 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 		log.Printf("[INFO] report rejected: reporter %d (%s) not in approved list",
 			update.Message.From.ID, update.Message.From.UserName)
 		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  update.Message.MessageID,
-			ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
-		}})
+		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: update.Message.MessageID,
+			ChatID:    r.primChatID})
 		return fmt.Errorf("reporter %d not in approved list", update.Message.From.ID)
 	}
 
@@ -143,18 +141,16 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	if rateLimited {
 		log.Printf("[INFO] reporter %d (%s) exceeded rate limit", update.Message.From.ID, update.Message.From.UserName)
 		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  update.Message.MessageID,
-			ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
-		}})
+		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: update.Message.MessageID,
+			ChatID:    r.primChatID})
 		return fmt.Errorf("rate limit exceeded for reporter %d", update.Message.From.ID)
 	}
 
 	// delete the /report command message immediately to keep chat clean
-	_, err = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-		MessageID:  update.Message.MessageID,
-		ChatConfig: tbapi.ChatConfig{ChatID: r.primChatID},
-	}})
+	_, err = r.tbAPI.Request(tbapi.DeleteMessageConfig{
+		MessageID: update.Message.MessageID,
+		ChatID:    r.primChatID})
 	if err != nil {
 		log.Printf("[WARN] failed to delete report message %d: %v", update.Message.MessageID, err)
 	} else {
@@ -301,10 +297,9 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 	// delete reported message from primary chat. training suppresses the delete as well as the ban,
 	// so the check is on the mode rather than on the ban outcome
 	if !r.dry && !r.trainingMode {
-		_, err := r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  msgID,
-			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
-		}})
+		_, err := r.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: msgID,
+			ChatID:    chatID})
 		if err != nil {
 			log.Printf("[WARN] failed to delete reported message %d: %v", msgID, err)
 		} else {
@@ -390,11 +385,11 @@ func (r *userReports) banFailureNote(banErr error) string {
 
 // hasBanFailureNote reports whether a notification's last paragraph is a ban failure note
 func (r *userReports) hasBanFailureNote(text string) bool {
-	i := strings.LastIndex(text, "\n\n")
-	if i < 0 {
+	_, after, ok := strings.CutLast(text, "\n\n")
+	if !ok {
 		return false
 	}
-	return strings.HasPrefix(text[i+2:], banFailurePrefix)
+	return strings.HasPrefix(after, banFailurePrefix)
 }
 
 func (r *userReports) addReportedUser(e *entityText, name string, id int64) {
@@ -683,10 +678,9 @@ func (r *userReports) callbackReportBan(ctx context.Context, query *tbapi.Callba
 	// delete reported message from primary chat. training suppresses the delete as well as the ban,
 	// so the check is on the mode rather than on the nil error banUserOrChannel returns in that mode
 	if !r.dry && !r.trainingMode {
-		_, err = r.tbAPI.Request(tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-			MessageID:  msgID,
-			ChatConfig: tbapi.ChatConfig{ChatID: chatID},
-		}})
+		_, err = r.tbAPI.Request(tbapi.DeleteMessageConfig{
+			MessageID: msgID,
+			ChatID:    chatID})
 		if err != nil {
 			log.Printf("[WARN] failed to delete reported message %d: %v", msgID, err)
 		} else {

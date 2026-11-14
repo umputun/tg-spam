@@ -6,7 +6,6 @@ package libc // import "modernc.org/libc"
 
 import (
 	"strings"
-	gotime "time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -21,10 +20,6 @@ import (
 type (
 	long  = int64
 	ulong = uint64
-)
-
-var (
-	startTime = gotime.Now() // For clock(3)
 )
 
 // int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -889,14 +884,6 @@ func Xrewinddir(tls *TLS, f uintptr) {
 	Xfseek(tls, f, 0, stdio.SEEK_SET)
 }
 
-// clock_t clock(void);
-func Xclock(t *TLS) time.Clock_t {
-	if __ccgo_strace {
-		trc("t=%v, (%v:)", t, origin(2))
-	}
-	return time.Clock_t(gotime.Since(startTime) * gotime.Duration(time.CLOCKS_PER_SEC) / gotime.Second)
-}
-
 func X__maskrune(tls *TLS, _c int32, _f uint64) int32 {
 	return int32(uint32(int32(*(*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(&X_DefaultRuneLocale)) + 60 + uintptr(_c&0xff)*4)))) & uint32(_f))
 }
@@ -953,4 +940,27 @@ func Xlocaleconv(tls *TLS) uintptr { /* localeconv.c:31:14: */
 
 func X__tolower(tls *TLS, c int32) int32 { /* table.c:1878:20: */
 	return Xtolower(tls, c)
+}
+
+// setTmGmtoff stores off into tm.Ftm_gmtoff at the platform-native width.
+func setTmGmtoff(tm *time.Tm, off int) { tm.Ftm_gmtoff = int64(off) }
+
+// Xmmap — see libc_freebsd.go. 64-bit: off_t fits in one argument word.
+func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, offset types.Off_t) uintptr {
+	if __ccgo_strace {
+		trc("t=%v addr=%v length=%v fd=%v offset=%v, (%v:)", t, addr, length, fd, offset, origin(2))
+	}
+	data, _, err := unix.Syscall6(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), uintptr(offset))
+	if err != 0 {
+		if dmesgs {
+			dmesg("%v: %v FAIL", origin(1), err)
+		}
+		t.setErrno(err)
+		return ^uintptr(0) // (void*)-1
+	}
+
+	if dmesgs {
+		dmesg("%v: %#x", origin(1), data)
+	}
+	return data
 }

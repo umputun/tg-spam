@@ -33,10 +33,8 @@ func TestSaveConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config", http.NoBody)
@@ -64,10 +62,8 @@ func TestSaveConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config", http.NoBody)
@@ -96,10 +92,8 @@ func TestSaveConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config", http.NoBody)
@@ -120,10 +114,8 @@ func TestSaveConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: nil,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: nil,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config", http.NoBody)
@@ -158,10 +150,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -199,10 +189,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -230,10 +218,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -301,11 +287,9 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-				Version:       "test-version",
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
+			Version:       "test-version",
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -353,7 +337,7 @@ func TestLoadConfigHandler(t *testing.T) {
 				CredentialsFromCLI: []string{config.FieldTelegramToken, config.FieldJevToken},
 			},
 		}
-		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+		srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, httptest.NewRequest("POST", "/config/reload", http.NoBody))
@@ -375,7 +359,7 @@ func TestLoadConfigHandler(t *testing.T) {
 			Telegram:  config.TelegramSettings{Token: "memory-token"},
 			Transient: config.TransientSettings{CredentialsFromCLI: []string{"no.such.field"}},
 		}
-		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+		srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 		w := httptest.NewRecorder()
 		srv.loadConfigHandler(w, httptest.NewRequest("POST", "/config/reload", http.NoBody))
@@ -413,10 +397,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -449,10 +431,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -473,10 +453,8 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: nil,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: nil,
+			AppSettings:   appSettings,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -531,11 +509,9 @@ func TestLoadConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore:   settingsStore,
-				AppSettings:     appSettings,
-				ReloadNormalize: normalize,
-			},
+			SettingsStore:   settingsStore,
+			AppSettings:     appSettings,
+			ReloadNormalize: normalize,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -568,11 +544,9 @@ func TestLoadConfigHandler(t *testing.T) {
 		appSettings := &config.Settings{InstanceID: "test-instance"}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore:   settingsStore,
-				AppSettings:     appSettings,
-				ReloadNormalize: nil,
-			},
+			SettingsStore:   settingsStore,
+			AppSettings:     appSettings,
+			ReloadNormalize: nil,
 		}
 
 		req := httptest.NewRequest("POST", "/config/reload", http.NoBody)
@@ -600,9 +574,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				AppSettings: appSettings,
-			},
+			AppSettings: appSettings,
 		}
 
 		// create form data
@@ -635,9 +607,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				AppSettings: appSettings,
-			},
+			AppSettings: appSettings,
 		}
 
 		// create form data
@@ -674,10 +644,8 @@ func TestUpdateConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		// create form data
@@ -700,9 +668,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 
 	t.Run("parse form error", func(t *testing.T) {
 		srv := Server{
-			Config: Config{
-				AppSettings: &config.Settings{},
-			},
+			AppSettings: &config.Settings{},
 		}
 
 		// create a malformed request that will trigger a ParseForm error
@@ -728,10 +694,8 @@ func TestUpdateConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-				AppSettings:   appSettings,
-			},
+			SettingsStore: settingsStore,
+			AppSettings:   appSettings,
 		}
 
 		// create form data
@@ -756,7 +720,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 			ProhibitedLangs:    "russian",
 			ProhibitedLangsMin: 2,
 		}
-		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+		srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 		form := url.Values{}
 		form.Add("prohibitedLangs", "klingon")
@@ -781,7 +745,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
 		}
 		appSettings := &config.Settings{InstanceID: "test-instance"}
-		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+		srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 		form := url.Values{}
 		form.Add("prohibitedLangs", "chinese")
@@ -804,7 +768,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 			SaveFunc: func(ctx context.Context, settings *config.Settings) error { return nil },
 		}
 		appSettings := &config.Settings{InstanceID: "test-instance"}
-		srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+		srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 		form := url.Values{}
 		form.Add("prohibitedLangs", "chinese")
@@ -847,9 +811,7 @@ func TestUpdateConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				AppSettings: appSettings,
-			},
+			AppSettings: appSettings,
 		}
 
 		// create complex form data
@@ -918,9 +880,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-			},
+			SettingsStore: settingsStore,
 		}
 
 		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
@@ -940,9 +900,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-			},
+			SettingsStore: settingsStore,
 		}
 
 		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
@@ -963,9 +921,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 		}
 
 		srv := Server{
-			Config: Config{
-				SettingsStore: settingsStore,
-			},
+			SettingsStore: settingsStore,
 		}
 
 		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
@@ -979,9 +935,7 @@ func TestDeleteConfigHandler(t *testing.T) {
 
 	t.Run("no storage", func(t *testing.T) {
 		srv := Server{
-			Config: Config{
-				SettingsStore: nil,
-			},
+			SettingsStore: nil,
 		}
 
 		req := httptest.NewRequest("DELETE", "/config", http.NoBody)
@@ -1580,7 +1534,7 @@ func TestUpdateConfigHandler_RoundTrip_NewGroups(t *testing.T) {
 	appSettings := &config.Settings{
 		Gemini: config.GeminiSettings{HistorySize: 0, MaxTokensResponse: 0},
 	}
-	srv := Server{Config: Config{SettingsStore: store, AppSettings: appSettings}}
+	srv := Server{SettingsStore: store, AppSettings: appSettings}
 
 	form := url.Values{
 		"saveToDb":                 []string{"true"},
@@ -2130,10 +2084,8 @@ func TestUpdateConfigHandler_SaveFailure_RollsBackInMemory(t *testing.T) {
 	}
 
 	srv := Server{
-		Config: Config{
-			SettingsStore: settingsStore,
-			AppSettings:   appSettings,
-		},
+		SettingsStore: settingsStore,
+		AppSettings:   appSettings,
 	}
 
 	form := url.Values{}
@@ -2178,10 +2130,8 @@ func TestUpdateConfigHandler_SaveSuccess_KeepsMutation(t *testing.T) {
 	}
 
 	srv := Server{
-		Config: Config{
-			SettingsStore: settingsStore,
-			AppSettings:   appSettings,
-		},
+		SettingsStore: settingsStore,
+		AppSettings:   appSettings,
 	}
 
 	form := url.Values{}
@@ -2214,9 +2164,7 @@ func TestUpdateConfigHandler_HTMXResponse_HasTargetID(t *testing.T) {
 	}
 
 	srv := Server{
-		Config: Config{
-			AppSettings: appSettings,
-		},
+		AppSettings: appSettings,
 	}
 
 	form := url.Values{}
@@ -2259,10 +2207,8 @@ func TestUpdateConfigHandler_SaveFailure_PreservesSlices(t *testing.T) {
 	}
 
 	srv := Server{
-		Config: Config{
-			SettingsStore: settingsStore,
-			AppSettings:   appSettings,
-		},
+		SettingsStore: settingsStore,
+		AppSettings:   appSettings,
 	}
 
 	form := url.Values{}
@@ -2507,7 +2453,7 @@ func TestUpdateConfigHandler_JevInvalidRollsBackAndDoesNotSave(t *testing.T) {
 			appSettings.Jev.MaxSymbolsRequest = 6000
 			before := *appSettings
 
-			srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+			srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 			form := tt.form
 			form.Set("saveToDb", "true")
@@ -2536,7 +2482,7 @@ func TestUpdateConfigHandler_JevValidUpdateIsSaved(t *testing.T) {
 	appSettings.Jev.CriteriaHam = "conversation"
 	appSettings.Jev.Threshold = 0.3
 
-	srv := Server{Config: Config{SettingsStore: settingsStore, AppSettings: appSettings}}
+	srv := Server{SettingsStore: settingsStore, AppSettings: appSettings}
 
 	form := url.Values{"jevThreshold": {"0.305"}, "jevVeto": {"on"}, "saveToDb": {"true"}}
 	req := httptest.NewRequest("PUT", "/config", strings.NewReader(form.Encode()))

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -27,10 +28,46 @@ type conn struct {
 	// concurrently.
 	sync.Mutex
 
+	// waitCtx is the context of the call in progress on this connection, if
+	// it has one, so that a wait for a shared-cache lock in retry ends once
+	// it is done. Calls on a connection do not overlap, but they nest, e.g.
+	// preparing inside an exec, so each restores the outer call's.
+	waitCtx context.Context
+
+	// canceled is set once the context of the call in progress is done, see
+	// interruptOnDone. canceledRegistered records that cancellationFlags
+	// holds it for db.
+	canceled           atomic.Int32
+	canceledRegistered bool
+
+	// waitingForLock is set while retry waits for a shared-cache lock, so
+	// that tests can see the wait.
+	waitingForLock atomic.Bool
+
 	writeTimeFormat   string
 	beginMode         string
+	loc               *time.Location
 	intToTime         bool
+	textToTime        bool
 	integerTimeFormat string
+
+	// inMemory records whether the underlying database resides only in
+	// memory (DSN like ":memory:", "file::memory:", or a shared-cache
+	// memory URI). For such databases, dropping the *only* connection
+	// also drops the database itself, so IsValid must not discard the
+	// connection just because an in-flight query was interrupted.
+	// See #196.
+	inMemory bool
+
+	// errorRcMode is the opt-in error-string reporting mode toggled by
+	// the _error_rc DSN parameter. When true, error strings synthesised
+	// from a (rc, db) pair only append sqlite3_errmsg(db) when
+	// sqlite3_extended_errcode(db) matches the operation rc (full, then
+	// primary code); on mismatch the canonical sqlite3_errstr(rc) is used
+	// alone. Default false keeps the legacy "errstr: errmsg" form
+	// byte-for-byte so existing callers parsing error strings are
+	// unaffected. See #230.
+	errorRcMode bool
 }
 
 func newConn(dsn string) (*conn, error) {
@@ -53,16 +90,40 @@ func newConn(dsn string) (*conn, error) {
 		}
 	}
 
-	c := &conn{tls: libc.NewTLS()}
-	db, err := c.openV2(
-		dsn,
-		vfsName,
-		sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
-			sqlite3.SQLITE_OPEN_FULLMUTEX|
-			sqlite3.SQLITE_OPEN_URI,
-	)
+	// _error_rc is parsed before openV2 so open-time failures (e.g.
+	// SQLITE_CANTOPEN on a path the process cannot create) get the
+	// conditional errmsg treatment too. The temporary db handle that
+	// sqlite3_open_v2 leaves behind on failure carries a stale
+	// errmsg from earlier initialisation, and the legacy "errstr:
+	// errmsg" form surfaces that as a misleading message. See #230.
+	errorRcMode, err := getErrorRcMode(query)
 	if err != nil {
 		return nil, err
+	}
+	defensiveMode, err := getDefensiveMode(query)
+	if err != nil {
+		return nil, err
+	}
+	c := &conn{tls: libc.NewTLS(), errorRcMode: errorRcMode}
+	// The withOpenGate wrapper marks the page-cache opened flag and holds
+	// pcacheState.openGate.RLock for the duration of sqlite3_open_v2, so
+	// any concurrent RegisterPageCache blocks until this Open
+	// completes. sqlite3_initialize fires implicitly inside openV2 the
+	// first time; after that point SQLITE_CONFIG_PCACHE2 can no longer be
+	// installed. See pagecache.go for the lifecycle contract.
+	var db uintptr
+	if gateErr := withOpenGate(func() error {
+		db, err = c.openV2(
+			dsn,
+			vfsName,
+			sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
+				sqlite3.SQLITE_OPEN_FULLMUTEX|
+				sqlite3.SQLITE_OPEN_URI,
+		)
+		return err
+	}); gateErr != nil {
+		c.tls.Close()
+		return nil, gateErr
 	}
 
 	c.db = db
@@ -71,7 +132,40 @@ func newConn(dsn string) (*conn, error) {
 		return nil, err
 	}
 
-	if err = applyQueryParams(c, query); err != nil {
+	// sqlite3_db_filename returns an empty string for databases that
+	// are not backed by a file (":memory:", "file::memory:", shared-cache
+	// memory URIs, temporary databases). Cache the answer once so we
+	// don't have to re-derive it on every IsValid call.
+	zMain, mainErr := libc.CString("main")
+	if mainErr != nil {
+		c.Close()
+		return nil, mainErr
+	}
+	defer libc.Xfree(c.tls, zMain)
+	c.inMemory = libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain)) == ""
+
+	// _defensive is applied first so that everything the driver and the
+	// caller run afterwards is already subject to the restriction: the
+	// PRAGMAs applyQueryParams executes, the _pragma list, and every
+	// statement prepared on the connection. Unlike the DBCONFIG_DQS_*
+	// flags below this ordering is a choice rather than an API contract;
+	// SQLITE_DBCONFIG_DEFENSIVE may be toggled at any point in a
+	// connection's life.
+	if err = applyDefensiveConfig(c, defensiveMode); err != nil {
+		c.Close()
+		return nil, err
+	}
+
+	// _dqs is applied before applyQueryParams because the SQLite contract
+	// requires sqlite3_db_config(SQLITE_DBCONFIG_DQS_*) to be set before
+	// any statement is prepared on the connection. applyQueryParams runs
+	// user-supplied PRAGMA statements, so it must come after.
+	if err = applyDQSConfig(c, query); err != nil {
+		c.Close()
+		return nil, err
+	}
+
+	if err = applyQueryParams(c, query, defensiveMode); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -79,28 +173,56 @@ func newConn(dsn string) (*conn, error) {
 	return c, nil
 }
 
-// Attempt to parse s as a time. Return (s, false) if s is not
-// recognized as a valid time encoding.
-func (c *conn) parseTime(s string) (interface{}, bool) {
+// parseTime attempts to parse s as a time encoding. If hintIdx is a valid
+// index into parseTimeFormats, that format is tried before the rest of the
+// list; otherwise the search runs in declaration order. The returned int is
+// the index of the format that matched, or -1 if the parseTimeString
+// (t.String()) branch matched or all formats failed. Callers that scan many
+// rows of a same-format column can feed the previous match back as hintIdx
+// to skip the redundant time.Parse attempts that would otherwise run for
+// every row.
+//
+// Return value contract is preserved: (parsed-value, ok). On failure the
+// value is the original input string and ok is false.
+func (c *conn) parseTime(s string, hintIdx int) (interface{}, bool, int) {
 	if v, ok := c.parseTimeString(s, strings.Index(s, "m=")); ok {
-		return v, true
+		return v, true, -1
 	}
 
-	ts := strings.TrimSuffix(s, "Z")
+	ts, hadZ := strings.CutSuffix(s, "Z")
 
-	for _, f := range parseTimeFormats {
-		t, err := time.Parse(f, ts)
-		if err == nil {
-			return t, true
+	tryFormat := func(f string) (time.Time, error) {
+		if c.loc != nil && !hadZ {
+			return time.ParseInLocation(f, ts, c.loc)
+		}
+		return time.Parse(f, ts)
+	}
+
+	// Try the caller's hint first, if any.
+	if hintIdx >= 0 && hintIdx < len(parseTimeFormats) {
+		if t, err := tryFormat(parseTimeFormats[hintIdx]); err == nil {
+			return c.applyTimezone(t), true, hintIdx
 		}
 	}
 
-	return s, false
+	// Sequential fallthrough, skipping the hint we already tried.
+	for i, f := range parseTimeFormats {
+		if i == hintIdx {
+			continue
+		}
+		if t, err := tryFormat(f); err == nil {
+			return c.applyTimezone(t), true, i
+		}
+	}
+
+	return s, false, -1
 }
 
 // Attempt to parse s as a time string produced by t.String().  If x > 0 it's
 // the index of substring "m=" within s.  Return (s, false) if s is
 // not recognized as a valid time encoding.
+// This intentionally uses time.Parse, not time.ParseInLocation,
+// because the format already contains timezone information (-0700 MST).
 func (c *conn) parseTimeString(s0 string, x int) (interface{}, bool) {
 	s := s0
 	if x > 0 {
@@ -108,19 +230,29 @@ func (c *conn) parseTimeString(s0 string, x int) (interface{}, bool) {
 	}
 	s = strings.TrimSpace(s)
 	if t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", s); err == nil {
-		return t, true
+		return c.applyTimezone(t), true
 	}
 
 	return s0, false
 }
 
+func (c *conn) applyTimezone(t time.Time) time.Time {
+	if c.loc == nil {
+		return t
+	}
+	return t.In(c.loc)
+}
+
 // writeTimeFormats are the names and formats supported
 // by the `_time_format` DSN query param.
 var writeTimeFormats = map[string]string{
-	"sqlite": parseTimeFormats[0],
+	"sqlite":              parseTimeFormats[0],
+	"datetime":            "2006-01-02 15:04:05",
+	"string_no_monotonic": "2006-01-02 15:04:05.999999999 -0700 MST",
 }
 
 func (c *conn) formatTime(t time.Time) string {
+	t = c.applyTimezone(t)
 	// Before configurable write time formats were supported,
 	// time.Time.String was used. Maintain that default to
 	// keep existing driver users formatting times the same.
@@ -171,9 +303,19 @@ func (c *conn) columnText(pstmt uintptr, iCol int) (v string, err error) {
 		return "", nil
 	}
 
+	// Copy the SQLite-owned UTF-8 bytes into a fresh Go-owned buffer, then
+	// reinterpret that buffer as a string without a second copy. The default
+	// string(b) conversion calls runtime.slicebytetostring, which mallocs a
+	// new backing array and memcpys b into it because the compiler must
+	// assume the caller could mutate b. Here b is local to this function and
+	// is never written to again after the copy above, so it is safe to view
+	// it as the string's backing memory directly. The string is immutable
+	// from Go's perspective, b becomes unreachable as a []byte after we
+	// return, and the GC keeps the underlying array alive for as long as the
+	// returned string is reachable.
 	b := make([]byte, len)
 	copy(b, (*libc.RawMem)(unsafe.Pointer(p))[:len:len])
-	return string(b), nil
+	return unsafe.String(unsafe.SliceData(b), len), nil
 }
 
 // C documentation
@@ -213,6 +355,71 @@ func (c *conn) columnDeclType(pstmt uintptr, iCol int) string {
 func (c *conn) columnName(pstmt uintptr, n int) (string, error) {
 	p := sqlite3.Xsqlite3_column_name(c.tls, pstmt, int32(n))
 	return libc.GoString(p), nil
+}
+
+// ColumnInfo returns column information for query.
+// It does not execute query.
+//
+// For output columns that are expressions, function calls, or constants —
+// or otherwise do not resolve to a single column — the DatabaseName,
+// TableName, and OriginName fields of the corresponding ColumnInfo are
+// empty, per the sqlite3 contract.
+//
+// Sample usage:
+//
+//	err := conn.Raw(func(driverConn any) error {
+//		ci, ok := driverConn.(interface{ ColumnInfo(query string) ([]sqlite.ColumnInfo, error) })
+//		if !ok {
+//			return fmt.Errorf("driver does not support ColumnInfo")
+//		}
+//		info, err := ci.ColumnInfo(query)
+//		if err != nil {
+//			return err
+//		}
+//		// use info
+//		return nil
+//	})
+func (c *conn) ColumnInfo(query string) (_ []ColumnInfo, err error) {
+	p, err := libc.CString(query)
+	if err != nil {
+		return nil, err
+	}
+	defer c.free(p)
+
+	psql := p
+	pstmt, err := c.prepareV2(&psql)
+	if err != nil {
+		return nil, err
+	}
+	if pstmt == 0 {
+		// Empty or comment-only query: no columns to describe.
+		return nil, nil
+	}
+	defer func() {
+		if e := c.finalize(pstmt); err == nil {
+			err = e
+		}
+	}()
+
+	n, err := c.columnCount(pstmt)
+	if err != nil {
+		return nil, err
+	}
+	info := make([]ColumnInfo, n)
+	for i := range n {
+		name, err := c.columnName(pstmt, i)
+		if err != nil {
+			return nil, err
+		}
+		info[i] = ColumnInfo{
+			Name:         name,
+			DeclType:     c.columnDeclType(pstmt, i),
+			DatabaseName: libc.GoString(sqlite3.Xsqlite3_column_database_name(c.tls, pstmt, int32(i))),
+			TableName:    libc.GoString(sqlite3.Xsqlite3_column_table_name(c.tls, pstmt, int32(i))),
+			OriginName:   libc.GoString(sqlite3.Xsqlite3_column_origin_name(c.tls, pstmt, int32(i))),
+		}
+	}
+	return info, nil
 }
 
 // C documentation
@@ -259,9 +466,16 @@ func (c *conn) step(pstmt uintptr) (int, error) {
 	}
 }
 
+// retry waits until the connection holding the shared-cache lock that made
+// pstmt, or the statement being prepared when pstmt is 0, return
+// SQLITE_LOCKED_SHAREDCACHE releases it. busy_timeout does not apply to that
+// code, so the wait is not bounded by it; it ends early, with the context's
+// error, once the context of the call (waitCtx) is done, also if it is done
+// before the wait begins.
 func (c *conn) retry(pstmt uintptr) error {
 	mu := mutexAlloc(c.tls)
-	(*mutex)(unsafe.Pointer(mu)).Lock()
+	m := (*mutex)(unsafe.Pointer(mu))
+	m.Lock()
 	rc := sqlite3.Xsqlite3_unlock_notify(
 		c.tls,
 		c.db,
@@ -271,69 +485,80 @@ func (c *conn) retry(pstmt uintptr) error {
 		mu,
 	)
 	if rc == sqlite3.SQLITE_LOCKED { // Deadlock, see https://www.sqlite.org/c3ref/unlock_notify.html
-		(*mutex)(unsafe.Pointer(mu)).Unlock()
+		m.Unlock()
 		mutexFree(c.tls, mu)
 		return c.errstr(rc)
 	}
 
-	(*mutex)(unsafe.Pointer(mu)).Lock()
-	(*mutex)(unsafe.Pointer(mu)).Unlock()
+	// The callback or, once the context is done, ctxWake unlocks m, which
+	// ends the wait. context.AfterFunc runs ctxWake at once if the context
+	// is done already.
+	ctx := c.waitCtx
+	var ctxWoke bool
+	var ctxWakeDone chan struct{}
+	var stop func() bool
+	if ctx != nil && ctx.Done() != nil {
+		ctxWakeDone = make(chan struct{})
+		stop = context.AfterFunc(ctx, func() {
+			ctxWoke = m.wake()
+			close(ctxWakeDone)
+		})
+	}
+
+	c.waitingForLock.Store(true)
+	m.Lock()
+	c.waitingForLock.Store(false)
+
+	// A ctxWake that has started may still use m, so it is waited for
+	if stop != nil && !stop() {
+		<-ctxWakeDone
+	}
+
+	// Cancels the callback if the context ended the wait, and in any case
+	// returns only once no callback is running: SQLite invokes it, and
+	// handles this call, under the same mutex, so mu can be freed
+	sqlite3.Xsqlite3_unlock_notify(c.tls, c.db, 0, 0)
 	mutexFree(c.tls, mu)
+
+	if ctxWoke {
+		return ctx.Err()
+	}
+
 	if pstmt != 0 {
 		sqlite3.Xsqlite3_reset(c.tls, pstmt)
 	}
 	return nil
 }
 
-func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []uintptr, err error) {
+// cBinding is a C buffer bind allocated for a text or blob argument, and the
+// 1-based index of the parameter it is bound to. The caller frees the buffer
+// once the statement has run and, for a cached statement, unbinds the
+// parameter, see clearBindings.
+type cBinding struct {
+	p   uintptr
+	idx int32
+}
+
+func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []cBinding, err error) {
 	defer func() {
 		if err == nil {
 			return
 		}
 
-		for _, v := range allocs {
-			c.free(v)
-		}
+		// Leave no parameter pointing into the freed buffers.
+		c.clearBindings(pstmt, allocs)
+		c.freeAllocs(allocs)
 		allocs = nil
 	}()
 
+	f := newArgFinder(args)
 	for i := 1; i <= n; i++ {
 		name, err := c.bindParameterName(pstmt, i)
 		if err != nil {
 			return allocs, err
 		}
 
-		var found bool
-		var v driver.NamedValue
-		for _, v = range args {
-			if name != "" {
-				// For ?NNN and $NNN params, match if NNN == v.Ordinal.
-				//
-				// Supporting this for $NNN is a special case that makes eg
-				// `select $1, $2, $3 ...` work without needing to use
-				// sql.Named.
-				if (name[0] == '?' || name[0] == '$') && name[1:] == strconv.Itoa(v.Ordinal) {
-					found = true
-					break
-				}
-
-				// sqlite supports '$', '@' and ':' prefixes for string
-				// identifiers and '?' for numeric, so we cannot
-				// combine different prefixes with the same name
-				// because `database/sql` requires variable names
-				// to start with a letter
-				if name[1:] == v.Name[:] {
-					found = true
-					break
-				}
-			} else {
-				if v.Ordinal == i {
-					found = true
-					break
-				}
-			}
-		}
-
+		v, found := f.find(name, i)
 		if !found {
 			if name != "" {
 				return allocs, fmt.Errorf("missing named argument %q", name[1:])
@@ -400,10 +625,120 @@ func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []ui
 			return allocs, fmt.Errorf("sqlite: invalid driver.Value type %T", x)
 		}
 		if p != 0 {
-			allocs = append(allocs, p)
+			allocs = append(allocs, cBinding{p, int32(i)})
 		}
 	}
 	return allocs, nil
+}
+
+// argFinder finds the argument bound to a statement parameter.
+type argFinder struct {
+	args    []driver.NamedValue
+	byName  map[string]int // index of the first argument with a name, built on first use
+	ordered bool           // args[j].Ordinal == j+1 for every j
+	named   bool           // some argument has a name
+}
+
+func newArgFinder(args []driver.NamedValue) argFinder {
+	f := argFinder{args: args, ordered: true}
+	for j := range args {
+		f.ordered = f.ordered && args[j].Ordinal == j+1
+		f.named = f.named || args[j].Name != ""
+	}
+	return f
+}
+
+// find returns the argument scanArgs(f.args, name, i) returns. database/sql
+// passes args ordered by Ordinal, starting at 1, so the argument with ordinal
+// k is args[k-1] and find does not have to scan args for every parameter,
+// which made binding quadratic in the number of parameters.
+//
+// https://github.com/modernc-org/sqlite/issues/8
+func (f *argFinder) find(name string, i int) (driver.NamedValue, bool) {
+	if !f.ordered {
+		return scanArgs(f.args, name, i)
+	}
+
+	ord := i
+	if name != "" {
+		// scanArgs matches ?NNN and $NNN if NNN == strconv.Itoa(v.Ordinal),
+		// which for an ordinal >= 1 has no sign and no leading zero.
+		ord = 0
+		if (name[0] == '?' || name[0] == '$') && len(name) > 1 && name[1] >= '1' && name[1] <= '9' {
+			if k, err := strconv.Atoi(name[1:]); err == nil {
+				ord = k
+			}
+		}
+	}
+	j := -1 // index of the first matching argument
+	if ord >= 1 && ord <= len(f.args) {
+		j = ord - 1
+	}
+	if name != "" && f.named {
+		if k, ok := f.nameIndex(name[1:]); ok && (j < 0 || k < j) {
+			j = k
+		}
+	}
+	if j < 0 {
+		return driver.NamedValue{}, false
+	}
+
+	return f.args[j], true
+}
+
+// nameIndex returns the index of the first argument with the given name.
+func (f *argFinder) nameIndex(name string) (int, bool) {
+	// Up to a few dozen arguments, scanning beats building the map.
+	if len(f.args) <= 32 {
+		for j := range f.args {
+			if f.args[j].Name == name {
+				return j, true
+			}
+		}
+		return 0, false
+	}
+
+	if f.byName == nil {
+		f.byName = make(map[string]int, len(f.args))
+		for j := len(f.args) - 1; j >= 0; j-- {
+			if f.args[j].Name != "" {
+				f.byName[f.args[j].Name] = j
+			}
+		}
+	}
+	j, ok := f.byName[name]
+	return j, ok
+}
+
+// scanArgs returns the first argument in args matching the parameter at index
+// i named name, "" for an anonymous parameter. It is linear in len(args).
+func scanArgs(args []driver.NamedValue, name string, i int) (driver.NamedValue, bool) {
+	for _, v := range args {
+		if name != "" {
+			// For ?NNN and $NNN params, match if NNN == v.Ordinal.
+			//
+			// Supporting this for $NNN is a special case that makes eg
+			// `select $1, $2, $3 ...` work without needing to use
+			// sql.Named.
+			if (name[0] == '?' || name[0] == '$') && name[1:] == strconv.Itoa(v.Ordinal) {
+				return v, true
+			}
+
+			// sqlite supports '$', '@' and ':' prefixes for string
+			// identifiers and '?' for numeric, so we cannot
+			// combine different prefixes with the same name
+			// because `database/sql` requires variable names
+			// to start with a letter
+			if name[1:] == v.Name[:] {
+				return v, true
+			}
+		} else {
+			if v.Ordinal == i {
+				return v, true
+			}
+		}
+	}
+	return driver.NamedValue{}, false
 }
 
 // C documentation
@@ -545,7 +880,16 @@ func (c *conn) interrupt(pdb uintptr) (err error) {
 	defer c.Unlock()
 
 	if c.tls != nil {
-		sqlite3.Xsqlite3_interrupt(c.tls, pdb)
+		// Not c.tls. This runs on the goroutine watching the context,
+		// while the query it interrupts may be running on c.tls, and a
+		// libc.TLS is not safe for concurrent use. The transpiled
+		// sqlite3_interrupt is a single atomic store today and never
+		// touches the TLS, but nothing guarantees a future SQLite or ccgo
+		// keeps it so. A fresh TLS costs ~140 ns and is paid only when a
+		// query is actually interrupted.
+		tls := libc.NewTLS()
+		sqlite3.Xsqlite3_interrupt(tls, pdb)
+		tls.Close()
 	}
 	return nil
 }
@@ -600,7 +944,18 @@ func (c *conn) openV2(name, vfsName string, flags int32) (uintptr, error) {
 	}
 
 	if rc := sqlite3.Xsqlite3_open_v2(c.tls, s, p, flags, vfs); rc != sqlite3.SQLITE_OK {
-		return 0, c.errstr(rc)
+		dbh := *(*uintptr)(unsafe.Pointer(p))
+		// Per SQLite docs, sqlite3_open_v2 may allocate a handle even on
+		// failure. The error message is stored on that handle, and it must
+		// be closed to avoid leaking resources.
+		var err error
+		if dbh != 0 {
+			err = errstrForDB(c.tls, rc, dbh, c.errorRcMode)
+			sqlite3.Xsqlite3_close_v2(c.tls, dbh)
+		} else {
+			err = c.errstr(rc)
+		}
+		return 0, err
 	}
 
 	return *(*uintptr)(unsafe.Pointer(p)), nil
@@ -620,18 +975,73 @@ func (c *conn) free(p uintptr) {
 	}
 }
 
+func (c *conn) freeAllocs(allocs []cBinding) {
+	for _, v := range allocs {
+		c.free(v.p)
+	}
+}
+
+// dbConfigBool calls sqlite3_db_config with the (int onoff, int *pRes)
+// vararg form, used by the boolean-toggle ops such as
+// SQLITE_DBCONFIG_DQS_DDL / DQS_DML / ENABLE_FKEY / ENABLE_TRIGGER. pRes
+// is passed as NULL because callers in this driver only need the side
+// effect on the connection, not the post-set value.
+//
+// The vararg payload is one int followed by one pointer. libc.VaList packs
+// every argument into a fixed 8-byte slot regardless of the target's pointer
+// width (an int is widened to 8 bytes), so the two-argument list needs 2*8
+// bytes. Returns the underlying SQLite result code (SQLITE_OK on success).
+func (c *conn) dbConfigBool(op int32, onoff bool) int32 {
+	var v int32
+	if onoff {
+		v = 1
+	}
+	const vaSlot = 8 // libc.VaList stride per argument, all targets
+	bp := libc.Xmalloc(c.tls, types.Size_t(2*vaSlot))
+	if bp == 0 {
+		return sqlite3.SQLITE_NOMEM
+	}
+	defer libc.Xfree(c.tls, bp)
+	return sqlite3.Xsqlite3_db_config(c.tls, c.db, op,
+		libc.VaList(bp, v, uintptr(0)))
+}
+
 // C documentation
 //
 //	const char *sqlite3_errstr(int);
 func (c *conn) errstr(rc int32) error {
-	p := sqlite3.Xsqlite3_errstr(c.tls, rc)
-	str := libc.GoString(p)
-	p = sqlite3.Xsqlite3_errmsg(c.tls, c.db)
+	return errstrForDB(c.tls, rc, c.db, c.errorRcMode)
+}
+
+// errstrForDB synthesises a Go error from a (rc, db) pair. When
+// errorRcMode is true, the appended sqlite3_errmsg(db) is suppressed if
+// sqlite3_extended_errcode(db) is inconsistent with rc; the canonical
+// sqlite3_errstr(rc) string is used alone in that case. The match check
+// tries the full extended code first and falls back to the primary code
+// (rc & 0xff), matching SQLite's own guidance that the operation return
+// code is authoritative. When errorRcMode is false the legacy
+// "errstr: errmsg" form is preserved byte-for-byte so existing callers
+// parsing the error string are unaffected. See #230.
+func errstrForDB(tls *libc.TLS, rc int32, db uintptr, errorRcMode bool) error {
+	pStr := sqlite3.Xsqlite3_errstr(tls, rc)
+	str := libc.GoString(pStr)
 	var s string
 	if rc == sqlite3.SQLITE_BUSY {
 		s = " (SQLITE_BUSY)"
 	}
-	switch msg := libc.GoString(p); {
+	if db == 0 {
+		return &Error{msg: fmt.Sprintf("%s (%v)%s", str, rc, s), code: int(rc)}
+	}
+	if errorRcMode {
+		ext := sqlite3.Xsqlite3_extended_errcode(tls, db)
+		if ext != rc && (ext&0xff) != (rc&0xff) {
+			// Mismatch: errmsg on the db handle reflects a different
+			// operation. Use the canonical errstr(rc) alone.
+			return &Error{msg: fmt.Sprintf("%s (%v)%s", str, rc, s), code: int(rc)}
+		}
+	}
+	pMsg := sqlite3.Xsqlite3_errmsg(tls, db)
+	switch msg := libc.GoString(pMsg); {
 	case msg == str:
 		return &Error{msg: fmt.Sprintf("%s (%v)%s", str, rc, s), code: int(rc)}
 	default:
@@ -672,6 +1082,11 @@ func (c *conn) Close() (err error) {
 	defer c.Unlock()
 
 	if c.db != 0 {
+		unregisterAuthorizer(c.db)
+		unregisterHooks(c.db)
+		cancellationFlags.Delete(c.db)
+		busyConns.Delete(c.db)
+		c.canceledRegistered = false
 		if err := c.closeV2(c.db); err != nil {
 			return err
 		}
@@ -715,7 +1130,18 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) usable() bool {
-	return c.db != 0 && sqlite3.Xsqlite3_is_interrupted(c.tls, c.db) == 0
+	if c.db == 0 {
+		return false
+	}
+	// For in-memory databases the connection is the database: discarding
+	// it because the previous query was interrupted destroys all the data.
+	// Treat an interrupted in-memory connection as still valid so that
+	// database/sql returns it to the pool instead of dropping it. See #196
+	// (regressed by the fix for #198 which added the is_interrupted check).
+	if c.inMemory {
+		return true
+	}
+	return sqlite3.Xsqlite3_is_interrupted(c.tls, c.db) == 0
 }
 
 type userDefinedFunction struct {
@@ -824,8 +1250,63 @@ func (c *conn) Prepare(query string) (ds driver.Stmt, err error) {
 }
 
 func (c *conn) prepare(ctx context.Context, query string) (s driver.Stmt, err error) {
-	//TODO use ctx
-	return newStmt(c, query)
+	return c.newStmtContext(ctx, query)
+}
+
+// newStmtContext is newStmt for a call with a context: preparing a statement
+// can wait for a shared-cache lock, or for a lock under busy_timeout, and
+// either wait ends early, with ctx.Err(), once ctx is done. Only the waits
+// watch ctx, see retry and busyHandler.
+func (c *conn) newStmtContext(ctx context.Context, query string) (*stmt, error) {
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+
+	prevWaitCtx := c.waitCtx
+	c.waitCtx = ctx
+	defer func() { c.waitCtx = prevWaitCtx }()
+
+	if ctx != nil && ctx.Done() != nil {
+		c.ensureBusyHandler()
+	}
+	s, err := newStmt(c, query)
+	if err != nil && ctx != nil && ctx.Err() != nil {
+		// A wait for a lock that the context ended, see busyHandler, or any
+		// other failure once the context is done: report the context
+		return nil, ctx.Err()
+	}
+	return s, err
+}
+
+// withWaitCtx runs f with ctx as the context of the call in progress, so that
+// a wait for a lock in f, under busy_timeout or with a shared cache, ends once
+// ctx is done, see busyHandler and retry; the outer call's context is restored
+// afterwards. A failure of f once ctx is done is reported as ctx.Err(). Only
+// the waits watch ctx: f is not interrupted, and a ctx without a deadline or
+// cancellation changes nothing.
+func (c *conn) withWaitCtx(ctx context.Context, f func() error) error {
+	if ctx == nil || ctx.Done() == nil {
+		return f()
+	}
+
+	prevWaitCtx := c.waitCtx
+	c.waitCtx = ctx
+	defer func() { c.waitCtx = prevWaitCtx }()
+
+	c.ensureBusyHandler()
+	if err := f(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // Queryer is an optional interface that may be implemented by a Conn.
@@ -846,9 +1327,9 @@ func (c *conn) Query(query string, args []driver.Value) (dr driver.Rows, err err
 }
 
 func (c *conn) query(ctx context.Context, query string, args []driver.NamedValue) (r driver.Rows, err error) {
-	// Use newStmt directly. c.prepare wraps this, but we need the concrete *stmt type
+	// Use newStmtContext directly. c.prepare wraps this, but we need the concrete *stmt type
 	// to manipulate the handle ownership below.
-	s, err := newStmt(c, query)
+	s, err := c.newStmtContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -913,15 +1394,22 @@ func (c *conn) Serialize() (v []byte, err error) {
 	return v, nil
 }
 
-// Deserialize restore a database from the content returned by Serialize.
+// Deserialize restores a database from the content returned by Serialize.
 func (c *conn) Deserialize(buf []byte) (err error) {
 	bufLen := len(buf)
-	pBuf := c.tls.Alloc(bufLen) // free will be done if it fails or on close, must not be freed here
+	if bufLen == 0 {
+		return fmt.Errorf("sqlite: empty buffer passed to Deserialize")
+	}
+	pBuf := sqlite3.Xsqlite3_malloc64(c.tls, uint64(bufLen))
+	if pBuf == 0 {
+		return fmt.Errorf("sqlite: cannot allocate %d bytes for deserialize", bufLen)
+	}
 
 	copy((*libc.RawMem)(unsafe.Pointer(pBuf))[:bufLen:bufLen], buf)
 
 	zSchema := sqlite3.Xsqlite3_db_name(c.tls, c.db, 0)
 	if zSchema == 0 {
+		sqlite3.Xsqlite3_free(c.tls, pBuf)
 		return fmt.Errorf("failed to get main db name")
 	}
 
@@ -978,8 +1466,14 @@ func (c *conn) backup(remoteConn *conn, restore bool) (_ *Backup, finalErr error
 		pBackup = sqlite3.Xsqlite3_backup_init(c.tls, remoteConn.db, dstSchema, c.db, srcSchema)
 	}
 	if pBackup <= 0 {
-		rc := sqlite3.Xsqlite3_errcode(c.tls, remoteConn.db)
-		return nil, c.errstr(rc)
+		destDb := remoteConn.db
+		destMode := remoteConn.errorRcMode
+		if restore {
+			destDb = c.db
+			destMode = c.errorRcMode
+		}
+		rc := sqlite3.Xsqlite3_errcode(c.tls, destDb)
+		return nil, errstrForDB(c.tls, rc, destDb, destMode)
 	}
 
 	return &Backup{srcConn: c, dstConn: remoteConn, pBackup: pBackup}, nil
@@ -1067,4 +1561,34 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		}()
 	}
 	return c.query(ctx, query, args)
+}
+
+// IsReadOnly reports whether the database schema specified by dbName is read-only.
+//
+// dbName is the internal name of the attached database, not the filename.
+// Use "main" for the primary database, "temp" for the temporary database,
+// or the name used in an ATTACH statement.
+func (c *conn) IsReadOnly(schema string) (bool, error) {
+	if dmesgs {
+		defer func() {
+			dmesg("conn %p", c)
+		}()
+	}
+	cs, err := libc.CString(schema)
+	if err != nil {
+		return false, err
+	}
+
+	defer libc.Xfree(c.tls, cs)
+
+	switch r := sqlite3.Xsqlite3_db_readonly(c.tls, c.db, cs); r {
+	case 1:
+		return true, nil
+	case 0:
+		return false, nil
+	case -1:
+		return false, fmt.Errorf("not a name of a database on connection: '%s'", schema)
+	default:
+		return false, fmt.Errorf("unexpected sqlite3_db_readonly(%q) return value: %v", schema, r)
+	}
 }

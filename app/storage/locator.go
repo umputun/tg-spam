@@ -440,15 +440,13 @@ func (l *Locator) AddMessage(ctx context.Context, msg string, chatID, userID int
 			Hash string `db:"hash"`
 			GID  string `db:"gid"`
 		}{
-			MsgMeta: MsgMeta{
-				Time:     time.Now(),
-				ChatID:   chatID,
-				UserID:   userID,
-				UserName: userName,
-				MsgID:    msgID,
-			},
-			Hash: hash,
-			GID:  l.GID(),
+			Time:     time.Now(),
+			ChatID:   chatID,
+			UserID:   userID,
+			UserName: userName,
+			MsgID:    msgID,
+			Hash:     hash,
+			GID:      l.GID(),
 		})
 	if err != nil {
 		return fmt.Errorf("failed to insert message: %w", err)

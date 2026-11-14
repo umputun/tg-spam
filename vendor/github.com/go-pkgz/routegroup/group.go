@@ -63,14 +63,19 @@ func (b *Bundle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// but intercept 404s to use custom handler if provided
 	muxHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if pattern == "" && root.notFound != nil {
-			// no route matched, need to check if it's a true 404 or a 405
-			// probe the mux to see what status it would return
-			probe := &statusRecorder{status: http.StatusOK}
-			b.mux.ServeHTTP(probe, r)
+			handler, currentPattern := b.mux.Handler(r)
+			if currentPattern != "" {
+				b.mux.ServeHTTP(w, r)
+				return
+			}
 
-			// if mux wants to return 405 (Method Not Allowed), let it handle the request
-			// to preserve the proper 405 response and Allow header
-			if probe.status == http.StatusMethodNotAllowed {
+			// no route matched, need to check if it's a true 404
+			// probe the synthetic handler to see what status it would return
+			probe := &statusRecorder{status: http.StatusOK}
+			handler.ServeHTTP(probe, r)
+
+			// let the mux handle redirects and method mismatches
+			if probe.status != http.StatusNotFound {
 				b.mux.ServeHTTP(w, r)
 				return
 			}
@@ -140,6 +145,9 @@ func (b *Bundle) Handle(pattern string, handler http.Handler) {
 	// for file server paths (ending with /), preserve the pattern as-is
 	if strings.HasSuffix(pattern, "/") {
 		fullPath := b.basePath + pattern
+		if matches := reGo122.FindStringSubmatch(pattern); len(matches) > 2 {
+			fullPath = matches[1] + " " + b.basePath + matches[2]
+		}
 		b.mux.Handle(fullPath, b.wrapMiddleware(handler))
 		return
 	}
@@ -149,6 +157,13 @@ func (b *Bundle) Handle(pattern string, handler http.Handler) {
 // HandleFiles is a helper to serve static files from a directory
 func (b *Bundle) HandleFiles(pattern string, root http.FileSystem) {
 	b.lockRoot() // lock root on first route registration
+
+	// the method part must stay out of the path that gets the mount prefix and is stripped
+	var method string
+	if matches := reGo122.FindStringSubmatch(pattern); len(matches) > 2 {
+		method = matches[1] + " "
+		pattern = matches[2]
+	}
 
 	// normalize pattern to always have trailing slash
 	if !strings.HasSuffix(pattern, "/") {
@@ -160,13 +175,13 @@ func (b *Bundle) HandleFiles(pattern string, root http.FileSystem) {
 
 	if pattern == "/" && b.basePath == "" {
 		// root case - serve directly without stripping
-		b.mux.Handle("/", b.wrapMiddleware(http.FileServer(root)))
+		b.mux.Handle(method+"/", b.wrapMiddleware(http.FileServer(root)))
 		return
 	}
 
 	// for both mounted groups and prefixed paths, strip the fullPath
 	handler := http.StripPrefix(strings.TrimSuffix(fullPath, "/"), http.FileServer(root))
-	b.mux.Handle(fullPath, b.wrapMiddleware(handler))
+	b.mux.Handle(method+fullPath, b.wrapMiddleware(handler))
 }
 
 // HandleFunc registers the handler function for the given pattern to the Group's mux.
@@ -181,13 +196,13 @@ func (b *Bundle) Handler(r *http.Request) (h http.Handler, pattern string) {
 	return b.mux.Handler(r)
 }
 
-// DisableNotFoundHandler used to disable auto-registration of a catch-all 404.
-// Deprecated: now a no-op retained for API compatibility.
+// DisableNotFoundHandler has no effect.
+//
+// Deprecated: this method has no effect.
 func (b *Bundle) DisableNotFoundHandler() {}
 
-// NotFoundHandler sets a custom handler for any unmatched routes (404 responses).
-// Note: This handler is only used for true 404s. Requests to valid paths with
-// incorrect HTTP methods will still return 405 Method Not Allowed with Allow header.
+// NotFoundHandler sets a custom handler for true 404 responses.
+// Method mismatches and path-cleanup redirects are handled by http.ServeMux.
 func (b *Bundle) NotFoundHandler(handler http.HandlerFunc) {
 	// always set on the root bundle so custom 404 works regardless of which bundle serves.
 	if b.root != nil {

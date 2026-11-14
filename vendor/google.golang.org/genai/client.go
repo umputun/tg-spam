@@ -22,6 +22,9 @@ import (
 	"os"
 	"strings"
 
+	"google.golang.org/genai/interactions"
+	"google.golang.org/genai/interactions/models/components"
+
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/httptransport"
@@ -50,6 +53,21 @@ type Client struct {
 	Tunings *Tunings
 	// Tokens provides access to the Tokens service.
 	AuthTokens *Tokens
+
+	// Interactions provides access to the Interactions service.
+	Interactions *interactions.Interactions
+	// Voices provides access to the Voices service.
+	Voices *interactions.Voices
+	// Webhooks provides access to the Webhooks service.
+	Webhooks *interactions.Webhooks
+	// Agents provides access to the Agents service.
+	Agents *interactions.Agents
+	// Credentials provides access to the Credentials service.
+	Credentials *interactions.Credentials
+	// Environments provides access to the Environments service.
+	//
+	// Experimental: This field is experimental and may change in future versions.
+	Environments *interactions.Environments
 }
 
 // Backend is the GenAI backend to use for the client.
@@ -66,6 +84,8 @@ const (
 	BackendGeminiAPI
 	// BackendVertexAI is the Vertex AI backend.
 	BackendVertexAI
+	// BackendEnterprise is the Gemini Enterprise Agent Platform backend.
+	BackendEnterprise
 )
 
 // The Stringer interface for Backend.
@@ -78,6 +98,11 @@ func (t Backend) String() string {
 	default:
 		return "BackendUnspecified"
 	}
+}
+
+var multiRegionalLocations = map[string]bool{
+	"us": true,
+	"eu": true,
 }
 
 // ClientConfig is the configuration for the GenAI client.
@@ -120,6 +145,9 @@ type ClientConfig struct {
 
 func defaultEnvVarProvider() map[string]string {
 	vars := make(map[string]string)
+	if v, ok := os.LookupEnv("GOOGLE_GENAI_USE_ENTERPRISE"); ok {
+		vars["GOOGLE_GENAI_USE_ENTERPRISE"] = v
+	}
 	if v, ok := os.LookupEnv("GOOGLE_GENAI_USE_VERTEXAI"); ok {
 		vars["GOOGLE_GENAI_USE_VERTEXAI"] = v
 	}
@@ -195,20 +223,36 @@ func NewInternalAPIClient(ctx context.Context, cc *ClientConfig) (*InternalAPICl
 	}
 	envVars := cc.envVarProvider()
 
-	if cc.Project != "" && cc.APIKey != "" {
-		return nil, fmt.Errorf("project and API key are mutually exclusive in the client initializer. ClientConfig: %#v", cc)
-	}
-	if cc.Location != "" && cc.APIKey != "" {
-		return nil, fmt.Errorf("location and API key are mutually exclusive in the client initializer. ClientConfig: %#v", cc)
-	}
 	if cc.Credentials != nil && cc.APIKey != "" {
 		return nil, fmt.Errorf("credentials and API key are mutually exclusive in the client initializer. ClientConfig: %#v", cc)
 	}
 
+	if cc.Backend == BackendEnterprise {
+		cc.Backend = BackendVertexAI
+	}
+
 	if cc.Backend == BackendUnspecified {
-		if v, ok := envVars["GOOGLE_GENAI_USE_VERTEXAI"]; ok {
-			v = strings.ToLower(v)
-			if v == "1" || v == "true" {
+		vEnterprise, enterpriseOK := envVars["GOOGLE_GENAI_USE_ENTERPRISE"]
+		vVertex, vertexOK := envVars["GOOGLE_GENAI_USE_VERTEXAI"]
+
+		isEnterprise := enterpriseOK && (strings.ToLower(vEnterprise) == "1" || strings.ToLower(vEnterprise) == "true")
+
+		isVertexAI := vertexOK && (strings.ToLower(vVertex) == "1" || strings.ToLower(vVertex) == "true")
+
+		if enterpriseOK && vertexOK {
+			if isEnterprise != isVertexAI {
+				log.Println("Warning: Both GOOGLE_GENAI_USE_ENTERPRISE and GOOGLE_GENAI_USE_VERTEXAI are set with conflicting values. The value of GOOGLE_GENAI_USE_ENTERPRISE will be used.")
+			}
+		}
+
+		if enterpriseOK {
+			if isEnterprise {
+				cc.Backend = BackendVertexAI
+			} else {
+				cc.Backend = BackendGeminiAPI
+			}
+		} else if vertexOK {
+			if isVertexAI {
 				cc.Backend = BackendVertexAI
 			} else {
 				cc.Backend = BackendGeminiAPI
@@ -246,16 +290,16 @@ func NewInternalAPIClient(ctx context.Context, cc *ClientConfig) (*InternalAPICl
 		if cc.Credentials != nil && envAPIKey != "" {
 			log.Println("Warning: The user provided Google Cloud credentials will take precedence over the API key from the environment variable.")
 			cc.APIKey = ""
-		} else if configAPIKey != "" && (envProject != "" || envLocation != "") {
+		} else if configAPIKey != "" && configProject == "" && configLocation == "" && (envProject != "" || envLocation != "") {
 			// Explicit API key takes precedence over implicit project/location.
 			log.Println("Warning: The user provided Vertex AI API key will take precedence over the project/location from the environment variables.")
 			cc.Project = ""
 			cc.Location = ""
-		} else if (configProject != "" || configLocation != "") && envAPIKey != "" {
+		} else if (configProject != "" || configLocation != "") && configAPIKey == "" && envAPIKey != "" {
 			// Explicit project/location takes precedence over implicit API key.
 			log.Println("Warning: The user provided project/location will take precedence over the API key from the environment variable.")
 			cc.APIKey = ""
-		} else if (envProject != "" || envLocation != "") && envAPIKey != "" {
+		} else if configProject == "" && configLocation == "" && configAPIKey == "" && (envProject != "" || envLocation != "") && envAPIKey != "" {
 			// Implicit project/location takes precedence over implicit API key.
 			log.Println("Warning: The project/location from the environment variables will take precedence over the API key from the environment variable.")
 			cc.APIKey = ""
@@ -293,7 +337,7 @@ func NewInternalAPIClient(ctx context.Context, cc *ClientConfig) (*InternalAPICl
 		if cc.HTTPOptions.BaseURL == "" {
 			if cc.Location == "global" || cc.APIKey != "" {
 				cc.HTTPOptions.BaseURL = "https://aiplatform.googleapis.com/"
-			} else if cc.Location == "us" {
+			} else if multiRegionalLocations[cc.Location] {
 				cc.HTTPOptions.BaseURL = fmt.Sprintf("https://aiplatform.%s.rep.googleapis.com/", cc.Location)
 			} else {
 				cc.HTTPOptions.BaseURL = fmt.Sprintf("https://%s-aiplatform.googleapis.com/", cc.Location)
@@ -312,6 +356,9 @@ func NewInternalAPIClient(ctx context.Context, cc *ClientConfig) (*InternalAPICl
 
 		if cc.APIKey == "" {
 			return nil, fmt.Errorf("api key is required for Google AI backend. ClientConfig: %#v.\nYou can get the API key from https://ai.google.dev/gemini-api/docs/api-key", cc)
+		}
+		if configProject != "" || configLocation != "" {
+			return nil, fmt.Errorf("project and location are not supported for Gemini API backend. ClientConfig: %#v", cc)
 		}
 	}
 
@@ -356,6 +403,49 @@ func NewInternalAPIClient(ctx context.Context, cc *ClientConfig) (*InternalAPICl
 	return &apiClient{clientConfig: cc}, nil
 }
 
+func newInteractionsClient(apiClient *InternalAPIClient) *interactions.GenAI {
+	cc := apiClient.clientConfig
+
+	var opts []interactions.SDKOption
+	sec := components.Security{}
+	if cc.APIKey != "" {
+		sec.APIKey = &cc.APIKey
+	}
+	headers := make(http.Header)
+	if cc.HTTPOptions.Headers != nil {
+		headers = cc.HTTPOptions.Headers.Clone()
+	}
+	appendSDKHeaders(headers)
+	sec.DefaultHeaders = make(map[string]string, len(headers))
+	for key, values := range headers {
+		if len(values) > 0 {
+			sec.DefaultHeaders[key] = strings.Join(values, " ")
+		}
+	}
+	if sec.APIKey != nil || len(sec.DefaultHeaders) > 0 {
+		opts = append(opts, interactions.WithSecurity(sec))
+	}
+
+	if cc.HTTPClient != nil {
+		opts = append(opts, interactions.WithClient(cc.HTTPClient))
+	}
+	if cc.HTTPOptions.BaseURL != "" {
+		opts = append(opts, interactions.WithServerURL(cc.HTTPOptions.BaseURL))
+	}
+	if cc.HTTPOptions.APIVersion != "" {
+		apiVersion := cc.HTTPOptions.APIVersion
+		if cc.Backend == BackendVertexAI && cc.Project != "" && cc.Location != "" {
+			apiVersion = fmt.Sprintf("%s/projects/%s/locations/%s", apiVersion, cc.Project, cc.Location)
+		}
+		opts = append(opts, interactions.WithAPIVersion(apiVersion))
+	}
+	if cc.HTTPOptions.Timeout != nil {
+		opts = append(opts, interactions.WithTimeout(*cc.HTTPOptions.Timeout))
+	}
+
+	return interactions.New(opts...)
+}
+
 // NewClient creates a new GenAI client.
 //
 // You can configure the client by passing in a ClientConfig struct.
@@ -390,6 +480,7 @@ func NewClient(ctx context.Context, cc *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	interactionsClient := newInteractionsClient(ac)
 	c := &Client{
 		clientConfig:     *cc,
 		Models:           &Models{apiClient: ac},
@@ -402,6 +493,12 @@ func NewClient(ctx context.Context, cc *ClientConfig) (*Client, error) {
 		Batches:          &Batches{apiClient: ac},
 		Tunings:          &Tunings{apiClient: ac},
 		AuthTokens:       &Tokens{apiClient: ac},
+		Interactions:     interactionsClient.Interactions,
+		Voices:           interactionsClient.Voices,
+		Webhooks:         interactionsClient.Webhooks,
+		Agents:           interactionsClient.Agents,
+		Credentials:      interactionsClient.Credentials,
+		Environments:     interactionsClient.Environments,
 	}
 	return c, nil
 }
