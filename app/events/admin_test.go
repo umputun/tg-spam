@@ -3505,3 +3505,127 @@ func TestAdmin_sendWithUnbanMarkupMigrationHint(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "group chat was upgraded to a supergroup chat, new chat id is -1001432162429")
 }
+
+func TestAdmin_ModerationOutcome(t *testing.T) {
+	const spamText = "buy crypto https://spam.example"
+
+	type env struct {
+		adm    *admin
+		events *[]string
+		bot    *mocks.BotMock
+	}
+	newEnv := func(t *testing.T, sampleErr, deleteErr, banErr error, locatorFound bool) env {
+		t.Helper()
+		var events []string
+		mockAPI := &mocks.TbAPIMock{
+			SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) {
+				if m, ok := c.(tbapi.MessageConfig); ok {
+					events = append(events, "send: "+m.Text)
+				}
+				return tbapi.Message{}, nil
+			},
+			RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+				switch v := c.(type) {
+				case tbapi.DeleteMessageConfig:
+					events = append(events, fmt.Sprintf("delete: %d", v.MessageID))
+					if v.MessageID == 999 && deleteErr != nil {
+						return nil, deleteErr
+					}
+				case tbapi.BanChatMemberConfig:
+					events = append(events, fmt.Sprintf("ban: %d", v.UserID))
+					if banErr != nil {
+						return nil, banErr
+					}
+				}
+				return &tbapi.APIResponse{Ok: true}, nil
+			},
+		}
+		botMock := &mocks.BotMock{
+			RemoveApprovedUserFunc: func(id int64) error { return nil },
+			OnMessageFunc:          func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+			UpdateSpamFunc:         func(msg string) error { return sampleErr },
+		}
+		locatorMock := &mocks.LocatorMock{
+			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
+				return storage.MsgMeta{UserID: 666, UserName: "spammer", MsgID: 999}, locatorFound
+			},
+		}
+		adm := &admin{tbAPI: mockAPI, bot: botMock, primChatID: 123, adminChatID: 456, locator: locatorMock,
+			superUsers: SuperUsers{}}
+		return env{adm: adm, events: &events, bot: botMock}
+	}
+	replyUpdate := tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+		From:           &tbapi.User{UserName: "admin", ID: 111},
+		ReplyToMessage: &tbapi.Message{MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"}, Text: spamText}}}
+	forwardUpdate := tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 456}, Text: spamText,
+		From:          &tbapi.User{UserName: "admin", ID: 111},
+		ForwardOrigin: &tbapi.MessageOrigin{Type: "user", SenderUser: &tbapi.User{ID: 666, UserName: "spammer"}}}}
+	readOnly := fmt.Errorf("attempt to write a readonly database (8)")
+	rejected := fmt.Errorf("telegram rejected the request")
+
+	tests := []struct {
+		name                 string
+		forward, found       bool
+		sampleErr, delErr    error
+		banErr               error
+		wantEvents           []string
+		wantOutcome, wantErr string
+	}{
+		{name: "reply, sample save fails", sampleErr: readOnly,
+			wantEvents:  []string{"delete: 999", "delete: 789", "ban: 666"},
+			wantOutcome: `the user banned by "admin" and message deleted`, wantErr: "failed to update spam samples"},
+		{name: "reply, delete rejected", delErr: rejected,
+			wantEvents:  []string{"delete: 999", "delete: 789", "ban: 666"},
+			wantOutcome: `requested by "admin": message not deleted, user banned`, wantErr: "failed to delete message 999"},
+		{name: "reply, ban rejected", banErr: rejected,
+			wantEvents:  []string{"delete: 999", "delete: 789", "ban: 666"},
+			wantOutcome: `requested by "admin": message deleted, user not banned`, wantErr: "failed to ban user 666"},
+		{name: "forward, sample save fails", forward: true, found: true, sampleErr: readOnly,
+			wantEvents:  []string{"delete: 999", "ban: 666"},
+			wantOutcome: "the user banned and message deleted", wantErr: "failed to update spam samples"},
+		{name: "forward, delete and ban rejected", forward: true, found: true, delErr: rejected, banErr: rejected,
+			wantEvents:  []string{"delete: 999", "ban: 666"},
+			wantOutcome: "message not deleted, user not banned", wantErr: "failed to ban user 666"},
+		{name: "forward fallback, sample save fails", forward: true, sampleErr: readOnly,
+			wantEvents:  []string{"ban: 666"},
+			wantOutcome: "the user banned", wantErr: "failed to update spam samples"},
+		{name: "forward fallback, ban rejected", forward: true, banErr: rejected,
+			wantEvents:  []string{"ban: 666"},
+			wantOutcome: "the user not banned", wantErr: "failed to ban user 666"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, tt.sampleErr, tt.delErr, tt.banErr, tt.found)
+			var err error
+			if tt.forward {
+				err = e.adm.MsgHandler(forwardUpdate)
+			} else {
+				err = e.adm.directReport(replyUpdate, true)
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.NotContains(t, err.Error(), spamText)
+			require.Len(t, e.bot.UpdateSpamCalls(), 1)
+
+			var actions []string
+			noticeAt, lastAction := -1, -1
+			for i, ev := range *e.events {
+				if strings.HasPrefix(ev, "send: ") {
+					if noticeAt < 0 {
+						noticeAt = i
+					}
+					continue
+				}
+				actions = append(actions, ev)
+				lastAction = i
+			}
+			assert.Equal(t, tt.wantEvents, actions)
+			require.GreaterOrEqual(t, noticeAt, 0, "detection notice must be sent")
+			assert.Greater(t, noticeAt, lastAction, "notice must follow the delete and ban attempts")
+			assert.Contains(t, (*e.events)[noticeAt], tt.wantOutcome)
+			if tt.forward && !tt.found {
+				assert.Contains(t, (*e.events)[len(*e.events)-1], "needs manual deletion")
+			}
+		})
+	}
+}

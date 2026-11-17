@@ -202,47 +202,57 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	if ownChatSender {
 		outcome = "message deleted, ban skipped for the group or its linked channel"
 	}
-	newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*%s*",
-		escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText, outcome)
-	if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
+	notify := func(outcome string) {
+		newMsgText := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*%s*",
+			escapeMarkDownV1Text(info.UserName), info.UserID, spamInfoText, outcome)
+		if err := send(tbapi.NewMessage(a.adminChatID, newMsgText), a.tbAPI); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to send spap detection results to admin chat: %w", err))
+		}
 	}
 
 	if a.dry {
+		notify(outcome)
 		if err := errs.ErrorOrNil(); err != nil {
 			return fmt.Errorf("dry run errors: %w", err)
 		}
 		return nil
 	}
 
-	// update spam samples
+	// a failed sample update must not stop the delete and ban; the error carries no spam text because
+	// the listener posts it to the admin chat through Markdown, where links in it would be clickable
 	if err := a.bot.UpdateSpam(msgTxt); err != nil {
-		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+		errs = multierror.Append(errs, fmt.Errorf("failed to update spam samples: %w", err))
 	}
 
 	// delete message
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+	_, delErr := a.tbAPI.Request(tbapi.DeleteMessageConfig{
 		MessageID: info.MsgID,
 		ChatID:    a.primChatID,
 	})
-	if err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, err))
+	if delErr != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", info.MsgID, delErr))
 	} else {
 		log.Printf("[INFO] message %d deleted", info.MsgID)
 	}
 
 	// skip ban for posts by anonymous admins and by the linked channel - the locator stores them under
 	// the sender chat ID, and banning that would ban the group or its linked channel from the group
+	var banErr error
 	if ownChatSender {
 		log.Printf("[WARN] skipping ban in MsgHandler, user ID %d is the group or its linked channel", info.UserID)
 	} else {
 		banReq := banRequest{duration: bot.PermanentBanDuration, userID: info.UserID,
 			channelID: channelIDFromCallback(info.UserID),
 			chatID:    a.primChatID, tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: username}
-		if err := banUserOrChannel(banReq); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, err))
+		if banErr = banUserOrChannel(banReq); banErr != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", info.UserID, banErr))
 		}
 	}
+
+	if delErr != nil || banErr != nil {
+		outcome = a.failedOutcome(delErr, banErr, ownChatSender)
+	}
+	notify(outcome)
 
 	if err := errs.ErrorOrNil(); err != nil {
 		return fmt.Errorf("spam notification failed: %w", err)
@@ -280,13 +290,16 @@ func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 	}
 
 	// send detection results to admin chat (no unban button - msgID is unavailable without locator)
-	detectionMsg := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*the user banned*",
-		escapeMarkDownV1Text(username), fwdID, spamInfoText)
-	if err := send(tbapi.NewMessage(a.adminChatID, detectionMsg), a.tbAPI); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+	notify := func(outcome string) {
+		detectionMsg := fmt.Sprintf("**original detection results for %q (%d)**\n\n%s\n\n\n*%s*",
+			escapeMarkDownV1Text(username), fwdID, spamInfoText, outcome)
+		if err := send(tbapi.NewMessage(a.adminChatID, detectionMsg), a.tbAPI); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+		}
 	}
 
 	if a.dry {
+		notify("the user banned")
 		// warn admin about manual deletion even in dry mode
 		warnMsg := fmt.Sprintf("⚠ *locator fallback* (dry mode): user %q (%d), original message needs manual deletion",
 			escapeMarkDownV1Text(username), fwdID)
@@ -299,17 +312,19 @@ func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 		return nil
 	}
 
-	// update spam samples
 	if err := a.bot.UpdateSpam(msgTxt); err != nil {
-		return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+		errs = multierror.Append(errs, fmt.Errorf("failed to update spam samples: %w", err))
 	}
 
 	// ban user (no message deletion - we don't have the message ID from primary chat)
 	banReq := banRequest{duration: bot.PermanentBanDuration, userID: fwdID, chatID: a.primChatID,
 		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: username}
+	outcome := "the user banned"
 	if err := banUserOrChannel(banReq); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", fwdID, err))
+		outcome = "the user not banned"
 	}
+	notify(outcome)
 
 	// warn admin that the original message must be deleted manually
 	snippet := msgTxt
@@ -609,6 +624,22 @@ func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
 	return deleted, nil
 }
 
+// failedOutcome is used only when a delete or ban failed; on success callers keep their own wording
+func (a *admin) failedOutcome(delErr, banErr error, banSkipped bool) string {
+	del := "message deleted"
+	if delErr != nil {
+		del = "message not deleted"
+	}
+	ban := "user banned"
+	switch {
+	case banSkipped:
+		ban = "ban skipped for the group or its linked channel"
+	case banErr != nil:
+		ban = "user not banned"
+	}
+	return del + ", " + ban
+}
+
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
 func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	logFrom := update.Message.ReplyToMessage.From.UserName
@@ -704,39 +735,41 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 	e.untrusted(strings.Join(spamInfo, "\n"), a.noLinks)
 	e.plain("\n\n\n")
-	e.bold(outcome)
-	newMsg := tbapi.NewMessage(a.adminChatID, e.text())
-	newMsg.Entities = e.entities()
-	if _, err := sendEntities(newMsg, a.tbAPI); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+	notify := func(outcome string) {
+		e.bold(outcome)
+		newMsg := tbapi.NewMessage(a.adminChatID, e.text())
+		newMsg.Entities = e.entities()
+		if _, err := sendEntities(newMsg, a.tbAPI); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to send spam detection results to admin chat: %w", err))
+		}
 	}
 
 	if a.dry {
+		notify(outcome)
 		if err := errs.ErrorOrNil(); err != nil {
 			return fmt.Errorf("dry run errors: %w", err)
 		}
 		return nil
 	}
 
-	// update spam samples
 	if updateSamples && msgTxt != "" {
 		if err := a.bot.UpdateSpam(msgTxt); err != nil {
-			return fmt.Errorf("failed to update spam for %q: %w", msgTxt, err)
+			errs = multierror.Append(errs, fmt.Errorf("failed to update spam samples: %w", err))
 		}
 	}
 
 	// delete original message
-	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
+	_, delErr := a.tbAPI.Request(tbapi.DeleteMessageConfig{
 		MessageID: origMsg.MessageID,
 		ChatID:    a.primChatID})
-	if err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, err))
+	if delErr != nil {
+		errs = multierror.Append(errs, fmt.Errorf("failed to delete message %d: %w", origMsg.MessageID, delErr))
 	} else {
 		log.Printf("[INFO] spam message %d deleted", origMsg.MessageID)
 	}
 
 	// delete reply message
-	_, err = a.tbAPI.Request(tbapi.DeleteMessageConfig{
+	_, err := a.tbAPI.Request(tbapi.DeleteMessageConfig{
 		MessageID: update.Message.MessageID,
 		ChatID:    a.primChatID})
 	if err != nil {
@@ -753,6 +786,7 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	// skip ban and cleanup for anonymous admin posts and linked channel posts - banning the shared system
 	// bot user (GroupAnonymousBot) would affect all anonymous admin messages in the group, and banning
 	// the linked channel would stop it from posting in its own discussion group
+	var banErr error
 	if ownChatSender {
 		log.Printf("[WARN] skipping ban, sender chat %d is the group or its linked channel", origMsg.SenderChat.ID)
 	} else {
@@ -760,10 +794,16 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		banReq := banRequest{duration: bot.PermanentBanDuration, userID: origMsg.From.ID, channelID: channelID,
 			chatID: a.primChatID, tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: username}
 
-		if err := banUserOrChannel(banReq); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, err))
+		if banErr = banUserOrChannel(banReq); banErr != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", origMsg.From.ID, banErr))
 		}
 	}
+
+	if delErr != nil || banErr != nil {
+		outcome = fmt.Sprintf("requested by %q: %s", update.Message.From.UserName,
+			a.failedOutcome(delErr, banErr, ownChatSender))
+	}
+	notify(outcome)
 
 	// aggressive cleanup - delete all messages from the spammer (non-blocking)
 	// use channel ID for lookup when the message was sent on behalf of a channel;
