@@ -2374,6 +2374,7 @@ func TestAdmin_MsgHandler(t *testing.T) {
 		err := adminHandler.MsgHandler(update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
+		assert.NotContains(t, err.Error(), "spam message text")
 	})
 
 	t.Run("dry mode", func(t *testing.T) {
@@ -3514,7 +3515,7 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 		events *[]string
 		bot    *mocks.BotMock
 	}
-	newEnv := func(t *testing.T, sampleErr, deleteErr, banErr error, locatorFound bool) env {
+	newEnv := func(t *testing.T, sampleErr, deleteErr, banErr error, locatorFound bool, senderID int64) env {
 		t.Helper()
 		var events []string
 		mockAPI := &mocks.TbAPIMock{
@@ -3547,16 +3548,21 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 		}
 		locatorMock := &mocks.LocatorMock{
 			MessageFunc: func(ctx context.Context, msg string) (storage.MsgMeta, bool) {
-				return storage.MsgMeta{UserID: 666, UserName: "spammer", MsgID: 999}, locatorFound
+				return storage.MsgMeta{UserID: senderID, UserName: "spammer", MsgID: 999}, locatorFound
 			},
 		}
 		adm := &admin{tbAPI: mockAPI, bot: botMock, primChatID: 123, adminChatID: 456, locator: locatorMock,
 			superUsers: SuperUsers{}}
 		return env{adm: adm, events: &events, bot: botMock}
 	}
-	replyUpdate := tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
-		From:           &tbapi.User{UserName: "admin", ID: 111},
-		ReplyToMessage: &tbapi.Message{MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"}, Text: spamText}}}
+	replyUpdate := func(ownChat bool) tbapi.Update {
+		orig := &tbapi.Message{MessageID: 999, From: &tbapi.User{ID: 666, UserName: "spammer"}, Text: spamText}
+		if ownChat {
+			orig.SenderChat = &tbapi.Chat{ID: 123}
+		}
+		return tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 123}, Text: "/spam",
+			From: &tbapi.User{UserName: "admin", ID: 111}, ReplyToMessage: orig}}
+	}
 	forwardUpdate := tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 456}, Text: spamText,
 		From:          &tbapi.User{UserName: "admin", ID: 111},
 		ForwardOrigin: &tbapi.MessageOrigin{Type: "user", SenderUser: &tbapi.User{ID: 666, UserName: "spammer"}}}}
@@ -3566,6 +3572,7 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 	tests := []struct {
 		name                 string
 		forward, found       bool
+		ownChat              bool
 		sampleErr, delErr    error
 		banErr               error
 		wantEvents           []string
@@ -3580,12 +3587,20 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 		{name: "reply, ban rejected", banErr: rejected,
 			wantEvents:  []string{"delete: 999", "delete: 789", "ban: 666"},
 			wantOutcome: `requested by "admin": message deleted, user not banned`, wantErr: "failed to ban user 666"},
+		{name: "reply from own chat, delete rejected", ownChat: true, delErr: rejected,
+			wantEvents:  []string{"delete: 999", "delete: 789"},
+			wantOutcome: `requested by "admin": message not deleted, ban skipped for the group or its linked channel`,
+			wantErr:     "failed to delete message 999"},
 		{name: "forward, sample save fails", forward: true, found: true, sampleErr: readOnly,
 			wantEvents:  []string{"delete: 999", "ban: 666"},
 			wantOutcome: "the user banned and message deleted", wantErr: "failed to update spam samples"},
 		{name: "forward, delete and ban rejected", forward: true, found: true, delErr: rejected, banErr: rejected,
 			wantEvents:  []string{"delete: 999", "ban: 666"},
 			wantOutcome: "message not deleted, user not banned", wantErr: "failed to ban user 666"},
+		{name: "forward from own chat, delete rejected", forward: true, found: true, ownChat: true, delErr: rejected,
+			wantEvents:  []string{"delete: 999"},
+			wantOutcome: "message not deleted, ban skipped for the group or its linked channel",
+			wantErr:     "failed to delete message 999"},
 		{name: "forward fallback, sample save fails", forward: true, sampleErr: readOnly,
 			wantEvents:  []string{"ban: 666"},
 			wantOutcome: "the user banned", wantErr: "failed to update spam samples"},
@@ -3595,12 +3610,16 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := newEnv(t, tt.sampleErr, tt.delErr, tt.banErr, tt.found)
+			senderID := int64(666)
+			if tt.ownChat {
+				senderID = 123
+			}
+			e := newEnv(t, tt.sampleErr, tt.delErr, tt.banErr, tt.found, senderID)
 			var err error
 			if tt.forward {
 				err = e.adm.MsgHandler(forwardUpdate)
 			} else {
-				err = e.adm.directReport(replyUpdate, true)
+				err = e.adm.directReport(replyUpdate(tt.ownChat), true)
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)

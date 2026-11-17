@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	tbapi "github.com/OvyFlash/telegram-bot-api"
 	"github.com/hashicorp/go-multierror"
@@ -126,13 +125,6 @@ func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
 // a degraded fallback path is used: the user is banned and spam samples updated,
 // but the original message cannot be deleted automatically.
 func (a *admin) MsgHandler(update tbapi.Update) error {
-	shrink := func(inp string, maxLen int) string {
-		if utf8.RuneCountInString(inp) <= maxLen {
-			return inp
-		}
-		return string([]rune(inp)[:maxLen]) + "..."
-	}
-
 	// get forwarded user ID and username; used for logging and fallback path when locator lookup fails
 	fwdID, username := a.getForwardUsernameAndID(update)
 
@@ -168,7 +160,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		if fwdID != 0 {
 			return a.msgHandlerFallback(fwdID, username, msgTxt)
 		}
-		return fmt.Errorf("not found %q in locator", shrink(msgTxt, 50))
+		// no spam text here: the listener posts this error to the admin chat through Markdown
+		return errors.New("forwarded message not found in locator")
 	}
 
 	log.Printf("[DEBUG] locator found message %s", info)
