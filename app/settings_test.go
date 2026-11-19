@@ -1218,7 +1218,6 @@ func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {
 	assert.Equal(t, 16000, loaded.OpenAI.MaxSymbolsRequest, "OpenAI.MaxSymbolsRequest filled from template")
 	assert.Equal(t, "data", loaded.Files.DynamicDataPath, "Files.DynamicDataPath filled from template")
 	assert.Equal(t, "any", loaded.LLM.Consensus, "LLM.Consensus filled from template")
-	assert.Equal(t, 50, loaded.MinMsgLen, "MinMsgLen filled from template")
 	assert.Equal(t, 24*time.Hour, loaded.History.Duration, "History.Duration filled from template")
 
 	// zero-aware paths stay at the operator's persisted zero even though template has non-zero
@@ -1228,6 +1227,7 @@ func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {
 	assert.Equal(t, 0, loaded.Report.RateLimit, "Report.RateLimit stays 0 (zero-aware, template=10)")
 	assert.Equal(t, 0, loaded.MaxBackups, "MaxBackups stays 0 (zero-aware, template=10)")
 	assert.Equal(t, 0, loaded.FirstMessagesCount, "FirstMessagesCount stays 0 (zero-aware, template=1)")
+	assert.Equal(t, 0, loaded.MinMsgLen, "MinMsgLen stays 0 (zero-aware, template=50)")
 
 	// instanceID round-trips from DB (non-zero), not filled from template
 	assert.Equal(t, "test-instance", loaded.InstanceID)
@@ -1350,8 +1350,8 @@ func TestLoadConfigFromDB_DoesNotOverrideExisting(t *testing.T) {
 func TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults(t *testing.T) {
 	setupLog(true)
 	type want struct {
-		links, mentions, emoji, first, rate, backups int
-		minProb, similarity                          float64
+		links, mentions, emoji, first, rate, backups, minLen int
+		minProb, similarity                                  float64
 	}
 	tests := []struct {
 		name string
@@ -1359,9 +1359,9 @@ func TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults(t *testing.T) {
 		want want
 	}{
 		{name: "omitted keys take defaults", blob: `{"telegram":{"token":"123:abc","group":"-100123"},"dry":false}`,
-			want: want{links: -1, mentions: -1, emoji: 2, first: 1, rate: 10, backups: 10, minProb: 50, similarity: 0.5}},
-		{name: "explicit zeros survive", blob: `{"meta":{"links_limit":0},"max_emoji":0,"report":{"rate_limit":0}}`,
-			want: want{links: 0, mentions: -1, emoji: 0, first: 1, rate: 0, backups: 10, minProb: 50, similarity: 0.5}},
+			want: want{links: -1, mentions: -1, emoji: 2, first: 1, rate: 10, backups: 10, minLen: 50, minProb: 50, similarity: 0.5}},
+		{name: "explicit zeros survive", blob: `{"meta":{"links_limit":0},"max_emoji":0,"report":{"rate_limit":0},"min_msg_len":0}`,
+			want: want{links: 0, mentions: -1, emoji: 0, first: 1, rate: 0, backups: 10, minLen: 0, minProb: 50, similarity: 0.5}},
 	}
 
 	for _, tt := range tests {
@@ -1379,7 +1379,7 @@ func TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults(t *testing.T) {
 			require.NoError(t, loadConfigFromDB(ctx, loaded, defaults))
 
 			got := want{links: loaded.Meta.LinksLimit, mentions: loaded.Meta.MentionsLimit, emoji: loaded.MaxEmoji,
-				first: loaded.FirstMessagesCount, rate: loaded.Report.RateLimit, backups: loaded.MaxBackups,
+				first: loaded.FirstMessagesCount, rate: loaded.Report.RateLimit, backups: loaded.MaxBackups, minLen: loaded.MinMsgLen,
 				minProb: loaded.MinSpamProbability, similarity: loaded.SimilarityThreshold}
 			assert.Equal(t, tt.want, got)
 			assert.Equal(t, "test-instance", loaded.InstanceID, "template instance id must not replace the CLI value")

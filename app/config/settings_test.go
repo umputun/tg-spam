@@ -378,6 +378,14 @@ func TestSettings_ApplyDefaults_SkipsZeroAware(t *testing.T) {
 			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.Meta.MentionsLimit) },
 		},
 		{
+			name: "MinMsgLen",
+			setup: func(target, template *Settings) {
+				target.MinMsgLen = 0
+				template.MinMsgLen = 50
+			},
+			assertFn: func(t *testing.T, target *Settings) { assert.Equal(t, 0, target.MinMsgLen) },
+		},
+		{
 			name: "MaxEmoji",
 			setup: func(target, template *Settings) {
 				target.MaxEmoji = 0

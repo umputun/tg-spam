@@ -460,6 +460,7 @@ var zeroAwarePaths = map[string]bool{
 	"SimilarityThreshold":     true, // lib/tgspam/detector.go:302 (> 0): 0 disables similarity check
 	"MinSpamProbability":      true, // lib/tgspam/detector.go:1014 (== 0): 0 = always classify spam
 	"MaxShortMsgCount":        true, // lib/tgspam/detector.go:253 (> 0): 0 disables
+	"MinMsgLen":               true, // lib/tgspam/detector.go:348 (<): 0 checks every message
 	"Meta.ImageTextLen":       true, // app/main.go image-only wiring (> 0): 0 falls back to MinMsgLen
 	"ProhibitedLangs":         true, // lib/tgspam/detector.go:276 (len > 0): empty disables
 }
