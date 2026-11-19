@@ -122,8 +122,7 @@ func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
 // training mode skips the ban but still deletes the message when the locator finds it; dry mode does neither.
 // if the locator lookup fails but ForwardOrigin provides the original sender's user ID,
-// a degraded fallback path is used: the user is banned and spam samples updated,
-// but the original message cannot be deleted automatically.
+// a degraded fallback path is used (see msgHandlerFallback), which cannot delete the original message.
 func (a *admin) MsgHandler(update tbapi.Update) error {
 	// get forwarded user ID and username; used for logging and fallback path when locator lookup fails
 	fwdID, username := a.getForwardUsernameAndID(update)

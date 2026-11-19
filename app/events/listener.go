@@ -405,8 +405,6 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	contactAdmitted := msg.WithContact && l.AdmitContacts
 	audioAdmitted := msg.WithAudio && l.AdmitAudio
 
-	// ignore messages with empty text, no media, no video, no video note, no forward, no external reply,
-	// no admitted document, no admitted contact, no admitted audio
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
 		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted && !contactAdmitted && !audioAdmitted {
 		// an edit that removed the text is not checked, so its earlier text would keep counting as a duplicate
