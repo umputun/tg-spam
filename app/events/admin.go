@@ -120,7 +120,7 @@ func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
 
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
-// training mode deletes the message but skips the ban; dry mode does neither.
+// training mode skips the ban but still deletes the message when the locator finds it; dry mode does neither.
 // if the locator lookup fails but ForwardOrigin provides the original sender's user ID,
 // a degraded fallback path is used: the user is banned and spam samples updated,
 // but the original message cannot be deleted automatically.
@@ -255,8 +255,9 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 
 // msgHandlerFallback handles the degraded fallback path when the locator lookup fails
 // but ForwardOrigin provides the original sender's user ID. performs all possible actions
-// (ban, spam update, remove from approved) and warns the admin that the original message
-// must be deleted manually since we don't have the message ID from the primary chat.
+// (ban, spam update, remove from approved; dry mode skips the ban and the spam update, training
+// the ban) and warns the admin that the original message must be deleted manually since we
+// don't have the message ID from the primary chat.
 func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 	log.Printf("[INFO] locator fallback: forwarded user %q (%d), processing without locator data", username, fwdID)
 	errs := new(multierror.Error)
@@ -620,9 +621,8 @@ func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
 	return deleted, nil
 }
 
-// actionOutcome names what happened to the message and its sender, used when a delete or ban failed or a
-// mode suppressed one; a normal-mode success keeps the caller's own wording. dry and training make
-// banUserOrChannel return nil without calling Telegram, so the mode is checked before the ban error
+// actionOutcome checks the mode before the ban error: dry and training make banUserOrChannel return nil
+// without calling Telegram, so a nil error there means the ban was skipped
 func (a *admin) actionOutcome(delErr, banErr error, banSkipped bool) string {
 	del := "message deleted"
 	switch {
@@ -643,7 +643,6 @@ func (a *admin) actionOutcome(delErr, banErr error, banSkipped bool) string {
 	return del + ", " + ban
 }
 
-// modeTag starts a summary whose actions dry or training mode suppressed, empty in normal mode
 func (a *admin) modeTag() string {
 	switch {
 	case a.dry:

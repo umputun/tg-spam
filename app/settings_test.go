@@ -1187,9 +1187,6 @@ func TestLoadConfigFromDB_AppliesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbFile := filepath.Join(tmpDir, "partial-blob.db")
 
-	// persist a nearly-empty Settings: only InstanceID is set. Save writes every other field as an
-	// explicit zero, so fields outside zeroAwarePaths are refilled and zero-aware ones keep the zero.
-	// omitted keys are a different case, covered by TestLoadConfigFromDB_OmittedZeroAwareKeysGetDefaults
 	partial := &config.Settings{
 		InstanceID: "test-instance",
 		Transient: config.TransientSettings{
