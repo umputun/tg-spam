@@ -110,11 +110,11 @@ The default user agent is sometimes blocked by CDNs like CloudFlare. To use a cu
 
 **OpenAI integration**
 
-Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--openai.token [$OPENAI_TOKEN]` or `--openai.apibase [$OPENAI_API_BASE]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token.
+- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token, or `--openai.apibase` to an OpenAI-compatible server (see below).
 -  Only the initial message(s) from a specific user are examined for spam. If `--paranoid` mode is activated, OpenAI will not be utilized at all.
 -  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
 -  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
@@ -122,6 +122,12 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  For models that support "thinking mode" (like Gemini 2.5 Flash), you can control the model's reasoning behavior by setting `--openai.reasoning-effort=` to one of the following values: `none` (default, the parameter is not sent and the model uses its own default effort), `off` (sends `reasoning_effort: none` to disable thinking), `low`, `medium`, or `high`. `none` is safe for any model, including ones without reasoning support such as `gpt-4o-mini`, which reject the parameter; `off` works only with models that accept `none`, such as `gpt-6-luna`, while others such as `gpt-6.1-sol` reject it. For most spam detection cases on a thinking model that accepts it, `off` is recommended for faster responses. With `--confdb`, this value comes from the database; to change it, run `save-config` without `--confdb` (or `CONFDB`), supplying the full intended configuration, since this replaces the stored settings. TG-Spam also automatically strips all `<thought></thought>` tags from responses, ensuring clean output regardless of the model's reasoning behavior.
 - You can specify additional custom prompts to better detect certain spam patterns by using the `--openai.custom-prompt=[$OPENAI_CUSTOM_PROMPT]` parameter. This parameter can be repeated multiple times to add different spam patterns to check for. For example, to detect messages following the pattern "will perform <action> - $1,234", you can add `--openai.custom-prompt="Check if message follows pattern: 'will perform [action] - $[amount]' which is a common spam format"`. Custom prompts are appended to the base system prompt and help guide the AI in identifying specific spam patterns that might be difficult to detect with other methods.
 -  Messages shorter than `--min-msg-len` are typically skipped by most content checks because they often lack enough context to classify accurately. Enable LLM checks for short messages with `--openai.check-short-messages` or `--gemini.check-short-messages`. A short message reaches an enabled LLM only when no earlier check has flagged it; stop-word, metadata, Lua, and CAS checks run before the length gate. Veto settings do not affect short-message checks: an earlier spam verdict returns before any LLM runs, while an unflagged short message has no verdict to veto. **Note**: Enabling short-message LLM checks may increase API costs, especially in high-volume environments.
+
+**Local and self-hosted models**: `--openai.apibase` can point to any server with an OpenAI-compatible chat completions API, such as Ollama or LM Studio, so the check runs on a local model. Set `--openai.model` to a model installed on that server. The server must accept the `json_object` response format the bot requests. `--openai.token` can stay empty when the server needs no key, in which case no authorization header is sent. The address is resolved where the bot runs: inside a container, `localhost` is the container itself, not the host.
+
+```
+--openai.apibase=http://ollama:11434/v1 --openai.model=llama3.1
+```
 
 
 **Gemini integration**
@@ -741,7 +747,7 @@ meta:
       --meta.external-reply             enable external reply check [$META_EXTERNAL_REPLY]
 
 openai:
-      --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.token=                   openai token, disabled if neither token nor apibase is set [$OPENAI_TOKEN]
       --openai.apibase=                 custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                     veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=                  openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
