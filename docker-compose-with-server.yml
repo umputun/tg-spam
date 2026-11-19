@@ -1,4 +1,7 @@
 # example of a compose file with server enabled, logging turned on and samples on named volume
+# on linux create the logs folder before the first start and give it to uid:gid 1000:1000, the user tg-spam
+# runs as, otherwise docker creates it owned by root and tg-spam can't write its log:
+#   mkdir -p logs && sudo chown 1000:1000 logs
 services:
   tg-spam:
     image: ghcr.io/umputun/tg-spam:latest # use :master tag for latest (unstable) version
