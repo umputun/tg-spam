@@ -120,7 +120,7 @@ func (a *admin) ReportUserBan(banUserStr string, user bot.User, cause string) {
 
 // MsgHandler handles messages received on admin chat. this is usually forwarded spam failed
 // to be detected by the bot. we need to update spam filter with this message and ban the user.
-// the user will be banned even in training mode, but not in the dry mode.
+// training mode deletes the message but skips the ban; dry mode does neither.
 // if the locator lookup fails but ForwardOrigin provides the original sender's user ID,
 // a degraded fallback path is used: the user is banned and spam samples updated,
 // but the original message cannot be deleted automatically.
@@ -204,7 +204,7 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 	}
 
 	if a.dry {
-		notify(outcome)
+		notify(a.modeTag() + a.actionOutcome(nil, nil, ownChatSender))
 		if err := errs.ErrorOrNil(); err != nil {
 			return fmt.Errorf("dry run errors: %w", err)
 		}
@@ -242,8 +242,8 @@ func (a *admin) MsgHandler(update tbapi.Update) error {
 		}
 	}
 
-	if delErr != nil || banErr != nil {
-		outcome = a.failedOutcome(delErr, banErr, ownChatSender)
+	if delErr != nil || banErr != nil || a.trainingMode {
+		outcome = a.modeTag() + a.actionOutcome(delErr, banErr, ownChatSender)
 	}
 	notify(outcome)
 
@@ -292,7 +292,7 @@ func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 	}
 
 	if a.dry {
-		notify("the user banned")
+		notify(a.modeTag() + "user would have been banned")
 		// warn admin about manual deletion even in dry mode
 		warnMsg := fmt.Sprintf("⚠ *locator fallback* (dry mode): user %q (%d), original message needs manual deletion",
 			escapeMarkDownV1Text(username), fwdID)
@@ -313,6 +313,9 @@ func (a *admin) msgHandlerFallback(fwdID int64, username, msgTxt string) error {
 	banReq := banRequest{duration: bot.PermanentBanDuration, userID: fwdID, chatID: a.primChatID,
 		tbAPI: a.tbAPI, dry: a.dry, training: a.trainingMode, userName: username}
 	outcome := "the user banned"
+	if a.trainingMode {
+		outcome = a.modeTag() + "user would have been banned"
+	}
 	if err := banUserOrChannel(banReq); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("failed to ban user %d: %w", fwdID, err))
 		outcome = "the user not banned"
@@ -617,20 +620,38 @@ func (a *admin) deleteUserMessages(userID int64) (deleted int, err error) {
 	return deleted, nil
 }
 
-// failedOutcome is used only when a delete or ban failed; on success callers keep their own wording
-func (a *admin) failedOutcome(delErr, banErr error, banSkipped bool) string {
+// actionOutcome names what happened to the message and its sender, used when a delete or ban failed or a
+// mode suppressed one; a normal-mode success keeps the caller's own wording. dry and training make
+// banUserOrChannel return nil without calling Telegram, so the mode is checked before the ban error
+func (a *admin) actionOutcome(delErr, banErr error, banSkipped bool) string {
 	del := "message deleted"
-	if delErr != nil {
+	switch {
+	case a.dry:
+		del = "message would have been deleted"
+	case delErr != nil:
 		del = "message not deleted"
 	}
 	ban := "user banned"
 	switch {
 	case banSkipped:
 		ban = "ban skipped for the group or its linked channel"
+	case a.dry || a.trainingMode:
+		ban = "user would have been banned"
 	case banErr != nil:
 		ban = "user not banned"
 	}
 	return del + ", " + ban
+}
+
+// modeTag starts a summary whose actions dry or training mode suppressed, empty in normal mode
+func (a *admin) modeTag() string {
+	switch {
+	case a.dry:
+		return "[dry run] "
+	case a.trainingMode:
+		return "[training] "
+	}
+	return ""
 }
 
 // directReport handles messages replayed with "/spam" or "spam", or "/ban" or "ban" by admin
@@ -738,7 +759,8 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 	}
 
 	if a.dry {
-		notify(outcome)
+		notify(a.modeTag() + fmt.Sprintf("requested by %q: %s", update.Message.From.UserName,
+			a.actionOutcome(nil, nil, ownChatSender)))
 		if err := errs.ErrorOrNil(); err != nil {
 			return fmt.Errorf("dry run errors: %w", err)
 		}
@@ -792,9 +814,9 @@ func (a *admin) directReport(update tbapi.Update, updateSamples bool) error {
 		}
 	}
 
-	if delErr != nil || banErr != nil {
-		outcome = fmt.Sprintf("requested by %q: %s", update.Message.From.UserName,
-			a.failedOutcome(delErr, banErr, ownChatSender))
+	if delErr != nil || banErr != nil || a.trainingMode {
+		outcome = a.modeTag() + fmt.Sprintf("requested by %q: %s", update.Message.From.UserName,
+			a.actionOutcome(delErr, banErr, ownChatSender))
 	}
 	notify(outcome)
 
