@@ -1,9 +1,11 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"slices"
@@ -558,6 +560,51 @@ func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
 			require.Len(t, mockAPI.RequestCalls(), 1, "only the report command is deleted")
 			assert.Equal(t, tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
 				ChatConfig: tbapi.ChatConfig{ChatID: groupID}, MessageID: 50}}, mockAPI.RequestCalls()[0].C)
+		})
+	}
+}
+
+func TestTelegramListener_DoLogsPrimaryGroupMigration(t *testing.T) {
+	const groupID, newID = int64(-403767890), int64(-1001432162429)
+	tests := []struct {
+		name    string
+		chatID  int64
+		wantLog bool
+	}{
+		{name: "primary group migrated", chatID: groupID, wantLog: true},
+		{name: "other group migrated", chatID: -400000001, wantLog: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			log.SetOutput(&buf)
+			defer log.SetOutput(os.Stderr)
+
+			updates := make(chan tbapi.Update, 1)
+			updates <- tbapi.Update{Message: &tbapi.Message{MessageID: 7, Chat: tbapi.Chat{ID: tt.chatID},
+				From: &tbapi.User{ID: 111, UserName: "admin"}, MigrateToChatID: newID}}
+			close(updates)
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{ID: groupID}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+				GetUpdatesChanFunc: func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updates },
+			}
+			l := &TelegramListener{TbAPI: mockAPI, Group: fmt.Sprint(groupID), Bot: &mocks.BotMock{}}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+
+			want := fmt.Sprintf("[ERROR] group %d was upgraded to a supergroup, new chat id is %d", groupID, newID)
+			if tt.wantLog {
+				assert.Contains(t, buf.String(), want)
+				assert.Contains(t, buf.String(), "--telegram.group")
+				return
+			}
+			assert.NotContains(t, buf.String(), "was upgraded to a supergroup")
 		})
 	}
 }

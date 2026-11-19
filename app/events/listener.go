@@ -198,6 +198,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 				return fmt.Errorf("telegram update chan closed")
 			}
 
+			// the new supergroup's messages fail isChatAllowed and are dropped without a trace, so this
+			// service message in the old chat is the one place the operator can learn the new id
+			if update.Message != nil && update.Message.MigrateToChatID != 0 && update.Message.Chat.ID == l.chatID {
+				log.Printf("[ERROR] group %d was upgraded to a supergroup, new chat id is %d; "+
+					"update the configured group id (--telegram.group) to %d and restart, moderation is stopped until then",
+					l.chatID, update.Message.MigrateToChatID, update.Message.MigrateToChatID)
+			}
+
 			// handle admin chat messages. can be just messages (MsgHandler will ignore those)
 			// or forwards of undetected spam by admins to admin's chat (in this case MsgHandler will process them and ban/train)
 			if update.Message != nil && update.Message.From != nil &&
