@@ -1,4 +1,7 @@
 # example of a minimal compose file to run tg-spam
+# on linux create the data folder before the first start and give it to uid:gid 1000:1000, the user tg-spam
+# runs as, otherwise docker creates it owned by root and the bot keeps restarting:
+#   mkdir -p var && sudo chown 1000:1000 var
 services:
   tg-spam:
     image: ghcr.io/umputun/tg-spam:master # use :latest tag for production

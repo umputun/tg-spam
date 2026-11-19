@@ -47,7 +47,7 @@ All the configuration is done via environment variables or command line argument
 There are some mandatory parameters what has to be set:
 
 - `--telegram.token=, [$TELEGRAM_TOKEN]` - telegram bot token. See below how to get it.
-- `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it.
+- `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it. A basic group gets a new id when Telegram upgrades it to a supergroup (supergroup ids start with `-100`), and the bot stops moderating until the setting is updated; when the bot sees the upgrade it logs the new id at `ERROR` level. With `--confdb` the group id is read from the stored `telegram.group` value, and `--telegram.group` does not override it.
 
 As long as theses two parameters are set, the bot will work. Remember to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 
@@ -110,11 +110,11 @@ The default user agent is sometimes blocked by CDNs like CloudFlare. To use a cu
 
 **OpenAI integration**
 
-Setting `--openai.token [$OPENAI_TOKEN]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
+Setting `--openai.token [$OPENAI_TOKEN]` or `--openai.apibase [$OPENAI_API_BASE]` enables OpenAI integration. All other parameters for OpenAI integration are optional and have reasonable defaults, for more details see [All Application Options](#all-application-options) section below.
 
 To keep the number of calls low and the price manageable, the bot uses the following approach:
 
-- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token.
+- By default, the OpenAI integration is disabled. To enable it, set `--openai.token` to a valid OpenAI token, or `--openai.apibase` to an OpenAI-compatible server (see below).
 -  Only the initial message(s) from a specific user are examined for spam. If `--paranoid` mode is activated, OpenAI will not be utilized at all.
 -  The OpenAI check is the final step in the series of checks. By default (if `--openai.veto` is not configured), the bot will not invoke OpenAI if any preceding checks have classified the message as spam. This default setting enhances spam detection, allowing for the identification of more spam messages that might otherwise go unnoticed.
 -  Configuring `--openai.veto` alters the workflow. In veto mode, OpenAI is contacted *only* if the message is deemed spam by other checks. A message is classified as spam solely if OpenAI corroborates this determination. This approach minimizes the occurrence of false positives, resulting in a more meticulous spam detection process.
@@ -122,6 +122,14 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 -  For models that support "thinking mode" (like Gemini 2.5 Flash), you can control the model's reasoning behavior by setting `--openai.reasoning-effort=` to one of the following values: `none` (default, the parameter is not sent and the model uses its own default effort), `off` (sends `reasoning_effort: none` to disable thinking), `low`, `medium`, or `high`. `none` is safe for any model, including ones without reasoning support such as `gpt-4o-mini`, which reject the parameter; `off` works only with models that accept `none`, such as `gpt-6-luna`, while others such as `gpt-6.1-sol` reject it. For most spam detection cases on a thinking model that accepts it, `off` is recommended for faster responses. With `--confdb`, this value comes from the database; to change it, run `save-config` without `--confdb` (or `CONFDB`), supplying the full intended configuration, since this replaces the stored settings. TG-Spam also automatically strips all `<thought></thought>` tags from responses, ensuring clean output regardless of the model's reasoning behavior.
 - You can specify additional custom prompts to better detect certain spam patterns by using the `--openai.custom-prompt=[$OPENAI_CUSTOM_PROMPT]` parameter. This parameter can be repeated multiple times to add different spam patterns to check for. For example, to detect messages following the pattern "will perform <action> - $1,234", you can add `--openai.custom-prompt="Check if message follows pattern: 'will perform [action] - $[amount]' which is a common spam format"`. Custom prompts are appended to the base system prompt and help guide the AI in identifying specific spam patterns that might be difficult to detect with other methods.
 -  Messages shorter than `--min-msg-len` are typically skipped by most content checks because they often lack enough context to classify accurately. Enable LLM checks for short messages with `--openai.check-short-messages` or `--gemini.check-short-messages`. A short message reaches an enabled LLM only when no earlier check has flagged it; stop-word, metadata, Lua, and CAS checks run before the length gate. Veto settings do not affect short-message checks: an earlier spam verdict returns before any LLM runs, while an unflagged short message has no verdict to veto. **Note**: Enabling short-message LLM checks may increase API costs, especially in high-volume environments.
+
+**Local and self-hosted models**: `--openai.apibase` can point to any server with an OpenAI-compatible chat completions API, such as Ollama, so the check runs on a local model. Set `--openai.model` to a model installed on that server. The server must accept the `json_object` response format the bot requests. `--openai.token` can stay empty when the server needs no key, in which case no authorization header is sent. The address is resolved where the bot runs: inside a container, `localhost` is the container itself, not the host. In this example `ollama` is the hostname of an Ollama service on the same docker network as the bot; for a bot running natively next to Ollama use `localhost`:
+
+```
+--openai.apibase=http://ollama:11434/v1 --openai.model=llama3.1
+```
+
+With `--confdb` these flags do not override the stored `openai.api_base` and `openai.model` values; change the stored ones and restart.
 
 
 **Gemini integration**
@@ -204,6 +212,8 @@ Enabling this check also changes what reaches the rest of the pipeline. A file o
 
 This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
+Enabling this check also admits caption-less audio files for evaluation. An admitted audio file is stored in the message locator, counts toward `--max-short-msg-count` if that is configured, and goes through the checks that do not need message text: stopword matching, the username-symbols check, Lua plugins, and CAS when `--cas.token` is set. With the check off, a directly posted caption-less audio file is dropped on intake. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of this option. Quoted and replied-to text counts toward the length threshold, so a caption-less audio file posted as a reply to a long message is not flagged by this check.
+
 **Contact only check**
 
 This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text of its own, it will be marked as spam.
@@ -264,7 +274,7 @@ This option is disabled by default. When enabled, the bot bans an unapproved use
 
 Media-only messages (a photo or video with no caption) count as short messages too, since image flooding is the same probing pattern without text. An unapproved user posting several caption-less photos will reach the threshold. A caption-less file or GIF posted directly counts only when `--meta.document-only` is enabled; without it, it is dropped before the counter sees it. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of that option and counts either way. A contact card follows the same rule with `--meta.contact-only`.
 
-**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. When it is enabled, the configuration also requires `--min-msg-len` of 2 or more, so that non-empty text can count as short; 0 and 1 are rejected at startup, which also rejects the media-only counting that 1 allowed. With `--confdb`, CLI flags do not override these two settings: if short-message flood detection is enabled with a stored `min_msg_len` of 1, change and save it through the web settings before upgrading, or startup will fail. A stored 0 is replaced by the default of 50 on load. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
+**Important**: this check requires the first-message evaluation path (`--first-messages-count > 0` or `--first-message-only`); `--paranoid` mode is incompatible and rejected at startup. When it is enabled, the configuration also requires `--min-msg-len` of 2 or more, so that non-empty text can count as short; 0 and 1 are rejected at startup, which also rejects the media-only counting that 1 allowed. With `--confdb`, CLI flags do not override these two settings: if short-message flood detection is enabled with a stored `min_msg_len` of 0 or 1, change and save it through the web settings before upgrading, or startup will fail. A stored 0 is kept on load, like any other explicitly saved value. The risk window for naturally terse legitimate users is bounded to the evaluation period; once approved, the check skips for the rest of that user's lifetime.
 
 Configure with:
 - `--max-short-msg-count=, [$MAX_SHORT_MSG_COUNT]` (default: 0, disabled) - Ban after N short messages from an unapproved user
@@ -387,7 +397,7 @@ If you encounter errors like `no persistent spam or ham samples found in the sto
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
 
-To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts.
+To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. Prefer a supergroup (its id starts with `-100`): Telegram upgrades a basic group to a supergroup on some setting changes, the id changes with it, and admin notifications fail until the configured admin group id is updated and the bot restarted. With `--confdb` that is the stored `admin.admin_group` value, which `--admin.group` does not override.
 
 <details markdown>
   <summary>Screenshots</summary>
@@ -429,7 +439,7 @@ When enabled, the bot will:
 
 ### Updating spam and ham samples dynamically
 
-The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat (the legacy way) or reply to the message with `/spam` or `spam` text (the modern way), the bot will add this message to the internal spam samples and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. It does this even when saving the spam sample fails (for example, a read-only database), and the admin chat summary names a delete or ban Telegram rejected. To locate the original message and its sender, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. If the lookup fails (e.g. after a bot restart or network gap) but Telegram's `ForwardOrigin` provides the original sender's user ID (i.e. the sender hasn't hidden forwards), the bot will still ban the user and update spam samples, but it won't be able to delete the original message automatically. In this case, the bot posts a warning in the admin chat asking the admin to delete the original message manually. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 24h) [$HISTORY_DURATION]` and `--history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
+The bot can be configured to update spam samples dynamically. To enable this feature, reporting to the admin chat must be enabled (see `--admin.group=,  [$ADMIN_GROUP]` above. If any of privileged users (`--super=, [$SUPER_USER]`) forwards a message to admin chat (the legacy way) or reply to the message with `/spam` or `spam` text (the modern way), the bot will add this message to the internal spam samples and reload it. This allows the bot to learn new spam patterns on the fly. In addition, the bot will do the best to remove the original spam message from the group and ban the user who sent it. It does this even when saving the spam sample fails (for example, a read-only database), and the admin chat summary names a delete or ban Telegram rejected. In dry run and training mode the summary is tagged `[dry run]` or `[training]` and says the user would have been banned, since neither mode bans; training still deletes the message when the bot locates it. To locate the original message and its sender, tg-spam keeps the list of latest messages (in fact, it stores hashes) associated with the user id and the message id. This information is used to find the original message and ban the user. If the lookup fails (e.g. after a bot restart or network gap) but Telegram's `ForwardOrigin` provides the original sender's user ID (i.e. the sender hasn't hidden forwards), the bot will still ban the user and update spam samples (dry run does neither, training mode skips the ban), but it won't be able to delete the original message automatically. In this case, the bot posts a warning in the admin chat asking the admin to delete the original message manually. There are two parameters to control the lookup of the original message: `--history-duration=  (default: 24h) [$HISTORY_DURATION]` and `--history-min-size=  (default: 1000) [$HISTORY_MIN_SIZE]`. Both define how many messages to keep in the internal cache and for how long. In other words - if the message is older than `--history-duration=` and the total number of stored messages is greater than `--history-min-size=`, the bot will remove the message from the lookup table. The reason for this is to keep the lookup table small and fast. The default values are reasonable and should work for most cases.
 
 Updating ham samples dynamically works differently. If any of privileged users unban a message in admin chat, the bot will add this message to the internal ham samples, reload it and unban the user. This allows the bot to learn new ham patterns on the fly.
 
@@ -739,7 +749,7 @@ meta:
       --meta.external-reply             enable external reply check [$META_EXTERNAL_REPLY]
 
 openai:
-      --openai.token=                   openai token, disabled if not set [$OPENAI_TOKEN]
+      --openai.token=                   openai token, disabled if neither token nor apibase is set [$OPENAI_TOKEN]
       --openai.apibase=                 custom openai API base, default is https://api.openai.com/v1 [$OPENAI_API_BASE]
       --openai.veto                     veto mode, confirm detected spam [$OPENAI_VETO]
       --openai.prompt=                  openai system prompt, if empty uses builtin default [$OPENAI_PROMPT]
@@ -1010,7 +1020,7 @@ All pages are protected by basic auth the same way as webapi server.
 
 ## Example of docker-compose.yml
 
-This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
+This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as the non-root user with uid:gid 1000:1000, which is also the image default. The host folders it mounts must be writable by that uid:gid, for example after `mkdir -p log/tg-spam var/tg-spam && sudo chown 1000:1000 log/tg-spam var/tg-spam` on Linux. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
 
 
 ```yaml
@@ -1021,7 +1031,7 @@ services:
     hostname: tg-spam
     restart: always
     container_name: tg-spam
-    user: "1000:1000" # set uid:gid to host user to avoid permission issues with mounted volumes
+    user: "1000:1000" # image default; mounted host folders must be writable by 1000:1000
     logging: &default_logging
       driver: json-file
       options:
@@ -1031,7 +1041,7 @@ services:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN=ххххх
       - TELEGRAM_GROUP=example_chat # public group name to monitor and protect
-      - ADMIN_GROUP=-403767890 # private group id for admin spam-reports
+      - ADMIN_GROUP=-1001234567890 # private supergroup id for admin spam-reports
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M

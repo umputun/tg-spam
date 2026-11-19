@@ -6,7 +6,7 @@ services:
     hostname: tg-spam
     restart: always
     container_name: tg-spam
-    user: "1000:1000" # run with the same user as the host machine to avoid permission issues
+    user: "1000:1000" # mounted host folders must be writable by 1000:1000
     logging: &default_logging
       driver: json-file
       options:
@@ -16,7 +16,7 @@ services:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN # set your telegram token in .env file
       - TELEGRAM_GROUP # set your telegram group in .env file
-      - ADMIN_GROUP=-403777777777 # admin group id
+      - ADMIN_GROUP=-1001234567890 # admin supergroup id
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
@@ -35,7 +35,7 @@ services:
     container_name: tg-spam-updater
     restart: always
     logging: *default_logging
-    user: "1000:1000" # run with the same user as the host machine to avoid permission issues
+    user: "1000:1000" # mounted host folders must be writable by 1000:1000
     volumes:
       - ./tg-spam-samples:/samples
     command: ["https://github.com/radio-t/tg-spam-samples.git", "/samples"]

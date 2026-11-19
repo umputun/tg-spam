@@ -1,4 +1,7 @@
 # example of a compose file with psql storage, server enabled and logging turned on
+# on linux create the logs folder before the first start and give it to uid:gid 1000:1000, the user tg-spam
+# runs as, otherwise docker creates it owned by root and tg-spam can't write its log:
+#   mkdir -p logs && sudo chown 1000:1000 logs
 services:
   tg-spam:
     image: ghcr.io/umputun/tg-spam:latest # use :master tag for latest (unstable) version
@@ -24,7 +27,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./logs:/srv/logs        # mount logs location to host's ./log directory
+      - ./logs:/srv/logs        # mount logs location to host's ./logs directory
     command: --super=user1 --super=user2 # list of super-users
     labels:                     # labels for reproxy, runs on /tg-spam path
         reproxy.port: "8080"    # port of the web server

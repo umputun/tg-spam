@@ -3573,6 +3573,7 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 		name                 string
 		forward, found       bool
 		ownChat              bool
+		dry, training        bool
 		sampleErr, delErr    error
 		banErr               error
 		wantEvents           []string
@@ -3607,6 +3608,28 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 		{name: "forward fallback, ban rejected", forward: true, banErr: rejected,
 			wantEvents:  []string{"ban: 666"},
 			wantOutcome: "the user not banned", wantErr: "failed to ban user 666"},
+		{name: "reply, dry", dry: true,
+			wantOutcome: `[dry run] requested by "admin": message would have been deleted, user would have been banned`},
+		{name: "reply, dry takes precedence over training", dry: true, training: true,
+			wantOutcome: `[dry run] requested by "admin": message would have been deleted, user would have been banned`},
+		{name: "reply from own chat, dry", ownChat: true, dry: true,
+			wantOutcome: `[dry run] requested by "admin": message would have been deleted, ban skipped for the group or its linked channel`},
+		{name: "reply, training", training: true, wantEvents: []string{"delete: 999", "delete: 789"},
+			wantOutcome: `[training] requested by "admin": message deleted, user would have been banned`},
+		{name: "reply, training, delete rejected", training: true, delErr: rejected,
+			wantEvents:  []string{"delete: 999", "delete: 789"},
+			wantOutcome: `[training] requested by "admin": message not deleted, user would have been banned`,
+			wantErr:     "failed to delete message 999"},
+		{name: "forward, dry", forward: true, found: true, dry: true,
+			wantOutcome: "[dry run] message would have been deleted, user would have been banned"},
+		{name: "forward, training", forward: true, found: true, training: true, wantEvents: []string{"delete: 999"},
+			wantOutcome: "[training] message deleted, user would have been banned"},
+		{name: "forward from own chat, training", forward: true, found: true, ownChat: true, training: true,
+			wantEvents:  []string{"delete: 999"},
+			wantOutcome: "[training] message deleted, ban skipped for the group or its linked channel"},
+		{name: "forward fallback, dry", forward: true, dry: true, wantOutcome: "[dry run] user would have been banned"},
+		{name: "forward fallback, training", forward: true, training: true,
+			wantOutcome: "[training] user would have been banned"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3615,16 +3638,25 @@ func TestAdmin_ModerationOutcome(t *testing.T) {
 				senderID = 123
 			}
 			e := newEnv(t, tt.sampleErr, tt.delErr, tt.banErr, tt.found, senderID)
+			e.adm.dry, e.adm.trainingMode = tt.dry, tt.training
 			var err error
 			if tt.forward {
 				err = e.adm.MsgHandler(forwardUpdate)
 			} else {
 				err = e.adm.directReport(replyUpdate(tt.ownChat), true)
 			}
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
-			assert.NotContains(t, err.Error(), spamText)
-			require.Len(t, e.bot.UpdateSpamCalls(), 1)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.NotContains(t, err.Error(), spamText)
+			}
+			if tt.dry {
+				assert.Empty(t, e.bot.UpdateSpamCalls())
+			} else {
+				require.Len(t, e.bot.UpdateSpamCalls(), 1)
+			}
 
 			var actions []string
 			noticeAt, lastAction := -1, -1

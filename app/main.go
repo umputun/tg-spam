@@ -104,7 +104,7 @@ type options struct {
 	} `group:"meta" namespace:"meta" env-namespace:"META"`
 
 	OpenAI struct {
-		Token              string   `long:"token" env:"TOKEN" description:"openai token, disabled if not set"`
+		Token              string   `long:"token" env:"TOKEN" description:"openai token, disabled if neither token nor apibase is set"`
 		APIBase            string   `long:"apibase" env:"API_BASE" description:"custom openai API base, default is https://api.openai.com/v1"`
 		Veto               bool     `long:"veto" env:"VETO" description:"veto mode, confirm detected spam"`
 		Prompt             string   `long:"prompt" env:"PROMPT" default:"" description:"openai system prompt, if empty uses builtin default"`
@@ -547,6 +547,7 @@ func execute(ctx context.Context, settings *config.Settings, reloadNormalize fun
 		Warnings:                warningsStore,
 		AdmitDocuments:          settings.Meta.DocumentsOnly,
 		AdmitContacts:           settings.Meta.ContactOnly,
+		AdmitAudio:              settings.Meta.AudiosOnly,
 	}
 
 	if settings.Delete.JoinMessages {

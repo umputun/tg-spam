@@ -71,6 +71,7 @@ type TelegramListener struct {
 	Warnings                Warnings      // storage for admin /warn records
 	AdmitDocuments          bool          // admit text-less documents for detector checks and locator-backed counters
 	AdmitContacts           bool          // admit text-less shared contacts for detector checks and locator-backed counters
+	AdmitAudio              bool          // admit caption-less audio files for detector checks and locator-backed counters
 
 	adminHandler    *admin
 	reportsHandler  *userReports
@@ -195,6 +196,14 @@ func (l *TelegramListener) Do(ctx context.Context) error {
 		case update, ok := <-updates:
 			if !ok {
 				return fmt.Errorf("telegram update chan closed")
+			}
+
+			// messages from the new supergroup fail isChatAllowed and are dropped silently, while this
+			// service message still arrives in the old chat and carries the replacement id
+			if update.Message != nil && update.Message.MigrateToChatID != 0 && update.Message.Chat.ID == l.chatID {
+				log.Printf("[ERROR] group %d was upgraded to a supergroup, new chat id is %d; "+
+					"update the configured primary group id to %d and restart, moderation is stopped until then",
+					l.chatID, update.Message.MigrateToChatID, update.Message.MigrateToChatID)
 			}
 
 			// handle admin chat messages. can be just messages (MsgHandler will ignore those)
@@ -396,17 +405,16 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 	log.Printf("[DEBUG] %s", string(msgJSON))
 	msg := transform(update.Message)
 
-	// a text-less document or shared contact is admitted only when its own check is on. once admitted it is
+	// a text-less document, shared contact or audio file is admitted only when its own check is on. once admitted it is
 	// stored by the locator, inflating the per-user count --max-short-msg-count bans on, and it reaches the
 	// checks that need no message text: stop-words (matched against username and user ID too),
 	// username-symbols, lua plugins and CAS, which runs when --cas.token is set and bans permanently
 	documentAdmitted := msg.WithDocument && l.AdmitDocuments
 	contactAdmitted := msg.WithContact && l.AdmitContacts
+	audioAdmitted := msg.WithAudio && l.AdmitAudio
 
-	// ignore messages with empty text, no media, no video, no video note, no forward, no external reply,
-	// no admitted document, no admitted contact
 	if strings.TrimSpace(msg.Text) == "" && msg.Image == nil && !msg.WithVideoNote && !msg.WithVideo &&
-		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted && !contactAdmitted {
+		!msg.WithForward && !msg.WithExternalReply && !documentAdmitted && !contactAdmitted && !audioAdmitted {
 		// an edit that removed the text is not checked, so its earlier text would keep counting as a duplicate
 		if update.Message.EditDate != 0 {
 			l.Bot.ForgetMessage(*msg)
@@ -505,27 +513,31 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 // procSuperReply processes superuser commands (reply) /spam, /ban, /warn
 func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
+	var handle func(tbapi.Update) error
+	var action, failure string
 	switch {
 	case strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam"):
-		log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
-		if err := l.adminHandler.DirectSpamReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct spam report: %v", err)
-		}
-		return true
+		handle, action, failure = l.adminHandler.DirectSpamReport, "reported spam", "direct spam report"
 	case strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban"):
-		log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
-		if err := l.adminHandler.DirectBanReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct ban request: %v", err)
-		}
-		return true
+		handle, action, failure = l.adminHandler.DirectBanReport, "requested ban", "direct ban request"
 	case strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn"):
-		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
-		if err := l.adminHandler.DirectWarnReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct warning request: %v", err)
-		}
+		handle, action, failure = l.adminHandler.DirectWarnReport, "requested warning", "direct warning request"
+	default:
+		return false
+	}
+
+	// moderation handlers target the primary chat, so the message ids must come from that chat
+	if update.Message.Chat.ID != l.chatID {
+		log.Printf("[DEBUG] ignoring superuser %s command %q from chat %d, not the monitored group",
+			update.Message.From.UserName, update.Message.Text, update.Message.Chat.ID)
 		return true
 	}
-	return false
+
+	log.Printf("[DEBUG] superuser %s %s", update.Message.From.UserName, action)
+	if err := handle(update); err != nil {
+		log.Printf("[WARN] failed to process %s: %v", failure, err)
+	}
+	return true
 }
 
 // isReportCommand checks if message text is a report command variant: report, /report,

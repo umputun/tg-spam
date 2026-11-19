@@ -134,7 +134,7 @@ sudo chown 1000:1000 data
 ```
 5. Type this command and press Enter:
 ```
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Step 5: Adding the Bot to Your Group
@@ -157,16 +157,16 @@ docker-compose up -d
 ## Common Questions
 
 **Q: How do I know if it's working?**
-A: The bot will automatically start monitoring messages. Try sending a test message in your group - the bot should be active and monitoring. You can inspect the bot's logs by running `docker-compose logs -f tg-spam` in your tg-spam folder.
+A: The bot will automatically start monitoring messages. Try sending a test message in your group - the bot should be active and monitoring. You can inspect the bot's logs by running `docker compose logs -f tg-spam` in your tg-spam folder.
 
 **Q: How do I stop the bot?**
-A: In Terminal/Command Prompt, go to your tg-spam folder and type: `docker-compose down`
+A: In Terminal/Command Prompt, go to your tg-spam folder and type: `docker compose down`
 
 **Q: How do I update the bot?**
 A: In Terminal/Command Prompt, go to your tg-spam folder and type:
 ```
-docker-compose pull
-docker-compose up -d
+docker compose pull
+docker compose up -d
 ```
 
 **Q: Something's not working. What should I check?**

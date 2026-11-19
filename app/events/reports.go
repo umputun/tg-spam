@@ -75,6 +75,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	case origMsg.SenderChat != nil:
 		ch := origMsg.SenderChat
 		if origMsg.IsAutomaticForward || ch.ID == r.primChatID || ch.ID == r.linkedChannelID {
+			r.deleteCommand(update.Message.MessageID)
 			return fmt.Errorf("cannot report messages from the group or its linked channel")
 		}
 		reportedID = ch.ID
@@ -94,12 +95,14 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 			reportedName = "@" + origMsg.From.UserName
 		}
 	default:
+		r.deleteCommand(update.Message.MessageID)
 		return fmt.Errorf("cannot report messages without a sender")
 	}
 
 	// reject reports targeting forum topic creation messages to prevent accidental topic deletion or bans
 	if origMsg.ForumTopicCreated != nil {
 		log.Printf("[DEBUG] user report ignored: reported message is a forum topic creation message")
+		r.deleteCommand(update.Message.MessageID)
 		return fmt.Errorf("cannot report forum topic creation messages")
 	}
 
@@ -115,10 +118,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 
 	// validate reported user is not super user (check both username and ID)
 	if origMsg.SenderChat == nil && r.superUsers.IsSuper(origMsg.From.UserName, reportedID) {
-		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
-			MessageID: update.Message.MessageID,
-			ChatID:    r.primChatID})
+		r.deleteCommand(update.Message.MessageID)
 		return fmt.Errorf("reported message is from super-user %s (%d), ignored", origMsg.From.UserName, origMsg.From.ID)
 	}
 
@@ -126,10 +126,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	if !r.bot.IsApprovedUser(update.Message.From.ID) {
 		log.Printf("[INFO] report rejected: reporter %d (%s) not in approved list",
 			update.Message.From.ID, update.Message.From.UserName)
-		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
-			MessageID: update.Message.MessageID,
-			ChatID:    r.primChatID})
+		r.deleteCommand(update.Message.MessageID)
 		return fmt.Errorf("reporter %d not in approved list", update.Message.From.ID)
 	}
 
@@ -140,10 +137,7 @@ func (r *userReports) DirectUserReport(ctx context.Context, update tbapi.Update)
 	}
 	if rateLimited {
 		log.Printf("[INFO] reporter %d (%s) exceeded rate limit", update.Message.From.ID, update.Message.From.UserName)
-		// still delete the /report command to keep chat clean
-		_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{
-			MessageID: update.Message.MessageID,
-			ChatID:    r.primChatID})
+		r.deleteCommand(update.Message.MessageID)
 		return fmt.Errorf("rate limit exceeded for reporter %d", update.Message.From.ID)
 	}
 
@@ -350,6 +344,12 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 
 	log.Printf("[INFO] auto-ban executed for user %d by %d reports", reportedUserID, len(reports))
 	return nil
+}
+
+// deleteCommand ignores the delete error: the command may already be gone, and cleanup must not change
+// the result the caller returns
+func (r *userReports) deleteCommand(msgID int) {
+	_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{MessageID: msgID, ChatID: r.primChatID})
 }
 
 // banOutcome describes what actually happened to the reported user. dry and training make

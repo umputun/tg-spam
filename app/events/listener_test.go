@@ -1,9 +1,11 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"slices"
@@ -555,7 +557,56 @@ func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
 				return
 			}
 			assert.Empty(t, reports.AddCalls())
-			assert.Empty(t, mockAPI.RequestCalls())
+			require.Len(t, mockAPI.RequestCalls(), 1, "only the report command is deleted")
+			delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+			require.True(t, ok, "request should be a delete message config")
+			assert.Equal(t, 50, delReq.MessageID)
+			assert.Equal(t, groupID, delReq.ChatID)
+		})
+	}
+}
+
+func TestTelegramListener_DoLogsPrimaryGroupMigration(t *testing.T) {
+	const groupID, newID = int64(-403767890), int64(-1001432162429)
+	tests := []struct {
+		name    string
+		chatID  int64
+		wantLog bool
+	}{
+		{name: "primary group migrated", chatID: groupID, wantLog: true},
+		{name: "other group migrated", chatID: -400000001, wantLog: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			origOut := log.Writer()
+			log.SetOutput(&buf)
+			defer log.SetOutput(origOut)
+
+			updates := make(chan tbapi.Update, 1)
+			updates <- tbapi.Update{Message: &tbapi.Message{MessageID: 7, Chat: tbapi.Chat{ID: tt.chatID},
+				From: &tbapi.User{ID: 111, UserName: "admin"}, MigrateToChatID: newID}}
+			close(updates)
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{ID: groupID}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+				GetUpdatesChanFunc: func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updates },
+			}
+			l := &TelegramListener{TbAPI: mockAPI, Group: fmt.Sprint(groupID), Bot: &mocks.BotMock{}}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+
+			want := fmt.Sprintf("[ERROR] group %d was upgraded to a supergroup, new chat id is %d", groupID, newID)
+			if tt.wantLog {
+				assert.Contains(t, buf.String(), want)
+				return
+			}
+			assert.NotContains(t, buf.String(), "was upgraded to a supergroup")
 		})
 	}
 }
@@ -1511,6 +1562,74 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 
 	assert.Len(t, b.RemoveApprovedUserCalls(), 1)
 	assert.Equal(t, int64(88), b.RemoveApprovedUserCalls()[0].ID)
+}
+
+func TestTelegramListener_DoIgnoresSuperuserCommandsFromOtherChats(t *testing.T) {
+	tests := []struct {
+		name, text      string
+		chatID          int64
+		wantFallthrough bool
+	}{
+		{name: "spam in testing chat", text: "/spam", chatID: 777},
+		{name: "ban in testing chat", text: "ban", chatID: 777},
+		{name: "warn in testing chat", text: "/warn", chatID: 777},
+		{name: "spam in unlisted chat", text: "spam", chatID: 555},
+		{name: "ordinary reply in testing chat", text: "thanks", chatID: 777, wantFallthrough: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{ID: 123}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc:          func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+				UpdateSpamFunc:         func(msg string) error { return nil },
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+				IsApprovedUserFunc:     func(userID int64) bool { return false },
+			}
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- tbapi.Update{Message: &tbapi.Message{
+				MessageID: 50, Chat: tbapi.Chat{ID: tt.chatID}, Text: tt.text,
+				From: &tbapi.User{UserName: "superuser1", ID: 77},
+				ReplyToMessage: &tbapi.Message{MessageID: 40, Chat: tbapi.Chat{ID: tt.chatID},
+					From: &tbapi.User{ID: 666, UserName: "user"}, Text: "text 123"},
+			}}
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			l := TelegramListener{SpamLogger: mockLogger, TbAPI: mockAPI, Bot: botMock, Group: "gr",
+				SuperUsers: SuperUsers{"superuser1"}, Locator: locator, TestingIDs: []int64{777},
+				WarnMsg: "warning"}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+
+			assert.Empty(t, mockAPI.RequestCalls(), "no delete, ban or restrict in the monitored group")
+			assert.Empty(t, mockAPI.SendCalls(), "no warning or admin notice")
+			if tt.wantFallthrough {
+				require.Len(t, botMock.OnMessageCalls(), 1, "a non-command reply goes on to regular processing")
+				assert.Equal(t, "thanks", botMock.OnMessageCalls()[0].Msg.Text)
+			} else {
+				assert.Empty(t, botMock.OnMessageCalls(), "no handler diagnostics and no spam check of the command")
+			}
+			assert.Empty(t, botMock.UpdateSpamCalls())
+			assert.Empty(t, botMock.RemoveApprovedUserCalls())
+			assert.Empty(t, mockLogger.SaveCalls())
+		})
+	}
 }
 
 func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
@@ -3112,12 +3231,15 @@ func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
 func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 	document := &tbapi.Document{FileID: "doc1"}
 	contact := &tbapi.Contact{PhoneNumber: "+15550001111", FirstName: "Scam", UserID: 777}
+	audio := &tbapi.Audio{FileID: "audio1"}
 	tests := []struct {
 		name           string
 		document       *tbapi.Document
 		contact        *tbapi.Contact
+		audio          *tbapi.Audio
 		admitDocuments bool
 		admitContacts  bool
+		admitAudio     bool
 		wantChecked    bool
 	}{
 		{name: "document, documents check on", document: document, admitDocuments: true, wantChecked: true},
@@ -3126,6 +3248,10 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 		{name: "contact, contact check on", contact: contact, admitContacts: true, wantChecked: true},
 		{name: "contact, contact check off", contact: contact, wantChecked: false},
 		{name: "contact, only documents check on", contact: contact, admitDocuments: true, wantChecked: false},
+		{name: "audio, audio check on", audio: audio, admitAudio: true, wantChecked: true},
+		{name: "audio, audio check off", audio: audio, wantChecked: false},
+		{name: "audio, only contact check on", audio: audio, admitContacts: true, wantChecked: false},
+		{name: "document, only audio check on", document: document, admitAudio: true, wantChecked: false},
 	}
 
 	for _, tt := range tests {
@@ -3156,6 +3282,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 				chatID:         123,
 				AdmitDocuments: tt.admitDocuments,
 				AdmitContacts:  tt.admitContacts,
+				AdmitAudio:     tt.admitAudio,
 			}
 
 			update := tbapi.Update{
@@ -3165,6 +3292,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 					Date:      time.Now().Unix(),
 					Document:  tt.document,
 					Contact:   tt.contact,
+					Audio:     tt.audio,
 					MessageID: 789,
 				},
 			}
@@ -3184,6 +3312,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 			got := botMock.OnMessageCalls()[0].Msg
 			assert.Equal(t, tt.document != nil, got.WithDocument)
 			assert.Equal(t, tt.contact != nil, got.WithContact)
+			assert.Equal(t, tt.audio != nil, got.WithAudio)
 			assert.Empty(t, got.Text)
 			count, cErr := locator.CountUserMessages(context.Background(), "456")
 			require.NoError(t, cErr)
