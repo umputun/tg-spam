@@ -123,11 +123,13 @@ To keep the number of calls low and the price manageable, the bot uses the follo
 - You can specify additional custom prompts to better detect certain spam patterns by using the `--openai.custom-prompt=[$OPENAI_CUSTOM_PROMPT]` parameter. This parameter can be repeated multiple times to add different spam patterns to check for. For example, to detect messages following the pattern "will perform <action> - $1,234", you can add `--openai.custom-prompt="Check if message follows pattern: 'will perform [action] - $[amount]' which is a common spam format"`. Custom prompts are appended to the base system prompt and help guide the AI in identifying specific spam patterns that might be difficult to detect with other methods.
 -  Messages shorter than `--min-msg-len` are typically skipped by most content checks because they often lack enough context to classify accurately. Enable LLM checks for short messages with `--openai.check-short-messages` or `--gemini.check-short-messages`. A short message reaches an enabled LLM only when no earlier check has flagged it; stop-word, metadata, Lua, and CAS checks run before the length gate. Veto settings do not affect short-message checks: an earlier spam verdict returns before any LLM runs, while an unflagged short message has no verdict to veto. **Note**: Enabling short-message LLM checks may increase API costs, especially in high-volume environments.
 
-**Local and self-hosted models**: `--openai.apibase` can point to any server with an OpenAI-compatible chat completions API, such as Ollama or LM Studio, so the check runs on a local model. Set `--openai.model` to a model installed on that server. The server must accept the `json_object` response format the bot requests. `--openai.token` can stay empty when the server needs no key, in which case no authorization header is sent. The address is resolved where the bot runs: inside a container, `localhost` is the container itself, not the host.
+**Local and self-hosted models**: `--openai.apibase` can point to any server with an OpenAI-compatible chat completions API, such as Ollama or LM Studio, so the check runs on a local model. Set `--openai.model` to a model installed on that server. The server must accept the `json_object` response format the bot requests. `--openai.token` can stay empty when the server needs no key, in which case no authorization header is sent. The address is resolved where the bot runs: inside a container, `localhost` is the container itself, not the host. In this example `ollama` is the hostname of an Ollama service on the same docker network as the bot; for a bot running natively next to Ollama use `localhost`:
 
 ```
 --openai.apibase=http://ollama:11434/v1 --openai.model=llama3.1
 ```
+
+With `--confdb` these flags do not override the stored `openai.api_base` and `openai.model` values; change the stored ones and restart.
 
 
 **Gemini integration**
@@ -395,7 +397,7 @@ If you encounter errors like `no persistent spam or ham samples found in the sto
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
 
-To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. Prefer a supergroup (its id starts with `-100`): Telegram upgrades a basic group to a supergroup on some setting changes, the id changes with it, and admin notifications fail until `--admin.group` is updated to the new id.
+To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. Prefer a supergroup (its id starts with `-100`): Telegram upgrades a basic group to a supergroup on some setting changes, the id changes with it, and admin notifications fail until the configured admin group id is updated and the bot restarted. With `--confdb` that is the stored `admin.admin_group` value, which `--admin.group` does not override.
 
 <details markdown>
   <summary>Screenshots</summary>
@@ -1018,7 +1020,7 @@ All pages are protected by basic auth the same way as webapi server.
 
 ## Example of docker-compose.yml
 
-This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as the non-root user with uid:gid 1000:1000, which is also the image default. The host folders it mounts must be writable by that uid:gid, for example after `mkdir -p log/tg-spam var/tg-spam && sudo chown -R 1000:1000 log var` on Linux. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
+This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as the non-root user with uid:gid 1000:1000, which is also the image default. The host folders it mounts must be writable by that uid:gid, for example after `mkdir -p log/tg-spam var/tg-spam && sudo chown 1000:1000 log/tg-spam var/tg-spam` on Linux. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
 
 
 ```yaml

@@ -25,7 +25,7 @@ services:
       - SERVER_ENABLED=true     # enable server, default port is 8080
     volumes:
       - tg-data:/srv/data       # mount volume with samples and dynamic files
-      - ./logs:/srv/logs        # mount logs location to host's ./log directory
+      - ./logs:/srv/logs        # mount logs location to host's ./logs directory
     command: --super=user1 --super=user2 # list of super-users
     labels:                     # labels for reproxy, runs on /tg-spam path
         reproxy.port: "8080"    # port of the web server
