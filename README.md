@@ -47,7 +47,7 @@ All the configuration is done via environment variables or command line argument
 There are some mandatory parameters what has to be set:
 
 - `--telegram.token=, [$TELEGRAM_TOKEN]` - telegram bot token. See below how to get it.
-- `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it. A basic group gets a new id when Telegram upgrades it to a supergroup (supergroup ids start with `-100`), and the bot stops moderating until the setting is updated; when the bot sees the upgrade it logs the new id at `ERROR` level.
+- `--telegram.group=, [$TELEGRAM_GROUP]` - group name/id. This can be a group name (for public groups it will look like `mygroup`) or group id (for private groups it will look like `-123456789`). To get the group id you can use [this bot](https://t.me/myidbot) or others like it. A basic group gets a new id when Telegram upgrades it to a supergroup (supergroup ids start with `-100`), and the bot stops moderating until the setting is updated; when the bot sees the upgrade it logs the new id at `ERROR` level. With `--confdb` the group id is read from the stored `telegram.group` value, and `--telegram.group` does not override it.
 
 As long as theses two parameters are set, the bot will work. Remember to add the bot to the group as an admin, otherwise it will not be able to delete messages and ban users.
 

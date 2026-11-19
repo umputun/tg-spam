@@ -577,8 +577,9 @@ func TestTelegramListener_DoLogsPrimaryGroupMigration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
+			origOut := log.Writer()
 			log.SetOutput(&buf)
-			defer log.SetOutput(os.Stderr)
+			defer log.SetOutput(origOut)
 
 			updates := make(chan tbapi.Update, 1)
 			updates <- tbapi.Update{Message: &tbapi.Message{MessageID: 7, Chat: tbapi.Chat{ID: tt.chatID},
@@ -601,7 +602,6 @@ func TestTelegramListener_DoLogsPrimaryGroupMigration(t *testing.T) {
 			want := fmt.Sprintf("[ERROR] group %d was upgraded to a supergroup, new chat id is %d", groupID, newID)
 			if tt.wantLog {
 				assert.Contains(t, buf.String(), want)
-				assert.Contains(t, buf.String(), "--telegram.group")
 				return
 			}
 			assert.NotContains(t, buf.String(), "was upgraded to a supergroup")

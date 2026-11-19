@@ -346,8 +346,8 @@ func (r *userReports) executeAutoBan(ctx context.Context, reports []storage.Repo
 	return nil
 }
 
-// deleteCommand removes the reporter's command message from the primary chat, best effort, so a rejected
-// report does not leave it behind
+// deleteCommand ignores the delete error: the command may already be gone, and cleanup must not change
+// the result the caller returns
 func (r *userReports) deleteCommand(msgID int) {
 	_, _ = r.tbAPI.Request(tbapi.DeleteMessageConfig{MessageID: msgID, ChatID: r.primChatID})
 }
