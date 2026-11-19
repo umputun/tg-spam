@@ -16,7 +16,7 @@ services:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN # set your telegram token in .env file
       - TELEGRAM_GROUP # set your telegram group in .env file
-      - ADMIN_GROUP=-403777777777 # admin group id
+      - ADMIN_GROUP=-1001234567890 # admin supergroup id
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M

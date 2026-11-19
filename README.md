@@ -389,7 +389,7 @@ If you encounter errors like `no persistent spam or ham samples found in the sto
 
 Optionally, user can specify the admin chat/group name/id. In this case, the bot will send a message to the admin chat as soon as a spammer is detected. Admin can see all the spam and all banned users and could also unban the user, confirm the ban or get results of spam checks by clicking a button directly on the message.
 
-To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts.
+To allow such a feature, `--admin.group=,  [$ADMIN_GROUP]` must be specified. This can be a group name (for public groups), but usually it is a group id (for private groups) or personal accounts. Prefer a supergroup (its id starts with `-100`): Telegram upgrades a basic group to a supergroup on some setting changes, the id changes with it, and admin notifications fail until `--admin.group` is updated to the new id.
 
 <details markdown>
   <summary>Screenshots</summary>
@@ -1033,7 +1033,7 @@ services:
       - TZ=America/Chicago
       - TELEGRAM_TOKEN=ххххх
       - TELEGRAM_GROUP=example_chat # public group name to monitor and protect
-      - ADMIN_GROUP=-403767890 # private group id for admin spam-reports
+      - ADMIN_GROUP=-1001234567890 # private supergroup id for admin spam-reports
       - LOGGER_ENABLED=true
       - LOGGER_FILE=/srv/log/tg-spam.log
       - LOGGER_MAX_SIZE=5M
