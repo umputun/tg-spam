@@ -556,6 +556,27 @@ func TestLoadConfigHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "stored-instance", srv.AppSettings.InstanceID)
 	})
+	t.Run("blob without instance id keeps the running one", func(t *testing.T) {
+		// regression: ApplyDefaults filled the template's "tg-spam" and the next save persisted it
+		settingsStore := &mocks.SettingsStoreMock{
+			LoadFunc: func(ctx context.Context) (*config.Settings, error) {
+				return &config.Settings{Telegram: config.TelegramSettings{Group: "stored-group"}}, nil
+			},
+		}
+		defaults := &config.Settings{InstanceID: "tg-spam"}
+		srv := Server{
+			SettingsStore:   settingsStore,
+			AppSettings:     &config.Settings{InstanceID: "running-instance"},
+			ReloadNormalize: func(s *config.Settings) { s.ApplyDefaults(defaults) },
+		}
+
+		w := httptest.NewRecorder()
+		srv.loadConfigHandler(w, httptest.NewRequest("POST", "/config/reload", http.NoBody))
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "running-instance", srv.AppSettings.InstanceID)
+		assert.Equal(t, "stored-group", srv.AppSettings.Telegram.Group)
+	})
 }
 
 func TestUpdateConfigHandler(t *testing.T) {

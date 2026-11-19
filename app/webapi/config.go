@@ -79,6 +79,12 @@ func (s *Server) loadConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// a blob without instance_id keeps the running one, as startup does; otherwise ApplyDefaults below
+	// fills the template's value and the next save persists it, rebinding every store on restart
+	if settings.InstanceID == "" {
+		settings.InstanceID = s.AppSettings.InstanceID
+	}
+
 	// reapply startup-equivalent normalization: refills stored zeros from the
 	// defaults template (except zero-aware fields) and reasserts operator-
 	// supplied operational CLI overrides (--files.dynamic, --files.samples,
