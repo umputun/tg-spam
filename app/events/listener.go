@@ -526,8 +526,7 @@ func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
 		return false
 	}
 
-	// every handler deletes, bans and warns in the monitored group by the reply's message and user IDs,
-	// which belong to the chat the command came from, so a command from any other chat is consumed unrun
+	// moderation handlers target the primary chat, so the message ids must come from that chat
 	if update.Message.Chat.ID != l.chatID {
 		log.Printf("[DEBUG] ignoring superuser %s command %q from chat %d, not the monitored group",
 			update.Message.From.UserName, update.Message.Text, update.Message.Chat.ID)
