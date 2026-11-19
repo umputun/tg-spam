@@ -1018,7 +1018,7 @@ All pages are protected by basic auth the same way as webapi server.
 
 ## Example of docker-compose.yml
 
-This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as a non-root user with uid:gid 1000:1000 (matching host's uid:gid) to avoid permission issues with mounted volumes. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
+This is an example of a docker-compose.yml file to run the bot. It is using the latest stable version of the bot from docker hub and running as the non-root user with uid:gid 1000:1000, which is also the image default. The host folders it mounts must be writable by that uid:gid, for example after `mkdir -p log/tg-spam var/tg-spam && sudo chown -R 1000:1000 log var` on Linux. The bot is using the host timezone and has a few super-users set. It is logging to the host directory `./log/tg-spam` and keeps all the dynamic data files in `./var/tg-spam`. The bot is using the admin chat and has a secret to protect generated links. It is also using the default set of samples and stop words.
 
 
 ```yaml
@@ -1029,7 +1029,7 @@ services:
     hostname: tg-spam
     restart: always
     container_name: tg-spam
-    user: "1000:1000" # set uid:gid to host user to avoid permission issues with mounted volumes
+    user: "1000:1000" # image default; mounted host folders must be writable by 1000:1000
     logging: &default_logging
       driver: json-file
       options:
