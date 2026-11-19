@@ -1564,6 +1564,74 @@ func TestTelegramListener_DoWithForwarded(t *testing.T) {
 	assert.Equal(t, int64(88), b.RemoveApprovedUserCalls()[0].ID)
 }
 
+func TestTelegramListener_DoIgnoresSuperuserCommandsFromOtherChats(t *testing.T) {
+	tests := []struct {
+		name, text      string
+		chatID          int64
+		wantFallthrough bool
+	}{
+		{name: "spam in testing chat", text: "/spam", chatID: 777},
+		{name: "ban in testing chat", text: "ban", chatID: 777},
+		{name: "warn in testing chat", text: "/warn", chatID: 777},
+		{name: "spam in unlisted chat", text: "spam", chatID: 555},
+		{name: "ordinary reply in testing chat", text: "thanks", chatID: 777, wantFallthrough: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
+			mockAPI := &mocks.TbAPIMock{
+				GetChatFunc: func(config tbapi.ChatInfoConfig) (tbapi.ChatFullInfo, error) {
+					return tbapi.ChatFullInfo{ID: 123}, nil
+				},
+				SendFunc: func(c tbapi.Chattable) (tbapi.Message, error) { return tbapi.Message{}, nil },
+				RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				},
+				GetChatAdministratorsFunc: func(config tbapi.ChatAdministratorsConfig) ([]tbapi.ChatMember, error) {
+					return nil, nil
+				},
+			}
+			botMock := &mocks.BotMock{
+				OnMessageFunc:          func(msg bot.Message, checkOnly bool) bot.Response { return bot.Response{} },
+				UpdateSpamFunc:         func(msg string) error { return nil },
+				RemoveApprovedUserFunc: func(id int64) error { return nil },
+				IsApprovedUserFunc:     func(userID int64) bool { return false },
+			}
+			locator, teardown := prepTestLocator(t)
+			defer teardown()
+
+			updChan := make(chan tbapi.Update, 1)
+			updChan <- tbapi.Update{Message: &tbapi.Message{
+				MessageID: 50, Chat: tbapi.Chat{ID: tt.chatID}, Text: tt.text,
+				From: &tbapi.User{UserName: "superuser1", ID: 77},
+				ReplyToMessage: &tbapi.Message{MessageID: 40, Chat: tbapi.Chat{ID: tt.chatID},
+					From: &tbapi.User{ID: 666, UserName: "user"}, Text: "text 123"},
+			}}
+			close(updChan)
+			mockAPI.GetUpdatesChanFunc = func(config tbapi.UpdateConfig) tbapi.UpdatesChannel { return updChan }
+
+			l := TelegramListener{SpamLogger: mockLogger, TbAPI: mockAPI, Bot: botMock, Group: "gr",
+				SuperUsers: SuperUsers{"superuser1"}, Locator: locator, TestingIDs: []int64{777},
+				WarnMsg: "warning"}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			require.EqualError(t, l.Do(ctx), "telegram update chan closed")
+
+			assert.Empty(t, mockAPI.RequestCalls(), "no delete, ban or restrict in the monitored group")
+			assert.Empty(t, mockAPI.SendCalls(), "no warning or admin notice")
+			if tt.wantFallthrough {
+				require.Len(t, botMock.OnMessageCalls(), 1, "a non-command reply goes on to regular processing")
+				assert.Equal(t, "thanks", botMock.OnMessageCalls()[0].Msg.Text)
+			} else {
+				assert.Empty(t, botMock.OnMessageCalls(), "no handler diagnostics and no spam check of the command")
+			}
+			assert.Empty(t, botMock.UpdateSpamCalls())
+			assert.Empty(t, botMock.RemoveApprovedUserCalls())
+			assert.Empty(t, mockLogger.SaveCalls())
+		})
+	}
+}
+
 func TestTelegramListener_DoWithDirectSpamReport(t *testing.T) {
 	mockLogger := &mocks.SpamLoggerMock{SaveFunc: func(msg *bot.Message, response *bot.Response) {}}
 	mockAPI := &mocks.TbAPIMock{

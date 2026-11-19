@@ -513,27 +513,32 @@ func (l *TelegramListener) procEvents(update tbapi.Update) error {
 
 // procSuperReply processes superuser commands (reply) /spam, /ban, /warn
 func (l *TelegramListener) procSuperReply(update tbapi.Update) (handled bool) {
+	var handle func(tbapi.Update) error
+	var action, failure string
 	switch {
 	case strings.EqualFold(update.Message.Text, "/spam") || strings.EqualFold(update.Message.Text, "spam"):
-		log.Printf("[DEBUG] superuser %s reported spam", update.Message.From.UserName)
-		if err := l.adminHandler.DirectSpamReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct spam report: %v", err)
-		}
-		return true
+		handle, action, failure = l.adminHandler.DirectSpamReport, "reported spam", "direct spam report"
 	case strings.EqualFold(update.Message.Text, "/ban") || strings.EqualFold(update.Message.Text, "ban"):
-		log.Printf("[DEBUG] superuser %s requested ban", update.Message.From.UserName)
-		if err := l.adminHandler.DirectBanReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct ban request: %v", err)
-		}
-		return true
+		handle, action, failure = l.adminHandler.DirectBanReport, "requested ban", "direct ban request"
 	case strings.EqualFold(update.Message.Text, "/warn") || strings.EqualFold(update.Message.Text, "warn"):
-		log.Printf("[DEBUG] superuser %s requested warning", update.Message.From.UserName)
-		if err := l.adminHandler.DirectWarnReport(update); err != nil {
-			log.Printf("[WARN] failed to process direct warning request: %v", err)
-		}
+		handle, action, failure = l.adminHandler.DirectWarnReport, "requested warning", "direct warning request"
+	default:
+		return false
+	}
+
+	// every handler deletes, bans and warns in the monitored group by the reply's message and user IDs,
+	// which belong to the chat the command came from, so a command from any other chat is consumed unrun
+	if update.Message.Chat.ID != l.chatID {
+		log.Printf("[DEBUG] ignoring superuser %s command %q from chat %d, not the monitored group",
+			update.Message.From.UserName, update.Message.Text, update.Message.Chat.ID)
 		return true
 	}
-	return false
+
+	log.Printf("[DEBUG] superuser %s %s", update.Message.From.UserName, action)
+	if err := handle(update); err != nil {
+		log.Printf("[WARN] failed to process %s: %v", failure, err)
+	}
+	return true
 }
 
 // isReportCommand checks if message text is a report command variant: report, /report,
