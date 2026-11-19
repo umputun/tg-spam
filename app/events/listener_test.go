@@ -3112,12 +3112,15 @@ func TestTelegramListener_ForwardedGiveaway(t *testing.T) {
 func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 	document := &tbapi.Document{FileID: "doc1"}
 	contact := &tbapi.Contact{PhoneNumber: "+15550001111", FirstName: "Scam", UserID: 777}
+	audio := &tbapi.Audio{FileID: "audio1"}
 	tests := []struct {
 		name           string
 		document       *tbapi.Document
 		contact        *tbapi.Contact
+		audio          *tbapi.Audio
 		admitDocuments bool
 		admitContacts  bool
+		admitAudio     bool
 		wantChecked    bool
 	}{
 		{name: "document, documents check on", document: document, admitDocuments: true, wantChecked: true},
@@ -3126,6 +3129,10 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 		{name: "contact, contact check on", contact: contact, admitContacts: true, wantChecked: true},
 		{name: "contact, contact check off", contact: contact, wantChecked: false},
 		{name: "contact, only documents check on", contact: contact, admitDocuments: true, wantChecked: false},
+		{name: "audio, audio check on", audio: audio, admitAudio: true, wantChecked: true},
+		{name: "audio, audio check off", audio: audio, wantChecked: false},
+		{name: "audio, only contact check on", audio: audio, admitContacts: true, wantChecked: false},
+		{name: "document, only audio check on", document: document, admitAudio: true, wantChecked: false},
 	}
 
 	for _, tt := range tests {
@@ -3156,6 +3163,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 				chatID:         123,
 				AdmitDocuments: tt.admitDocuments,
 				AdmitContacts:  tt.admitContacts,
+				AdmitAudio:     tt.admitAudio,
 			}
 
 			update := tbapi.Update{
@@ -3165,6 +3173,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 					Date:      time.Now().Unix(),
 					Document:  tt.document,
 					Contact:   tt.contact,
+					Audio:     tt.audio,
 					MessageID: 789,
 				},
 			}
@@ -3184,6 +3193,7 @@ func TestTelegramListener_TextlessAttachmentIntake(t *testing.T) {
 			got := botMock.OnMessageCalls()[0].Msg
 			assert.Equal(t, tt.document != nil, got.WithDocument)
 			assert.Equal(t, tt.contact != nil, got.WithContact)
+			assert.Equal(t, tt.audio != nil, got.WithAudio)
 			assert.Empty(t, got.Text)
 			count, cErr := locator.CountUserMessages(context.Background(), "456")
 			require.NoError(t, cErr)

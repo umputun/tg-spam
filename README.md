@@ -204,6 +204,8 @@ Enabling this check also changes what reaches the rest of the pipeline. A file o
 
 This option is disabled by default. If `--meta.audio-only` set or `env:META_AUDIO_ONLY` is `true`, the bot will check the message for the presence of any audio files. If the message contains audio files with text shorter than `--min-msg-len` (default: 50 characters), it will be marked as spam.
 
+Enabling this check also admits caption-less audio files for evaluation. An admitted audio file is stored in the message locator, counts toward `--max-short-msg-count` if that is configured, and goes through the checks that do not need message text: stopword matching, the username-symbols check, Lua plugins, and CAS when `--cas.token` is set. With the check off, a directly posted caption-less audio file is dropped on intake. A forwarded one, or one attached to a reply to a message from another chat, is admitted regardless of this option. Quoted and replied-to text counts toward the length threshold, so a caption-less audio file posted as a reply to a long message is not flagged.
+
 **Contact only check**
 
 This option is disabled by default. If `--meta.contact-only` set or `env:META_CONTACT_ONLY` is `true`, the bot will check the message for the presence of shared contacts (vCards). If the message contains a shared contact but no text of its own, it will be marked as spam.
