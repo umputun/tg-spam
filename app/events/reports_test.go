@@ -296,8 +296,10 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
-	t.Run("forum topic creation message - should return error", func(t *testing.T) {
-		mockAPI := &mocks.TbAPIMock{}
+	t.Run("forum topic creation message - should delete command and return error", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}}
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
@@ -325,7 +327,11 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot report forum topic creation messages")
-		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		require.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report command")
+		delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+		require.True(t, ok, "request should be a delete message config")
+		assert.Equal(t, 789, delReq.MessageID, "should delete the /report command message")
+		assert.Equal(t, int64(123), delReq.ChatID, "should delete from primary chat")
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
@@ -493,14 +499,25 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		assert.Len(t, mockReports.AddCalls(), 1, "should add report with transformed text")
 	})
 
-	t.Run("message without sender is rejected", func(t *testing.T) {
-		rep := &userReports{}
-		update := tbapi.Update{Message: &tbapi.Message{ReplyToMessage: &tbapi.Message{}}}
+	t.Run("message without sender is rejected and the command deleted", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}}
+		rep := &userReports{tbAPI: mockAPI, primChatID: 123}
+		update := tbapi.Update{Message: &tbapi.Message{MessageID: 789, Chat: tbapi.Chat{ID: 123},
+			From: &tbapi.User{UserName: "reporter", ID: 111}, ReplyToMessage: &tbapi.Message{}}}
 		require.EqualError(t, rep.DirectUserReport(context.Background(), update), "cannot report messages without a sender")
+		require.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report command")
+		delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+		require.True(t, ok, "request should be a delete message config")
+		assert.Equal(t, 789, delReq.MessageID, "should delete the /report command message")
+		assert.Equal(t, int64(123), delReq.ChatID, "should delete from primary chat")
 	})
 
-	t.Run("linked channel without From is rejected", func(t *testing.T) {
-		mockAPI := &mocks.TbAPIMock{}
+	t.Run("linked channel without From is rejected and the command deleted", func(t *testing.T) {
+		mockAPI := &mocks.TbAPIMock{RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+			return &tbapi.APIResponse{Ok: true}, nil
+		}}
 		mockReports := &mocks.ReportsMock{}
 
 		rep := &userReports{
@@ -533,7 +550,11 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		err := rep.DirectUserReport(context.Background(), update)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
-		assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+		require.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report command")
+		delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+		require.True(t, ok, "request should be a delete message config")
+		assert.Equal(t, 789, delReq.MessageID, "should delete the /report command message")
+		assert.Equal(t, int64(123), delReq.ChatID, "should delete from primary chat")
 		assert.Empty(t, mockReports.AddCalls(), "should not add report")
 	})
 
@@ -550,7 +571,9 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 		}
 		for _, s := range senders {
 			t.Run(s.name, func(t *testing.T) {
-				mockAPI := &mocks.TbAPIMock{}
+				mockAPI := &mocks.TbAPIMock{RequestFunc: func(c tbapi.Chattable) (*tbapi.APIResponse, error) {
+					return &tbapi.APIResponse{Ok: true}, nil
+				}}
 				mockReports := &mocks.ReportsMock{}
 				mockBot := &mocks.BotMock{IsApprovedUserFunc: func(id int64) bool { return true }}
 
@@ -582,7 +605,11 @@ func TestUserReports_DirectUserReport(t *testing.T) {
 				err := rep.DirectUserReport(context.Background(), update)
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "cannot report messages from the group or its linked channel")
-				assert.Empty(t, mockAPI.RequestCalls(), "should not delete message")
+				require.Len(t, mockAPI.RequestCalls(), 1, "should still delete /report command")
+				delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+				require.True(t, ok, "request should be a delete message config")
+				assert.Equal(t, 789, delReq.MessageID, "should delete the /report command message")
+				assert.Equal(t, int64(123), delReq.ChatID, "should delete from primary chat")
 				assert.Empty(t, mockReports.AddCalls(), "should not store a report against the placeholder user")
 			})
 		}
