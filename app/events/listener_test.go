@@ -558,8 +558,10 @@ func TestTelegramListener_UserReportChannelTarget(t *testing.T) {
 			}
 			assert.Empty(t, reports.AddCalls())
 			require.Len(t, mockAPI.RequestCalls(), 1, "only the report command is deleted")
-			assert.Equal(t, tbapi.DeleteMessageConfig{BaseChatMessage: tbapi.BaseChatMessage{
-				ChatConfig: tbapi.ChatConfig{ChatID: groupID}, MessageID: 50}}, mockAPI.RequestCalls()[0].C)
+			delReq, ok := mockAPI.RequestCalls()[0].C.(tbapi.DeleteMessageConfig)
+			require.True(t, ok, "request should be a delete message config")
+			assert.Equal(t, 50, delReq.MessageID)
+			assert.Equal(t, groupID, delReq.ChatID)
 		})
 	}
 }
